@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+apps/*/.env
+*.local
+*.log
+.claude/
+.DS_Store

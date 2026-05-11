@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-pit-bg text-white font-sans antialiased; }
+}
+
+@layer components {
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold
+           transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-pit-teal/40
+           focus:ring-offset-2 focus:ring-offset-pit-bg disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-pit-teal text-white hover:bg-pit-teal-hover
+           shadow-[0_0_16px_theme(colors.pit.teal/30%)]
+           hover:shadow-[0_0_24px_theme(colors.pit.teal/50%)];
+  }
+  .btn-ghost {
+    @apply btn bg-transparent border border-pit-border text-pit-text
+           hover:bg-pit-surface hover:border-pit-muted hover:text-white;
+  }
+  .btn-danger { @apply btn bg-red-600/20 border border-red-600/40 text-red-400 hover:bg-red-600/30 hover:text-red-300; }
+
+  /* Inputs */
+  .input {
+    @apply w-full rounded-lg bg-pit-bg border border-pit-border px-3 py-2.5 text-sm text-white
+           placeholder-pit-muted/50 transition-colors duration-150
+           focus:outline-none focus:border-pit-teal/60 focus:ring-2 focus:ring-pit-teal/20;
+  }
+  select.input { @apply appearance-none; }
+
+  /* Cards */
+  .card {
+    @apply rounded-xl bg-pit-card border border-pit-border p-4;
+  }
+  .card-hover {
+    @apply card cursor-pointer transition-all duration-200
+           hover:border-pit-teal/40 hover:-translate-y-0.5
+           hover:shadow-[0_8px_32px_theme(colors.pit.teal/12%)];
+  }
+
+  /* Tabs */
+  .tab { @apply px-4 py-2.5 text-sm font-medium border-b-2 transition-colors duration-150 cursor-pointer whitespace-nowrap; }
+  .tab-active   { @apply tab border-pit-teal text-white; }
+  .tab-inactive { @apply tab border-transparent text-pit-muted hover:text-pit-text hover:border-pit-border; }
+
+  /* Badges / chips */
+  .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+  .chip  { @apply inline-flex items-center gap-1 rounded-full bg-pit-bg border border-pit-border px-2.5 py-1 text-xs text-pit-text; }
+
+  /* Label above sections */
+  .eyebrow { @apply text-[10px] font-bold uppercase tracking-widest text-pit-muted; }
+}
