@@ -40,14 +40,14 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
         CAST(COALESCE(sum(COALESCE(rebuys, 0)), 0) AS INT) AS totalrebuys,
         CAST(COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN 1 ELSE 0 END), 0) AS INT) AS totaladdons,
         CAST(
-          COALESCE(sum(CASE WHEN checkedin = TRUE THEN COALESCE($2, 0) ELSE 0 END), 0) +
-          COALESCE(sum(COALESCE(rebuys, 0) * COALESCE($3, 0)), 0) +
-          COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN COALESCE($4, 0) ELSE 0 END), 0)
+          COALESCE(sum(CASE WHEN checkedin = TRUE THEN COALESCE($2::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL) +
+          COALESCE(sum(COALESCE(rebuys, 0) * COALESCE($3::DECIMAL, 0::DECIMAL)), 0::DECIMAL) +
+          COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN COALESCE($4::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL)
           AS DECIMAL
         ) AS grosspot
      FROM tournamentplayers
      WHERE tournamentid = $1`,
-    [req.params.id, tournament.buyin ?? 0, tournament.rebuyprice ?? 0, tournament.addonprice ?? 0]
+    [req.params.id, Number(tournament.buyin ?? 0), Number(tournament.rebuyprice ?? 0), Number(tournament.addonprice ?? 0)]
   );
 
   const seating = await query<SeatingAssignment>(
