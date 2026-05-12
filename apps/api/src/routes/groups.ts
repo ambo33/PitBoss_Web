@@ -210,7 +210,7 @@ groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
     await sendGroupInviteEmail(normalizedEmail, group.name, group.invitecode, trimmedNote);
   }
 
-  const baseMessage = `Join my PitBoss group "${group.name}" with code ${group.invitecode}: ${joinLink}`;
+  const baseMessage = `Join my PokerPlanner.bet group "${group.name}" with code ${group.invitecode}: ${joinLink}`;
   const fullMessage = trimmedNote ? `${baseMessage} ${trimmedNote}` : baseMessage;
   const smsLink = normalizedPhone
     ? `sms:${normalizedPhone}?body=${encodeURIComponent(fullMessage)}`

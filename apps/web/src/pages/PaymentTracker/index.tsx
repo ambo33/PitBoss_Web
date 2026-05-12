@@ -1,5 +1,5 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -7,13 +7,15 @@ export default function PaymentTrackerPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
 
-  const { data: tournament } = useQuery({
+  const { data: tournament, isLoading: loadingTournament, error: tournamentError } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.getTournament(id!),
   });
+
   const { data: players = [], isLoading } = useQuery({
     queryKey: ['players', id],
     queryFn: () => api.getPlayers(id!),
+    enabled: !!id && !!tournament,
     refetchInterval: 15_000,
   });
 
@@ -22,38 +24,51 @@ export default function PaymentTrackerPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['players', id] }),
   });
 
-  const unpaid = players.filter(p => !p.paid);
-  const paid = players.filter(p => p.paid);
+  const unpaid = players.filter((player) => !player.paid);
+  const paid = players.filter((player) => player.paid);
 
-  if (isLoading) return <LoadingSpinner className="mt-24" />;
+  if (loadingTournament || isLoading) return <LoadingSpinner className="mt-24" />;
+
+  if (tournamentError || !tournament?.canmanage) {
+    return (
+      <div className="min-h-screen bg-pit-bg p-4 text-white">
+        <div className="card mx-auto mt-16 max-w-lg text-center">
+          <h1 className="text-lg font-semibold text-white">Admins only</h1>
+          <p className="mt-2 text-sm text-pit-text">The payment tracker is only available to tournament admins.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-pit-bg text-white p-4">
-      <header className="text-center mb-6">
-        <p className="text-pit-text text-sm">PitBoss · Payment Tracker</p>
-        <h1 className="text-xl font-bold text-white">{tournament?.name ?? '…'}</h1>
-        <p className="text-pit-text text-sm mt-1">
+    <div className="min-h-screen bg-pit-bg p-4 text-white">
+      <header className="mb-6 text-center">
+        <p className="text-sm text-pit-text">PokerPlanner.bet - Payment Tracker</p>
+        <h1 className="text-xl font-bold text-white">{tournament.name}</h1>
+        <p className="mt-1 text-sm text-pit-text">
           {paid.length}/{players.length} paid
-          {tournament?.buyin && Number(tournament.buyin) > 0 && ` · $${Number(tournament.buyin).toFixed(2)} buy-in`}
+          {Number(tournament.buyin) > 0 && ` - $${Number(tournament.buyin).toFixed(2)} buy-in`}
         </p>
       </header>
 
-      <div className="max-w-lg mx-auto space-y-6">
+      <div className="mx-auto max-w-lg space-y-6">
         {unpaid.length > 0 && (
           <div className="card">
-            <h2 className="font-semibold text-yellow-400 mb-3">Awaiting Payment ({unpaid.length})</h2>
+            <h2 className="mb-3 font-semibold text-yellow-400">Awaiting Payment ({unpaid.length})</h2>
             <div className="space-y-2">
-              {unpaid.map(p => (
-                <div key={p.userid} className="flex items-center justify-between">
+              {unpaid.map((player) => (
+                <div key={player.userid} className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-white">{p.displayname ?? p.emailaddress}</p>
-                    {p.rebuys > 0 && (
-                      <p className="text-xs text-pit-text">+{p.rebuys} rebuy · +{p.addedon ? '1' : '0'} add-on</p>
+                    <p className="text-sm text-white">{player.displayname ?? player.emailaddress}</p>
+                    {(player.rebuys > 0 || player.addedon) && (
+                      <p className="text-xs text-pit-text">
+                        +{player.rebuys} rebuy - +{player.addedon ? '1' : '0'} add-on
+                      </p>
                     )}
                   </div>
                   <button
-                    className="btn-primary text-xs px-3 py-1.5"
-                    onClick={() => toggleMutation.mutate(p.userid)}
+                    className="btn-primary px-3 py-1.5 text-xs"
+                    onClick={() => toggleMutation.mutate(player.userid)}
                     disabled={toggleMutation.isPending}
                   >
                     Mark Paid
@@ -66,14 +81,14 @@ export default function PaymentTrackerPage() {
 
         {paid.length > 0 && (
           <div className="card">
-            <h2 className="font-semibold text-pit-teal mb-3">Paid ({paid.length})</h2>
+            <h2 className="mb-3 font-semibold text-pit-teal">Paid ({paid.length})</h2>
             <div className="space-y-1">
-              {paid.map(p => (
-                <div key={p.userid} className="flex items-center justify-between">
-                  <p className="text-sm text-pit-text line-through">{p.displayname ?? p.emailaddress}</p>
+              {paid.map((player) => (
+                <div key={player.userid} className="flex items-center justify-between gap-3">
+                  <p className="line-through text-sm text-pit-text">{player.displayname ?? player.emailaddress}</p>
                   <button
                     className="text-xs text-pit-text hover:text-white"
-                    onClick={() => toggleMutation.mutate(p.userid)}
+                    onClick={() => toggleMutation.mutate(player.userid)}
                   >
                     Undo
                   </button>
@@ -84,7 +99,7 @@ export default function PaymentTrackerPage() {
         )}
 
         {players.length === 0 && (
-          <p className="text-pit-text text-center py-12">No players registered yet.</p>
+          <p className="py-12 text-center text-pit-text">No players registered yet.</p>
         )}
       </div>
     </div>

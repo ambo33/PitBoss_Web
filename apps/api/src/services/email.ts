@@ -7,14 +7,14 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
-const from = process.env.EMAIL_FROM ?? 'PitBoss <noreply@pitboss.app>';
+const from = process.env.EMAIL_FROM ?? 'PokerPlanner.bet <noreply@pokerplanner.bet>';
 const clientUrl = getClientUrl();
 
 export async function sendVerificationEmail(email: string, pin: string): Promise<void> {
   await transporter.sendMail({
     from,
     to: email,
-    subject: 'Verify your PitBoss account',
+    subject: 'Verify your PokerPlanner.bet account',
     html: `<p>Your verification PIN is: <strong>${pin}</strong></p>`,
   });
 }
@@ -24,7 +24,7 @@ export async function sendPasswordResetEmail(email: string, resetGuid: string): 
   await transporter.sendMail({
     from,
     to: email,
-    subject: 'Reset your PitBoss password',
+    subject: 'Reset your PokerPlanner.bet password',
     html: `<p>Click <a href="${link}">here</a> to reset your password. This link expires in 1 hour.</p>`,
   });
 }
@@ -39,9 +39,9 @@ export async function sendGroupInviteEmail(
   await transporter.sendMail({
     from,
     to: email,
-    subject: `You're invited to join ${groupName} on PitBoss`,
+    subject: `You're invited to join ${groupName} on PokerPlanner.bet`,
     html: `
-      <p>You were invited to join <strong>${groupName}</strong> on PitBoss.</p>
+      <p>You were invited to join <strong>${groupName}</strong> on PokerPlanner.bet.</p>
       <p>Use this group join code: <strong>${inviteCode}</strong></p>
       <p><a href="${joinLink}">Click here to join the group</a></p>
       ${note ? `<p>Note from the organizer: ${note}</p>` : ''}

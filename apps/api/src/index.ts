@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './express-async';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -12,6 +13,7 @@ import { tournamentsRouter } from './routes/tournaments';
 import { playersRouter } from './routes/players';
 import { blindsRouter } from './routes/blinds';
 import { seatingRouter } from './routes/seating';
+import { publicRouter } from './routes/public';
 import { getClientUrl } from './config';
 import { errorHandler } from './middleware/error';
 import { initSocket } from './socket';
@@ -31,6 +33,7 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/public', publicRouter);
 app.use('/api/groups', groupsRouter);
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/tournaments', playersRouter);

@@ -68,6 +68,12 @@ export const api = {
     post<{ tournamentid: string }>('/tournaments', data),
   getTournament: (id: string) => get<Tournament>(`/tournaments/${id}`),
   updateTournament: (id: string, data: Partial<Tournament>) => put(`/tournaments/${id}`, data),
+  getPublicLobby: (id: string, guestUserId?: string) =>
+    get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  lobbySelfCheckin: (id: string) =>
+    post<{ success: boolean }>(`/public/tournaments/${id}/checkin/self`),
+  lobbyGuestCheckin: (id: string, data: { displayname: string }) =>
+    post<{ success: boolean; guestUserId: string }>(`/public/tournaments/${id}/checkin/guest`, data),
 
   // Players
   getPlayers: (tid: string) => get<TournamentPlayer[]>(`/tournaments/${tid}/players`),
@@ -75,6 +81,7 @@ export const api = {
     post(`/tournaments/${tid}/players`, data),
   selfRegister: (tid: string) => post(`/tournaments/${tid}/players/self`),
   groupRegister: (tid: string) => post(`/tournaments/${tid}/players/group-register`),
+  leaveTournament: (tid: string) => del(`/tournaments/${tid}/players/self`),
   removePlayer: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}`),
   toggleCheckin: (tid: string, uid: string) =>
     put(`/tournaments/${tid}/players/${uid}/checkin`),
@@ -90,6 +97,9 @@ export const api = {
   saveBlinds: (tid: string, levels: Omit<BlindLevel, 'id'>[]) =>
     put(`/tournaments/${tid}/blinds`, levels),
   deleteBlinds: (tid: string) => del(`/tournaments/${tid}/blinds`),
+  getChips: (tid: string) => get<TournamentChip[]>(`/tournaments/${tid}/chips`),
+  saveChips: (tid: string, chips: Omit<TournamentChip, 'id'>[]) =>
+    put(`/tournaments/${tid}/chips`, chips),
 
   // Seating
   getSeating: (tid: string) => get<SeatingAssignment[]>(`/tournaments/${tid}/seating`),
@@ -111,11 +121,12 @@ export interface GroupMember {
 export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
   tourneydate: string | null; tourneytime: string | null;
-  buyin: number; rake?: number; rebuyprice: number; rebuychips: number;
+  buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number;
   addonprice: number; addonchips: number; maxplayers: number;
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
-  groupid?: string | null;
+  groupid?: string | null; groupname?: string | null;
   playercount?: number; checkedincount?: number; isregistered?: boolean;
+  isgroupadmin?: boolean; canmanage?: boolean;
 }
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
@@ -128,7 +139,25 @@ export interface BlindLevel {
   smallblind: number; bigblind: number; ante: number;
   minutes: number; islastlevel: boolean;
 }
+export interface TournamentChip {
+  id: string; denomination: number; color: string;
+  quantity: number; sortorder: number;
+}
 export interface SeatingAssignment {
   userid: string; emailaddress: string; displayname?: string;
   tablenumber: number; seat: number;
+}
+export interface LobbyFieldStats {
+  registeredcount: number; checkedincount: number; knockedoutcount: number;
+  activecount: number; totalrebuys: number; totaladdons: number; grosspot: number;
+}
+export interface LobbyEntry {
+  userid: string; emailaddress: string; displayname?: string;
+  checkedin: boolean; tablenumber?: number | null; seat?: number | null;
+}
+export interface PublicLobbyResponse {
+  tournament: Tournament;
+  field: LobbyFieldStats;
+  seating: SeatingAssignment[];
+  entry: LobbyEntry | null;
 }

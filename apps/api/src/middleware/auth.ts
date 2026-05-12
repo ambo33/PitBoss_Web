@@ -7,17 +7,32 @@ export function signToken(userId: string): string {
   return jwt.sign({ sub: userId }, secret, { expiresIn: '7d' });
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
+function decodeUserId(header?: string): string | null {
   if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+    return null;
   }
   try {
     const payload = jwt.verify(header.slice(7), secret) as { sub: string };
-    req.userId = payload.sub;
-    next();
+    return payload.sub;
   } catch {
-    res.status(401).json({ error: 'Invalid token' });
+    return null;
   }
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const userId = decodeUserId(req.headers.authorization);
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  req.userId = userId;
+  next();
+}
+
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const userId = decodeUserId(req.headers.authorization);
+  if (userId) {
+    req.userId = userId;
+  }
+  next();
 }

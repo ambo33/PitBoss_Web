@@ -1,6 +1,6 @@
-# PitBoss
+# PokerPlanner.bet
 
-PitBoss is a monorepo with:
+PokerPlanner.bet is a monorepo with:
 
 - `apps/api`: Express + Socket.IO API
 - `apps/web`: Vite + React frontend

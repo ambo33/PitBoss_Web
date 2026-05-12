@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   tourneytime       TIME,
   buyin             DECIMAL(10,2) DEFAULT 0,
   rake              DECIMAL(10,2) DEFAULT 0,
+  payoutstructure   STRING,
   rebuyprice        DECIMAL(10,2) DEFAULT 0,
   rebuychips        INT DEFAULT 0,
   addonprice        DECIMAL(10,2) DEFAULT 0,
@@ -87,6 +88,15 @@ CREATE TABLE IF NOT EXISTS blindstructure (
   ante           INT DEFAULT 0,
   minutes        INT DEFAULT 20,
   islastlevel    BOOL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS tournamentchips (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournamentid   UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+  denomination   INT NOT NULL,
+  color          STRING(30) NOT NULL,
+  quantity       INT DEFAULT 0,
+  sortorder      INT DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tournamenttimer (

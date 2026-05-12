@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { SeatingAssignment } from '../types';
+import { broadcastTournamentUpdate } from '../socket';
 
 export const seatingRouter = Router();
 seatingRouter.use(requireAuth);
@@ -74,6 +75,7 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
     );
   }
 
+  broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'assign-seats' });
   res.json({ assigned: assignments.length });
 });
 
@@ -82,5 +84,6 @@ seatingRouter.delete('/:tid/seating', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
   await query(`DELETE FROM tournamentseating WHERE tournamentid = $1`, [req.params.tid]);
+  broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'clear-seats' });
   res.json({ success: true });
 });

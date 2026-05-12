@@ -6,6 +6,7 @@ import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import PaymentTrackerPage from './pages/PaymentTracker';
 import JoinGroupPage from './pages/JoinGroup';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -19,10 +20,10 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
         <Route path="/" element={<RequireAuth><MainPage /></RequireAuth>} />
-        <Route path="/tournament/:id" element={<RequireAuth><PreTournamentPage /></RequireAuth>} />
+        <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />
         <Route path="/join/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
-        <Route path="/pay/:id" element={<PaymentTrackerPage />} />
+        <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

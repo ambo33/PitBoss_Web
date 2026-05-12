@@ -152,3 +152,8 @@ export function invalidateTimerCache(tournamentId: string): void {
   timerState.delete(tournamentId);
   stopInterval(tournamentId);
 }
+
+export function broadcastTournamentUpdate(tournamentId: string, payload: Record<string, unknown> = { players: true }): void {
+  if (!io) return;
+  io.to(`t:${tournamentId}`).emit('tournament-updated', payload);
+}

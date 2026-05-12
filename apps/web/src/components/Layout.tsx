@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Trophy, Users, User, LogOut, ChevronLeft } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
+import BrandLockup from './BrandLockup';
 
 export type NavTab = 'tournaments' | 'groups' | 'profile';
 
@@ -14,8 +15,8 @@ interface Props {
 
 const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
   { id: 'tournaments', label: 'Tournaments', Icon: Trophy },
-  { id: 'groups',      label: 'Groups',      Icon: Users  },
-  { id: 'profile',     label: 'Profile',     Icon: User   },
+  { id: 'groups', label: 'Groups', Icon: Users },
+  { id: 'profile', label: 'Profile', Icon: User },
 ];
 
 export default function Layout({ children, title, back, tab, onTabChange }: Props) {
@@ -36,94 +37,83 @@ export default function Layout({ children, title, back, tab, onTabChange }: Prop
   }
 
   const initials = user?.displayname
-    ?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? '?';
+    ?.split(' ')
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() ?? '?';
 
   return (
-    <div className="min-h-screen flex bg-pit-bg">
-
-      {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-56 bg-pit-surface border-r border-pit-border z-30">
-        {/* Logo */}
-        <div className="px-5 pt-6 pb-5">
-          <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-pit-teal to-emerald-400 bg-clip-text text-transparent">
-            PitBoss
-          </span>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 space-y-0.5">
-          {NAV_ITEMS.map(({ id, label, Icon }) => {
-            const active = tab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => handleNavClick(id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  active
-                    ? 'bg-pit-teal/10 text-pit-teal shadow-[inset_3px_0_0_theme(colors.pit.teal)]'
-                    : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
-                }`}
-              >
-                <Icon size={17} strokeWidth={active ? 2.5 : 2} />
-                {label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* User section */}
-        {user && (
-          <div className="mx-3 mb-4 p-3 rounded-xl bg-pit-bg border border-pit-border">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-pit-teal/20 flex items-center justify-center shrink-0 text-pit-teal text-xs font-bold">
-                {initials}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-white truncate">{user.displayname}</p>
-                <p className="text-[10px] text-pit-muted truncate">{user.emailaddress}</p>
-              </div>
-            </div>
-            <button onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-pit-muted hover:text-red-400 transition-colors duration-150">
-              <LogOut size={12} /> Sign out
-            </button>
+    <div className="min-h-screen bg-pit-bg">
+      <div className="flex min-h-screen">
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-pit-border bg-pit-surface md:flex">
+          <div className="border-b border-pit-border/60 px-5 py-5">
+            <BrandLockup compact className="items-center gap-3" />
           </div>
-        )}
-      </aside>
 
-      {/* ── Main area ── */}
-      <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
+          <nav className="flex-1 space-y-0.5 px-3 py-4">
+            {NAV_ITEMS.map(({ id, label, Icon }) => {
+              const active = tab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => handleNavClick(id)}
+                  className={`w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                    active
+                      ? 'bg-pit-teal/10 text-pit-teal shadow-[inset_3px_0_0_theme(colors.pit.teal)]'
+                      : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
+                  } flex items-center gap-3`}
+                >
+                  <Icon size={17} strokeWidth={active ? 2.5 : 2} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
 
-        {/* Top bar */}
-        <header className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3
-                           bg-pit-bg/80 backdrop-blur-md border-b border-pit-border/60">
-          {back ? (
-            <Link to={back}
-              className="flex items-center gap-1 text-pit-muted hover:text-white transition-colors text-sm">
-              <ChevronLeft size={18} />
-              <span className="hidden sm:inline">Back</span>
-            </Link>
-          ) : (
-            <span className="md:hidden font-extrabold text-lg tracking-tight
-                             bg-gradient-to-r from-pit-teal to-emerald-400 bg-clip-text text-transparent">
-              PitBoss
-            </span>
+          {user && (
+            <div className="mx-3 mb-4 rounded-xl border border-pit-border bg-pit-bg p-3">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-white">{user.displayname}</p>
+                  <p className="truncate text-[10px] text-pit-muted">{user.emailaddress}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition-colors duration-150 hover:text-red-400"
+              >
+                <LogOut size={12} /> Sign out
+              </button>
+            </div>
           )}
-          {title && (
-            <h1 className="text-white font-semibold text-base truncate">{title}</h1>
-          )}
-        </header>
+        </aside>
 
-        {/* Content */}
-        <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8 max-w-5xl w-full mx-auto">
-          {children}
-        </main>
+        <div className="flex min-h-screen flex-1 flex-col md:ml-56">
+          <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-pit-border/60 bg-pit-bg/80 px-4 py-3 backdrop-blur-md">
+            {back ? (
+              <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
+                <ChevronLeft size={18} />
+                <span className="hidden sm:inline">Back</span>
+              </Link>
+            ) : (
+              <div className="md:hidden">
+                <BrandLockup compact showSlogan={false} className="items-center gap-2" />
+              </div>
+            )}
+            {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
+          </header>
+
+          <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 md:p-6 md:pb-8">
+            {children}
+          </main>
+        </div>
       </div>
 
-      {/* ── Mobile bottom nav ── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30
-                      bg-pit-surface/90 backdrop-blur-md border-t border-pit-border
-                      flex safe-area-inset-bottom">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
         {NAV_ITEMS.map(({ id, label, Icon }) => {
           const active = tab === id;
           return (
@@ -134,9 +124,7 @@ export default function Layout({ children, title, back, tab, onTabChange }: Prop
                 active ? 'text-pit-teal' : 'text-pit-muted'
               }`}
             >
-              <div className={`relative flex items-center justify-center w-10 h-6 rounded-full transition-all duration-150 ${
-                active ? 'bg-pit-teal/15' : ''
-              }`}>
+              <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${active ? 'bg-pit-teal/15' : ''}`}>
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
               </div>
               {label}

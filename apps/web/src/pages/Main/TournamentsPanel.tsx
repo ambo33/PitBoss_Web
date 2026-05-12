@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trophy, Users, DollarSign, Calendar, Clock } from 'lucide-react';
-import { api, Tournament, Group } from '../../api/client';
-import Modal from '../../components/Modal';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, Trophy, Users } from 'lucide-react';
+import { api, Group, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function TournamentsPanel() {
@@ -17,12 +16,33 @@ export default function TournamentsPanel() {
     queryFn: api.getTournaments,
   });
 
+  const { data: groups = [] } = useQuery<Group[]>({
+    queryKey: ['groups'],
+    queryFn: api.getGroups,
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: Partial<Tournament>) => api.createTournament(data),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['tournaments'] });
       setShowCreate(false);
       navigate(`/tournament/${(res as { tournamentid: string }).tournamentid}`);
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: (tournament: Tournament) => (
+      tournament.groupid ? api.groupRegister(tournament.tournamentid) : api.selfRegister(tournament.tournamentid)
+    ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
+    },
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: (tid: string) => api.leaveTournament(tid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
 
@@ -34,25 +54,35 @@ export default function TournamentsPanel() {
   });
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
-
   const list = tab === 'upcoming' ? upcoming : history;
-  const loading = loadingMine;
+
+  if (showCreate) {
+    return (
+      <CreateTournamentComposer
+        groups={groups}
+        onBack={() => setShowCreate(false)}
+        onSubmit={(data) => createMutation.mutate(data)}
+        loading={createMutation.isPending}
+        error={createMutation.error?.message}
+      />
+    );
+  }
 
   return (
     <>
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex gap-0.5 bg-pit-surface rounded-lg p-1 border border-pit-border">
-          {(['upcoming', 'history'] as const).map((t) => (
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex gap-0.5 rounded-lg border border-pit-border bg-pit-surface p-1">
+          {(['upcoming', 'history'] as const).map((panelTab) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${
-                tab === t
+              key={panelTab}
+              onClick={() => setTab(panelTab)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                tab === panelTab
                   ? 'bg-pit-teal text-white shadow-sm'
                   : 'text-pit-muted hover:text-white'
               }`}
             >
-              {t === 'upcoming' ? 'Upcoming' : 'History'}
+              {panelTab === 'upcoming' ? 'Upcoming' : 'History'}
             </button>
           ))}
         </div>
@@ -62,47 +92,89 @@ export default function TournamentsPanel() {
         </button>
       </div>
 
-      {loading ? <LoadingSpinner className="mt-16" /> : (
+      {loadingMine ? (
+        <LoadingSpinner className="mt-16" />
+      ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map(t => (
-            <TournamentCard key={t.tournamentid} t={t} onClick={() => navigate(`/tournament/${t.tournamentid}`)} />
+          {list.map((t) => (
+            <TournamentCard
+              key={t.tournamentid}
+              t={t}
+              isUpcoming={tab === 'upcoming'}
+              loading={registerMutation.isPending || leaveMutation.isPending}
+              onClick={() => navigate(`/tournament/${t.tournamentid}`)}
+              onRegister={() => registerMutation.mutate(t)}
+              onLeave={() => leaveMutation.mutate(t.tournamentid)}
+            />
           ))}
           {list.length === 0 && <EmptyState tab={tab} onNew={() => setShowCreate(true)} />}
         </div>
       )}
-
-      <CreateTournamentModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onSubmit={(data) => createMutation.mutate(data)}
-        loading={createMutation.isPending}
-        error={createMutation.error?.message}
-      />
     </>
   );
 }
 
-function TournamentCard({ t, onClick }: { t: Tournament; onClick: () => void }) {
+function TournamentCard({
+  t,
+  isUpcoming,
+  loading,
+  onClick,
+  onRegister,
+  onLeave,
+}: {
+  t: Tournament;
+  isUpcoming: boolean;
+  loading: boolean;
+  onClick: () => void;
+  onRegister: () => void;
+  onLeave: () => void;
+}) {
   const dateLabel = getDateKey(t.tourneydate);
   const hasDate = !!dateLabel;
   const hasBuyin = t.buyin > 0;
+  const canOpen = !t.groupid || t.canmanage;
+  const adminActionLabel = isUpcoming ? 'Run tournament' : 'Open tournament';
+  const showAdminAction = canOpen;
+  const showRegistrationAction = isUpcoming && !!t.groupid && !canOpen;
 
   return (
-    <div onClick={onClick} className="card-hover group">
-      {/* Top accent */}
-      <div className="h-0.5 -mx-4 -mt-4 mb-4 rounded-t-xl bg-gradient-to-r from-pit-teal/60 via-pit-teal/20 to-transparent" />
+    <div
+      onClick={canOpen ? onClick : undefined}
+      className={`${canOpen ? 'card-hover cursor-pointer' : 'card cursor-default'} group ${
+        t.isregistered ? 'border-pit-teal/45 bg-pit-teal/5' : ''
+      }`}
+    >
+      <div className={`mb-4 h-0.5 -mx-4 -mt-4 rounded-t-xl ${
+        t.isregistered
+          ? 'bg-gradient-to-r from-pit-teal via-pit-teal/45 to-transparent'
+          : 'bg-gradient-to-r from-pit-teal/60 via-pit-teal/20 to-transparent'
+      }`} />
 
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <p className="font-bold text-white leading-snug line-clamp-2">{t.name}</p>
-        {hasBuyin && (
-          <span className="shrink-0 flex items-center gap-0.5 text-pit-gold font-bold text-sm">
-            <DollarSign size={13} strokeWidth={2.5} />
-            {Number(t.buyin).toFixed(0)}
-          </span>
-        )}
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <p className="line-clamp-2 font-bold leading-snug text-white">{t.name}</p>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {t.isregistered && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-pit-teal/40 bg-pit-teal/15 px-2 py-0.5 text-[11px] font-semibold text-pit-teal">
+              <CheckCircle2 size={12} strokeWidth={2.5} />
+              Registered
+            </span>
+          )}
+          {hasBuyin && (
+            <span className="flex items-center gap-0.5 text-sm font-bold text-pit-gold">
+              <DollarSign size={13} strokeWidth={2.5} />
+              {Number(t.buyin).toFixed(0)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {t.groupname && (
+          <span className="chip">
+            <Users size={10} />
+            {t.groupname}
+          </span>
+        )}
         {hasDate && (
           <span className="chip">
             <Calendar size={10} />
@@ -117,18 +189,248 @@ function TournamentCard({ t, onClick }: { t: Tournament; onClick: () => void }) 
         )}
       </div>
 
-      <div className="flex items-center gap-3 pt-2.5 border-t border-pit-border/60">
+      <div className="flex items-center gap-3 border-t border-pit-border/60 pt-2.5">
         <span className="flex items-center gap-1 text-xs text-pit-text">
           <Users size={11} />
           {t.playercount ?? 0} registered
         </span>
         {(t.checkedincount ?? 0) > 0 && (
-          <span className="text-xs text-pit-teal font-medium">
-            {t.checkedincount} checked in
-          </span>
+          <span className="text-xs font-medium text-pit-teal">{t.checkedincount} checked in</span>
         )}
       </div>
+
+      {(showAdminAction || showRegistrationAction) && (
+        <div className="mt-3 border-t border-pit-border/60 pt-3">
+          {showAdminAction ? (
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClick();
+              }}
+            >
+              {adminActionLabel}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={t.isregistered ? 'btn-ghost w-full' : 'btn-primary w-full'}
+              disabled={loading}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (t.isregistered) {
+                  onLeave();
+                  return;
+                }
+                onRegister();
+              }}
+            >
+              {t.isregistered ? 'Leave tournament' : 'Register'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function EmptyState({ tab, onNew }: { tab: 'upcoming' | 'history'; onNew: () => void }) {
+  return (
+    <div className="col-span-full flex flex-col items-center justify-center gap-4 py-20">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-pit-border bg-pit-surface">
+        <Trophy size={24} className="text-pit-muted" />
+      </div>
+      <div className="text-center">
+        <p className="font-semibold text-white">No tournaments yet</p>
+        <p className="mt-1 text-sm text-pit-muted">
+          {tab === 'upcoming' ? 'Only future-dated tournaments appear here' : 'Past and undated tournaments appear here'}
+        </p>
+      </div>
+      {tab === 'upcoming' && (
+        <button className="btn-primary" onClick={onNew}>Create tournament</button>
+      )}
+    </div>
+  );
+}
+
+function CreateTournamentComposer({
+  groups,
+  onBack,
+  onSubmit,
+  loading,
+  error,
+}: {
+  groups: Group[];
+  onBack: () => void;
+  onSubmit: (data: Partial<Tournament>) => void;
+  loading: boolean;
+  error?: string;
+}) {
+  const [form, setForm] = useState({
+    name: '',
+    tourneydate: '',
+    tourneytime: '',
+    buyin: '',
+    rake: '',
+    rebuyprice: '',
+    rebuychips: '',
+    addonprice: '',
+    addonchips: '',
+    maxplayers: '',
+    registerself: true,
+    groupid: '',
+  });
+
+  const selectedGroupName = useMemo(
+    () => groups.find((group) => group.groupid === form.groupid)?.name ?? '',
+    [groups, form.groupid]
+  );
+
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((current) => ({
+      ...current,
+      [key]:
+        event.target instanceof HTMLInputElement && event.target.type === 'checkbox'
+          ? event.target.checked
+          : event.target.value,
+    }));
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    onSubmit({
+      name: form.name.trim(),
+      tourneydate: form.tourneydate || undefined,
+      tourneytime: form.tourneytime || undefined,
+      buyin: Number(form.buyin) || 0,
+      rake: Number(form.rake) || 0,
+      rebuyprice: Number(form.rebuyprice) || 0,
+      rebuychips: Number(form.rebuychips) || 0,
+      addonprice: Number(form.addonprice) || 0,
+      addonchips: Number(form.addonchips) || 0,
+      maxplayers: Number(form.maxplayers) || 0,
+      registerself: form.registerself,
+      groupid: form.groupid || undefined,
+    });
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={onBack}>
+          <ArrowLeft size={15} />
+          Back
+        </button>
+        <button type="submit" className="btn-primary px-4 py-2.5" form="create-tourney" disabled={loading}>
+          {loading ? 'Creating...' : 'Create tournament'}
+        </button>
+      </div>
+
+      <form id="create-tourney" onSubmit={submit} className="space-y-5 pb-24 sm:pb-6">
+        {error && (
+          <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
+        )}
+
+        <section className="space-y-4 rounded-xl border border-pit-border bg-pit-surface/70 p-4 sm:p-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-white">New tournament</h2>
+            <p className="text-sm text-pit-muted">Give the event a name, date, and home before you fill in the structure.</p>
+          </div>
+
+          <input className="input" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-pit-text">Date</span>
+              <input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-pit-text">Time</span>
+              <input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} />
+            </label>
+          </div>
+
+          {groups.length > 0 && (
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-pit-text">Group</span>
+              <select className="input" value={form.groupid} onChange={set('groupid')}>
+                <option value="">Private tournament</option>
+                {groups.map((group) => (
+                  <option key={group.groupid} value={group.groupid}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-white">Register me</p>
+              <p className="text-xs text-pit-muted">
+                {selectedGroupName ? `Add me to ${selectedGroupName} as soon as it is created.` : 'Add me as soon as it is created.'}
+              </p>
+            </div>
+            <div className={`flex h-5 w-9 items-center rounded-full px-0.5 transition-colors duration-150 ${form.registerself ? 'bg-pit-teal' : 'bg-pit-border'}`}>
+              <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 ${form.registerself ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <input type="checkbox" className="sr-only" checked={form.registerself} onChange={set('registerself')} />
+          </label>
+        </section>
+
+        <section className="space-y-4 rounded-xl border border-pit-border bg-pit-surface/70 p-4 sm:p-5">
+          <h3 className="text-base font-semibold text-white">Buy-in and structure</h3>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Buy-in">
+              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} />
+            </Field>
+            <Field label="Rake">
+              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} />
+            </Field>
+            <Field label="Max players">
+              <input className="input" type="number" placeholder="0" min="0" value={form.maxplayers} onChange={set('maxplayers')} />
+            </Field>
+            <Field label="Rebuy price">
+              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} />
+            </Field>
+            <Field label="Rebuy chips">
+              <input className="input" type="number" placeholder="0" min="0" value={form.rebuychips} onChange={set('rebuychips')} />
+            </Field>
+            <Field label="Add-on price">
+              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} />
+            </Field>
+            <Field label="Add-on chips" className="sm:col-span-2">
+              <input className="input" type="number" placeholder="0" min="0" value={form.addonchips} onChange={set('addonchips')} />
+            </Field>
+          </div>
+        </section>
+
+        <div className="fixed inset-x-0 bottom-0 border-t border-pit-border bg-pit-bg/95 px-4 py-3 backdrop-blur sm:static sm:rounded-xl sm:border sm:bg-pit-surface/90 sm:px-5">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+            <button type="button" className="btn-ghost px-3 py-2" onClick={onBack}>Cancel</button>
+            <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading}>
+              {loading ? 'Creating...' : 'Create tournament'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  className = '',
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`space-y-2 ${className}`.trim()}>
+      <span className="text-sm font-medium text-pit-text">{label}</span>
+      {children}
+    </label>
   );
 }
 
@@ -153,118 +455,4 @@ function formatTime12Hour(value: string | null | undefined): string {
   const period = hours24 >= 12 ? 'PM' : 'AM';
   const hours12 = hours24 % 12 || 12;
   return `${hours12}:${minutes} ${period}`;
-}
-
-function EmptyState({ tab, onNew }: { tab: 'upcoming' | 'history'; onNew: () => void }) {
-  return (
-    <div className="col-span-full flex flex-col items-center justify-center py-20 gap-4">
-      <div className="w-14 h-14 rounded-2xl bg-pit-surface border border-pit-border flex items-center justify-center">
-        <Trophy size={24} className="text-pit-muted" />
-      </div>
-      <div className="text-center">
-        <p className="text-white font-semibold">No tournaments yet</p>
-        <p className="text-pit-muted text-sm mt-1">
-          {tab === 'upcoming' ? 'Only future-dated tournaments appear here' : 'Past and undated tournaments appear here'}
-        </p>
-      </div>
-      {tab === 'upcoming' && (
-        <button className="btn-primary" onClick={onNew}>Create tournament</button>
-      )}
-    </div>
-  );
-}
-
-function CreateTournamentModal({
-  open, onClose, onSubmit, loading, error,
-}: {
-  open: boolean; onClose: () => void;
-  onSubmit: (data: Partial<Tournament>) => void;
-  loading: boolean; error?: string;
-}) {
-  const { data: groups = [] } = useQuery<Group[]>({ queryKey: ['groups'], queryFn: api.getGroups });
-
-  const [form, setForm] = useState({
-    name: '', tourneydate: '', tourneytime: '',
-    buyin: '', rake: '', rebuyprice: '', rebuychips: '',
-    addonprice: '', addonchips: '',
-    maxplayers: '', registerself: true,
-    groupid: '',
-  });
-
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm(f => ({ ...f, [k]: (e.target as HTMLInputElement).type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    onSubmit({
-      name: form.name,
-      tourneydate: form.tourneydate || undefined,
-      tourneytime: form.tourneytime || undefined,
-      buyin: Number(form.buyin) || 0,
-      rake: Number(form.rake) || 0,
-      rebuyprice: Number(form.rebuyprice) || 0,
-      rebuychips: Number(form.rebuychips) || 0,
-      addonprice: Number(form.addonprice) || 0,
-      addonchips: Number(form.addonchips) || 0,
-      maxplayers: Number(form.maxplayers) || 0,
-      registerself: form.registerself,
-      groupid: form.groupid || undefined,
-    });
-  }
-
-  return (
-    <Modal title="New Tournament" open={open} onClose={onClose}
-      footer={<>
-        <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" form="create-tourney" disabled={loading}>
-          {loading ? 'Creating…' : 'Create'}
-        </button>
-      </>}
-    >
-      <form id="create-tourney" onSubmit={submit} className="space-y-3">
-        {error && <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</p>}
-
-        <input className="input" placeholder="Tournament name *" value={form.name} onChange={set('name')} required />
-
-        {groups.length > 0 && (
-          <select className="input" value={form.groupid} onChange={set('groupid')}>
-            <option value="">No group (private)</option>
-            {groups.map(g => (
-              <option key={g.groupid} value={g.groupid}>{g.name}</option>
-            ))}
-          </select>
-        )}
-
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} />
-          <input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} />
-        </div>
-
-        <p className="eyebrow pt-1">Buy-in &amp; Structure</p>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input" type="number" placeholder="Buy-in $" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} />
-          <input className="input" type="number" placeholder="Rake $" min="0" step="0.01" value={form.rake} onChange={set('rake')} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input" type="number" placeholder="Max players" min="0" value={form.maxplayers} onChange={set('maxplayers')} />
-          <input className="input" type="number" placeholder="Rebuy $" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input" type="number" placeholder="Rebuy chips" min="0" value={form.rebuychips} onChange={set('rebuychips')} />
-          <input className="input" type="number" placeholder="Add-on $" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input" type="number" placeholder="Add-on chips" min="0" value={form.addonchips} onChange={set('addonchips')} />
-        </div>
-
-        <label className="flex items-center gap-3 py-1 cursor-pointer group/check">
-          <div className={`w-9 h-5 rounded-full transition-colors duration-150 flex items-center px-0.5 ${form.registerself ? 'bg-pit-teal' : 'bg-pit-border'}`}>
-            <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform duration-150 ${form.registerself ? 'translate-x-4' : 'translate-x-0'}`} />
-          </div>
-          <input type="checkbox" className="sr-only" checked={form.registerself} onChange={set('registerself')} />
-          <span className="text-sm text-pit-text group-hover/check:text-white transition-colors">Register me in this tournament</span>
-        </label>
-      </form>
-    </Modal>
-  );
 }

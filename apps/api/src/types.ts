@@ -34,6 +34,7 @@ export interface Tournament {
   tourneytime: string | null;
   buyin: number;
   rake?: number;
+  payoutstructure?: string | null;
   rebuyprice: number;
   rebuychips: number;
   addonprice: number;
@@ -45,9 +46,12 @@ export interface Tournament {
   registerself?: boolean;
   createdat: string;
   groupid?: string | null;
+  groupname?: string | null;
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;
+  isgroupadmin?: boolean;
+  canmanage?: boolean;
 }
 
 export interface TournamentPlayer {
@@ -75,6 +79,14 @@ export interface BlindLevel {
   islastlevel: boolean;
 }
 
+export interface TournamentChip {
+  id: string;
+  denomination: number;
+  color: string;
+  quantity: number;
+  sortorder: number;
+}
+
 export interface TimerState {
   tournamentid: string;
   currentlevel: number;
@@ -89,6 +101,25 @@ export interface SeatingAssignment {
   displayname?: string;
   tablenumber: number;
   seat: number;
+}
+
+export interface LobbyFieldStats {
+  registeredcount: number;
+  checkedincount: number;
+  knockedoutcount: number;
+  activecount: number;
+  totalrebuys: number;
+  totaladdons: number;
+  grosspot: number;
+}
+
+export interface LobbyEntry {
+  userid: string;
+  emailaddress: string;
+  displayname?: string;
+  checkedin: boolean;
+  tablenumber?: number | null;
+  seat?: number | null;
 }
 
 // Express request augmentation
