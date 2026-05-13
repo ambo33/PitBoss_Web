@@ -54,6 +54,7 @@ export default function RunTournament({
 
   const showAdminControls = isOwner && mode === 'admin';
   const showKnockoutQr = mode === 'admin';
+  const displayMode = mode === 'display';
 
   const refreshTournamentData = () => {
     if (queryKeysToRefresh?.length) {
@@ -236,8 +237,8 @@ export default function RunTournament({
 
   return (
     <div className="space-y-4">
-      <div ref={screenRef} className="card space-y-4 p-3 md:p-3.5 xl:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <div ref={screenRef} className={`card space-y-4 ${displayMode ? 'p-5 md:p-6 xl:p-8' : 'p-3 md:p-3.5 xl:p-4'}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-2 ${displayMode ? 'min-h-0' : ''}`}>
           {showAdminControls ? (
             <div className="flex flex-wrap items-center gap-2">
               <select
@@ -298,26 +299,26 @@ export default function RunTournament({
 
         {currentBlind ? (
           <>
-            <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]">
-              <section className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+            <div className={`grid ${displayMode ? 'gap-5 lg:grid-cols-[320px_minmax(0,1fr)_320px] 2xl:grid-cols-[360px_minmax(0,1fr)_360px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
+              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-white">Structure</h3>
-                  <span className="text-xs text-pit-muted">{effectiveBlinds.length} levels</span>
+                  <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
+                  <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
                 </div>
                 <div className="overflow-hidden rounded-lg border border-pit-border">
-                  <div className="grid grid-cols-[42px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-pit-muted">
+                  <div className={`grid grid-cols-[42px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
                     <span>Level</span>
                     <span>Blinds</span>
                     <span>Time</span>
                   </div>
-                  <div className="max-h-[34rem] overflow-y-auto">
+                  <div className={`${displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
                     {effectiveBlinds.map((blind) => {
                       const isCurrent = blind.level === effectiveLevel;
                       const isNext = nextBlind?.level === blind.level;
                       return (
                         <div
                           key={blind.id}
-                          className={`grid grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-xs leading-tight ${
+                          className={`grid grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 leading-tight ${displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
                               ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
                               : isNext
@@ -335,8 +336,8 @@ export default function RunTournament({
                 </div>
               </section>
 
-              <section className="min-w-0 space-y-4">
-                <div className={`rounded-xl border px-3 py-4 text-center ${timerTone}`}>
+              <section className={`min-w-0 ${displayMode ? 'space-y-5' : 'space-y-4'}`}>
+                <div className={`rounded-xl border text-center ${displayMode ? 'px-5 py-6' : 'px-3 py-4'} ${timerTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <button
@@ -357,7 +358,7 @@ export default function RunTournament({
                       }
                     </div>
                   )}
-                  <p className="text-xs font-medium uppercase tracking-[0.22em] text-pit-text md:text-sm">
+                  <p className={`${displayMode ? 'text-sm md:text-base' : 'text-xs md:text-sm'} font-medium uppercase tracking-[0.22em] text-pit-text`}>
                     Level {displayedLevel} of {effectiveBlinds.length}
                     {!timerState?.running && <span className="ml-3 text-yellow-400">Paused</span>}
                   </p>
@@ -385,7 +386,7 @@ export default function RunTournament({
                     <div className={`flex items-center font-mono font-bold tabular-nums leading-none ${urgency} ${
                       showAdjustments
                         ? 'text-[6.8rem] md:text-[9.5rem] lg:text-[10.4rem] xl:text-[11.2rem]'
-                        : 'text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]'
+                        : (displayMode ? 'text-[9.5rem] md:text-[13rem] lg:text-[15rem] xl:text-[16rem]' : 'text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]')
                     }`}>
                       <span>{minsStr}</span>
                       <span className="-mx-[0.08em]">:</span>
@@ -413,8 +414,8 @@ export default function RunTournament({
                     )}
                   </div>
 
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <div className="rounded-lg border border-pit-border bg-black/25 px-3 py-3">
+                  <div className={`mt-3 grid gap-2 md:grid-cols-2 ${displayMode ? 'xl:gap-3' : ''}`}>
+                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-4 py-4' : 'px-3 py-3'}`}>
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Current Blinds</p>
                       <p className={`mt-1.5 font-bold leading-none text-white ${
                         currentBlind.ante > 0
@@ -427,7 +428,7 @@ export default function RunTournament({
                         <p className="mt-1.5 text-base text-pit-text md:text-lg">Ante {currentBlind.ante.toLocaleString()}</p>
                       )}
                     </div>
-                    <div className="rounded-lg border border-pit-border bg-black/25 px-3 py-3">
+                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-4 py-4' : 'px-3 py-3'}`}>
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Next Blinds</p>
                       {nextBlind ? (
                         <>
@@ -460,18 +461,18 @@ export default function RunTournament({
                 )}
 
                 <div className="grid gap-2 xl:grid-cols-1">
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className={`grid gap-2 sm:grid-cols-3 ${displayMode ? 'xl:gap-3' : ''}`}>
                     {summaryStats.map((stat) => (
-                      <div key={stat.label} className="rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-3 text-center">
-                        <p className="text-xs uppercase tracking-wide text-pit-muted">{stat.label}</p>
-                        <p className={`mt-1.5 text-base font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
+                      <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${displayMode ? 'px-3 py-4' : 'px-2.5 py-3'}`}>
+                        <p className={`${displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
+                        <p className={`mt-1.5 ${displayMode ? 'text-lg' : 'text-base'} font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               </section>
 
-              <section className="space-y-2.5">
+              <section className={`space-y-2.5 ${displayMode ? 'lg:pt-1' : ''}`}>
                 {showKnockoutQr && (
                   <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-2.5 text-center">
                     <div className="mb-1 text-white">
@@ -482,24 +483,24 @@ export default function RunTournament({
                     </div>
                   </div>
                 )}
-                <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${displayMode ? 'p-4' : 'p-3'}`}>
                   <div className="mb-2">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-white">Payout Structure</h3>
-                    <p className="mt-1 text-xs text-pit-muted">
+                    <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
+                    <p className={`mt-1 ${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
                       Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
                     </p>
                   </div>
 
-                  <div className="mb-2 rounded-lg border border-pit-border bg-pit-bg/40 px-2.5 py-2 text-center">
-                    <p className="text-xs uppercase tracking-wide text-pit-muted">Prize Pool</p>
-                    <p className="mt-1 text-base font-semibold text-pit-teal">{formatMoney(totalPot)}</p>
+                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
+                    <p className={`${displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
+                    <p className={`mt-1 ${displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
                   </div>
 
-                  <div className="max-h-[26rem] space-y-1.5 overflow-y-auto pr-1">
+                  <div className={`${displayMode ? 'max-h-[48rem]' : 'max-h-[26rem]'} space-y-1.5 overflow-y-auto pr-1`}>
                     {payoutSplits.map((split, index) => {
                       const finisher = paidFinishers.find((player) => player.placed === index + 1);
                       return (
-                        <div key={`${index}-${split}`} className="flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 px-2.5 py-1.5 text-sm">
+                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
                             {finisher ? (

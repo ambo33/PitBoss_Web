@@ -68,6 +68,7 @@ export const api = {
     post<{ tournamentid: string }>('/tournaments', data),
   getTournament: (id: string) => get<Tournament>(`/tournaments/${id}`),
   updateTournament: (id: string, data: Partial<Tournament>) => put(`/tournaments/${id}`, data),
+  deleteTournament: (id: string) => del<{ success: boolean; notified: number }>(`/tournaments/${id}`),
   getPublicLobby: (id: string, guestUserId?: string) =>
     get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   getPublicTvBoard: (code: string) =>

@@ -3,6 +3,7 @@ import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
+import { sendTournamentCancelledEmail } from '../services/email';
 import { Tournament } from '../types';
 
 export const tournamentsRouter = Router();
@@ -276,4 +277,48 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null]
   );
   res.json({ success: true });
+});
+
+tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
+  if (!await canManageTournament(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+
+  const tournament = await queryOne<{ name: string; tourneydate: string | Date | null; tourneytime: string | Date | null }>(
+    `SELECT name, date AS tourneydate, time AS tourneytime
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+
+  const recipients = await query<{ emailaddress: string }>(
+    `SELECT DISTINCT u.emailaddress
+     FROM tournamentplayers tp
+     JOIN users u ON u.guid = tp.userid
+     LEFT JOIN usermetadata um ON um.userid = tp.userid
+     WHERE tp.tournamentid = $1
+       AND COALESCE(um.isguestuser, FALSE) = FALSE
+       AND u.emailaddress IS NOT NULL
+       AND u.emailaddress NOT LIKE 'guest+%@guest.pokerplanner.bet'`,
+    [req.params.id]
+  );
+
+  await query(`DELETE FROM tournaments WHERE tournamentid = $1`, [req.params.id]);
+
+  await Promise.allSettled(
+    recipients.map((recipient) =>
+      sendTournamentCancelledEmail(
+        recipient.emailaddress,
+        tournament.name,
+        tournament.tourneydate instanceof Date ? tournament.tourneydate.toISOString().slice(0, 10) : tournament.tourneydate,
+        tournament.tourneytime instanceof Date ? tournament.tourneytime.toISOString().slice(11, 19) : tournament.tourneytime
+      )
+    )
+  );
+
+  res.json({ success: true, notified: recipients.length });
 });

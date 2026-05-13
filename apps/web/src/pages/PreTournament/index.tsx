@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, CircleDollarSign, Clock3 } from 'lucide-react';
 import { api } from '../../api/client';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import Modal from '../../components/Modal';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import BlindTimer from './BlindTimer';
@@ -17,6 +18,7 @@ type Tab = 'details' | 'players' | 'blinds' | 'seating' | 'results' | 'run';
 
 export default function PreTournamentPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('details');
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
@@ -47,6 +49,15 @@ export default function PreTournamentPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['tournaments'] });
+    },
+  });
+  const deleteTournamentMutation = useMutation({
+    mutationFn: () => api.deleteTournament(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tournament', id] });
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
+      qc.invalidateQueries({ queryKey: ['players', id] });
+      navigate('/');
     },
   });
 
@@ -92,8 +103,11 @@ export default function PreTournamentPage() {
             canManage={canManage}
             scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
+            deleting={deleteTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
+            deleteError={deleteTournamentMutation.error?.message}
             onSave={(data) => updateTournamentMutation.mutate(data)}
+            onDelete={() => deleteTournamentMutation.mutate()}
           />
 
           <Payouts tournamentId={id!} tournament={tournament} />
@@ -116,8 +130,11 @@ function TournamentDetailsCard({
   canManage,
   scheduleLocked,
   saving,
+  deleting,
   error,
+  deleteError,
   onSave,
+  onDelete,
 }: {
   tournament: Awaited<ReturnType<typeof api.getTournament>>;
   totalRebuys: number;
@@ -125,10 +142,14 @@ function TournamentDetailsCard({
   canManage: boolean;
   scheduleLocked: boolean;
   saving: boolean;
+  deleting: boolean;
   error?: string;
+  deleteError?: string;
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
+  onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState(() => ({
     name: tournament.name ?? '',
     tourneydate: normalizeDate(tournament.tourneydate) ?? '',
@@ -182,14 +203,20 @@ function TournamentDetailsCard({
           </div>
           <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
         </div>
-        {canManage && (
+        {canManage && !scheduleLocked && (
           <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
             {editing ? 'Cancel' : 'Edit Details'}
+          </button>
+        )}
+        {canManage && scheduleLocked && (
+          <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
+            Delete Tournament
           </button>
         )}
       </div>
 
       {error && <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>}
+      {deleteError && <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{deleteError}</p>}
 
       {editing ? (
         <div className="space-y-4">
@@ -223,7 +250,7 @@ function TournamentDetailsCard({
             </Field>
           </div>
           {scheduleLocked && (
-            <p className="text-sm text-pit-muted">Date and time are locked once the tournament start time has passed.</p>
+            <p className="text-sm text-pit-muted">Date and time are locked because the tournament is too close to its scheduled start or already underway.</p>
           )}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
@@ -249,6 +276,11 @@ function TournamentDetailsCard({
           />
           <Row label="Rebuys taken" value={totalRebuys} />
           <Row label="Add-ons taken" value={totalAddons} />
+          {scheduleLocked && (
+            <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
+              The schedule is locked because the tournament is too close to its scheduled start or already underway. At this point, the remaining admin option is to cancel the tournament.
+            </div>
+          )}
           {featureFlags.tvBoard && (
             <Row
               label="TV board"
@@ -273,6 +305,32 @@ function TournamentDetailsCard({
           )}
         </div>
       )}
+
+      <Modal
+        title="Delete Tournament"
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        footer={(
+          <>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setConfirmDelete(false)}>Keep Tournament</button>
+            <button
+              type="button"
+              className="btn-danger text-sm"
+              disabled={deleting}
+              onClick={() => {
+                setConfirmDelete(false);
+                onDelete();
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete Tournament'}
+            </button>
+          </>
+        )}
+      >
+        <p className="text-sm text-pit-text">
+          This will permanently delete <span className="font-medium text-white">{tournament.name}</span> and notify all registered player email addresses that the tournament was cancelled.
+        </p>
+      </Modal>
     </section>
   );
 }

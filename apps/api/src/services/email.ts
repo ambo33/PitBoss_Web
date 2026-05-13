@@ -49,3 +49,22 @@ export async function sendGroupInviteEmail(
     `,
   });
 }
+
+export async function sendTournamentCancelledEmail(
+  email: string,
+  tournamentName: string,
+  tournamentDate?: string | null,
+  tournamentTime?: string | null
+): Promise<void> {
+  const when = [tournamentDate, tournamentTime].filter(Boolean).join(' at ');
+  await transporter.sendMail({
+    from,
+    to: email,
+    subject: `${tournamentName} has been cancelled`,
+    html: `
+      <p>The tournament <strong>${tournamentName}</strong> has been cancelled.</p>
+      ${when ? `<p>Scheduled time: ${when}</p>` : ''}
+      <p>Please check PokerPlanner.bet for updated tournament plans.</p>
+    `,
+  });
+}

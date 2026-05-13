@@ -36,15 +36,20 @@ export default function TvBoardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-pit-bg px-3 py-3 md:px-4 md:py-4">
-      <RunTournament
-        tournamentId={data.tournament.tournamentid}
-        isOwner={false}
-        tournament={data.tournament}
-        players={data.players}
-        mode="display"
-        queryKeysToRefresh={[['public-tv-board', code]]}
-      />
+    <div className="min-h-screen bg-pit-bg px-4 py-4 md:px-6 md:py-6 xl:px-8 xl:py-8">
+      <div className="mx-auto max-w-[2200px] space-y-4">
+        <header className="text-center">
+          <h1 className="text-3xl font-semibold text-white md:text-4xl">{data.tournament.name}</h1>
+        </header>
+        <RunTournament
+          tournamentId={data.tournament.tournamentid}
+          isOwner={false}
+          tournament={data.tournament}
+          players={data.players}
+          mode="display"
+          queryKeysToRefresh={[['public-tv-board', code]]}
+        />
+      </div>
     </div>
   );
 }
