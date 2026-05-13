@@ -16,6 +16,7 @@ import { seatingRouter } from './routes/seating';
 import { publicRouter } from './routes/public';
 import { getClientUrl } from './config';
 import { errorHandler } from './middleware/error';
+import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
 
 const app = express();
@@ -56,4 +57,13 @@ if (existsSync(webDistPath)) {
 app.use(errorHandler);
 
 const PORT = process.env.PORT ?? 3001;
-httpServer.listen(PORT, () => console.log(`PitBoss API running on :${PORT}`));
+
+async function start() {
+  await ensureDatabaseSchema();
+  httpServer.listen(PORT, () => console.log(`PitBoss API running on :${PORT}`));
+}
+
+start().catch((err) => {
+  console.error('Failed to start PitBoss API', err);
+  process.exit(1);
+});

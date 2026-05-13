@@ -287,10 +287,10 @@ export default function RunTournament({
 
           {showAdminControls && featureFlags.tvBoard && (
             <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV Code</p>
-              <p className="font-mono text-lg font-semibold tracking-[0.24em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</p>
-              <p className="mt-0.5 text-[11px] text-pit-muted">
-                {tournament.tvdisplaycode ? 'Go to /tv' : 'Refresh if code is still generating'}
+              <p className="text-sm text-white">
+                <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
+                <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
+                <span className="ml-2 text-[11px] text-pit-muted">/tv</span>
               </p>
             </div>
           )}
