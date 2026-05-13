@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool, query, queryOne } from '../db';
+import { isFeatureEnabled } from '../features';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
@@ -10,6 +11,62 @@ export const publicRouter = Router();
 function createGuestEmail() {
   return `guest+${crypto.randomUUID()}@guest.pokerplanner.bet`;
 }
+
+publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
+  const normalizedCode = String(req.params.code ?? '').trim();
+  if (!normalizedCode) {
+    res.status(400).json({ error: 'TV code required' });
+    return;
+  }
+
+  const tournament = await queryOne<Tournament>(
+    `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.addoncost AS addonprice, t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
+            t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
+            (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid AND checkedin = TRUE) AS checkedincount
+     FROM tournaments t
+     LEFT JOIN groups g ON g.groupid = t.groupid
+     WHERE t.tvdisplaycode = $1`,
+    [normalizedCode]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'TV board not found' });
+    return;
+  }
+  if (!isFeatureEnabled('tvBoard')) {
+    res.status(403).json({ error: 'TV board is not enabled for this tournament.' });
+    return;
+  }
+
+  const players = await query(
+    `SELECT tp.userid, u.emailaddress,
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            COALESCE(tp.checkedin, FALSE) AS checkedin,
+            CAST(COALESCE(tp.rebuys, 0) AS INT) AS rebuys,
+            COALESCE(tp.addedon, FALSE) AS addedon,
+            CAST(tp.placed AS INT) AS placed,
+            COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
+            tp.knockedoutbyuserid,
+            COALESCE(tp.paid, FALSE) AS paid,
+            tp.createdate AS registeredat,
+            CAST(ts."Table" AS INT) AS tablenumber,
+            CAST(ts.seat AS INT) AS seat
+     FROM tournamentplayers tp
+     JOIN users u ON u.guid = tp.userid
+     LEFT JOIN usermetadata m ON m.userid = tp.userid
+     LEFT JOIN users ku ON ku.guid = tp.knockedoutbyuserid
+     LEFT JOIN usermetadata km ON km.userid = ku.guid
+     LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
+     WHERE tp.tournamentid = $1
+     ORDER BY tp.createdate`,
+    [tournament.tournamentid]
+  );
+
+  res.json({ tournament, players });
+});
 
 publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, res: Response) => {
   const tournament = await queryOne<Tournament>(
@@ -291,6 +348,106 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
   );
 
   res.json({ tournament, entry, activePlayers });
+});
+
+publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, res: Response) => {
+  const tournament = await queryOne<Tournament>(
+    `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, 0 AS rebuychips,
+            t.addoncost AS addonprice, t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            t.createdate AS createdat, t.groupid, g.name AS groupname
+     FROM tournaments t
+     LEFT JOIN groups g ON g.groupid = t.groupid
+     WHERE t.tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+
+  const guestUserId = typeof req.query.guestUserId === 'string' ? req.query.guestUserId : null;
+  const entryUserId = req.userId ?? guestUserId;
+
+  let entry: LobbyEntry | null = null;
+  if (entryUserId) {
+    entry = await queryOne<LobbyEntry>(
+      `SELECT tp.userid, u.emailaddress,
+              COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+              COALESCE(tp.checkedin, FALSE) AS checkedin,
+              COALESCE(tp.addedon, FALSE) AS addedon,
+              CAST(tp.placed AS INT) AS placed
+       FROM tournamentplayers tp
+       JOIN users u ON u.guid = tp.userid
+       LEFT JOIN usermetadata m ON m.userid = tp.userid
+       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
+      [req.params.id, entryUserId]
+    );
+  }
+
+  res.json({ tournament, entry });
+});
+
+publicRouter.post('/tournaments/:id/addon/self', optionalAuth, async (req: Request, res: Response) => {
+  const guestUserId = typeof (req.body as { guestUserId?: string }).guestUserId === 'string'
+    ? String((req.body as { guestUserId?: string }).guestUserId)
+    : '';
+  const playerUserId = req.userId ?? guestUserId;
+
+  if (!playerUserId) {
+    res.status(401).json({ error: 'Sign in or return on the same device you used to check in.' });
+    return;
+  }
+
+  const tournament = await queryOne<{ addonprice: number; addonchips: number }>(
+    `SELECT addoncost AS addonprice, addonchips
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  if (Number(tournament.addonprice ?? 0) <= 0 || Number(tournament.addonchips ?? 0) <= 0) {
+    res.status(400).json({ error: 'Add-ons are not enabled for this tournament.' });
+    return;
+  }
+
+  const entry = await queryOne<{ checkedin: boolean; addedon: boolean; placed: number | null }>(
+    `SELECT COALESCE(checkedin, FALSE) AS checkedin,
+            COALESCE(addedon, FALSE) AS addedon,
+            CAST(placed AS INT) AS placed
+     FROM tournamentplayers
+     WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, playerUserId]
+  );
+  if (!entry) {
+    res.status(404).json({ error: 'You are not registered for this tournament on this device.' });
+    return;
+  }
+  if (!entry.checkedin) {
+    res.status(409).json({ error: 'You must be checked in before using the add-on QR.' });
+    return;
+  }
+  if (entry.placed != null) {
+    res.status(409).json({ error: 'You cannot add on after being knocked out.' });
+    return;
+  }
+  if (entry.addedon) {
+    res.json({ success: true, addedon: true });
+    return;
+  }
+
+  await query(
+    `UPDATE tournamentplayers
+     SET addedon = TRUE
+     WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, playerUserId]
+  );
+
+  broadcastTournamentUpdate(req.params.id, { players: true, source: 'public-addon' });
+  res.json({ success: true, addedon: true });
 });
 
 publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Request, res: Response) => {

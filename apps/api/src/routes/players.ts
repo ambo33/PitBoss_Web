@@ -35,6 +35,13 @@ async function canManagePlayers(tournamentId: string, userId: string): Promise<b
   return await isOwner(tournamentId, userId) || await isGroupAdmin(tournamentId, userId);
 }
 
+function parsePlaced(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(1, Math.round(parsed));
+}
+
 playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
   const rows = await query<TournamentPlayer>(
     `SELECT tp.userid, u.emailaddress,
@@ -242,40 +249,137 @@ playersRouter.post('/:tid/players/:uid/rebuy', async (req: Request, res: Respons
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
-  await query(
-    `UPDATE tournamentplayers SET rebuys = rebuys + 1 WHERE tournamentid = $1 AND userid = $2`,
+  const updated = await queryOne<{ rebuys: number }>(
+    `UPDATE tournamentplayers
+     SET rebuys = COALESCE(rebuys, 0) + 1
+     WHERE tournamentid = $1 AND userid = $2
+     RETURNING COALESCE(CAST(rebuys AS INT), 0) AS rebuys`,
     [req.params.tid, req.params.uid]
   );
+  if (!updated) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'rebuy' });
-  res.json({ success: true });
+  res.json({ success: true, rebuys: updated.rebuys });
 });
 
 playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
-  await query(
-    `UPDATE tournamentplayers SET addedon = 1 WHERE tournamentid = $1 AND userid = $2`,
+  const updated = await queryOne<{ addedon: boolean }>(
+    `UPDATE tournamentplayers
+     SET addedon = TRUE
+     WHERE tournamentid = $1 AND userid = $2
+     RETURNING COALESCE(addedon, FALSE) AS addedon`,
     [req.params.tid, req.params.uid]
   );
+  if (!updated) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon' });
-  res.json({ success: true });
+  res.json({ success: true, addedon: updated.addedon });
 });
 
 playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
-  const { placed, knockedoutbyuserid } = req.body as { placed: number; knockedoutbyuserid?: string | null };
-  await query(
-    `UPDATE tournamentplayers
-     SET placed = $3,
-         checkedin = FALSE,
-         knockedoutbyuserid = $4,
-         knockedoutat = now()
-     WHERE tournamentid = $1 AND userid = $2`,
-    [req.params.tid, req.params.uid, placed, knockedoutbyuserid ?? null]
-  );
+  const { placed, knockedoutbyuserid } = req.body as { placed?: number | null; knockedoutbyuserid?: string | null };
+  const nextPlaced = parsePlaced(placed);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query<{ placed: number | null }>(
+      `SELECT CAST(placed AS INT) AS placed
+       FROM tournamentplayers
+       WHERE tournamentid = $1 AND userid = $2
+       FOR UPDATE`,
+      [req.params.tid, req.params.uid]
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Player not found' });
+      return;
+    }
+
+    const currentPlaced = current.placed == null ? null : Number(current.placed);
+
+    if (nextPlaced == null) {
+      if (currentPlaced != null) {
+        await client.query(
+          `UPDATE tournamentplayers
+           SET placed = placed - 1
+           WHERE tournamentid = $1
+             AND userid != $2
+             AND placed > $3`,
+          [req.params.tid, req.params.uid, currentPlaced]
+        );
+      }
+      await client.query(
+        `UPDATE tournamentplayers
+         SET placed = NULL,
+             checkedin = TRUE,
+             knockedoutbyuserid = NULL,
+             knockedoutat = NULL,
+             paid = FALSE
+         WHERE tournamentid = $1 AND userid = $2`,
+        [req.params.tid, req.params.uid]
+      );
+    } else {
+      if (currentPlaced == null) {
+        await client.query(
+          `UPDATE tournamentplayers
+           SET placed = placed + 1
+           WHERE tournamentid = $1
+             AND userid != $2
+             AND placed >= $3`,
+          [req.params.tid, req.params.uid, nextPlaced]
+        );
+      } else if (nextPlaced < currentPlaced) {
+        await client.query(
+          `UPDATE tournamentplayers
+           SET placed = placed + 1
+           WHERE tournamentid = $1
+             AND userid != $2
+             AND placed >= $3
+             AND placed < $4`,
+          [req.params.tid, req.params.uid, nextPlaced, currentPlaced]
+        );
+      } else if (nextPlaced > currentPlaced) {
+        await client.query(
+          `UPDATE tournamentplayers
+           SET placed = placed - 1
+           WHERE tournamentid = $1
+             AND userid != $2
+             AND placed <= $3
+             AND placed > $4`,
+          [req.params.tid, req.params.uid, nextPlaced, currentPlaced]
+        );
+      }
+
+      await client.query(
+        `UPDATE tournamentplayers
+         SET placed = $3,
+             checkedin = FALSE,
+             knockedoutbyuserid = $4,
+             knockedoutat = now()
+         WHERE tournamentid = $1 AND userid = $2`,
+        [req.params.tid, req.params.uid, nextPlaced, knockedoutbyuserid ?? null]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
   res.json({ success: true });
 });

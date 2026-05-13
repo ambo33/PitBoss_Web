@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Wallet } from 'lucide-react';
 import { api, GroupMember, Tournament, TournamentPlayer } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
@@ -13,7 +12,7 @@ interface Props {
   tournament: Tournament;
 }
 
-type QrView = 'checkin' | 'payments';
+type QrView = 'checkin' | 'addon';
 
 export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const qc = useQueryClient();
@@ -27,7 +26,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const [qrView, setQrView] = useState<QrView>('checkin');
 
   const checkInUrl = `${window.location.origin}/lobby/${tournamentId}`;
-  const paymentsUrl = `${window.location.origin}/pay/${tournamentId}`;
+  const addOnUrl = `${window.location.origin}/addon/${tournamentId}`;
 
   function refreshTournamentData() {
     qc.invalidateQueries({ queryKey: ['players', tournamentId] });
@@ -81,7 +80,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     onSuccess: () => refreshTournamentData(),
   });
   const knockMutation = useMutation({
-    mutationFn: ({ uid, placed }: { uid: string; placed: number }) => api.knockPlayer(tournamentId, uid, placed),
+    mutationFn: ({ uid, placed }: { uid: string; placed: number | null }) => api.knockPlayer(tournamentId, uid, placed),
     onSuccess: () => {
       refreshTournamentData();
       setSelected(null);
@@ -148,37 +147,37 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               >
                 Check-In QR
               </button>
-              <button
-                type="button"
-                onClick={() => setQrView('payments')}
-                className={qrView === 'payments' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-ghost border-transparent px-3 py-1.5 text-xs'}
-              >
-                Payment QR
-              </button>
+              {tournament.addonprice > 0 && tournament.addonchips > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setQrView('addon')}
+                  className={qrView === 'addon' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-ghost border-transparent px-3 py-1.5 text-xs'}
+                >
+                  Add-On QR
+                </button>
+              )}
             </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
             <div className="flex h-full items-center justify-center rounded-xl border border-pit-border bg-pit-bg/50 p-4">
-              <div className="text-center">
-                <div className="mb-3 flex items-center justify-center gap-2 text-white">
-                  {qrView === 'checkin' ? <QrCode size={16} className="text-pit-teal" /> : <Wallet size={16} className="text-pit-teal" />}
-                  <p className="font-semibold">{qrView === 'checkin' ? 'SCAN TO CHECK-IN' : 'SCAN FOR PAYMENT TRACKER'}</p>
+                <div className="text-center">
+                  <div className="mb-3 text-white">
+                  <p className="font-semibold">
+                    {qrView === 'checkin'
+                      ? 'AFTER PAYMENT, SCAN HERE TO CHECK IN'
+                      : 'AFTER PAYMENT, SCAN HERE TO ADD-ON'}
+                  </p>
+                  </div>
+                  <div className="inline-block rounded-xl bg-white p-2">
+                    <QRCodeSVG value={qrView === 'checkin' ? checkInUrl : addOnUrl} size={110} />
+                  </div>
                 </div>
-                <div className="inline-block rounded-xl bg-white p-2">
-                  <QRCodeSVG value={qrView === 'checkin' ? checkInUrl : paymentsUrl} size={110} />
-                </div>
-              </div>
             </div>
 
             <div className="flex h-full flex-col rounded-xl border border-pit-border bg-pit-bg/50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-white">Field Status</h3>
-                  <p className="mt-1 text-sm text-pit-text">
-                    Live tournament counts update here as players arrive, rebuy, add on, and bust out.
-                  </p>
-                </div>
+                <h3 className="font-semibold text-white">Field Status</h3>
               </div>
               <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {stats.map((stat) => (
@@ -187,19 +186,12 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               </div>
             </div>
           </div>
-
-          <p className="break-all rounded-lg border border-pit-border bg-pit-surface/60 px-3 py-2 font-mono text-xs text-pit-muted">
-            {qrView === 'checkin' ? checkInUrl : paymentsUrl}
-          </p>
         </section>
       )}
 
       {!isOwner && (
         <section className="mb-4 space-y-3">
-          <div>
-            <h3 className="font-semibold text-white">Field Status</h3>
-            <p className="mt-1 text-sm text-pit-text">Live tournament counts update here as players arrive, rebuy, add on, and bust out.</p>
-          </div>
+          <div><h3 className="font-semibold text-white">Field Status</h3></div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {stats.map((stat) => (
               <StatCard key={stat.label} label={stat.label} value={stat.value} accent={stat.accent} />
@@ -321,6 +313,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
           player={selected}
           activeCount={activePlayers}
           onKnock={(knockPlaced) => knockMutation.mutate({ uid: selected.userid, placed: knockPlaced })}
+          onClearPlacement={() => knockMutation.mutate({ uid: selected.userid, placed: null })}
           onRemove={() => removeMutation.mutate(selected.userid)}
           onClose={() => setSelected(null)}
         />
@@ -373,28 +366,32 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onSelect, tou
   );
 }
 
-function PlayerModal({ player, activeCount, onKnock, onRemove, onClose }: {
+function PlayerModal({ player, activeCount, onKnock, onClearPlacement, onRemove, onClose }: {
   player: TournamentPlayer;
   activeCount: number;
   onKnock: (placed: number) => void;
+  onClearPlacement: () => void;
   onRemove: () => void;
   onClose: () => void;
 }) {
-  const [knockPlace, setKnockPlace] = useState(String(Math.max(activeCount, 1)));
+  const [knockPlace, setKnockPlace] = useState(String(player.placed ?? Math.max(activeCount, 1)));
 
   return (
     <Modal title={player.displayname ?? player.emailaddress ?? 'Guest Player'} open onClose={onClose}>
       <div className="space-y-4">
-        {player.placed == null && (
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs text-pit-text">Place (knock out)</label>
-              <input className="input" type="number" min="1" value={knockPlace} onChange={(e) => setKnockPlace(e.target.value)} />
-            </div>
-            <button className="btn-danger" onClick={() => onKnock(Number(knockPlace))}>
-              Knock Out
-            </button>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="mb-1 block text-xs text-pit-text">Finish place</label>
+            <input className="input" type="number" min="1" value={knockPlace} onChange={(e) => setKnockPlace(e.target.value)} />
           </div>
+          <button className="btn-danger" onClick={() => onKnock(Number(knockPlace))}>
+            {player.placed == null ? 'Knock Out' : 'Update Place'}
+          </button>
+        </div>
+        {player.placed != null && (
+          <button className="btn-ghost w-full" onClick={onClearPlacement}>
+            Restore To Field
+          </button>
         )}
         <button className="btn-ghost w-full border-red-800 text-red-400" onClick={onRemove}>
           Remove from tournament

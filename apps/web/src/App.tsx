@@ -5,6 +5,9 @@ import MainPage from './pages/Main';
 import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
+import AddonLobbyPage from './pages/AddonLobby';
+import TvBoardPage from './pages/TvBoard';
+import TvBoardEntryPage from './pages/TvBoard/Entry';
 import PaymentTrackerPage from './pages/PaymentTracker';
 import JoinGroupPage from './pages/JoinGroup';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
@@ -25,6 +28,9 @@ export default function App() {
         <Route path="/join/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
+        <Route path="/addon/:id" element={<AddonLobbyPage />} />
+        <Route path="/tv" element={<TvBoardEntryPage />} />
+        <Route path="/tv/:code" element={<TvBoardPage />} />
         <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

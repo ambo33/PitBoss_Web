@@ -70,10 +70,16 @@ export const api = {
   updateTournament: (id: string, data: Partial<Tournament>) => put(`/tournaments/${id}`, data),
   getPublicLobby: (id: string, guestUserId?: string) =>
     get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  getPublicTvBoard: (code: string) =>
+    get<PublicTvBoardResponse>(`/public/tv/${encodeURIComponent(code)}`),
   lobbySelfCheckin: (id: string) =>
     post<{ success: boolean }>(`/public/tournaments/${id}/checkin/self`),
   lobbyGuestCheckin: (id: string, data: { displayname?: string; guestUserId?: string }) =>
     post<{ success: boolean; guestUserId: string }>(`/public/tournaments/${id}/checkin/guest`, data),
+  getPublicAddon: (id: string, guestUserId?: string) =>
+    get<PublicAddonResponse>(`/public/tournaments/${id}/addon${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  publicSelfAddon: (id: string, data: { guestUserId?: string }) =>
+    post<{ success: boolean; addedon: boolean }>(`/public/tournaments/${id}/addon/self`, data),
   getPublicKnockout: (id: string, guestUserId?: string) =>
     get<PublicKnockoutResponse>(`/public/tournaments/${id}/knockout${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   publicSelfKnockout: (id: string, data: { guestUserId?: string; knockedOutByUserId?: string }) =>
@@ -91,7 +97,7 @@ export const api = {
     put(`/tournaments/${tid}/players/${uid}/checkin`),
   addRebuy: (tid: string, uid: string) => post(`/tournaments/${tid}/players/${uid}/rebuy`),
   addAddon: (tid: string, uid: string) => post(`/tournaments/${tid}/players/${uid}/addon`),
-  knockPlayer: (tid: string, uid: string, placed: number) =>
+  knockPlayer: (tid: string, uid: string, placed: number | null) =>
     put(`/tournaments/${tid}/players/${uid}/knock`, { placed }),
   togglePaid: (tid: string, uid: string) =>
     put(`/tournaments/${tid}/players/${uid}/paid`),
@@ -129,6 +135,7 @@ export interface Tournament {
   addonprice: number; addonchips: number; maxplayers: number;
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
   groupid?: string | null; groupname?: string | null;
+  tvdisplaycode?: string | null;
   playercount?: number; checkedincount?: number; isregistered?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
 }
@@ -157,7 +164,15 @@ export interface LobbyFieldStats {
 }
 export interface LobbyEntry {
   userid: string; emailaddress: string; displayname?: string;
-  checkedin: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
+  checkedin: boolean; addedon?: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
+}
+export interface PublicAddonResponse {
+  tournament: Tournament;
+  entry: LobbyEntry | null;
+}
+export interface PublicTvBoardResponse {
+  tournament: Tournament;
+  players: TournamentPlayer[];
 }
 export interface PublicLobbyResponse {
   tournament: Tournament;

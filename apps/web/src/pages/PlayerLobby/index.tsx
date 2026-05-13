@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -48,7 +48,6 @@ export default function PlayerLobbyPage() {
 
   const tournament = data?.tournament;
   const field = data?.field;
-  const seating = data?.seating ?? [];
   const entry = data?.entry;
 
   const selfCheckinMutation = useMutation({
@@ -146,16 +145,6 @@ export default function PlayerLobbyPage() {
       ? 'border-yellow-300/40 bg-yellow-300/10'
       : 'border-pit-border bg-pit-bg/50';
 
-  const tables = useMemo(() => {
-    const grouped = new Map<number, typeof seating>();
-    for (const seat of seating) {
-      const list = grouped.get(seat.tablenumber) ?? [];
-      list.push(seat);
-      grouped.set(seat.tablenumber, list);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a - b);
-  }, [seating]);
-
   function handleSignIn() {
     if (!id) return;
     navigate(`/login?next=${encodeURIComponent(`/lobby/${id}`)}`);
@@ -195,25 +184,32 @@ export default function PlayerLobbyPage() {
   }
 
   const stats = [
-    { label: 'Registered', value: field.registeredcount },
-    { label: 'Checked In', value: field.checkedincount },
-    { label: 'Still Playing', value: field.activecount },
-    { label: 'Total Rebuys', value: field.totalrebuys },
-    { label: 'Add-Ons', value: field.totaladdons },
-    { label: 'Gross Pot', value: formatMoney(field.grosspot), accent: true },
+    { label: 'Players Left', value: field.activecount },
+    ...(field.checkedincount > 0 ? [{ label: 'Checked In', value: field.checkedincount }] : []),
+    ...(tournament.rebuyprice > 0 ? [{ label: 'Rebuys', value: field.totalrebuys }] : []),
+    ...(tournament.addonprice > 0 ? [{ label: 'Add-Ons', value: field.totaladdons }] : []),
+    { label: 'Prize Pool', value: formatMoney(Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0), 0)), accent: true },
   ];
+  const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), field.checkedincount > 0 ? field.checkedincount : field.registeredcount);
+  const payoutSplits = buildDefaultSplits(payoutPlaces);
+  const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0), 0);
+  const payoutAmounts = payoutSplits.map((split) => (prizePool * split) / 100);
+  const seatMessage = entry?.placed == null && entry?.seat != null
+    ? `PLEASE BE SEATED AT: TABLE ${entry.tablenumber} SEAT ${entry.seat}`
+    : 'TABLE SEATS NOT YET ASSIGNED';
+  const displayIdentity = entry?.displayname ?? entry?.emailaddress ?? user?.displayname ?? user?.emailaddress ?? (guestUserId ? 'Guest Player' : null);
 
   return (
-    <div className="min-h-screen bg-pit-bg p-4 text-white">
-      <header className="mb-6 text-center">
-        <p className="text-sm text-pit-text">PokerPlanner.bet - Tournament Check-In</p>
+    <div className="min-h-screen bg-pit-bg p-3 text-white">
+      <header className="mb-4 text-center">
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
-        {tournament.groupname && <p className="mt-1 text-sm text-pit-text">{tournament.groupname}</p>}
+        {displayIdentity && <p className="mt-1 text-sm text-pit-text">PokerPlanner.bet - {displayIdentity}</p>}
+        <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>
       </header>
 
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-md space-y-4">
         {currentBlind && (
-          <div className={`card space-y-3 text-center ${timerTone}`}>
+          <div className={`card space-y-3 p-3 text-center ${timerTone}`}>
             <p className="text-xs uppercase tracking-wider text-pit-text">
               Level {timer?.currentlevel} of {timer?.blinds.length ?? 0}
               {!timer?.running && <span className="ml-2 text-yellow-400">Paused</span>}
@@ -234,72 +230,91 @@ export default function PlayerLobbyPage() {
           </div>
         )}
 
-        <section className="space-y-3">
-          <div className="text-center">
-            <h2 className="text-lg font-semibold text-white">Field Status</h2>
-          </div>
-          <div className="overflow-x-auto pb-1">
-            <div className="flex min-w-max gap-3">
-              {stats.map((stat) => (
-                <LobbyStat key={stat.label} label={stat.label} value={stat.value} accent={stat.accent} />
-              ))}
+        {timer?.blinds && timer.blinds.length > 0 && (
+          <section className="card space-y-2 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Blind Structure</h2>
+              <span className="text-xs text-pit-muted">{timer.blinds.length} levels</span>
             </div>
+            <div className="overflow-hidden rounded-lg border border-pit-border">
+              <div className="grid grid-cols-[40px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-pit-muted">
+                <span>Lvl</span>
+                <span>Blinds</span>
+                <span>Time</span>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {timer.blinds
+                  .map((blind) => ({
+                    ...blind,
+                    level: Number(blind.level),
+                    smallblind: Number(blind.smallblind),
+                    bigblind: Number(blind.bigblind),
+                    ante: Number(blind.ante),
+                    minutes: Number(blind.minutes),
+                  }))
+                  .sort((a, b) => a.level - b.level)
+                  .map((blind) => {
+                    const isCurrent = blind.level === timer.currentlevel;
+                    const isNext = nextBlind?.level === blind.level;
+                    return (
+                      <div
+                        key={`${blind.level}-${blind.smallblind}-${blind.bigblind}`}
+                        className={`grid grid-cols-[40px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-xs leading-tight ${
+                          isCurrent
+                            ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
+                            : isNext
+                              ? 'border-pit-border bg-pit-surface/70 text-white'
+                              : 'border-pit-border bg-pit-bg/30 text-pit-text'
+                        }`}
+                      >
+                        <span className="font-semibold">{blind.level}</span>
+                        <span>
+                          {blind.smallblind.toLocaleString()} / {blind.bigblind.toLocaleString()}
+                          {blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}
+                        </span>
+                        <span>{blind.minutes}:00</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="card space-y-3 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Payout Structure</h2>
+            <span className="text-xs font-medium text-pit-muted">{field.activecount} remaining</span>
+          </div>
+
+          <div className="grid gap-2 grid-cols-2">
+            {stats.map((stat) => (
+              <LobbyStat key={stat.label} label={stat.label} value={stat.value} accent={stat.accent} />
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            {payoutSplits.map((split, index) => (
+              <div key={`${index}-${split}`} className="flex items-center justify-between rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">{ordinal(index + 1)}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-pit-muted">{split.toFixed(1)}%</p>
+                </div>
+                <p className="text-sm font-semibold text-pit-teal">{formatMoney(payoutAmounts[index] ?? 0)}</p>
+              </div>
+            ))}
           </div>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
-          <section className="card space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Your Check-In</h2>
-              <p className="mt-1 text-sm text-pit-text">
-                Sign in with your PokerPlanner.bet account, or continue as a guest if you are joining manually.
-              </p>
-            </div>
-
-            {entry ? (
-              <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
-                <p className="text-sm font-semibold text-white">{entry.displayname ?? entry.emailaddress ?? 'Guest Player'}</p>
-                {entry.placed != null ? (
-                  <p className="mt-1 text-sm text-pit-text">You have already finished in place #{entry.placed}.</p>
-                ) : entry.checkedin ? (
-                  <p className="mt-1 text-sm text-pit-text">You are checked in.</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <p className="text-sm text-pit-text">You are registered, but not currently checked in.</p>
-                    {token ? (
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={handleSelfCheckin}
-                        disabled={selfCheckinMutation.isPending}
-                      >
-                        {selfCheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
-                      </button>
-                    ) : guestUserId ? (
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={handleGuestRecheckin}
-                        disabled={guestRecheckinMutation.isPending}
-                      >
-                        {guestRecheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
-                      </button>
-                    ) : (
-                      <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Check In</button>
-                    )}
-                    {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
-                    {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
-                  </div>
-                )}
-                {entry.placed == null && (entry.seat != null ? (
-                  <p className="mt-3 text-base font-semibold text-pit-teal">Seat: Table {entry.tablenumber}, Seat {entry.seat}</p>
-                ) : (
-                  <p className="mt-3 text-sm text-pit-text">Seat assignment has not been posted yet.</p>
-                ))}
+        {!entry ? (
+          <div className="grid gap-4">
+            <section className="card space-y-3 p-3">
+              <div>
+                <h2 className="text-base font-semibold text-white">Check In</h2>
               </div>
-            ) : (
+
               <>
-                <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
+                <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
                   <p className="text-sm font-semibold text-white">Use your account</p>
                   <p className="mt-1 text-sm text-pit-text">
                     {token
@@ -318,11 +333,11 @@ export default function PlayerLobbyPage() {
                   </button>
                   {selfCheckinMutation.error && (
                     <p className="mt-3 text-sm text-red-400">{selfCheckinMutation.error.message}</p>
-                  )}
+                    )}
                 </div>
 
                 {!token && (
-                  <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
+                  <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
                     <p className="text-sm font-semibold text-white">Continue as guest</p>
                     <p className="mt-1 text-sm text-pit-text">
                       Enter your name and we&apos;ll add you to the tournament as a guest player.
@@ -349,38 +364,40 @@ export default function PlayerLobbyPage() {
                   </div>
                 )}
               </>
-            )}
+            </section>
+          </div>
+        ) : entry.placed != null ? (
+          <section className="card p-3">
+            <p className="text-sm text-pit-text">You have already finished in place #{entry.placed}.</p>
           </section>
-
-          <section className="card space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Seating</h2>
-              <p className="mt-1 text-sm text-pit-text">Seat assignments will appear here once the tournament admin posts them.</p>
-            </div>
-
-            {tables.length === 0 ? (
-              <p className="text-sm text-pit-text">No seats have been assigned yet.</p>
+        ) : !entry.checkedin ? (
+          <section className="card space-y-3 p-3">
+            <p className="text-sm text-pit-text">You are registered, but not currently checked in.</p>
+            {token ? (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleSelfCheckin}
+                disabled={selfCheckinMutation.isPending}
+              >
+                {selfCheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+              </button>
+            ) : guestUserId ? (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleGuestRecheckin}
+                disabled={guestRecheckinMutation.isPending}
+              >
+                {guestRecheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+              </button>
             ) : (
-              <div className="space-y-4">
-                {tables.map(([tableNum, seats]) => (
-                  <div key={tableNum}>
-                    <p className="mb-2 text-sm font-semibold text-pit-teal">Table {tableNum}</p>
-                    <div className="space-y-1.5">
-                      {[...seats].sort((a, b) => a.seat - b.seat).map((seat) => (
-                        <div key={seat.userid} className="flex justify-between rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2 text-sm">
-                          <span className="text-pit-text">Seat {seat.seat}</span>
-                          <span className={`truncate pl-4 ${entry?.userid === seat.userid ? 'font-semibold text-pit-teal' : 'text-white'}`}>
-                            {seat.displayname ?? seat.emailaddress}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Check In</button>
             )}
+            {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
+            {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
           </section>
-        </div>
+        ) : null}
       </div>
     </div>
   );
@@ -396,13 +413,84 @@ function LobbyStat({
   accent?: boolean;
 }) {
   return (
-    <div className="min-w-[140px] rounded-xl border border-pit-border bg-pit-bg/50 px-4 py-3 text-center">
-      <p className={`text-2xl font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
-      <p className="mt-1 text-xs uppercase tracking-wide text-pit-muted">{label}</p>
+    <div className="rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2 text-center">
+      <p className={`text-lg font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
+      <p className="mt-1 text-[11px] uppercase tracking-wide text-pit-muted">{label}</p>
     </div>
   );
 }
 
 function formatMoney(value: number): string {
   return `$${Number(value ?? 0).toFixed(2)}`;
+}
+
+type PayoutMode = 'count' | 'percent';
+
+interface PayoutStructureConfig {
+  mode: PayoutMode;
+  value: number;
+}
+
+function parsePayoutStructure(value: string | null | undefined): PayoutStructureConfig {
+  if (!value) return { mode: 'count', value: 3 };
+  try {
+    const parsed = JSON.parse(value) as Partial<PayoutStructureConfig>;
+    if (parsed.mode !== 'count' && parsed.mode !== 'percent') {
+      return { mode: 'count', value: 3 };
+    }
+    return {
+      mode: parsed.mode,
+      value: sanitizePayoutValue(parsed.mode, Number(parsed.value)),
+    };
+  } catch {
+    return { mode: 'count', value: 3 };
+  }
+}
+
+function sanitizePayoutValue(mode: PayoutMode, value: number): number {
+  if (mode === 'percent') return clamp(Math.round(value), 1, 100);
+  return Math.max(1, Math.round(value));
+}
+
+function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): number {
+  if (config.mode === 'percent') {
+    if (fieldSize <= 0) return 1;
+    return clamp(Math.ceil((fieldSize * sanitizePayoutValue('percent', config.value)) / 100), 1, fieldSize);
+  }
+  const requested = sanitizePayoutValue('count', config.value);
+  if (fieldSize <= 0) return requested;
+  return clamp(requested, 1, fieldSize);
+}
+
+const DEFAULT_SPLITS: Record<number, number[]> = {
+  1: [100],
+  2: [65, 35],
+  3: [50, 30, 20],
+  4: [45, 27, 18, 10],
+  5: [40, 25, 17, 11, 7],
+  6: [37, 23, 16, 11, 8, 5],
+};
+
+function buildDefaultSplits(count: number): number[] {
+  const normalizedCount = Math.max(1, count);
+  if (DEFAULT_SPLITS[normalizedCount]) {
+    return [...DEFAULT_SPLITS[normalizedCount]];
+  }
+  const weights = Array.from({ length: normalizedCount }, (_unused, index) => normalizedCount - index);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map((weight) => roundToTenth((weight / totalWeight) * 100));
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
 }

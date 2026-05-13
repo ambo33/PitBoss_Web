@@ -1,10 +1,27 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
+import { isFeatureEnabled } from '../features';
 import { Tournament } from '../types';
 
 export const tournamentsRouter = Router();
 tournamentsRouter.use(requireAuth);
+
+function generateTvCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function createUniqueTvCode(): Promise<string> {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const code = generateTvCode();
+    const existing = await queryOne<{ tournamentid: string }>(
+      `SELECT tournamentid FROM tournaments WHERE tvdisplaycode = $1`,
+      [code]
+    );
+    if (!existing) return code;
+  }
+  throw new Error('Failed to create a unique TV display code.');
+}
 
 async function canManageTournament(tournamentId: string, userId: string): Promise<boolean> {
   const row = await queryOne<{ canmanage: boolean }>(
@@ -70,7 +87,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
@@ -100,7 +117,7 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid,
+            t.createdate AS createdat, t.groupid, t.tvdisplaycode,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
      FROM tournaments t
      JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid AND tp.userid = $1
@@ -120,15 +137,20 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
 
+  let tvDisplayCode: string | null = null;
+  if (isFeatureEnabled('tvBoard')) {
+    tvDisplayCode = await createUniqueTvCode();
+  }
+
   const row = await queryOne<{ tournamentid: string }>(
     `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
-        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING tournamentid`,
+        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
      rebuychips ?? 0, addonprice ?? 0, addonchips ?? 0, maxplayers ?? 0,
-     playerselftracking ?? false, groupid ?? null, payoutstructure ?? null]
+     playerselftracking ?? false, groupid ?? null, payoutstructure ?? null, tvDisplayCode]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
 
@@ -153,7 +175,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE

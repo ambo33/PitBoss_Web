@@ -5,6 +5,7 @@ import { CalendarDays, CircleDollarSign, Clock3 } from 'lucide-react';
 import { api } from '../../api/client';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
@@ -241,6 +242,28 @@ function TournamentDetailsCard({
           />
           <Row label="Rebuys taken" value={totalRebuys} />
           <Row label="Add-ons taken" value={totalAddons} />
+          {featureFlags.tvBoard && (
+            <Row
+              label="TV board"
+              value={
+                <div className="text-right">
+                  <div className="font-mono tracking-[0.2em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</div>
+                  {tournament.tvdisplaycode ? (
+                    <a
+                      className="text-xs text-pit-teal hover:text-pit-teal/80"
+                      href={`/tv/${tournament.tvdisplaycode}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open TV board
+                    </a>
+                  ) : (
+                    <div className="text-xs text-pit-muted">Refresh if code is still generating</div>
+                  )}
+                </div>
+              }
+            />
+          )}
         </div>
       )}
     </section>

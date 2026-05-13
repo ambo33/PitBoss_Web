@@ -47,6 +47,7 @@ export interface Tournament {
   createdat: string;
   groupid?: string | null;
   groupname?: string | null;
+  tvdisplaycode?: string | null;
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;
@@ -120,6 +121,7 @@ export interface LobbyEntry {
   emailaddress: string;
   displayname?: string;
   checkedin: boolean;
+  addedon?: boolean;
   placed?: number | null;
   tablenumber?: number | null;
   seat?: number | null;

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { ChevronDown, ChevronUp, Expand, Minimize, QrCode } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
+import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
+import { featureFlags } from '../../features';
 import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, playLevelChangeTone, primeTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
@@ -28,20 +30,51 @@ export default function RunTournament({
   isOwner,
   tournament,
   players,
+  mode = 'admin',
+  queryKeysToRefresh,
 }: {
   tournamentId: string;
   isOwner: boolean;
   tournament: Tournament;
   players: TournamentPlayer[];
+  mode?: 'admin' | 'display';
+  queryKeysToRefresh?: unknown[][];
 }) {
+  const qc = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   const [timerState, setTimerState] = useState<TimerState | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showAdjustments, setShowAdjustments] = useState(false);
+  const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
     level: null,
+  });
+
+  const showAdminControls = isOwner && mode === 'admin';
+  const showKnockoutQr = mode === 'admin';
+
+  const refreshTournamentData = () => {
+    if (queryKeysToRefresh?.length) {
+      queryKeysToRefresh.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ['players', tournamentId] });
+    qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
+  };
+
+  const rebuyMutation = useMutation({
+    mutationFn: (userId: string) => api.addRebuy(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const addonMutation = useMutation({
+    mutationFn: (userId: string) => api.addAddon(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const checkinMutation = useMutation({
+    mutationFn: (userId: string) => api.toggleCheckin(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
   });
 
   useEffect(() => {
@@ -62,18 +95,41 @@ export default function RunTournament({
         return nextState;
       });
     });
+    socket.on('tournament-updated', () => {
+      refreshTournamentData();
+    });
     return () => {
       socket.disconnect();
     };
-  }, [tournamentId]);
+  }, [qc, tournamentId]);
+
+  const actionablePlayers = useMemo(
+    () => [...players]
+      .filter((player) => player.placed == null)
+      .sort((a, b) => {
+        if (Boolean(b.checkedin) !== Boolean(a.checkedin)) return Number(b.checkedin) - Number(a.checkedin);
+        return (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress);
+      }),
+    [players]
+  );
+
+  const selectedPlayer = actionablePlayers.find((player) => player.userid === selectedPlayerId) ?? actionablePlayers[0] ?? null;
+  const selectedPlayerLabel = selectedPlayer ? (selectedPlayer.displayname ?? selectedPlayer.emailaddress) : 'No active players';
+  const longestPlayerLabelLength = actionablePlayers.reduce((max, player) => {
+    const label = player.displayname ?? player.emailaddress;
+    return Math.max(max, label.length);
+  }, selectedPlayerLabel.length);
+  const playerSelectWidth = clamp((longestPlayerLabelLength * 8) + 56, 190, 360);
 
   useEffect(() => {
-    function syncFullscreen() {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+    if (!selectedPlayerId && actionablePlayers[0]) {
+      setSelectedPlayerId(actionablePlayers[0].userid);
+      return;
     }
-    document.addEventListener('fullscreenchange', syncFullscreen);
-    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
-  }, []);
+    if (selectedPlayerId && !actionablePlayers.some((player) => player.userid === selectedPlayerId)) {
+      setSelectedPlayerId(actionablePlayers[0]?.userid ?? '');
+    }
+  }, [actionablePlayers, selectedPlayerId]);
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
@@ -109,15 +165,6 @@ export default function RunTournament({
     if (state.remainingsecs <= 60 && state.remainingsecs > 0 && !warningState.oneMin) {
       warningState.oneMin = true;
       announceOneMinuteWarning();
-    }
-  }
-
-  async function toggleFullscreen() {
-    if (!screenRef.current) return;
-    if (!document.fullscreenElement) {
-      await screenRef.current.requestFullscreen();
-    } else {
-      await document.exitFullscreen();
     }
   }
 
@@ -162,6 +209,12 @@ export default function RunTournament({
     + (toNumber(tournament.addonprice) * totalAddons);
   const totalPot = Math.max(grossPot - toNumber(tournament.rake), 0);
   const payouts = payoutSplits.map((pct) => (totalPot * pct) / 100);
+  const paidFinishers = useMemo(
+    () => players
+      .filter((player) => player.placed != null && (player.placed ?? 999) <= payoutPlaces)
+      .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
+    [players, payoutPlaces]
+  );
   const knockoutLeader = useMemo(() => {
     const counts = new Map<string, { name: string; count: number }>();
     for (const player of players) {
@@ -183,19 +236,69 @@ export default function RunTournament({
 
   return (
     <div className="space-y-4">
-      <div ref={screenRef} className={`card space-y-4 ${isFullscreen ? 'min-h-screen rounded-none border-0 bg-pit-bg p-6' : 'p-3 md:p-3.5 xl:p-4'}`}>
-        <div className="flex justify-end">
-          {isOwner && (
-            <button type="button" className="btn-ghost px-3 py-1.5 text-sm" onClick={toggleFullscreen}>
-              {isFullscreen ? <Minimize size={16} /> : <Expand size={16} />}
-              {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-            </button>
+      <div ref={screenRef} className="card space-y-4 p-3 md:p-3.5 xl:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {showAdminControls ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="input py-1.5 pr-8 text-sm"
+                style={{ width: `${playerSelectWidth}px` }}
+                value={selectedPlayer?.userid ?? ''}
+                onChange={(event) => setSelectedPlayerId(event.target.value)}
+              >
+                {actionablePlayers.length === 0 ? (
+                  <option value="">No active players</option>
+                ) : (
+                  actionablePlayers.map((player) => (
+                    <option key={player.userid} value={player.userid}>
+                      {player.displayname ?? player.emailaddress}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                onClick={() => selectedPlayer && checkinMutation.mutate(selectedPlayer.userid)}
+                disabled={!selectedPlayer || checkinMutation.isPending}
+              >
+                {selectedPlayer?.checkedin ? 'Undo Check-In' : 'Check In'}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                onClick={() => selectedPlayer && rebuyMutation.mutate(selectedPlayer.userid)}
+                disabled={!selectedPlayer || !selectedPlayer.checkedin || rebuyMutation.isPending}
+              >
+                Rebuy
+              </button>
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                onClick={() => selectedPlayer && addonMutation.mutate(selectedPlayer.userid)}
+                disabled={!selectedPlayer || selectedPlayer.addedon || addonMutation.isPending}
+              >
+                {selectedPlayer?.addedon ? 'Add-On Used' : 'Add-On'}
+              </button>
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {showAdminControls && featureFlags.tvBoard && (
+            <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV Code</p>
+              <p className="font-mono text-lg font-semibold tracking-[0.24em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</p>
+              <p className="mt-0.5 text-[11px] text-pit-muted">
+                {tournament.tvdisplaycode ? 'Go to /tv' : 'Refresh if code is still generating'}
+              </p>
+            </div>
           )}
         </div>
 
         {currentBlind ? (
           <>
-            <div className={`grid gap-3 ${isFullscreen ? 'lg:grid-cols-[300px_minmax(0,1fr)_300px]' : 'lg:grid-cols-[230px_minmax(0,1fr)_240px] xl:grid-cols-[250px_minmax(0,1fr)_260px]'}`}>
+            <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]">
               <section className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-white">Structure</h3>
@@ -234,12 +337,32 @@ export default function RunTournament({
 
               <section className="min-w-0 space-y-4">
                 <div className={`rounded-xl border px-3 py-4 text-center ${timerTone}`}>
+                  {showAdminControls && (
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        aria-pressed={showAdjustments}
+                        className={`px-3 py-1.5 text-xs transition-none ${
+                          showAdjustments
+                            ? 'rounded-lg border border-yellow-300/70 bg-yellow-300/20 font-semibold text-yellow-200'
+                            : 'btn-ghost text-pit-muted'
+                        }`}
+                        onClick={() => setShowAdjustments((current) => !current)}
+                      >
+                        Adjust Timer
+                      </button>
+                      {timerState?.running
+                        ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => emit('timer-pause')}>Pause</button>
+                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => emit('timer-start')}>Start</button>
+                      }
+                    </div>
+                  )}
                   <p className="text-xs font-medium uppercase tracking-[0.22em] text-pit-text md:text-sm">
                     Level {displayedLevel} of {effectiveBlinds.length}
                     {!timerState?.running && <span className="ml-3 text-yellow-400">Paused</span>}
                   </p>
                   <div className="mt-2.5 flex items-center justify-center gap-2 md:gap-3">
-                    {isOwner && (
+                    {showAdminControls && showAdjustments && (
                       <div className="flex flex-col gap-1.5">
                         <button
                           type="button"
@@ -259,12 +382,16 @@ export default function RunTournament({
                         </button>
                       </div>
                     )}
-                    <div className={`flex items-center font-mono font-bold tabular-nums leading-none ${urgency} ${isFullscreen ? 'text-[15rem]' : 'text-[6.8rem] md:text-[9.5rem] lg:text-[10.4rem] xl:text-[11.2rem]'}`}>
+                    <div className={`flex items-center font-mono font-bold tabular-nums leading-none ${urgency} ${
+                      showAdjustments
+                        ? 'text-[6.8rem] md:text-[9.5rem] lg:text-[10.4rem] xl:text-[11.2rem]'
+                        : 'text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]'
+                    }`}>
                       <span>{minsStr}</span>
                       <span className="-mx-[0.08em]">:</span>
                       <span>{secsStr}</span>
                     </div>
-                    {isOwner && (
+                    {showAdminControls && showAdjustments && (
                       <div className="flex flex-col gap-1.5">
                         <button
                           type="button"
@@ -289,39 +416,51 @@ export default function RunTournament({
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
                     <div className="rounded-lg border border-pit-border bg-black/25 px-3 py-3">
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Current Blinds</p>
-                      <p className="mt-1.5 text-2xl font-bold text-white">{currentBlind.smallblind.toLocaleString()} / {currentBlind.bigblind.toLocaleString()}</p>
-                      <p className="mt-1 text-sm text-pit-text">Ante {currentBlind.ante > 0 ? currentBlind.ante.toLocaleString() : '-'}</p>
+                      <p className={`mt-1.5 font-bold leading-none text-white ${
+                        currentBlind.ante > 0
+                          ? 'text-[2rem] md:text-[2.5rem] xl:text-[2.9rem]'
+                          : 'text-[2.35rem] md:text-[2.95rem] xl:text-[3.5rem]'
+                      }`}>
+                        {currentBlind.smallblind.toLocaleString()} / {currentBlind.bigblind.toLocaleString()}
+                      </p>
+                      {currentBlind.ante > 0 && (
+                        <p className="mt-1.5 text-base text-pit-text md:text-lg">Ante {currentBlind.ante.toLocaleString()}</p>
+                      )}
                     </div>
                     <div className="rounded-lg border border-pit-border bg-black/25 px-3 py-3">
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Next Blinds</p>
                       {nextBlind ? (
                         <>
-                          <p className="mt-1.5 text-2xl font-bold text-white">{nextBlind.smallblind.toLocaleString()} / {nextBlind.bigblind.toLocaleString()}</p>
-                          <p className="mt-1 text-sm text-pit-text">Ante {nextBlind.ante > 0 ? nextBlind.ante.toLocaleString() : '-'}</p>
+                          <p className={`mt-1.5 font-bold leading-none text-white ${
+                            nextBlind.ante > 0
+                              ? 'text-[2rem] md:text-[2.5rem] xl:text-[2.9rem]'
+                              : 'text-[2.35rem] md:text-[2.95rem] xl:text-[3.5rem]'
+                          }`}>
+                            {nextBlind.smallblind.toLocaleString()} / {nextBlind.bigblind.toLocaleString()}
+                          </p>
+                          {nextBlind.ante > 0 && (
+                            <p className="mt-1.5 text-base text-pit-text md:text-lg">Ante {nextBlind.ante.toLocaleString()}</p>
+                          )}
                         </>
                       ) : (
                         <>
-                          <p className="mt-1.5 text-2xl font-bold text-white">Final Level</p>
-                          <p className="mt-1 text-sm text-pit-text">No further increase</p>
+                          <p className="mt-1.5 text-[2rem] font-bold leading-none text-white md:text-[2.5rem] xl:text-[2.9rem]">Final Level</p>
+                          <p className="mt-1.5 text-base text-pit-text md:text-lg">No further increase</p>
                         </>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {isOwner && (
+                {showAdminControls && showAdjustments && (
                   <div className="flex flex-wrap justify-center gap-2">
                     <button className="btn-ghost px-3 py-1.5" onClick={() => emit('timer-prev')}>Prev</button>
-                    {timerState?.running
-                      ? <button className="btn-danger px-3 py-1.5" onClick={() => emit('timer-pause')}>Pause</button>
-                      : <button className="btn-primary px-3 py-1.5" onClick={() => emit('timer-start')}>Start</button>
-                    }
                     <button className="btn-ghost px-3 py-1.5" onClick={() => emit('timer-next')}>Next</button>
                   </div>
                 )}
 
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_184px]">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-2 xl:grid-cols-1">
+                  <div className="grid gap-2 sm:grid-cols-3">
                     {summaryStats.map((stat) => (
                       <div key={stat.label} className="rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-3 text-center">
                         <p className="text-xs uppercase tracking-wide text-pit-muted">{stat.label}</p>
@@ -329,42 +468,53 @@ export default function RunTournament({
                       </div>
                     ))}
                   </div>
-
-                  <div className="rounded-lg border border-pit-border bg-pit-bg/50 p-3 text-center">
-                    <div className="mb-2 flex items-center justify-center gap-1.5 text-white">
-                      <QrCode size={14} className="text-pit-teal" />
-                      <p className="text-sm font-semibold">Report Knockout</p>
-                    </div>
-                    <div className="inline-block rounded-lg bg-white p-2">
-                      <QRCodeSVG value={knockoutUrl} size={isFullscreen ? 170 : 118} />
-                    </div>
-                  </div>
                 </div>
               </section>
 
-              <section className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
-                <div className="mb-2">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-white">Payout Structure</h3>
-                  <p className="mt-1 text-xs text-pit-muted">
-                    Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
-                  </p>
-                </div>
-
-                <div className="mb-3 rounded-lg border border-pit-border bg-pit-bg/40 px-2.5 py-2.5 text-center">
-                  <p className="text-xs uppercase tracking-wide text-pit-muted">Prize Pool</p>
-                  <p className="mt-1.5 text-lg font-semibold text-pit-teal">{formatMoney(totalPot)}</p>
-                </div>
-
-                <div className="max-h-[34rem] space-y-1.5 overflow-y-auto pr-1">
-                  {payoutSplits.map((split, index) => (
-                    <div key={`${index}-${split}`} className="flex items-center justify-between rounded-lg border border-pit-border bg-pit-surface/40 px-2.5 py-2.5">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{ordinal(index + 1)}</p>
-                        <p className="text-xs uppercase tracking-wide text-pit-muted">{split.toFixed(1)}%</p>
-                      </div>
-                      <p className="text-base font-semibold text-pit-teal">{formatMoney(payouts[index] ?? 0)}</p>
+              <section className="space-y-2.5">
+                {showKnockoutQr && (
+                  <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-2.5 text-center">
+                    <div className="mb-1 text-white">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide">Report Your Knockout!</p>
                     </div>
-                  ))}
+                    <div className="inline-block rounded-md bg-white p-1.5">
+                      <QRCodeSVG value={knockoutUrl} size={88} />
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+                  <div className="mb-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-white">Payout Structure</h3>
+                    <p className="mt-1 text-xs text-pit-muted">
+                      Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
+                    </p>
+                  </div>
+
+                  <div className="mb-2 rounded-lg border border-pit-border bg-pit-bg/40 px-2.5 py-2 text-center">
+                    <p className="text-xs uppercase tracking-wide text-pit-muted">Prize Pool</p>
+                    <p className="mt-1 text-base font-semibold text-pit-teal">{formatMoney(totalPot)}</p>
+                  </div>
+
+                  <div className="max-h-[26rem] space-y-1.5 overflow-y-auto pr-1">
+                    {payoutSplits.map((split, index) => {
+                      const finisher = paidFinishers.find((player) => player.placed === index + 1);
+                      return (
+                        <div key={`${index}-${split}`} className="flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 px-2.5 py-1.5 text-sm">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
+                            {finisher ? (
+                              <span className="truncate text-xs font-medium text-pit-text">
+                                {finisher.displayname ?? finisher.emailaddress}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] uppercase tracking-wide text-pit-muted">{split.toFixed(1)}%</span>
+                            )}
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold text-pit-teal">{formatMoney(payouts[index] ?? 0)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </section>
             </div>

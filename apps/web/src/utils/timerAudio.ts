@@ -1,6 +1,7 @@
 let audioContext: AudioContext | null = null;
 let unlockAttached = false;
 let preferredVoice: SpeechSynthesisVoice | null = null;
+let speechPrimed = false;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -66,6 +67,7 @@ export function primeTimerAudio(): void {
   const unlock = () => {
     void resumeAudio();
     getPreferredVoice();
+    primeSpeech();
     const ctx = getAudioContext();
     if (!ctx || ctx.state === 'running') {
       window.removeEventListener('pointerdown', unlock);
@@ -78,6 +80,24 @@ export function primeTimerAudio(): void {
   window.addEventListener('pointerdown', unlock, { passive: true });
   window.addEventListener('keydown', unlock);
   window.addEventListener('touchstart', unlock, { passive: true });
+}
+
+function primeSpeech(): void {
+  if (speechPrimed || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  try {
+    const utterance = new SpeechSynthesisUtterance(' ');
+    utterance.volume = 0;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.voice = getPreferredVoice();
+    speechPrimed = true;
+    window.speechSynthesis.speak(utterance);
+    window.setTimeout(() => {
+      window.speechSynthesis.cancel();
+    }, 0);
+  } catch {
+    // Safari can be picky; if priming fails we still try later.
+  }
 }
 
 async function playSequence(steps: Array<{ frequency: number; duration: number; delay?: number; gain?: number }>): Promise<void> {
@@ -136,13 +156,17 @@ function speak(message: string, fallback?: () => void): void {
     fallback?.();
     return;
   }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(message);
-  utterance.voice = getPreferredVoice();
-  utterance.rate = 1.03;
-  utterance.pitch = 1.14;
-  utterance.volume = 0.88;
-  window.speechSynthesis.speak(utterance);
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.voice = getPreferredVoice();
+    utterance.rate = 1.03;
+    utterance.pitch = 1.14;
+    utterance.volume = 0.88;
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    fallback?.();
+  }
 }
 
 export function announceFiveMinuteWarning(): void {
