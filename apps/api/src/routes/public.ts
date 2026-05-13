@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { pool, query, queryOne } from '../db';
 import { isFeatureEnabled } from '../features';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 
@@ -10,6 +11,10 @@ export const publicRouter = Router();
 
 function createGuestEmail() {
   return `guest+${crypto.randomUUID()}@guest.pokerplanner.bet`;
+}
+
+function truthySql(column: string) {
+  return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
 }
 
 publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
@@ -40,13 +45,17 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'TV board is not enabled for this tournament.' });
     return;
   }
+  if (!isTvBoardAvailable(tournament.tourneydate)) {
+    res.status(403).json({ error: 'TV board is only available on the tournament date and the day after.' });
+    return;
+  }
 
   const players = await query(
     `SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
             CAST(COALESCE(tp.rebuys, 0) AS INT) AS rebuys,
-            COALESCE(tp.addedon, FALSE) AS addedon,
+            CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
             CAST(tp.placed AS INT) AS placed,
             COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
             tp.knockedoutbyuserid,
@@ -95,11 +104,11 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
           0
         ) AS INT) AS activecount,
         CAST(COALESCE(sum(COALESCE(rebuys, 0)), 0) AS INT) AS totalrebuys,
-        CAST(COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN 1 ELSE 0 END), 0) AS INT) AS totaladdons,
+        CAST(COALESCE(sum(CASE WHEN ${truthySql('addedon')} THEN 1 ELSE 0 END), 0) AS INT) AS totaladdons,
         CAST(
           COALESCE(sum(CASE WHEN checkedin = TRUE THEN COALESCE($2::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL) +
           COALESCE(sum(COALESCE(rebuys, 0) * COALESCE($3::DECIMAL, 0::DECIMAL)), 0::DECIMAL) +
-          COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN COALESCE($4::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL)
+          COALESCE(sum(CASE WHEN ${truthySql('addedon')} THEN COALESCE($4::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL)
           AS DECIMAL
         ) AS grosspot
      FROM tournamentplayers
@@ -127,6 +136,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
       `SELECT tp.userid, u.emailaddress,
               COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
               COALESCE(tp.checkedin, FALSE) AS checkedin,
+              CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
               CAST(tp.placed AS INT) AS placed,
               CAST(ts."Table" AS INT) AS tablenumber,
               ts.seat
@@ -375,7 +385,7 @@ publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, re
       `SELECT tp.userid, u.emailaddress,
               COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
               COALESCE(tp.checkedin, FALSE) AS checkedin,
-              COALESCE(tp.addedon, FALSE) AS addedon,
+              CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
               CAST(tp.placed AS INT) AS placed
        FROM tournamentplayers tp
        JOIN users u ON u.guid = tp.userid
@@ -416,7 +426,7 @@ publicRouter.post('/tournaments/:id/addon/self', optionalAuth, async (req: Reque
 
   const entry = await queryOne<{ checkedin: boolean; addedon: boolean; placed: number | null }>(
     `SELECT COALESCE(checkedin, FALSE) AS checkedin,
-            COALESCE(addedon, FALSE) AS addedon,
+            CASE WHEN ${truthySql('addedon')} THEN TRUE ELSE FALSE END AS addedon,
             CAST(placed AS INT) AS placed
      FROM tournamentplayers
      WHERE tournamentid = $1 AND userid = $2`,

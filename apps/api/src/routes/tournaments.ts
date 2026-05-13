@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
+import { hasTournamentStarted } from '../schedule';
 import { Tournament } from '../types';
 
 export const tournamentsRouter = Router();
@@ -44,6 +45,10 @@ async function canManageTournament(tournamentId: string, userId: string): Promis
   return Boolean(row?.canmanage);
 }
 
+function truthySql(column: string) {
+  return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
+}
+
 async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> = {}): Promise<number> {
   const tournament = await queryOne<{
     buyin: number;
@@ -65,7 +70,7 @@ async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> 
     `SELECT
         CAST(COALESCE(sum(CASE WHEN checkedin = TRUE THEN 1 ELSE 0 END), 0) AS INT) AS checkedincount,
         CAST(COALESCE(sum(COALESCE(rebuys, 0)), 0) AS INT) AS totalrebuys,
-        CAST(COALESCE(sum(CASE WHEN COALESCE(addedon, 0) != 0 THEN 1 ELSE 0 END), 0) AS INT) AS totaladdons
+        CAST(COALESCE(sum(CASE WHEN ${truthySql('addedon')} THEN 1 ELSE 0 END), 0) AS INT) AS totaladdons
      FROM tournamentplayers
      WHERE tournamentid = $1`,
     [tournamentId]
@@ -205,6 +210,29 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips,
           addonprice, addonchips, maxplayers, playerselftracking, groupid, rake, payoutstructure } = req.body as Partial<Tournament>;
+  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
+    `SELECT date AS tourneydate, time AS tourneytime
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!currentTournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  const scheduleLocked = hasTournamentStarted(currentTournament.tourneydate, currentTournament.tourneytime);
+  const requestedDate = tourneydate ?? undefined;
+  const requestedTime = tourneytime ?? undefined;
+  if (
+    scheduleLocked
+    && (
+      (requestedDate !== undefined && requestedDate !== currentTournament.tourneydate)
+      || (requestedTime !== undefined && requestedTime !== currentTournament.tourneytime)
+    )
+  ) {
+    res.status(400).json({ error: 'Tournament date and time can no longer be changed after the event has started.' });
+    return;
+  }
   if (rake != null) {
     const grossPot = await getGrossPot(req.params.id, { buyin, rebuyprice, addonprice });
     if (Number(rake) > grossPot) {

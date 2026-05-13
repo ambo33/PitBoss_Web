@@ -12,6 +12,10 @@ function createGuestEmail() {
   return `guest+${crypto.randomUUID()}@guest.pokerplanner.bet`;
 }
 
+function truthySql(column: string) {
+  return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
+}
+
 async function isOwner(tournamentId: string, userId: string): Promise<boolean> {
   const row = await queryOne(`SELECT 1 FROM tournaments WHERE tournamentid = $1 AND userid = $2`, [tournamentId, userId]);
   return !!row;
@@ -48,7 +52,7 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
             COALESCE(CAST(tp.rebuys AS INT), 0) AS rebuys,
-            COALESCE(tp.addedon, 0) != 0 AS addedon,
+            CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
             CAST(tp.placed AS INT) AS placed,
             tp.knockedoutbyuserid,
             COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
@@ -272,7 +276,7 @@ playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Respons
     `UPDATE tournamentplayers
      SET addedon = TRUE
      WHERE tournamentid = $1 AND userid = $2
-     RETURNING COALESCE(addedon, FALSE) AS addedon`,
+     RETURNING CASE WHEN ${truthySql('addedon')} THEN TRUE ELSE FALSE END AS addedon`,
     [req.params.tid, req.params.uid]
   );
   if (!updated) {

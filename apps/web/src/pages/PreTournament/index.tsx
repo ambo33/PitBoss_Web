@@ -54,6 +54,7 @@ export default function PreTournamentPage() {
   if (!tournament) return <Layout back="/"><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const canManage = tournament.canmanage ?? tournament.ownerid === user?.guid;
+  const scheduleLocked = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
 
@@ -89,6 +90,7 @@ export default function PreTournamentPage() {
             totalRebuys={totalRebuys}
             totalAddons={totalAddons}
             canManage={canManage}
+            scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
             onSave={(data) => updateTournamentMutation.mutate(data)}
@@ -112,6 +114,7 @@ function TournamentDetailsCard({
   totalRebuys,
   totalAddons,
   canManage,
+  scheduleLocked,
   saving,
   error,
   onSave,
@@ -120,6 +123,7 @@ function TournamentDetailsCard({
   totalRebuys: number;
   totalAddons: number;
   canManage: boolean;
+  scheduleLocked: boolean;
   saving: boolean;
   error?: string;
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
@@ -194,10 +198,10 @@ function TournamentDetailsCard({
               <input className="input" value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} />
             </Field>
             <Field label="Date">
-              <input className="input" type="date" value={form.tourneydate} onChange={(e) => setForm((current) => ({ ...current, tourneydate: e.target.value }))} />
+              <input className="input" type="date" value={form.tourneydate} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneydate: e.target.value }))} />
             </Field>
             <Field label="Time">
-              <input className="input" type="time" value={form.tourneytime} onChange={(e) => setForm((current) => ({ ...current, tourneytime: e.target.value }))} />
+              <input className="input" type="time" value={form.tourneytime} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneytime: e.target.value }))} />
             </Field>
             <Field label="Buy-in">
               <input className="input" type="number" min="0" step="0.01" value={form.buyin} onChange={(e) => setForm((current) => ({ ...current, buyin: e.target.value }))} />
@@ -218,6 +222,9 @@ function TournamentDetailsCard({
               <input className="input" type="number" min="0" value={form.addonchips} onChange={(e) => setForm((current) => ({ ...current, addonchips: e.target.value }))} />
             </Field>
           </div>
+          {scheduleLocked && (
+            <p className="text-sm text-pit-muted">Date and time are locked once the tournament start time has passed.</p>
+          )}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
             <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving}>
@@ -332,6 +339,29 @@ function normalizeTimeInput(value: string | null | undefined) {
   const match = value.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return value;
   return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+}
+
+function nowInAppTimezone() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const time = `${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${date}T${time}`;
+}
+
+function hasTournamentStarted(tourneydate: string | null | undefined, tourneytime: string | null | undefined) {
+  if (!tourneydate) return false;
+  const effectiveTime = (tourneytime?.slice(0, 8) ?? '00:00:00').padEnd(8, ':00').slice(0, 8);
+  return nowInAppTimezone() >= `${tourneydate}T${effectiveTime}`;
 }
 
 function formatMoney(value: number) {
