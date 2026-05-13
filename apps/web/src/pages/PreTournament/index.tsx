@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, CircleDollarSign, Clock3, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
@@ -236,25 +236,37 @@ function TournamentDetailsCard({
     <section className="card">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <InfoChip icon={<CalendarDays size={14} />} label={normalizeDate(tournament.tourneydate) ?? 'Date TBD'} />
-            <InfoChip icon={<Clock3 size={14} />} label={normalizeTime(tournament.tourneytime) ?? 'Time TBD'} />
-            <InfoChip icon={<CircleDollarSign size={14} />} label={formatMoney(tournament.buyin)} />
-          </div>
           <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
         </div>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
-              {editing ? 'Cancel' : 'Edit Details'}
-            </button>
-            {scheduleLocked && (
-              <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
-                Delete Tournament
+        <div className="flex flex-col items-end gap-3">
+          {canManage && (
+            <div className="flex items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2">
+              <div className="inline-block rounded-md bg-white p-1">
+                <QRCodeSVG value={pocketAdminUrl} size={56} />
+              </div>
+              <a
+                className="text-sm font-medium text-pit-teal hover:text-pit-teal/80"
+                href={pocketAdminUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Pocket Admin
+              </a>
+            </div>
+          )}
+          {canManage && (
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
+                {editing ? 'Cancel' : 'Edit Details'}
               </button>
-            )}
-          </div>
-        )}
+              {scheduleLocked && (
+                <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
+                  Delete Tournament
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>}
@@ -371,26 +383,6 @@ function TournamentDetailsCard({
               }
             />
           )}
-          {canManage && (
-            <Row
-              label="Pocket Admin"
-              value={(
-                <div className="text-right space-y-2">
-                  <a
-                    className="text-xs text-pit-teal hover:text-pit-teal/80"
-                    href={pocketAdminUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open Pocket Admin
-                  </a>
-                  <div className="inline-block rounded-md bg-white p-1">
-                    <QRCodeSVG value={pocketAdminUrl} size={72} />
-                  </div>
-                </div>
-              )}
-            />
-          )}
         </div>
       )}
 
@@ -429,15 +421,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="text-pit-muted">{label}</span>
       <span className="font-medium text-white">{value}</span>
     </div>
-  );
-}
-
-function InfoChip({ icon, label }: { icon: React.ReactNode; label: string | number }) {
-  return (
-    <span className="chip">
-      <span className="text-pit-teal">{icon}</span>
-      <span>{label}</span>
-    </span>
   );
 }
 
