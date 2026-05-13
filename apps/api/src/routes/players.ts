@@ -219,18 +219,6 @@ playersRouter.delete('/:tid/players/self', async (req: Request, res: Response) =
   res.json({ success: true });
 });
 
-playersRouter.delete('/:tid/players/:uid', async (req: Request, res: Response) => {
-  if (!await canManagePlayers(req.params.tid, req.userId!)) {
-    res.status(403).json({ error: 'Forbidden' }); return;
-  }
-  await query(
-    `DELETE FROM tournamentplayers WHERE tournamentid = $1 AND userid = $2`,
-    [req.params.tid, req.params.uid]
-  );
-  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'remove-player' });
-  res.json({ success: true });
-});
-
 playersRouter.put('/:tid/players/:uid/checkin', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
@@ -324,6 +312,18 @@ playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Respo
   }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon-undo' });
   res.json({ success: true, addedon: updated.addedon });
+});
+
+playersRouter.delete('/:tid/players/:uid', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  await query(
+    `DELETE FROM tournamentplayers WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.tid, req.params.uid]
+  );
+  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'remove-player' });
+  res.json({ success: true });
 });
 
 playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response) => {
