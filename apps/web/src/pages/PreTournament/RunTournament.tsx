@@ -494,7 +494,7 @@ export default function RunTournament({
                               : 'font-mono font-bold tabular-nums text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]'
                       }`}
                       style={tvMode
-                        ? { fontSize: showAdjustments ? 'clamp(9.6rem, 15.75vw, 15rem)' : 'clamp(14.1rem, 22.2vw, 21.4rem)' }
+                        ? { fontSize: showAdjustments ? 'clamp(7.4rem, 12vw, 11.25rem)' : 'clamp(10.6rem, 16.8vw, 16rem)' }
                         : undefined}
                     >
                       <span>{minsStr}</span>
