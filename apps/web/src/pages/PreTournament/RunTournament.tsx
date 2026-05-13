@@ -284,7 +284,8 @@ export default function RunTournament({
   const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
-  const fieldSize = checkedIn > 0 ? checkedIn : registeredCount;
+  const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
+  const fieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
   const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), fieldSize);
   const payoutSplits = buildDefaultSplits(payoutPlaces);
   const grossPot = (toNumber(tournament.buyin) * checkedIn)
@@ -399,8 +400,8 @@ export default function RunTournament({
 
         {currentBlind ? (
           <>
-            <div className={`grid items-start ${tvMode ? 'grid-cols-[280px_minmax(0,1fr)_280px] gap-4 2xl:grid-cols-[300px_minmax(0,1fr)_300px]' : displayMode ? 'grid-cols-[300px_minmax(0,1fr)_300px] gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_320px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
-              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${displayMode ? 'p-4' : 'p-3'}`}>
+            <div className={`grid items-start ${tvMode ? 'grid-cols-[248px_minmax(0,1fr)_248px] gap-3 2xl:grid-cols-[260px_minmax(0,1fr)_260px]' : displayMode ? 'grid-cols-[300px_minmax(0,1fr)_300px] gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_320px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
+              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
                   <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
@@ -411,14 +412,14 @@ export default function RunTournament({
                     <span>Blinds</span>
                     <span>Time</span>
                   </div>
-                  <div className={`${displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
+                  <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
                     {effectiveBlinds.map((blind) => {
                       const isCurrent = blind.level === effectiveLevel;
                       const isNext = nextBlind?.level === blind.level;
                       return (
                         <div
                           key={blind.id}
-                          className={`grid grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 leading-tight ${displayMode ? 'text-sm' : 'text-xs'} ${
+                          className={`grid grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 leading-tight ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
                               ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
                               : isNext
@@ -437,7 +438,7 @@ export default function RunTournament({
               </section>
 
               <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'space-y-4'}`}>
-                <div className={`rounded-xl border text-center ${displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
+                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3.5' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <button
@@ -494,7 +495,7 @@ export default function RunTournament({
                               : 'font-mono font-bold tabular-nums text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]'
                       }`}
                       style={tvMode
-                        ? { fontSize: showAdjustments ? 'clamp(6.8rem, 11vw, 10.4rem)' : 'clamp(9.6rem, 15.2vw, 14.7rem)' }
+                        ? { fontSize: showAdjustments ? 'clamp(6.8rem, 11vw, 10.4rem)' : 'clamp(9.2rem, 14.4vw, 13.8rem)' }
                         : undefined}
                     >
                       <span>{minsStr}</span>
@@ -529,7 +530,7 @@ export default function RunTournament({
                       <p
                         style={tvMode
                           ? {
-                              fontSize: currentBlind.ante > 0 ? 'clamp(1.9rem, 3.9vw, 3rem)' : 'clamp(2.3rem, 4.5vw, 3.45rem)',
+                              fontSize: currentBlind.ante > 0 ? 'clamp(1.55rem, 3vw, 2.35rem)' : 'clamp(1.95rem, 3.8vw, 2.8rem)',
                               fontWeight: 700,
                               letterSpacing: '-0.045em',
                             }
@@ -555,7 +556,7 @@ export default function RunTournament({
                           <p
                         style={tvMode
                           ? {
-                                  fontSize: nextBlind.ante > 0 ? 'clamp(1.9rem, 3.9vw, 3rem)' : 'clamp(2.3rem, 4.5vw, 3.45rem)',
+                                  fontSize: nextBlind.ante > 0 ? 'clamp(1.55rem, 3vw, 2.35rem)' : 'clamp(1.95rem, 3.8vw, 2.8rem)',
                                   fontWeight: 700,
                                   letterSpacing: '-0.045em',
                                 }
@@ -576,8 +577,8 @@ export default function RunTournament({
                         </>
                       ) : (
                         <>
-                          <p className="mt-1.5 text-[2rem] font-bold leading-none text-white md:text-[2.5rem] xl:text-[2.9rem]">Final Level</p>
-                          <p className="mt-1.5 text-base text-pit-text md:text-lg">No further increase</p>
+                          <p className={`mt-1.5 font-bold leading-none text-white ${tvMode ? 'text-[1.55rem] xl:text-[1.9rem]' : 'text-[2rem] md:text-[2.5rem] xl:text-[2.9rem]'}`}>Final Level</p>
+                          <p className={`mt-1.5 text-pit-text ${tvMode ? 'text-sm xl:text-base' : 'text-base md:text-lg'}`}>No further increase</p>
                         </>
                       )}
                     </div>
@@ -594,9 +595,9 @@ export default function RunTournament({
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div className={`grid gap-2 ${displayMode ? 'grid-cols-3 xl:gap-3' : 'sm:grid-cols-3'}`}>
                     {summaryStats.map((stat) => (
-                      <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
-                        <p className={`${displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
-                        <p className={`mt-1 ${displayMode ? 'text-base md:text-lg' : 'text-base'} font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
+                      <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${tvMode ? 'px-2 py-2' : displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
+                        <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
+                        <p className={`mt-1 ${tvMode ? 'text-sm xl:text-base' : displayMode ? 'text-base md:text-lg' : 'text-base'} font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
                       </div>
                     ))}
                   </div>
@@ -605,42 +606,40 @@ export default function RunTournament({
 
               <section className={`space-y-2.5 ${displayMode ? 'pt-1' : ''}`}>
                 {showKnockoutQr && (
-                  <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-2.5 text-center">
+                  <div className={`rounded-xl border border-pit-border bg-pit-bg/60 text-center ${tvMode ? 'p-2' : 'p-2.5'}`}>
                     <div className="mb-1 text-white">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide">Report Your Knockout!</p>
+                      <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-wide`}>Report Your Knockout!</p>
                     </div>
-                    <div className="inline-block rounded-md bg-white p-1.5">
-                      <QRCodeSVG value={knockoutUrl} size={88} />
+                    <div className={`inline-block rounded-md bg-white ${tvMode ? 'p-1' : 'p-1.5'}`}>
+                      <QRCodeSVG value={knockoutUrl} size={tvMode ? 76 : 88} />
                     </div>
                   </div>
                 )}
-                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${displayMode ? 'p-4' : 'p-3'}`}>
+                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
                   <div className="mb-2">
-                    <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
-                    <p className={`mt-1 ${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
+                    <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
+                    <p className={`mt-1 ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
                       Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
                     </p>
                   </div>
 
-                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
-                    <p className={`${displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
-                    <p className={`mt-1 ${displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
+                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${tvMode ? 'px-2.5 py-2.5' : displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
+                    <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
+                    <p className={`mt-1 ${tvMode ? 'text-lg' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
                   </div>
 
-                  <div className={`${displayMode ? 'max-h-[48rem]' : 'max-h-[26rem]'} space-y-1.5 overflow-y-auto pr-1`}>
+                  <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[26rem]'} space-y-1.5 overflow-y-auto pr-1`}>
                     {payoutSplits.map((split, index) => {
                       const finisher = paidFinishers.find((player) => player.placed === index + 1);
                       return (
-                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
+                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2.5 py-1.5 text-sm' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
                             {finisher ? (
-                              <span className="truncate text-xs font-medium text-pit-text">
+                              <span className={`truncate font-medium text-pit-text ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
                                 {finisher.displayname ?? finisher.emailaddress}
                               </span>
-                            ) : (
-                              <span className="text-[11px] uppercase tracking-wide text-pit-muted">{split.toFixed(1)}%</span>
-                            )}
+                            ) : null}
                           </div>
                           <p className="shrink-0 text-sm font-semibold text-pit-teal">{formatMoney(payouts[index] ?? 0)}</p>
                         </div>

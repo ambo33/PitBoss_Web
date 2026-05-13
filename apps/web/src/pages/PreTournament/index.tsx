@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, CircleDollarSign, Clock3, Lock } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
 import Layout from '../../components/Layout';
@@ -90,6 +91,7 @@ export default function PreTournamentPage() {
   const scheduleLocked = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
+  const pocketAdminUrl = `${window.location.origin}/pocket-admin/${id}`;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'details', label: 'Details' },
@@ -139,6 +141,7 @@ export default function PreTournamentPage() {
             onSave={(data) => updateTournamentMutation.mutate(data)}
             onUpdateTvOptions={(data) => updateTournamentMutation.mutate(data)}
             onDelete={() => deleteTournamentMutation.mutate()}
+            pocketAdminUrl={pocketAdminUrl}
           />
 
           <Payouts tournamentId={id!} tournament={tournament} />
@@ -168,6 +171,7 @@ function TournamentDetailsCard({
   onSave,
   onUpdateTvOptions,
   onDelete,
+  pocketAdminUrl,
 }: {
   tournament: Awaited<ReturnType<typeof api.getTournament>>;
   totalRebuys: number;
@@ -182,6 +186,7 @@ function TournamentDetailsCard({
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onUpdateTvOptions: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onDelete: () => void;
+  pocketAdminUrl: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -364,6 +369,26 @@ function TournamentDetailsCard({
                   )}
                 </div>
               }
+            />
+          )}
+          {canManage && (
+            <Row
+              label="Pocket Admin"
+              value={(
+                <div className="text-right space-y-2">
+                  <a
+                    className="text-xs text-pit-teal hover:text-pit-teal/80"
+                    href={pocketAdminUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Pocket Admin
+                  </a>
+                  <div className="inline-block rounded-md bg-white p-1">
+                    <QRCodeSVG value={pocketAdminUrl} size={72} />
+                  </div>
+                </div>
+              )}
             />
           )}
         </div>

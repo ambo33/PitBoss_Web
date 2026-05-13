@@ -9,6 +9,7 @@ import AddonLobbyPage from './pages/AddonLobby';
 import TvBoardPage from './pages/TvBoard';
 import TvBoardEntryPage from './pages/TvBoard/Entry';
 import PaymentTrackerPage from './pages/PaymentTracker';
+import PocketAdminPage from './pages/PocketAdmin';
 import JoinGroupPage from './pages/JoinGroup';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/tv" element={<TvBoardEntryPage />} />
         <Route path="/tv/:code" element={<TvBoardPage />} />
         <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />
+        <Route path="/pocket-admin/:id" element={<RequireAuth><PocketAdminPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
