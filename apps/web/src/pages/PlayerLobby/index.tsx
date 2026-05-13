@@ -85,7 +85,13 @@ export default function PlayerLobbyPage() {
 
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
-    socket.emit('join-tournament', id);
+    const joinTournament = () => {
+      socket.emit('join-tournament', id);
+    };
+    socket.on('connect', joinTournament);
+    if (socket.connected) {
+      joinTournament();
+    }
     socket.on('timer-state', (state: TimerState) => {
       setTimer(state);
       handleLobbyCues(state, true);

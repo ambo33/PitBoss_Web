@@ -96,7 +96,13 @@ export default function RunTournament({
 
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
-    socket.emit('join-tournament', tournamentId);
+    const joinTournament = () => {
+      socket.emit('join-tournament', tournamentId);
+    };
+    socket.on('connect', joinTournament);
+    if (socket.connected) {
+      joinTournament();
+    }
     socket.on('timer-state', (state: TimerState) => {
       setTimerState(state);
       handleTimerCues(state, true);

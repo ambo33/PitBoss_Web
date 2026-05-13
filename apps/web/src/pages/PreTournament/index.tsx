@@ -40,7 +40,13 @@ export default function PreTournamentPage() {
     if (!id) return;
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
-    socket.emit('join-tournament', id);
+    const joinTournament = () => {
+      socket.emit('join-tournament', id);
+    };
+    socket.on('connect', joinTournament);
+    if (socket.connected) {
+      joinTournament();
+    }
     socket.on('tournament-updated', () => {
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['players', id] });
