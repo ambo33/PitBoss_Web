@@ -26,7 +26,6 @@ export default function KnockoutLobbyPage() {
     queryKey: ['public-knockout', id, guestUserId, user?.guid],
     queryFn: () => api.getPublicKnockout(id!, guestUserId || undefined),
     enabled: !!id,
-    refetchInterval: 15_000,
   });
 
   const knockoutMutation = useMutation({

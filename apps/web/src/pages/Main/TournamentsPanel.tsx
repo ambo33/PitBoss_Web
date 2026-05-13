@@ -46,11 +46,8 @@ export default function TournamentsPanel() {
     },
   });
 
-  const todayKey = getLocalDateKey(new Date());
-
   const upcoming = mine.filter((t) => {
-    const tournamentDateKey = getDateKey(t.tourneydate);
-    return !!tournamentDateKey && tournamentDateKey > todayKey;
+    return isUpcomingTournament(t);
   });
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
@@ -439,11 +436,36 @@ function getDateKey(value: string | null | undefined): string | null {
   return value.slice(0, 10);
 }
 
-function getLocalDateKey(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function nowInAppTimezone() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function isUpcomingTournament(tournament: Tournament): boolean {
+  if (tournament.completed) return false;
+  if (!tournament.tourneydate) return false;
+  const effectiveTime = normalizeTimeForComparison(tournament.tourneytime);
+  return `${tournament.tourneydate.slice(0, 10)}T${effectiveTime}` >= nowInAppTimezone();
+}
+
+function normalizeTimeForComparison(value: string | null | undefined): string {
+  if (!value) return '23:59:59';
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return '23:59:59';
+  const hours = String(Number(match[1])).padStart(2, '0');
+  const minutes = match[2];
+  const seconds = match[3] ?? '00';
+  return `${hours}:${minutes}:${seconds}`;
 }
 
 function formatTime12Hour(value: string | null | undefined): string {

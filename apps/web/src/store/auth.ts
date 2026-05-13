@@ -5,12 +5,15 @@ interface AuthUser {
   guid: string;
   emailaddress: string;
   displayname: string;
+  avatarimagedata?: string | null;
+  hasavatarimage?: boolean;
 }
 
 interface AuthState {
   token: string | null;
   user: AuthUser | null;
   setAuth: (token: string, user: AuthUser) => void;
+  updateUser: (updates: Partial<AuthUser>) => void;
   logout: () => void;
 }
 
@@ -22,6 +25,11 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (token, user) => {
         localStorage.setItem('pb_token', token);
         set({ token, user });
+      },
+      updateUser: (updates) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, ...updates } : state.user,
+        }));
       },
       logout: () => {
         localStorage.removeItem('pb_token');

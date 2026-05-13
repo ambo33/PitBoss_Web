@@ -43,7 +43,6 @@ export default function PlayerLobbyPage() {
     queryKey: ['public-lobby', id, guestUserId, user?.guid],
     queryFn: () => api.getPublicLobby(id!, guestUserId || undefined),
     enabled: !!id,
-    refetchInterval: 15_000,
   });
 
   const tournament = data?.tournament;

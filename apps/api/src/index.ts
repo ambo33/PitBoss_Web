@@ -21,19 +21,32 @@ import { initSocket } from './socket';
 
 const app = express();
 const httpServer = createServer(app);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/healthz',
+});
 
 initSocket(httpServer);
 
 app.use(helmet());
 app.use(cors({ origin: getClientUrl(), credentials: true }));
-app.use(express.json());
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true }));
+app.use(express.json({ limit: '5mb' }));
+app.use('/api', apiLimiter);
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/public', publicRouter);
 app.use('/api/groups', groupsRouter);
 app.use('/api/tournaments', tournamentsRouter);

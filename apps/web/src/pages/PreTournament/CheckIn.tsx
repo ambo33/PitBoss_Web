@@ -55,7 +55,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const { data: players = [], isLoading } = useQuery({
     queryKey: ['players', tournamentId],
     queryFn: () => api.getPlayers(tournamentId),
-    refetchInterval: 15_000,
   });
 
   const addMutation = useMutation({
@@ -79,6 +78,14 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     mutationFn: (uid: string) => api.addAddon(tournamentId, uid),
     onSuccess: () => refreshTournamentData(),
   });
+  const removeRebuyMutation = useMutation({
+    mutationFn: (uid: string) => api.removeRebuy(tournamentId, uid),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const removeAddonMutation = useMutation({
+    mutationFn: (uid: string) => api.removeAddon(tournamentId, uid),
+    onSuccess: () => refreshTournamentData(),
+  });
   const knockMutation = useMutation({
     mutationFn: ({ uid, placed }: { uid: string; placed: number | null }) => api.knockPlayer(tournamentId, uid, placed),
     onSuccess: () => {
@@ -97,6 +104,8 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const actionError = checkinMutation.error
     ?? rebuyMutation.error
     ?? addonMutation.error
+    ?? removeRebuyMutation.error
+    ?? removeAddonMutation.error
     ?? knockMutation.error
     ?? removeMutation.error;
 
@@ -237,9 +246,17 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onCheckin={() => checkinMutation.mutate(player.userid)}
             onRebuy={() => rebuyMutation.mutate(player.userid)}
             onAddon={() => addonMutation.mutate(player.userid)}
+            onRemoveRebuy={() => removeRebuyMutation.mutate(player.userid)}
+            onRemoveAddon={() => removeAddonMutation.mutate(player.userid)}
             onSelect={() => setSelected(player)}
             tournament={tournament}
-            isBusy={checkinMutation.isPending || rebuyMutation.isPending || addonMutation.isPending}
+            isBusy={
+              checkinMutation.isPending
+              || rebuyMutation.isPending
+              || addonMutation.isPending
+              || removeRebuyMutation.isPending
+              || removeAddonMutation.isPending
+            }
           />
         ))}
         {filtered.length === 0 && <p className="py-8 text-center text-pit-text">No players match.</p>}
@@ -322,12 +339,14 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onSelect, tournament, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onSelect, tournament, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
   onRebuy: () => void;
   onAddon: () => void;
+  onRemoveRebuy: () => void;
+  onRemoveAddon: () => void;
   onSelect: () => void;
   tournament: Tournament;
   isBusy: boolean;
@@ -337,8 +356,36 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onSelect, tou
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-white">{player.displayname ?? player.emailaddress ?? 'Guest Player'}</p>
         <div className="mt-1 flex gap-2">
-          {player.rebuys > 0 && <span className="badge bg-yellow-900/50 text-xs text-yellow-300">x{player.rebuys} rebuy</span>}
-          {player.addedon && <span className="badge bg-blue-900/50 text-xs text-blue-300">add-on</span>}
+          {player.rebuys > 0 && (
+            isOwner ? (
+              <button
+                type="button"
+                className="badge bg-yellow-900/50 text-xs text-yellow-300 transition hover:bg-yellow-800/60"
+                onClick={onRemoveRebuy}
+                disabled={isBusy}
+                title="Remove one rebuy"
+              >
+                x{player.rebuys} rebuy
+              </button>
+            ) : (
+              <span className="badge bg-yellow-900/50 text-xs text-yellow-300">x{player.rebuys} rebuy</span>
+            )
+          )}
+          {player.addedon && (
+            isOwner ? (
+              <button
+                type="button"
+                className="badge bg-blue-900/50 text-xs text-blue-300 transition hover:bg-blue-800/60"
+                onClick={onRemoveAddon}
+                disabled={isBusy}
+                title="Remove add-on"
+              >
+                add-on
+              </button>
+            ) : (
+              <span className="badge bg-blue-900/50 text-xs text-blue-300">add-on</span>
+            )
+          )}
           {player.placed != null && <span className="badge bg-red-900/50 text-xs text-red-300">#{player.placed}</span>}
           {player.seat != null && <span className="badge bg-pit-teal/20 text-xs text-pit-teal">T{player.tablenumber}.S{player.seat}</span>}
         </div>

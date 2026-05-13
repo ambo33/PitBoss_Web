@@ -30,6 +30,9 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             t.addoncost AS addonprice, t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
+            COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
+            COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid AND checkedin = TRUE) AS checkedincount
      FROM tournaments t
@@ -53,6 +56,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
   const players = await query(
     `SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            m.checkinaudiodata,
+            m.avatarimagedata,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
             CAST(COALESCE(tp.rebuys, 0) AS INT) AS rebuys,
             CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,

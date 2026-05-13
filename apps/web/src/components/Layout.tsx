@@ -96,7 +96,9 @@ export default function Layout({
             <div className={`mb-4 rounded-xl border border-pit-border bg-pit-bg p-3 ${compactSidebar ? 'mx-2' : 'mx-3'}`}>
               <div className={`mb-3 flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
-                  {initials}
+                  {user?.avatarimagedata ? (
+                    <img src={user.avatarimagedata} alt={user.displayname} className="h-8 w-8 rounded-full object-cover" />
+                  ) : initials}
                 </div>
                 {!compactSidebar && (
                   <div className="min-w-0">

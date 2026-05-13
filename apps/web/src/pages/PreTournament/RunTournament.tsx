@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
-import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, playLevelChangeTone, primeTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -23,6 +23,13 @@ type PayoutMode = 'count' | 'percent';
 interface PayoutStructureConfig {
   mode: PayoutMode;
   value: number;
+}
+
+interface GreetingQueueItem {
+  id: string;
+  name: string;
+  audioDataUrl?: string | null;
+  avatarImageUrl?: string | null;
 }
 
 export default function RunTournament({
@@ -46,15 +53,21 @@ export default function RunTournament({
   const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
     level: null,
   });
+  const seenCheckedInRef = useRef<Set<string> | null>(null);
+  const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
+  const greetingTimeoutRef = useRef<number | null>(null);
 
   const showAdminControls = isOwner && mode === 'admin';
-  const showKnockoutQr = mode === 'admin';
   const displayMode = mode === 'display';
+  const tvGreetingDisplayEnabled = tournament.tvgreetingdisplayenabled ?? true;
+  const tvGreetingAudioEnabled = tournament.tvgreetingaudioenabled ?? true;
+  const showKnockoutQr = mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true));
 
   const refreshTournamentData = () => {
     if (queryKeysToRefresh?.length) {
@@ -104,6 +117,62 @@ export default function RunTournament({
     };
   }, [qc, tournamentId]);
 
+  useEffect(() => {
+    if (!displayMode) return;
+
+    const checkedInPlayers = players
+      .filter((player) => player.checkedin && player.placed == null)
+      .map((player) => ({
+        id: player.userid,
+        name: player.displayname ?? player.emailaddress ?? 'Player',
+        audioDataUrl: player.checkinaudiodata ?? null,
+        avatarImageUrl: player.avatarimagedata ?? null,
+      }));
+    const currentSet = new Set(checkedInPlayers.map((player) => player.id));
+    const previousSet = seenCheckedInRef.current;
+
+    if (previousSet) {
+      checkedInPlayers
+        .filter((player) => !previousSet.has(player.id))
+        .forEach((player) => {
+          if (tvGreetingAudioEnabled || tvGreetingDisplayEnabled) {
+            greetingQueueRef.current.push(player);
+            setActiveGreeting((current) => current ?? greetingQueueRef.current.shift() ?? null);
+          }
+        });
+    }
+
+    seenCheckedInRef.current = currentSet;
+  }, [displayMode, players, tournament.name, tvGreetingAudioEnabled, tvGreetingDisplayEnabled]);
+
+  useEffect(() => {
+    if (!activeGreeting && greetingQueueRef.current.length > 0) {
+      setActiveGreeting(greetingQueueRef.current.shift() ?? null);
+    }
+  }, [activeGreeting, players]);
+
+  useEffect(() => {
+    if (!activeGreeting) return;
+
+    if (tvGreetingAudioEnabled) {
+      if (activeGreeting.audioDataUrl) {
+        playCheckinGreetingClip(activeGreeting.audioDataUrl);
+      } else {
+        announceCheckinGreeting(activeGreeting.name);
+      }
+    }
+
+    greetingTimeoutRef.current = window.setTimeout(() => {
+      setActiveGreeting(null);
+    }, tvGreetingDisplayEnabled ? 5000 : 250);
+
+    return () => {
+      if (greetingTimeoutRef.current) {
+        window.clearTimeout(greetingTimeoutRef.current);
+      }
+    };
+  }, [activeGreeting, tvGreetingAudioEnabled, tvGreetingDisplayEnabled]);
+
   const actionablePlayers = useMemo(
     () => [...players]
       .filter((player) => player.placed == null)
@@ -131,6 +200,12 @@ export default function RunTournament({
       setSelectedPlayerId(actionablePlayers[0]?.userid ?? '');
     }
   }, [actionablePlayers, selectedPlayerId]);
+
+  useEffect(() => () => {
+    if (greetingTimeoutRef.current) {
+      window.clearTimeout(greetingTimeoutRef.current);
+    }
+  }, []);
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
@@ -226,6 +301,17 @@ export default function RunTournament({
     }
     return [...counts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
   }, [players]);
+  const confettiPieces = useMemo(
+    () => Array.from({ length: 26 }, (_, index) => ({
+      id: `piece-${index}`,
+      left: `${3 + ((index * 91) % 94)}%`,
+      delay: `${(index % 7) * 0.07}s`,
+      duration: `${3 + (index % 5) * 0.22}s`,
+      rotation: `${((index * 39) % 90) - 45}deg`,
+      color: ['#22d3ee', '#fde047', '#f97316', '#f472b6', '#a78bfa', '#34d399'][index % 6],
+    })),
+    []
+  );
   const summaryStats = [
     { label: 'Players Left', value: activePlayers },
     { label: 'Checked In', value: checkedIn },
@@ -237,7 +323,7 @@ export default function RunTournament({
 
   return (
     <div className="space-y-4">
-      <div ref={screenRef} className={`card space-y-4 ${displayMode ? 'p-5 md:p-6 xl:p-8' : 'p-3 md:p-3.5 xl:p-4'}`}>
+      <div ref={screenRef} className={`card relative overflow-hidden space-y-4 ${displayMode ? 'p-5 md:p-6 xl:p-8' : 'p-3 md:p-3.5 xl:p-4'}`}>
         <div className={`flex flex-wrap items-center justify-between gap-2 ${displayMode ? 'min-h-0' : ''}`}>
           {showAdminControls ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -299,7 +385,7 @@ export default function RunTournament({
 
         {currentBlind ? (
           <>
-            <div className={`grid ${displayMode ? 'gap-5 lg:grid-cols-[320px_minmax(0,1fr)_320px] 2xl:grid-cols-[360px_minmax(0,1fr)_360px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
+            <div className={`grid ${displayMode ? 'grid-cols-[320px_minmax(0,1fr)_320px] gap-5 2xl:grid-cols-[360px_minmax(0,1fr)_360px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
@@ -414,7 +500,7 @@ export default function RunTournament({
                     )}
                   </div>
 
-                  <div className={`mt-3 grid gap-2 md:grid-cols-2 ${displayMode ? 'xl:gap-3' : ''}`}>
+                  <div className={`mt-3 grid gap-2 ${displayMode ? 'grid-cols-2 xl:gap-3' : 'md:grid-cols-2'}`}>
                     <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-4 py-4' : 'px-3 py-3'}`}>
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Current Blinds</p>
                       <p className={`mt-1.5 font-bold leading-none text-white ${
@@ -461,7 +547,7 @@ export default function RunTournament({
                 )}
 
                 <div className="grid gap-2 xl:grid-cols-1">
-                  <div className={`grid gap-2 sm:grid-cols-3 ${displayMode ? 'xl:gap-3' : ''}`}>
+                  <div className={`grid gap-2 ${displayMode ? 'grid-cols-3 xl:gap-3' : 'sm:grid-cols-3'}`}>
                     {summaryStats.map((stat) => (
                       <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${displayMode ? 'px-3 py-4' : 'px-2.5 py-3'}`}>
                         <p className={`${displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
@@ -472,7 +558,7 @@ export default function RunTournament({
                 </div>
               </section>
 
-              <section className={`space-y-2.5 ${displayMode ? 'lg:pt-1' : ''}`}>
+              <section className={`space-y-2.5 ${displayMode ? 'pt-1' : ''}`}>
                 {showKnockoutQr && (
                   <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-2.5 text-center">
                     <div className="mb-1 text-white">
@@ -522,6 +608,50 @@ export default function RunTournament({
           </>
         ) : (
           <p className="py-8 text-center text-pit-text">No blind structure yet.</p>
+        )}
+
+        {displayMode && activeGreeting && tvGreetingDisplayEnabled && (
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center overflow-hidden rounded-[inherit]">
+            <style>{`
+              @keyframes tv-confetti-fall {
+                0% { transform: translate3d(0, -18px, 0) rotate(0deg); opacity: 0; }
+                12% { opacity: 1; }
+                100% { transform: translate3d(0, 76vh, 0) rotate(540deg); opacity: 0; }
+              }
+            `}</style>
+            {confettiPieces.map((piece) => (
+              <span
+                key={`${activeGreeting.id}-${piece.id}`}
+                className="absolute top-0 h-4 w-2 rounded-full"
+                style={{
+                  left: piece.left,
+                  backgroundColor: piece.color,
+                  transform: `rotate(${piece.rotation})`,
+                  animation: `tv-confetti-fall ${piece.duration} ease-out ${piece.delay} forwards`,
+                  boxShadow: '0 0 10px rgba(255,255,255,0.15)',
+                }}
+              />
+            ))}
+            <div className="mt-10 rounded-2xl border border-white/15 bg-black/55 px-8 py-6 text-center shadow-2xl backdrop-blur-md">
+              <p className="text-lg font-semibold uppercase tracking-[0.28em] text-yellow-200 xl:text-xl">Welcome To The Tournament</p>
+              {activeGreeting.avatarImageUrl ? (
+                <div className="mx-auto mt-5 h-28 w-28 overflow-hidden rounded-full border-4 border-white/25 shadow-xl xl:h-32 xl:w-32">
+                  <img
+                    src={activeGreeting.avatarImageUrl}
+                    alt={activeGreeting.name}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="mx-auto mt-5 flex h-28 w-28 items-center justify-center rounded-full border-4 border-white/20 bg-white/10 text-4xl font-semibold text-white shadow-xl xl:h-32 xl:w-32 xl:text-5xl">
+                  {getInitials(activeGreeting.name)}
+                </div>
+              )}
+              <h2 className="mt-4 text-7xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
+                {activeGreeting.name}
+              </h2>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -600,4 +730,15 @@ function formatMoney(value: number): string {
 function toNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getInitials(name: string) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || '?';
 }

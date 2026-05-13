@@ -33,15 +33,22 @@ export default function BrandLockup({
 }
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
-  const size = compact ? 48 : 88;
+  const size = compact ? 40 : 88;
+  const src = compact
+    ? '/branding/pokerplanner-logo-compact.png'
+    : '/branding/pokerplanner-logo.png';
 
   return (
     <div
-      className="shrink-0 overflow-hidden rounded-full border border-white/10 bg-black shadow-[0_18px_40px_rgba(0,0,0,0.38)]"
+      className={`shrink-0 overflow-hidden rounded-full bg-black ${
+        compact
+          ? 'border border-white/8 shadow-[0_10px_24px_rgba(0,0,0,0.28)]'
+          : 'border border-white/10 shadow-[0_18px_40px_rgba(0,0,0,0.38)]'
+      }`}
       style={{ width: size, height: size }}
     >
       <img
-        src="/branding/pokerplanner-logo.png"
+        src={src}
         alt="PokerPlanner.bet logo"
         className="h-full w-full object-cover"
       />

@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { io, Socket } from 'socket.io-client';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -6,6 +8,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 export default function PaymentTrackerPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const socketRef = useRef<Socket | null>(null);
 
   const { data: tournament, isLoading: loadingTournament, error: tournamentError } = useQuery({
     queryKey: ['tournament', id],
@@ -16,13 +19,26 @@ export default function PaymentTrackerPage() {
     queryKey: ['players', id],
     queryFn: () => api.getPlayers(id!),
     enabled: !!id && !!tournament,
-    refetchInterval: 15_000,
   });
 
   const toggleMutation = useMutation({
     mutationFn: (uid: string) => api.togglePaid(id!, uid),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['players', id] }),
   });
+
+  useEffect(() => {
+    if (!id) return;
+    const socket = io('/', { path: '/socket.io' });
+    socketRef.current = socket;
+    socket.emit('join-tournament', id);
+    socket.on('tournament-updated', () => {
+      qc.invalidateQueries({ queryKey: ['players', id] });
+      qc.invalidateQueries({ queryKey: ['tournament', id] });
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [id, qc]);
 
   const unpaid = players.filter((player) => !player.paid);
   const paid = players.filter((player) => player.paid);

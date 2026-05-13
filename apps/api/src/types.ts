@@ -3,6 +3,12 @@ export interface User {
   emailaddress: string;
   emailverified: boolean;
   displayname?: string;
+  checkinaudiodata?: string | null;
+  checkinaudiofilename?: string | null;
+  hascheckinaudio?: boolean;
+  avatarimagedata?: string | null;
+  avatarfilename?: string | null;
+  hasavatarimage?: boolean;
 }
 
 export interface Group {
@@ -48,6 +54,9 @@ export interface Tournament {
   groupid?: string | null;
   groupname?: string | null;
   tvdisplaycode?: string | null;
+  tvgreetingdisplayenabled?: boolean;
+  tvgreetingaudioenabled?: boolean;
+  tvshowknockoutqrenabled?: boolean;
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;
@@ -59,6 +68,8 @@ export interface TournamentPlayer {
   userid: string;
   emailaddress: string;
   displayname?: string;
+  checkinaudiodata?: string | null;
+  avatarimagedata?: string | null;
   checkedin: boolean;
   rebuys: number;
   addedon: boolean;

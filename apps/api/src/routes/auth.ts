@@ -7,6 +7,11 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 
 export const authRouter = Router();
 
+const AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav);base64,[A-Za-z0-9+/=]+$/i;
+const MAX_AUDIO_DATA_URL_LENGTH = 2_800_000;
+const IMAGE_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
+const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
+
 authRouter.post('/register', async (req: Request, res: Response) => {
   const { email, password, displayname } = req.body as {
     email: string; password: string; displayname?: string;
@@ -106,13 +111,113 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
 });
 
 authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
-  const row = await queryOne<{ guid: string; emailaddress: string; emailverified: boolean; displayname: string }>(
+  const row = await queryOne<{ guid: string; emailaddress: string; emailverified: boolean; displayname: string; checkinaudiodata?: string | null; checkinaudiofilename?: string | null; hascheckinaudio?: boolean; avatarimagedata?: string | null; avatarfilename?: string | null; hasavatarimage?: boolean }>(
     `SELECT u.guid, u.emailaddress, u.emailverified,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            m.checkinaudiodata,
+            m.checkinaudiofilename,
+            CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
+            m.avatarimagedata,
+            m.avatarfilename,
+            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
      FROM users u LEFT JOIN usermetadata m ON m.userid = u.guid
      WHERE u.guid = $1`,
     [req.userId]
   );
   if (!row) { res.status(404).json({ error: 'User not found' }); return; }
+  res.json(row);
+});
+
+authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
+  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage } = req.body as {
+    displayname?: string;
+    checkinaudiodata?: string | null;
+    checkinaudiofilename?: string | null;
+    clearcheckinaudio?: boolean;
+    avatarimagedata?: string | null;
+    avatarfilename?: string | null;
+    clearavatarimage?: boolean;
+  };
+
+  const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim() : undefined;
+  const normalizedAudioData = typeof checkinaudiodata === 'string' ? checkinaudiodata.trim() : undefined;
+  const normalizedAudioFilename = typeof checkinaudiofilename === 'string' ? checkinaudiofilename.trim().slice(0, 255) : undefined;
+  const normalizedAvatarData = typeof avatarimagedata === 'string' ? avatarimagedata.trim() : undefined;
+  const normalizedAvatarFilename = typeof avatarfilename === 'string' ? avatarfilename.trim().slice(0, 255) : undefined;
+
+  if (normalizedAudioData !== undefined) {
+    if (!AUDIO_DATA_URL_PATTERN.test(normalizedAudioData)) {
+      res.status(400).json({ error: 'Only MP3 or WAV audio is supported.' });
+      return;
+    }
+    if (normalizedAudioData.length > MAX_AUDIO_DATA_URL_LENGTH) {
+      res.status(400).json({ error: 'Audio file is too large. Keep it under about 2 MB.' });
+      return;
+    }
+  }
+  if (normalizedAvatarData !== undefined) {
+    if (!IMAGE_DATA_URL_PATTERN.test(normalizedAvatarData)) {
+      res.status(400).json({ error: 'Only PNG, JPG, GIF, or WEBP images are supported.' });
+      return;
+    }
+    if (normalizedAvatarData.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      res.status(400).json({ error: 'Image is too large. Keep it under about 2 MB.' });
+      return;
+    }
+  }
+
+  await query(
+    `UPDATE usermetadata
+     SET nickname = COALESCE($2::STRING, nickname),
+         checkinaudiodata = CASE
+           WHEN $5::BOOL = TRUE THEN NULL
+           WHEN $3::STRING IS NOT NULL THEN $3::STRING
+           ELSE checkinaudiodata
+         END,
+         checkinaudiofilename = CASE
+           WHEN $5::BOOL = TRUE THEN NULL
+           WHEN $4::STRING IS NOT NULL THEN $4::STRING
+           ELSE checkinaudiofilename
+         END,
+         avatarimagedata = CASE
+           WHEN $8::BOOL = TRUE THEN NULL
+           WHEN $6::STRING IS NOT NULL THEN $6::STRING
+           ELSE avatarimagedata
+         END,
+         avatarfilename = CASE
+           WHEN $8::BOOL = TRUE THEN NULL
+           WHEN $7::STRING IS NOT NULL THEN $7::STRING
+           ELSE avatarfilename
+         END
+     WHERE userid = $1`,
+    [
+      req.userId,
+      normalizedDisplayName ?? null,
+      normalizedAudioData ?? null,
+      normalizedAudioFilename ?? null,
+      clearcheckinaudio === true,
+      normalizedAvatarData ?? null,
+      normalizedAvatarFilename ?? null,
+      clearavatarimage === true,
+    ]
+  );
+
+  const row = await queryOne<{ guid: string; emailaddress: string; emailverified: boolean; displayname: string; checkinaudiodata?: string | null; checkinaudiofilename?: string | null; hascheckinaudio?: boolean; avatarimagedata?: string | null; avatarfilename?: string | null; hasavatarimage?: boolean }>(
+    `SELECT u.guid, u.emailaddress, u.emailverified,
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            m.checkinaudiodata,
+            m.checkinaudiofilename,
+            CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
+            m.avatarimagedata,
+            m.avatarfilename,
+            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
+     FROM users u LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE u.guid = $1`,
+    [req.userId]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
   res.json(row);
 });

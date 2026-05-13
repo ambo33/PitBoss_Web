@@ -25,7 +25,6 @@ export default function AddonLobbyPage() {
     queryKey: ['public-addon', id, guestUserId, user?.guid],
     queryFn: () => api.getPublicAddon(id!, guestUserId || undefined),
     enabled: !!id,
-    refetchInterval: 15_000,
   });
 
   const addonMutation = useMutation({

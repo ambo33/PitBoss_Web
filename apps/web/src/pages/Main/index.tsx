@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Shield } from 'lucide-react';
+import { ImageIcon, LogOut, Music4, Shield, Trash2, Upload } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
+import { api } from '../../api/client';
 import GroupsPanel from './GroupsPanel';
 import TournamentsPanel from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
@@ -29,10 +31,43 @@ export default function MainPage() {
 }
 
 function ProfilePanel() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateUser } = useAuthStore();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
 
-  const initials = user?.displayname
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+  });
+
+  const updateProfileMutation = useMutation({
+    mutationFn: api.updateMe,
+    onSuccess: (updated, variables) => {
+      queryClient.setQueryData(['me'], updated);
+      updateUser({
+        displayname: updated.displayname,
+        emailaddress: updated.emailaddress,
+        avatarimagedata: updated.avatarimagedata ?? null,
+        hasavatarimage: updated.hasavatarimage ?? false,
+      });
+      if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
+        setMediaSuccess(variables.clearcheckinaudio ? 'Check-in clip removed.' : 'Check-in clip saved.');
+      } else if ('avatarimagedata' in variables || variables.clearavatarimage) {
+        setMediaSuccess(variables.clearavatarimage ? 'Avatar removed.' : 'Avatar saved.');
+      } else {
+        setMediaSuccess('Profile updated.');
+      }
+    },
+  });
+
+  const displayName = profile?.displayname ?? user?.displayname;
+  const emailAddress = profile?.emailaddress ?? user?.emailaddress;
+  const avatarImage = profile?.avatarimagedata ?? user?.avatarimagedata ?? null;
+  const initials = displayName
     ?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? '?';
 
   function handleLogout() {
@@ -40,32 +75,221 @@ function ProfilePanel() {
     navigate('/login');
   }
 
+  async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setMediaError(null);
+    setMediaSuccess(null);
+    if (!file.type.startsWith('image/')) {
+      setMediaError('Please choose a PNG, JPG, GIF, or WEBP image.');
+      return;
+    }
+    if (file.size > 1_500_000) {
+      setMediaError('Keep avatar images under 1.5 MB.');
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    updateProfileMutation.mutate({
+      avatarimagedata: dataUrl,
+      avatarfilename: file.name,
+      clearavatarimage: false,
+    });
+  }
+
+  async function handleAudioFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setMediaError(null);
+    setMediaSuccess(null);
+    if (!isSupportedAudioType(file)) {
+      setMediaError('Please choose an MP3 or WAV file.');
+      return;
+    }
+    if (file.size > 2_000_000) {
+      setMediaError('Keep check-in clips under 2 MB.');
+      return;
+    }
+
+    const durationSeconds = await getAudioDurationSeconds(file);
+    if (durationSeconds > 5.05) {
+      setMediaError('Check-in clips must be 5 seconds or shorter.');
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    updateProfileMutation.mutate({
+      checkinaudiodata: dataUrl,
+      checkinaudiofilename: file.name,
+      clearcheckinaudio: false,
+    });
+  }
+
+  const audioSummary = useMemo(() => {
+    if (!profile?.hascheckinaudio) return 'No custom check-in clip yet';
+    return profile.checkinaudiofilename ?? 'Custom check-in clip uploaded';
+  }, [profile]);
+
+  if (isLoading && !profile) {
+    return <div className="mx-auto mt-12 max-w-2xl text-center text-pit-text">Loading profile...</div>;
+  }
+
   return (
-    <div className="max-w-sm mx-auto mt-6 space-y-4">
-      {/* Avatar card */}
-      <div className="card flex flex-col items-center py-8 gap-3 text-center">
-        <div className="w-20 h-20 rounded-2xl bg-pit-teal/15 border border-pit-teal/30
-                        flex items-center justify-center text-pit-teal text-2xl font-bold">
-          {initials}
+    <div className="mx-auto mt-6 max-w-2xl space-y-4">
+      <div className="card flex flex-col items-center gap-4 py-8 text-center">
+        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-pit-teal/30 bg-pit-teal/15 text-3xl font-bold text-pit-teal">
+          {avatarImage ? (
+            <img src={avatarImage} alt={displayName} className="h-full w-full object-cover" />
+          ) : initials}
         </div>
         <div>
-          <p className="text-white font-bold text-lg">{user?.displayname}</p>
-          <p className="text-pit-muted text-sm">{user?.emailaddress}</p>
+          <p className="text-lg font-bold text-white">{displayName}</p>
+          <p className="text-sm text-pit-muted">{emailAddress}</p>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="card divide-y divide-pit-border p-0 overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3.5 text-pit-muted text-sm">
+      {(mediaError || updateProfileMutation.error) && (
+        <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">
+          {mediaError ?? updateProfileMutation.error?.message}
+        </p>
+      )}
+      {mediaSuccess && !mediaError && !updateProfileMutation.error && (
+        <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
+          {mediaSuccess}
+        </p>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <ImageIcon size={18} className="text-pit-teal" />
+            <div>
+              <h3 className="font-semibold text-white">Avatar</h3>
+              <p className="text-sm text-pit-muted">Upload a profile image for your account.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" className="btn-primary gap-2" onClick={() => avatarInputRef.current?.click()} disabled={updateProfileMutation.isPending}>
+              <Upload size={14} />
+              {avatarImage ? 'Replace Avatar' : 'Upload Avatar'}
+            </button>
+            {avatarImage && (
+              <button
+                type="button"
+                className="btn-ghost gap-2 text-red-400 hover:text-red-300"
+                onClick={() => {
+                  setMediaError(null);
+                  setMediaSuccess(null);
+                  updateProfileMutation.mutate({ clearavatarimage: true });
+                }}
+                disabled={updateProfileMutation.isPending}
+              >
+                <Trash2 size={14} />
+                Remove
+              </button>
+            )}
+          </div>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={handleAvatarFile}
+          />
+        </section>
+
+        <section className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <Music4 size={18} className="text-pit-teal" />
+            <div>
+              <h3 className="font-semibold text-white">Check-In Clip</h3>
+              <p className="text-sm text-pit-muted">Upload a 5 second MP3 or WAV clip for TV check-in greetings.</p>
+            </div>
+          </div>
+          <p className="text-sm text-pit-text">{audioSummary}</p>
+          {profile?.checkinaudiodata && (
+            <audio controls className="w-full">
+              <source src={profile.checkinaudiodata} />
+            </audio>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="btn-primary gap-2" onClick={() => audioInputRef.current?.click()} disabled={updateProfileMutation.isPending}>
+              <Upload size={14} />
+              {profile?.hascheckinaudio ? 'Replace Clip' : 'Upload Clip'}
+            </button>
+            {profile?.hascheckinaudio && (
+              <button
+                type="button"
+                className="btn-ghost gap-2 text-red-400 hover:text-red-300"
+                onClick={() => {
+                  setMediaError(null);
+                  setMediaSuccess(null);
+                  updateProfileMutation.mutate({ clearcheckinaudio: true });
+                }}
+                disabled={updateProfileMutation.isPending}
+              >
+                <Trash2 size={14} />
+                Remove
+              </button>
+            )}
+          </div>
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept=".mp3,.wav,audio/mpeg,audio/wav"
+            className="hidden"
+            onChange={handleAudioFile}
+          />
+        </section>
+      </div>
+
+      <div className="card divide-y divide-pit-border overflow-hidden p-0">
+        <div className="flex items-center gap-3 px-4 py-3.5 text-sm text-pit-muted">
           <Shield size={16} />
           <span>Account managed via email/password</span>
         </div>
-        <button onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3.5 text-red-400 hover:text-red-300 hover:bg-red-400/5 transition-colors text-sm font-medium">
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-400/5 hover:text-red-300"
+        >
           <LogOut size={16} />
           Sign out
         </button>
       </div>
     </div>
   );
+}
+
+function isSupportedAudioType(file: File) {
+  return ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'].includes(file.type) || /\.(mp3|wav)$/i.test(file.name);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function getAudioDurationSeconds(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement('audio');
+    const url = URL.createObjectURL(file);
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(Number(audio.duration) || 0);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read the audio file.'));
+    };
+    audio.src = url;
+  });
 }

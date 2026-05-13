@@ -39,7 +39,16 @@ export const api = {
   requestReset: (email: string) => post('/auth/request-reset', { email }),
   resetPassword: (data: { token: string; password: string }) =>
     post('/auth/reset-password', data),
-  me: () => get<{ guid: string; emailaddress: string; displayname: string }>('/auth/me'),
+  me: () => get<AuthProfile>('/auth/me'),
+  updateMe: (data: {
+    displayname?: string;
+    checkinaudiodata?: string | null;
+    checkinaudiofilename?: string | null;
+    clearcheckinaudio?: boolean;
+    avatarimagedata?: string | null;
+    avatarfilename?: string | null;
+    clearavatarimage?: boolean;
+  }) => put<AuthProfile>('/auth/me', data),
 
   // Groups
   getGroups: () => get<Group[]>('/groups'),
@@ -97,7 +106,9 @@ export const api = {
   toggleCheckin: (tid: string, uid: string) =>
     put(`/tournaments/${tid}/players/${uid}/checkin`),
   addRebuy: (tid: string, uid: string) => post(`/tournaments/${tid}/players/${uid}/rebuy`),
+  removeRebuy: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}/rebuy`),
   addAddon: (tid: string, uid: string) => post(`/tournaments/${tid}/players/${uid}/addon`),
+  removeAddon: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}/addon`),
   knockPlayer: (tid: string, uid: string, placed: number | null) =>
     put(`/tournaments/${tid}/players/${uid}/knock`, { placed }),
   togglePaid: (tid: string, uid: string) =>
@@ -137,14 +148,30 @@ export interface Tournament {
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
   groupid?: string | null; groupname?: string | null;
   tvdisplaycode?: string | null;
+  tvgreetingdisplayenabled?: boolean;
+  tvgreetingaudioenabled?: boolean;
+  tvshowknockoutqrenabled?: boolean;
   playercount?: number; checkedincount?: number; isregistered?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
 }
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
+  checkinaudiodata?: string | null;
+  avatarimagedata?: string | null;
   checkedin: boolean; rebuys: number; addedon: boolean;
   placed: number | null; knockedoutbyuserid?: string | null; knockedoutbyname?: string | null; paid: boolean; registeredat: string;
   tablenumber?: number | null; seat?: number | null;
+}
+export interface AuthProfile {
+  guid: string;
+  emailaddress: string;
+  displayname: string;
+  checkinaudiodata?: string | null;
+  checkinaudiofilename?: string | null;
+  hascheckinaudio?: boolean;
+  avatarimagedata?: string | null;
+  avatarfilename?: string | null;
+  hasavatarimage?: boolean;
 }
 export interface BlindLevel {
   id: string; level: number; label: string;

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, CircleDollarSign, Clock3 } from 'lucide-react';
+import { CalendarDays, CircleDollarSign, Clock3, Lock } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 import { api } from '../../api/client';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -22,19 +23,33 @@ export default function PreTournamentPage() {
   const [tab, setTab] = useState<Tab>('details');
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
+  const socketRef = useRef<Socket | null>(null);
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.getTournament(id!),
-    refetchInterval: 30_000,
   });
 
   const { data: players = [] } = useQuery({
     queryKey: ['players', id],
     queryFn: () => api.getPlayers(id!),
     enabled: !!id,
-    refetchInterval: 15_000,
   });
+
+  useEffect(() => {
+    if (!id) return;
+    const socket = io('/', { path: '/socket.io' });
+    socketRef.current = socket;
+    socket.emit('join-tournament', id);
+    socket.on('tournament-updated', () => {
+      qc.invalidateQueries({ queryKey: ['tournament', id] });
+      qc.invalidateQueries({ queryKey: ['players', id] });
+      qc.invalidateQueries({ queryKey: ['seating', id] });
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [id, qc]);
 
   const finishers = useMemo(
     () => players
@@ -103,10 +118,12 @@ export default function PreTournamentPage() {
             canManage={canManage}
             scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
+            tvOptionsSaving={updateTournamentMutation.isPending}
             deleting={deleteTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
             deleteError={deleteTournamentMutation.error?.message}
             onSave={(data) => updateTournamentMutation.mutate(data)}
+            onUpdateTvOptions={(data) => updateTournamentMutation.mutate(data)}
             onDelete={() => deleteTournamentMutation.mutate()}
           />
 
@@ -130,10 +147,12 @@ function TournamentDetailsCard({
   canManage,
   scheduleLocked,
   saving,
+  tvOptionsSaving,
   deleting,
   error,
   deleteError,
   onSave,
+  onUpdateTvOptions,
   onDelete,
 }: {
   tournament: Awaited<ReturnType<typeof api.getTournament>>;
@@ -142,10 +161,12 @@ function TournamentDetailsCard({
   canManage: boolean;
   scheduleLocked: boolean;
   saving: boolean;
+  tvOptionsSaving: boolean;
   deleting: boolean;
   error?: string;
   deleteError?: string;
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
+  onUpdateTvOptions: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -203,15 +224,17 @@ function TournamentDetailsCard({
           </div>
           <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
         </div>
-        {canManage && !scheduleLocked && (
-          <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
-            {editing ? 'Cancel' : 'Edit Details'}
-          </button>
-        )}
-        {canManage && scheduleLocked && (
-          <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
-            Delete Tournament
-          </button>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
+              {editing ? 'Cancel' : 'Edit Details'}
+            </button>
+            {scheduleLocked && (
+              <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
+                Delete Tournament
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -224,11 +247,23 @@ function TournamentDetailsCard({
             <Field label="Name" className="sm:col-span-2">
               <input className="input" value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} />
             </Field>
-            <Field label="Date">
-              <input className="input" type="date" value={form.tourneydate} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneydate: e.target.value }))} />
+            <Field label="">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-pit-text">Date</span>
+                  {scheduleLocked && <LockHint />}
+                </div>
+                <input className="input" type="date" value={form.tourneydate} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneydate: e.target.value }))} />
+              </div>
             </Field>
-            <Field label="Time">
-              <input className="input" type="time" value={form.tourneytime} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneytime: e.target.value }))} />
+            <Field label="">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-pit-text">Time</span>
+                  {scheduleLocked && <LockHint />}
+                </div>
+                <input className="input" type="time" value={form.tourneytime} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneytime: e.target.value }))} />
+              </div>
             </Field>
             <Field label="Buy-in">
               <input className="input" type="number" min="0" step="0.01" value={form.buyin} onChange={(e) => setForm((current) => ({ ...current, buyin: e.target.value }))} />
@@ -249,9 +284,6 @@ function TournamentDetailsCard({
               <input className="input" type="number" min="0" value={form.addonchips} onChange={(e) => setForm((current) => ({ ...current, addonchips: e.target.value }))} />
             </Field>
           </div>
-          {scheduleLocked && (
-            <p className="text-sm text-pit-muted">Date and time are locked because the tournament is too close to its scheduled start or already underway.</p>
-          )}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
             <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving}>
@@ -276,16 +308,11 @@ function TournamentDetailsCard({
           />
           <Row label="Rebuys taken" value={totalRebuys} />
           <Row label="Add-ons taken" value={totalAddons} />
-          {scheduleLocked && (
-            <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
-              The schedule is locked because the tournament is too close to its scheduled start or already underway. At this point, the remaining admin option is to cancel the tournament.
-            </div>
-          )}
           {featureFlags.tvBoard && (
             <Row
               label="TV board"
               value={
-                <div className="text-right">
+                <div className="text-right space-y-2">
                   <div className="font-mono tracking-[0.2em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</div>
                   {tournament.tvdisplaycode ? (
                     <a
@@ -298,6 +325,28 @@ function TournamentDetailsCard({
                     </a>
                   ) : (
                     <div className="text-xs text-pit-muted">Refresh if code is still generating</div>
+                  )}
+                  {canManage && (
+                    <div className="flex flex-wrap justify-end gap-2 pt-1">
+                      <TvOptionToggle
+                        label="Greeting Display"
+                        enabled={tournament.tvgreetingdisplayenabled ?? true}
+                        disabled={tvOptionsSaving}
+                        onClick={() => onUpdateTvOptions({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
+                      />
+                      <TvOptionToggle
+                        label="Greeting Audio"
+                        enabled={tournament.tvgreetingaudioenabled ?? true}
+                        disabled={tvOptionsSaving}
+                        onClick={() => onUpdateTvOptions({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
+                      />
+                      <TvOptionToggle
+                        label="Knockout QR"
+                        enabled={tournament.tvshowknockoutqrenabled ?? true}
+                        disabled={tvOptionsSaving}
+                        onClick={() => onUpdateTvOptions({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
+                      />
+                    </div>
                   )}
                 </div>
               }
@@ -442,8 +491,48 @@ function Field({
 }) {
   return (
     <label className={`space-y-2 ${className}`.trim()}>
-      <span className="text-sm font-medium text-pit-text">{label}</span>
+      {label ? <span className="text-sm font-medium text-pit-text">{label}</span> : null}
       {children}
     </label>
+  );
+}
+
+function LockHint() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-xs font-medium text-red-400"
+      title="Locked. Too close to start time."
+      aria-label="Locked. Too close to start time."
+    >
+      <Lock size={12} />
+      Locked
+    </span>
+  );
+}
+
+function TvOptionToggle({
+  label,
+  enabled,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
+        enabled
+          ? 'border-yellow-300/70 bg-yellow-300/15 text-yellow-200'
+          : 'border-pit-border bg-pit-bg/40 text-pit-muted'
+      }`}
+    >
+      {label}
+    </button>
   );
 }

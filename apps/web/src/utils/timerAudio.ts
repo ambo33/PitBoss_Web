@@ -2,6 +2,7 @@ let audioContext: AudioContext | null = null;
 let unlockAttached = false;
 let preferredVoice: SpeechSynthesisVoice | null = null;
 let speechPrimed = false;
+let currentCheckinAudio: HTMLAudioElement | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -179,4 +180,32 @@ export function announceOneMinuteWarning(): void {
 
 export function announceLevel(level: number, smallBlind: number, bigBlind: number): void {
   speak(`Level ${level}. Small blind ${smallBlind}. Big blind ${bigBlind}.`, playLevelChangeTone);
+}
+
+export function announceCheckinGreeting(playerName: string): void {
+  const trimmedName = playerName.trim();
+  speak(
+    `${trimmedName} has checked in to the tournament.`,
+    () => {
+      void playSequence([
+        { frequency: 880, duration: 0.14, gain: 0.05 },
+        { frequency: 1174, duration: 0.16, delay: 0.18, gain: 0.05 },
+        { frequency: 1568, duration: 0.24, delay: 0.38, gain: 0.06 },
+      ]);
+    }
+  );
+}
+
+export function playCheckinGreetingClip(audioDataUrl: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    currentCheckinAudio?.pause();
+    currentCheckinAudio = new Audio(audioDataUrl);
+    currentCheckinAudio.currentTime = 0;
+    void currentCheckinAudio.play().catch(() => {
+      currentCheckinAudio = null;
+    });
+  } catch {
+    currentCheckinAudio = null;
+  }
 }

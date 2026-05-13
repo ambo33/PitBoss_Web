@@ -36,6 +36,34 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE tournaments
       ADD COLUMN IF NOT EXISTS tvdisplaycode STRING(8)
     `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS tvgreetingdisplayenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS tvgreetingaudioenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS tvshowknockoutqrenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS checkinaudiodata STRING
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS checkinaudiofilename STRING(255)
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS avatarimagedata STRING
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS avatarfilename STRING(255)
+    `);
 
     const existingCodeRows = await client.query<{ tvdisplaycode: string | null }>(`
       SELECT tvdisplaycode
@@ -87,7 +115,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS knockedoutat TIMESTAMPTZ
     `);
-    console.log('Schema ready: tournament group fields, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, chip sets, and knockout tracking are available.');
+    console.log('Schema ready: tournament group fields, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
   } finally {
     client.release();
     if (options.closePool) {

@@ -50,6 +50,7 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
   const rows = await query<TournamentPlayer>(
     `SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            m.avatarimagedata,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
             COALESCE(CAST(tp.rebuys AS INT), 0) AS rebuys,
             CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
@@ -268,6 +269,25 @@ playersRouter.post('/:tid/players/:uid/rebuy', async (req: Request, res: Respons
   res.json({ success: true, rebuys: updated.rebuys });
 });
 
+playersRouter.delete('/:tid/players/:uid/rebuy', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ rebuys: number }>(
+    `UPDATE tournamentplayers
+     SET rebuys = GREATEST(COALESCE(rebuys, 0) - 1, 0)
+     WHERE tournamentid = $1 AND userid = $2
+     RETURNING COALESCE(CAST(rebuys AS INT), 0) AS rebuys`,
+    [req.params.tid, req.params.uid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'rebuy-undo' });
+  res.json({ success: true, rebuys: updated.rebuys });
+});
+
 playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
@@ -284,6 +304,25 @@ playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Respons
     return;
   }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon' });
+  res.json({ success: true, addedon: updated.addedon });
+});
+
+playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ addedon: boolean }>(
+    `UPDATE tournamentplayers
+     SET addedon = FALSE
+     WHERE tournamentid = $1 AND userid = $2
+     RETURNING CASE WHEN ${truthySql('addedon')} THEN TRUE ELSE FALSE END AS addedon`,
+    [req.params.tid, req.params.uid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon-undo' });
   res.json({ success: true, addedon: updated.addedon });
 });
 

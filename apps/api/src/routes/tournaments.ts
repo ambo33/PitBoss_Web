@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
 import { sendTournamentCancelledEmail } from '../services/email';
+import { broadcastTournamentUpdate } from '../socket';
 import { Tournament } from '../types';
 
 export const tournamentsRouter = Router();
@@ -107,6 +108,9 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
+            COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
+            COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
@@ -137,6 +141,9 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, t.tvdisplaycode,
+            COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
+            COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
+            COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
      FROM tournaments t
      JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid AND tp.userid = $1
@@ -151,8 +158,9 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
           addonprice, addonchips, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
     buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
-    addonprice?: number; addonchips?: number; maxplayers?: number;
-    playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null;
+          addonprice?: number; addonchips?: number; maxplayers?: number;
+          playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null;
+          tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
 
@@ -162,14 +170,16 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   }
 
   const row = await queryOne<{ tournamentid: string }>(
-    `INSERT INTO tournaments
+      `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
-        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING tournamentid`,
+        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
+        tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
      rebuychips ?? 0, addonprice ?? 0, addonchips ?? 0, maxplayers ?? 0,
-     playerselftracking ?? false, groupid ?? null, payoutstructure ?? null, tvDisplayCode]
+     playerselftracking ?? false, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
+     true, true, true]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
 
@@ -195,6 +205,9 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
+            COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
+            COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
@@ -224,7 +237,8 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   }
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips,
-          addonprice, addonchips, maxplayers, playerselftracking, groupid, rake, payoutstructure } = req.body as Partial<Tournament>;
+          addonprice, addonchips, maxplayers, playerselftracking, groupid, rake, payoutstructure,
+          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled } = req.body as Partial<Tournament>;
   const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
     `SELECT date AS tourneydate, time AS tourneytime
      FROM tournaments
@@ -269,13 +283,18 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        maxplayers = COALESCE($10, maxplayers),
        playerselftracking = COALESCE($11, playerselftracking),
        groupid = COALESCE($13, groupid),
-       payoutstructure = COALESCE($14, payoutstructure)
+       payoutstructure = COALESCE($14, payoutstructure),
+       tvgreetingdisplayenabled = COALESCE($15, tvgreetingdisplayenabled),
+       tvgreetingaudioenabled = COALESCE($16, tvgreetingaudioenabled),
+       tvshowknockoutqrenabled = COALESCE($17, tvshowknockoutqrenabled)
      WHERE tournamentid = $12`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
      rebuychips ?? null, addonprice ?? null, addonchips ?? null, maxplayers ?? null,
-     playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null]
+     playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
+     tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null]
   );
+  broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
   res.json({ success: true });
 });
 
