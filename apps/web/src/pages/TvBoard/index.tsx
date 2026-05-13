@@ -36,23 +36,25 @@ export default function TvBoardPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#090a0f] text-white">
-      <div className="flex h-full min-w-[1280px] flex-col bg-pit-bg px-4 py-3 xl:px-5 xl:py-4">
-        <header className="mb-3 flex shrink-0 items-center justify-between rounded-2xl border border-pit-border bg-pit-surface/80 px-5 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.34)]">
+      <div className="flex h-full flex-col bg-pit-bg px-3 py-3 xl:px-4 xl:py-4">
+        <header className="mb-3 flex shrink-0 items-center justify-between gap-4 rounded-2xl border border-pit-border bg-pit-surface/80 px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.34)] xl:px-5">
           <div className="flex items-center gap-3">
             <img
               src="/branding/pokerplanner-logo-compact.png"
               alt="PokerPlanner.bet"
-              className="h-12 w-12 object-contain xl:h-14 xl:w-14"
+              className="h-10 w-10 object-contain xl:h-12 xl:w-12"
             />
             <div>
-              <p className="text-2xl font-semibold tracking-tight text-white xl:text-3xl">PokerPlanner.bet</p>
-              <p className="mt-0.5 text-xs uppercase tracking-[0.26em] text-pit-muted xl:text-sm">Run Better Poker Nights</p>
+              <p className="text-xl font-semibold tracking-tight text-white xl:text-2xl">PokerPlanner.bet</p>
+              <p className="mt-0.5 text-[11px] uppercase tracking-[0.24em] text-pit-muted xl:text-xs">Run Better Poker Nights</p>
             </div>
           </div>
 
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.28em] text-pit-muted xl:text-sm">Tournament Display</p>
-            <h1 className="mt-1 max-w-[42rem] text-3xl font-semibold tracking-tight text-white xl:text-5xl">{data.tournament.name}</h1>
+          <div className="min-w-0 flex-1 text-right">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-pit-muted xl:text-xs">Tournament Display</p>
+            <h1 className="mt-1 break-words text-2xl font-semibold leading-none tracking-tight text-white xl:text-4xl">
+              {data.tournament.name}
+            </h1>
           </div>
         </header>
 
