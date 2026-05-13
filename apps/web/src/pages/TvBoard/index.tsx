@@ -64,7 +64,7 @@ export default function TvBoardPage() {
             isOwner={false}
             tournament={data.tournament}
             players={data.players}
-            mode="display"
+            mode="tv"
             queryKeysToRefresh={[['public-tv-board', code]]}
           />
         </div>
