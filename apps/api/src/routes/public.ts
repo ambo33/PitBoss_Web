@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool, query, queryOne } from '../db';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
+import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 
 export const publicRouter = Router();
@@ -70,6 +70,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
       `SELECT tp.userid, u.emailaddress,
               COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
               COALESCE(tp.checkedin, FALSE) AS checkedin,
+              CAST(tp.placed AS INT) AS placed,
               CAST(ts."Table" AS INT) AS tablenumber,
               ts.seat
        FROM tournamentplayers tp
@@ -163,7 +164,32 @@ publicRouter.post('/tournaments/:id/checkin/self', requireAuth, async (req: Requ
 });
 
 publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Response) => {
+  const guestUserId = typeof (req.body as { guestUserId?: string }).guestUserId === 'string'
+    ? String((req.body as { guestUserId?: string }).guestUserId)
+    : '';
   const displayname = String((req.body as { displayname?: string }).displayname ?? '').trim();
+
+  if (guestUserId) {
+    const existing = await queryOne(
+      `SELECT 1
+       FROM tournamentplayers tp
+       JOIN usermetadata um ON um.userid = tp.userid
+       WHERE tp.tournamentid = $1 AND tp.userid = $2 AND COALESCE(um.isguestuser, FALSE) = TRUE`,
+      [req.params.id, guestUserId]
+    );
+    if (existing) {
+      await query(
+        `UPDATE tournamentplayers
+         SET checkedin = TRUE
+         WHERE tournamentid = $1 AND userid = $2`,
+        [req.params.id, guestUserId]
+      );
+      broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-recheckin' });
+      res.json({ success: true, guestUserId });
+      return;
+    }
+  }
+
   if (!displayname) {
     res.status(400).json({ error: 'Guest name required' });
     return;
@@ -214,4 +240,130 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
   } finally {
     client.release();
   }
+});
+
+publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request, res: Response) => {
+  const tournament = await queryOne<Tournament>(
+    `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, 0 AS rebuychips,
+            t.addoncost AS addonprice, t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            t.createdate AS createdat, t.groupid, g.name AS groupname
+     FROM tournaments t
+     LEFT JOIN groups g ON g.groupid = t.groupid
+     WHERE t.tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+
+  const guestUserId = typeof req.query.guestUserId === 'string' ? req.query.guestUserId : null;
+  const entryUserId = req.userId ?? guestUserId;
+
+  let entry: LobbyEntry | null = null;
+  if (entryUserId) {
+    entry = await queryOne<LobbyEntry>(
+      `SELECT tp.userid, u.emailaddress,
+              COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+              COALESCE(tp.checkedin, FALSE) AS checkedin,
+              CAST(tp.placed AS INT) AS placed
+       FROM tournamentplayers tp
+       JOIN users u ON u.guid = tp.userid
+       LEFT JOIN usermetadata m ON m.userid = tp.userid
+       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
+      [req.params.id, entryUserId]
+    );
+  }
+
+  const activePlayers = await query<KnockoutOption>(
+    `SELECT tp.userid, u.emailaddress,
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname
+     FROM tournamentplayers tp
+     JOIN users u ON u.guid = tp.userid
+     LEFT JOIN usermetadata m ON m.userid = tp.userid
+     WHERE tp.tournamentid = $1
+       AND COALESCE(tp.checkedin, FALSE) = TRUE
+       AND tp.placed IS NULL
+       AND ($2::UUID IS NULL OR tp.userid <> $2::UUID)
+     ORDER BY COALESCE(m.nickname, u.emailaddress)`,
+    [req.params.id, entryUserId]
+  );
+
+  res.json({ tournament, entry, activePlayers });
+});
+
+publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Request, res: Response) => {
+  const guestUserId = typeof (req.body as { guestUserId?: string }).guestUserId === 'string'
+    ? String((req.body as { guestUserId?: string }).guestUserId)
+    : '';
+  const knockedoutByUserId = typeof (req.body as { knockedoutByUserId?: string }).knockedoutByUserId === 'string'
+    ? String((req.body as { knockedoutByUserId?: string }).knockedoutByUserId)
+    : null;
+  const playerUserId = req.userId ?? guestUserId;
+
+  if (!playerUserId) {
+    res.status(401).json({ error: 'Sign in or return on the same device you used to check in.' });
+    return;
+  }
+
+  const entry = await queryOne<{ checkedin: boolean; placed: number | null }>(
+    `SELECT COALESCE(checkedin, FALSE) AS checkedin, CAST(placed AS INT) AS placed
+     FROM tournamentplayers
+     WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, playerUserId]
+  );
+  if (!entry) {
+    res.status(404).json({ error: 'You are not registered for this tournament on this device.' });
+    return;
+  }
+  if (entry.placed != null) {
+    res.status(409).json({ error: 'You have already been marked out.' });
+    return;
+  }
+  if (!entry.checkedin) {
+    res.status(409).json({ error: 'You must be checked in before reporting a knockout.' });
+    return;
+  }
+
+  if (knockedoutByUserId) {
+    const validKnockoutBy = await queryOne(
+      `SELECT 1
+       FROM tournamentplayers
+       WHERE tournamentid = $1
+         AND userid = $2
+         AND COALESCE(checkedin, FALSE) = TRUE
+         AND placed IS NULL`,
+      [req.params.id, knockedoutByUserId]
+    );
+    if (!validKnockoutBy || knockedoutByUserId === playerUserId) {
+      res.status(400).json({ error: 'Choose a valid player who knocked you out.' });
+      return;
+    }
+  }
+
+  const activeField = await queryOne<{ activecount: number }>(
+    `SELECT CAST(GREATEST(
+        COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE THEN 1 ELSE 0 END), 0) -
+        COALESCE(sum(CASE WHEN placed IS NOT NULL THEN 1 ELSE 0 END), 0),
+        0
+      ) AS INT) AS activecount
+     FROM tournamentplayers
+     WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  const placed = Math.max(Number(activeField?.activecount ?? 0), 1);
+
+  await query(
+    `UPDATE tournamentplayers
+     SET placed = $3,
+         checkedin = FALSE,
+         knockedoutbyuserid = $4,
+         knockedoutat = now()
+     WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, playerUserId, placed, knockedoutByUserId]
+  );
+
+  broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });
+  res.json({ success: true, placed });
 });

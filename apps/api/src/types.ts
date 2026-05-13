@@ -62,6 +62,8 @@ export interface TournamentPlayer {
   rebuys: number;
   addedon: boolean;
   placed: number | null;
+  knockedoutbyuserid?: string | null;
+  knockedoutbyname?: string | null;
   paid: boolean;
   registeredat: string;
   tablenumber?: number | null;
@@ -118,8 +120,15 @@ export interface LobbyEntry {
   emailaddress: string;
   displayname?: string;
   checkedin: boolean;
+  placed?: number | null;
   tablenumber?: number | null;
   seat?: number | null;
+}
+
+export interface KnockoutOption {
+  userid: string;
+  emailaddress: string;
+  displayname?: string;
 }
 
 // Express request augmentation

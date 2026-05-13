@@ -29,7 +29,15 @@ async function migrate() {
         sortorder INT DEFAULT 0
       )
     `);
-    console.log('Migration complete: tournament group fields, rake, payout structure, invite code uniqueness, and chip sets are available.');
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS knockedoutbyuserid UUID
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS knockedoutat TIMESTAMPTZ
+    `);
+    console.log('Migration complete: tournament group fields, rake, payout structure, invite code uniqueness, chip sets, and knockout tracking are available.');
   } finally {
     client.release();
     await pool.end();

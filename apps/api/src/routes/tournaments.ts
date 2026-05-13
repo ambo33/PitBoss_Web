@@ -67,7 +67,7 @@ async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> 
 tournamentsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, 0 AS rebuychips, t.addoncost AS addonprice,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
@@ -97,7 +97,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
 tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, 0 AS rebuychips, t.addoncost AS addonprice,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid,
@@ -123,11 +123,11 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const row = await queryOne<{ tournamentid: string }>(
     `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
-        addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING tournamentid`,
+        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
-     addonprice ?? 0, addonchips ?? 0, maxplayers ?? 0,
+     rebuychips ?? 0, addonprice ?? 0, addonchips ?? 0, maxplayers ?? 0,
      playerselftracking ?? false, groupid ?? null, payoutstructure ?? null]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
@@ -150,7 +150,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
 
   const row = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, 0 AS rebuychips, t.addoncost AS addonprice,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
             t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
@@ -181,7 +181,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
 
-  const { name, tourneydate, tourneytime, buyin, rebuyprice,
+  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips,
           addonprice, addonchips, maxplayers, playerselftracking, groupid, rake, payoutstructure } = req.body as Partial<Tournament>;
   if (rake != null) {
     const grossPot = await getGrossPot(req.params.id, { buyin, rebuyprice, addonprice });
@@ -198,16 +198,17 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        buyin = COALESCE($4, buyin),
        adjustment = COALESCE($5, adjustment),
        rebuycost = COALESCE($6, rebuycost),
-       addoncost = COALESCE($7, addoncost),
-       addonchips = COALESCE($8, addonchips),
-       maxplayers = COALESCE($9, maxplayers),
-       playerselftracking = COALESCE($10, playerselftracking),
-       groupid = COALESCE($12, groupid),
-       payoutstructure = COALESCE($13, payoutstructure)
-     WHERE tournamentid = $11`,
+       rebuychips = COALESCE($7, rebuychips),
+       addoncost = COALESCE($8, addoncost),
+       addonchips = COALESCE($9, addonchips),
+       maxplayers = COALESCE($10, maxplayers),
+       playerselftracking = COALESCE($11, playerselftracking),
+       groupid = COALESCE($13, groupid),
+       payoutstructure = COALESCE($14, payoutstructure)
+     WHERE tournamentid = $12`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
-     addonprice ?? null, addonchips ?? null, maxplayers ?? null,
+     rebuychips ?? null, addonprice ?? null, addonchips ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null]
   );
   res.json({ success: true });

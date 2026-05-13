@@ -72,8 +72,12 @@ export const api = {
     get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   lobbySelfCheckin: (id: string) =>
     post<{ success: boolean }>(`/public/tournaments/${id}/checkin/self`),
-  lobbyGuestCheckin: (id: string, data: { displayname: string }) =>
+  lobbyGuestCheckin: (id: string, data: { displayname?: string; guestUserId?: string }) =>
     post<{ success: boolean; guestUserId: string }>(`/public/tournaments/${id}/checkin/guest`, data),
+  getPublicKnockout: (id: string, guestUserId?: string) =>
+    get<PublicKnockoutResponse>(`/public/tournaments/${id}/knockout${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  publicSelfKnockout: (id: string, data: { guestUserId?: string; knockedOutByUserId?: string }) =>
+    post<{ success: boolean; placed: number }>(`/public/tournaments/${id}/knockout/self`, data),
 
   // Players
   getPlayers: (tid: string) => get<TournamentPlayer[]>(`/tournaments/${tid}/players`),
@@ -131,7 +135,7 @@ export interface Tournament {
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
   checkedin: boolean; rebuys: number; addedon: boolean;
-  placed: number | null; paid: boolean; registeredat: string;
+  placed: number | null; knockedoutbyuserid?: string | null; knockedoutbyname?: string | null; paid: boolean; registeredat: string;
   tablenumber?: number | null; seat?: number | null;
 }
 export interface BlindLevel {
@@ -153,11 +157,19 @@ export interface LobbyFieldStats {
 }
 export interface LobbyEntry {
   userid: string; emailaddress: string; displayname?: string;
-  checkedin: boolean; tablenumber?: number | null; seat?: number | null;
+  checkedin: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
 }
 export interface PublicLobbyResponse {
   tournament: Tournament;
   field: LobbyFieldStats;
   seating: SeatingAssignment[];
   entry: LobbyEntry | null;
+}
+export interface KnockoutOption {
+  userid: string; emailaddress: string; displayname?: string;
+}
+export interface PublicKnockoutResponse {
+  tournament: Tournament;
+  entry: LobbyEntry | null;
+  activePlayers: KnockoutOption[];
 }

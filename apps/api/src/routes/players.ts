@@ -43,12 +43,16 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
             COALESCE(CAST(tp.rebuys AS INT), 0) AS rebuys,
             COALESCE(tp.addedon, 0) != 0 AS addedon,
             CAST(tp.placed AS INT) AS placed,
+            tp.knockedoutbyuserid,
+            COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
             COALESCE(tp.paid, FALSE) AS paid,
             tp.createdate AS registeredat,
             CAST(ts."Table" AS INT) AS tablenumber, ts.seat
      FROM tournamentplayers tp
      JOIN users u ON u.guid = tp.userid
      LEFT JOIN usermetadata m ON m.userid = tp.userid
+     LEFT JOIN users ku ON ku.guid = tp.knockedoutbyuserid
+     LEFT JOIN usermetadata km ON km.userid = tp.knockedoutbyuserid
      LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
      WHERE tp.tournamentid = $1
      ORDER BY tp.createdate`,
@@ -262,10 +266,15 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
-  const { placed } = req.body as { placed: number };
+  const { placed, knockedoutbyuserid } = req.body as { placed: number; knockedoutbyuserid?: string | null };
   await query(
-    `UPDATE tournamentplayers SET placed = $3 WHERE tournamentid = $1 AND userid = $2`,
-    [req.params.tid, req.params.uid, placed]
+    `UPDATE tournamentplayers
+     SET placed = $3,
+         checkedin = FALSE,
+         knockedoutbyuserid = $4,
+         knockedoutat = now()
+     WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.tid, req.params.uid, placed, knockedoutbyuserid ?? null]
   );
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
   res.json({ success: true });

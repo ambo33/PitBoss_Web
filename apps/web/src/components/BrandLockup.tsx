@@ -2,6 +2,7 @@ interface BrandLockupProps {
   compact?: boolean;
   centered?: boolean;
   showSlogan?: boolean;
+  showWordmark?: boolean;
   className?: string;
 }
 
@@ -9,21 +10,24 @@ export default function BrandLockup({
   compact = false,
   centered = false,
   showSlogan = true,
+  showWordmark = true,
   className = '',
 }: BrandLockupProps) {
   return (
     <div className={`${centered ? 'items-center text-center' : 'items-start text-left'} flex gap-3 ${className}`.trim()}>
       <BrandMark compact={compact} />
-      <div className="min-w-0">
-        <p className={`${compact ? 'text-base' : 'text-3xl'} font-extrabold leading-none tracking-tight text-white`}>
-          PokerPlanner.bet
-        </p>
-        {showSlogan && (
-          <p className={`${compact ? 'mt-1 text-[11px]' : 'mt-2 text-sm'} font-medium text-pit-text`}>
-            Run Better Poker Nights
+      {showWordmark && (
+        <div className="min-w-0">
+          <p className={`${compact ? 'text-base' : 'text-3xl'} font-extrabold leading-none tracking-tight text-white`}>
+            PokerPlanner.bet
           </p>
-        )}
-      </div>
+          {showSlogan && (
+            <p className={`${compact ? 'mt-1 text-[11px]' : 'mt-2 text-sm'} font-medium text-pit-text`}>
+              Run Better Poker Nights
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

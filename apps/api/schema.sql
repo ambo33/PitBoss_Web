@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS tournamentplayers (
   rebuys       INT DEFAULT 0,
   addedon      BOOL DEFAULT FALSE,
   placed       INT,
+  knockedoutbyuserid UUID,
+  knockedoutat TIMESTAMPTZ,
   paid         BOOL DEFAULT FALSE,
   registeredat TIMESTAMPTZ DEFAULT now(),
   UNIQUE (tournamentid, userid)

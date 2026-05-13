@@ -1,32 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
-import { Howl } from 'howler';
 import { Calculator, Plus, Save, Trash2, Wand2 } from 'lucide-react';
-import { api, BlindLevel, TournamentChip } from '../../api/client';
-
-interface TimerTick {
-  remainingsecs: number;
-  currentlevel: number;
-  running: boolean;
-}
-
-interface TimerState extends TimerTick {
-  blinds: BlindLevel[];
-  tournamentid: string;
-}
+import { api, BlindLevel, Tournament, TournamentChip } from '../../api/client';
 
 interface BlindTimerProps {
   tournamentId: string;
   isOwner: boolean;
   playerCount: number;
+  tournament: Tournament;
 }
 
 type DraftLevel = Omit<BlindLevel, 'id'>;
 
 interface EditableBlindLevel {
   level: number;
-  label: string;
   smallblind: string;
   bigblind: string;
   ante: string;
@@ -51,6 +38,8 @@ interface CalculatorSettings {
   finishBigBlinds: string;
   anteStartLevel: string;
   antePercent: string;
+  expectedRebuys: string;
+  expectedAddons: string;
 }
 
 interface ParsedCalculatorSettings {
@@ -63,15 +52,10 @@ interface ParsedCalculatorSettings {
   finishBigBlinds: number;
   anteStartLevel: number;
   antePercent: number;
-}
-
-function createSound(src: string): Howl | null {
-  try {
-    return new Howl({ src: [src], volume: 0.7 });
-  } catch (error) {
-    console.error('Unable to initialize timer sound', error);
-    return null;
-  }
+  expectedRebuys: number;
+  expectedAddons: number;
+  rebuyChips: number;
+  addonChips: number;
 }
 
 const CHIP_COLORS = [
@@ -95,15 +79,8 @@ const DEFAULT_CHIPS: EditableChip[] = [
   { denomination: '5000', color: 'Red', quantity: '0', sortorder: 4 },
 ];
 
-export default function BlindTimer({ tournamentId, isOwner, playerCount }: BlindTimerProps) {
+export default function BlindTimer({ tournamentId, isOwner, playerCount, tournament }: BlindTimerProps) {
   const qc = useQueryClient();
-  const socketRef = useRef<Socket | null>(null);
-  const soundsRef = useRef<{
-    beep5min: Howl | null;
-    beep1min: Howl | null;
-    beepEnd: Howl | null;
-  } | null>(null);
-  const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [editing, setEditing] = useState(false);
 
   const { data: blinds = [], isLoading } = useQuery({
@@ -118,17 +95,9 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount }: Blind
 
   const saveMutation = useMutation({
     mutationFn: (levels: DraftLevel[]) => api.saveBlinds(tournamentId, levels),
-    onSuccess: (_data, levels) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['blinds', tournamentId] });
       setEditing(false);
-      socketRef.current?.emit('join-tournament', tournamentId);
-      setTimerState({
-        tournamentid: tournamentId,
-        currentlevel: 1,
-        remainingsecs: (levels[0]?.minutes ?? 20) * 60,
-        running: false,
-        blinds: levels.map((level, index) => ({ ...level, id: `draft-${index}` })),
-      });
     },
   });
 
@@ -137,108 +106,30 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount }: Blind
     onSuccess: () => qc.invalidateQueries({ queryKey: ['chips', tournamentId] }),
   });
 
-  useEffect(() => {
-    if (!soundsRef.current) {
-      soundsRef.current = {
-        beep5min: createSound('https://od.lk/s/NjFfMTU0NDk5NTdf/5minwarning.mp3'),
-        beep1min: createSound('https://od.lk/s/NjFfMTU0NDk5NThf/1minwarning.mp3'),
-        beepEnd: createSound('https://od.lk/s/NjFfMTU0NDk5NTlf/levelend.mp3'),
-      };
-    }
-
-    const socket = io('/', { path: '/socket.io' });
-    socketRef.current = socket;
-    socket.emit('join-tournament', tournamentId);
-    socket.on('timer-state', (state: TimerState) => setTimerState(state));
-    socket.on('timer-tick', (tick: TimerTick) => {
-      setTimerState((current) => (current ? { ...current, ...tick } : null));
-      if (tick.remainingsecs === 300) soundsRef.current?.beep5min?.play();
-      if (tick.remainingsecs === 60) soundsRef.current?.beep1min?.play();
-      if (tick.remainingsecs === 0) soundsRef.current?.beepEnd?.play();
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [tournamentId]);
-
-  function emit(event: string) {
-    socketRef.current?.emit(event, { tournamentId });
-  }
-
-  const effectiveBlinds = (timerState?.blinds.length ? timerState.blinds : blinds)
-    .map((blind) => ({
-      ...blind,
-      level: Number(blind.level),
-      smallblind: Number(blind.smallblind),
-      bigblind: Number(blind.bigblind),
-      ante: Number(blind.ante),
-      minutes: Number(blind.minutes),
-    }))
-    .sort((a, b) => a.level - b.level);
-  const effectiveLevel = Number(timerState?.currentlevel ?? effectiveBlinds[0]?.level ?? 1);
-  const currentBlind = effectiveBlinds.find((blind) => blind.level === effectiveLevel) ?? effectiveBlinds[0];
-  const visibleBlinds = blinds.length > 0 ? blinds : effectiveBlinds;
-  const secs = timerState?.remainingsecs ?? (currentBlind?.minutes ?? 0) * 60;
-  const mins = Math.floor(secs / 60);
-  const sec = secs % 60;
-  const timeStr = `${String(mins).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  const urgency = secs <= 60 ? 'text-red-400' : secs <= 300 ? 'text-yellow-400' : 'text-white';
+  const visibleBlinds = blinds;
 
   if (isLoading) return <div className="mt-8 text-center text-pit-text">Loading...</div>;
 
   return (
     <div className="space-y-6">
-      <div className="card space-y-4 text-center">
-        {currentBlind ? (
-          <>
-            <p className="text-sm font-medium uppercase tracking-wider text-pit-text">
-              {currentBlind.label} - Level {effectiveLevel}
-            </p>
-            <p className={`font-mono text-7xl font-bold tabular-nums ${urgency}`}>{timeStr}</p>
-            <div className="flex flex-wrap justify-center gap-8 text-lg">
-              <span className="text-pit-text">SB: <strong className="text-white">{currentBlind.smallblind.toLocaleString()}</strong></span>
-              <span className="text-pit-text">BB: <strong className="text-white">{currentBlind.bigblind.toLocaleString()}</strong></span>
-              {currentBlind.ante > 0 && (
-                <span className="text-pit-text">Ante: <strong className="text-white">{currentBlind.ante.toLocaleString()}</strong></span>
-              )}
-            </div>
-          </>
-        ) : effectiveBlinds.length === 0 ? (
-          <p className="py-8 text-pit-text">No blind structure yet.</p>
-        ) : null}
-
-        {isOwner && currentBlind && (
-          <div className="flex flex-wrap justify-center gap-3">
-            <button className="btn-ghost" onClick={() => emit('timer-prev')}>Prev</button>
-            {timerState?.running
-              ? <button className="btn-danger" onClick={() => emit('timer-pause')}>Pause</button>
-              : <button className="btn-primary" onClick={() => emit('timer-start')}>Start</button>
-            }
-            <button className="btn-ghost" onClick={() => emit('timer-next')}>Next</button>
-          </div>
-        )}
-
-        {(visibleBlinds.length > 0 || editing || isOwner) && (
-          <div className="border-t border-pit-border pt-4 text-left">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold text-white">Blind Structure</h3>
-              {isOwner && (
-                <button className="btn-ghost text-sm" onClick={() => setEditing(!editing)}>
-                  {editing ? 'Cancel' : 'Edit'}
-                </button>
-              )}
-            </div>
-            {editing ? (
-              <BlindEditor
-                initial={visibleBlinds}
-                onSave={(levels) => saveMutation.mutate(levels)}
-                loading={saveMutation.isPending}
-                error={saveMutation.error?.message}
-              />
-            ) : (
-              <BlindTable blinds={visibleBlinds} currentLevel={effectiveLevel} />
-            )}
-          </div>
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-white">Blind Structure</h3>
+          {isOwner && (
+            <button className="btn-ghost text-sm" onClick={() => setEditing(!editing)}>
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+          )}
+        </div>
+        {editing ? (
+          <BlindEditor
+            initial={visibleBlinds}
+            onSave={(levels) => saveMutation.mutate(levels)}
+            loading={saveMutation.isPending}
+            error={saveMutation.error?.message}
+          />
+        ) : (
+          <BlindTable blinds={visibleBlinds} />
         )}
       </div>
 
@@ -253,6 +144,7 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount }: Blind
       {isOwner && (
         <BlindCalculator
           playerCount={playerCount}
+          tournament={tournament}
           saving={saveMutation.isPending}
           error={saveMutation.error?.message}
           onSave={(levels) => saveMutation.mutate(levels)}
@@ -264,11 +156,13 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount }: Blind
 
 function BlindCalculator({
   playerCount,
+  tournament,
   saving,
   error,
   onSave,
 }: {
   playerCount: number;
+  tournament: Tournament;
   saving: boolean;
   error?: string;
   onSave: (levels: DraftLevel[]) => void;
@@ -284,11 +178,22 @@ function BlindCalculator({
     finishBigBlinds: '10',
     anteStartLevel: '0',
     antePercent: '10',
+    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(playerCount * 0.4), 0)) : '0',
+    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(playerCount * 0.5), 0)) : '0',
   });
 
-  const parsedSettings = useMemo(() => parseCalculatorSettings(settings), [settings]);
+  const parsedSettings = useMemo(
+    () => parseCalculatorSettings(settings, tournament),
+    [settings, tournament]
+  );
   const generatedLevels = useMemo(() => generateBlindStructure(parsedSettings), [parsedSettings]);
-  const totalChips = parsedSettings.players * parsedSettings.startingStack;
+  const totalChips = (
+    parsedSettings.players * parsedSettings.startingStack
+    + (parsedSettings.expectedRebuys * parsedSettings.rebuyChips)
+    + (parsedSettings.expectedAddons * parsedSettings.addonChips)
+  );
+  const rebuysEnabled = toNumber(tournament.rebuyprice) > 0 && toNumber(tournament.rebuychips) > 0;
+  const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
 
   function update(field: keyof CalculatorSettings, value: string) {
     setSettings((current) => ({ ...current, [field]: value }));
@@ -319,6 +224,22 @@ function BlindCalculator({
             <NumberField label="Chip increment" value={settings.chipIncrement} min={1} onChange={(value) => update('chipIncrement', value)} />
             <NumberField label="Finish BBs in play" value={settings.finishBigBlinds} min={4} onChange={(value) => update('finishBigBlinds', value)} />
             <NumberField label="Ante from level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
+            {rebuysEnabled && (
+              <NumberField
+                label={`Expected rebuys (${toNumber(tournament.rebuychips).toLocaleString()} chips ea)`}
+                value={settings.expectedRebuys}
+                min={0}
+                onChange={(value) => update('expectedRebuys', value)}
+              />
+            )}
+            {addonsEnabled && (
+              <NumberField
+                label={`Expected add-ons (${toNumber(tournament.addonchips).toLocaleString()} chips ea)`}
+                value={settings.expectedAddons}
+                min={0}
+                onChange={(value) => update('expectedAddons', value)}
+              />
+            )}
           </div>
 
           <div className="rounded-lg border border-pit-border bg-pit-bg/50 p-3">
@@ -332,6 +253,11 @@ function BlindCalculator({
                 {saving ? 'Saving...' : 'Save Generated'}
               </button>
             </div>
+            {(rebuysEnabled || addonsEnabled) && (
+              <p className="mb-3 text-xs text-pit-muted">
+                Includes {parsedSettings.expectedRebuys.toLocaleString()} expected rebuys and {parsedSettings.expectedAddons.toLocaleString()} expected add-ons in the chip pool.
+              </p>
+            )}
             <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
           </div>
         </>
@@ -549,7 +475,7 @@ function BlindTable({ blinds, currentLevel }: { blinds: BlindLevel[]; currentLev
           {blinds.map((blind) => (
             <tr key={blind.id} className={`border-b border-pit-border/40 ${blind.level === currentLevel ? 'bg-pit-teal/10' : ''}`}>
               <td className="py-1.5">
-                {blind.label || `Level ${blind.level}`}
+                {`Level ${blind.level}`}
                 {blind.islastlevel && <span className="ml-1 text-xs text-pit-muted">(last)</span>}
               </td>
               <td className="text-right">{blind.smallblind.toLocaleString()}</td>
@@ -578,13 +504,14 @@ function BlindEditor({
   const [levels, setLevels] = useState<EditableBlindLevel[]>(
     initial.length > 0
       ? initial.map(({ id: _id, smallblind, bigblind, ante, minutes, ...rest }) => ({
-        ...rest,
+        level: rest.level,
         smallblind: String(smallblind),
         bigblind: String(bigblind),
         ante: String(ante),
         minutes: String(minutes),
+        islastlevel: Boolean(rest.islastlevel),
       }))
-      : [{ level: 1, label: 'Level 1', smallblind: '25', bigblind: '50', ante: '0', minutes: '20', islastlevel: false }]
+      : [{ level: 1, smallblind: '25', bigblind: '50', ante: '0', minutes: '20', islastlevel: false }]
   );
 
   function update(index: number, field: keyof EditableBlindLevel, value: string | number | boolean) {
@@ -596,7 +523,6 @@ function BlindEditor({
     const lastBigBlind = parseSetting(last?.bigblind ?? '', 50);
     setLevels((current) => [...current, {
       level: current.length + 1,
-      label: `Level ${current.length + 1}`,
       smallblind: String(lastBigBlind),
       bigblind: String(lastBigBlind * 2),
       ante: last?.ante ?? '0',
@@ -614,6 +540,7 @@ function BlindEditor({
   function save() {
     onSave(levels.map((level, index) => ({
       ...level,
+      label: `Level ${index + 1}`,
       smallblind: parseSetting(level.smallblind, 0),
       bigblind: parseSetting(level.bigblind, 0),
       ante: parseSetting(level.ante, 0),
@@ -627,8 +554,8 @@ function BlindEditor({
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
         {levels.map((level, index) => (
-          <div key={index} className="grid grid-cols-6 items-center gap-1.5 text-sm">
-            <input className="input col-span-2 text-xs" placeholder="Label" value={level.label} onChange={(event) => update(index, 'label', event.target.value)} />
+          <div key={index} className="grid grid-cols-5 items-center gap-1.5 text-sm">
+            <div className="px-2 text-xs font-medium text-pit-text">Level {index + 1}</div>
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" value={level.smallblind} onChange={(event) => update(index, 'smallblind', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" value={level.bigblind} onChange={(event) => update(index, 'bigblind', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
@@ -646,7 +573,7 @@ function BlindEditor({
   );
 }
 
-function parseCalculatorSettings(settings: CalculatorSettings): ParsedCalculatorSettings {
+function parseCalculatorSettings(settings: CalculatorSettings, tournament: Tournament): ParsedCalculatorSettings {
   return {
     players: parseSetting(settings.players, 2),
     startingStack: parseSetting(settings.startingStack, 100),
@@ -657,6 +584,10 @@ function parseCalculatorSettings(settings: CalculatorSettings): ParsedCalculator
     finishBigBlinds: parseSetting(settings.finishBigBlinds, 4),
     anteStartLevel: parseSetting(settings.anteStartLevel, 0),
     antePercent: parseSetting(settings.antePercent, 0),
+    expectedRebuys: parseSetting(settings.expectedRebuys, 0),
+    expectedAddons: parseSetting(settings.expectedAddons, 0),
+    rebuyChips: toNumber(tournament.rebuychips),
+    addonChips: toNumber(tournament.addonchips),
   };
 }
 
@@ -673,7 +604,11 @@ function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[
   const safeHours = Math.max(settings.targetHours || 0, 0.5);
   const increment = Math.max(settings.chipIncrement || 0, 1);
   const startBigBlind = roundTo(Math.max(settings.startingBigBlind || 0, increment), increment);
-  const totalChips = safePlayers * safeStack;
+  const totalChips = (
+    safePlayers * safeStack
+    + Math.max(settings.expectedRebuys || 0, 0) * Math.max(settings.rebuyChips || 0, 0)
+    + Math.max(settings.expectedAddons || 0, 0) * Math.max(settings.addonChips || 0, 0)
+  );
   const targetBigBlind = roundTo(Math.max(startBigBlind, totalChips / Math.max(settings.finishBigBlinds || 0, 4)), increment);
   const levelCount = clamp(Math.round((safeHours * 60) / safeMinutes), 4, 30);
   const growthFactor = levelCount <= 1 ? 1 : Math.pow(targetBigBlind / startBigBlind, 1 / (levelCount - 1));
@@ -709,4 +644,9 @@ function roundTo(value: number, increment: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function toNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

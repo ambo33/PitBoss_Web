@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/auth';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
 import Payouts from './Payouts';
+import RunTournament from './RunTournament';
 import Seating from './Seating';
 
 type Tab = 'details' | 'players' | 'blinds' | 'seating' | 'results' | 'run';
@@ -58,14 +59,14 @@ export default function PreTournamentPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'details', label: 'Details' },
     { id: 'players', label: 'Players' },
-    { id: 'blinds', label: 'Blind Timer' },
+    { id: 'blinds', label: 'Blind Structure' },
     { id: 'seating', label: 'Seating' },
     { id: 'results', label: 'Results' },
     { id: 'run', label: 'Run Tournament' },
   ];
 
   return (
-    <Layout title={tournament.name} back="/">
+    <Layout title={tournament.name} back="/" compactSidebar mainWidthClassName="max-w-[1800px]">
       <div className="mb-6 overflow-x-auto border-b border-pit-border">
         <div className="flex gap-1">
           {tabs.map((currentTab) => (
@@ -97,10 +98,10 @@ export default function PreTournamentPage() {
       )}
 
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
-      {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} />}
+      {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
       {tab === 'seating' && <Seating tournamentId={id!} isOwner={canManage} />}
       {tab === 'results' && <ResultsPanel finishers={finishers} />}
-      {tab === 'run' && <RunTournamentPanel />}
+      {tab === 'run' && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
     </Layout>
   );
 }
@@ -283,15 +284,6 @@ function ResultsPanel({ finishers }: { finishers: { userid: string; displayname?
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-function RunTournamentPanel() {
-  return (
-    <section className="card">
-      <h3 className="text-lg font-semibold text-white">Run Tournament</h3>
-      <p className="mt-2 text-sm text-pit-text">Live floor controls will land here. Player arrivals, QR check-in, and field status now live in the Players tab.</p>
     </section>
   );
 }

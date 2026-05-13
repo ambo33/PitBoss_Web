@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 
 const secret = process.env.JWT_SECRET ?? 'dev-secret';
+const jwtExpiresIn = (process.env.JWT_EXPIRES_IN ?? '30d') as SignOptions['expiresIn'];
 
 export function signToken(userId: string): string {
-  return jwt.sign({ sub: userId }, secret, { expiresIn: '7d' });
+  return jwt.sign({ sub: userId }, secret, { expiresIn: jwtExpiresIn });
 }
 
 function decodeUserId(header?: string): string | null {

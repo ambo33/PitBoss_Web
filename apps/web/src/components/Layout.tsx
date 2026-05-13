@@ -11,6 +11,8 @@ interface Props {
   back?: string;
   tab?: NavTab;
   onTabChange?: (tab: NavTab) => void;
+  compactSidebar?: boolean;
+  mainWidthClassName?: string;
 }
 
 const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
@@ -19,9 +21,21 @@ const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
   { id: 'profile', label: 'Profile', Icon: User },
 ];
 
-export default function Layout({ children, title, back, tab, onTabChange }: Props) {
+export default function Layout({
+  children,
+  title,
+  back,
+  tab,
+  onTabChange,
+  compactSidebar = false,
+  mainWidthClassName = 'max-w-5xl',
+}: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const sidebarWidthClass = compactSidebar ? 'w-20' : 'w-56';
+  const contentMarginClass = compactSidebar ? 'md:ml-20' : 'md:ml-56';
+  const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
+  const mainPaddingClass = compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
 
   function handleLogout() {
     logout();
@@ -46,12 +60,17 @@ export default function Layout({ children, title, back, tab, onTabChange }: Prop
   return (
     <div className="min-h-screen bg-pit-bg">
       <div className="flex min-h-screen">
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-pit-border bg-pit-surface md:flex">
-          <div className="border-b border-pit-border/60 px-5 py-5">
-            <BrandLockup compact className="items-center gap-3" />
+        <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
+          <div className={`border-b border-pit-border/60 py-5 ${compactSidebar ? 'px-3' : 'px-5'}`}>
+            <BrandLockup
+              compact
+              showWordmark={!compactSidebar}
+              showSlogan={!compactSidebar}
+              className={`items-center ${compactSidebar ? 'justify-center gap-0' : 'gap-3'}`}
+            />
           </div>
 
-          <nav className="flex-1 space-y-0.5 px-3 py-4">
+          <nav className={`flex-1 space-y-0.5 py-4 ${compactSidebar ? 'px-2' : 'px-3'}`}>
             {NAV_ITEMS.map(({ id, label, Icon }) => {
               const active = tab === id;
               return (
@@ -62,38 +81,43 @@ export default function Layout({ children, title, back, tab, onTabChange }: Prop
                     active
                       ? 'bg-pit-teal/10 text-pit-teal shadow-[inset_3px_0_0_theme(colors.pit.teal)]'
                       : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
-                  } flex items-center gap-3`}
+                  } flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}
+                  aria-label={label}
+                  title={label}
                 >
                   <Icon size={17} strokeWidth={active ? 2.5 : 2} />
-                  {label}
+                  {!compactSidebar && label}
                 </button>
               );
             })}
           </nav>
 
           {user && (
-            <div className="mx-3 mb-4 rounded-xl border border-pit-border bg-pit-bg p-3">
-              <div className="mb-3 flex items-center gap-3">
+            <div className={`mb-4 rounded-xl border border-pit-border bg-pit-bg p-3 ${compactSidebar ? 'mx-2' : 'mx-3'}`}>
+              <div className={`mb-3 flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
                   {initials}
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-white">{user.displayname}</p>
-                  <p className="truncate text-[10px] text-pit-muted">{user.emailaddress}</p>
-                </div>
+                {!compactSidebar && (
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-white">{user.displayname}</p>
+                    <p className="truncate text-[10px] text-pit-muted">{user.emailaddress}</p>
+                  </div>
+                )}
               </div>
               <button
                 onClick={handleLogout}
                 className="flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition-colors duration-150 hover:text-red-400"
+                title="Sign out"
               >
-                <LogOut size={12} /> Sign out
+                <LogOut size={12} /> {!compactSidebar && 'Sign out'}
               </button>
             </div>
           )}
         </aside>
 
-        <div className="flex min-h-screen flex-1 flex-col md:ml-56">
-          <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-pit-border/60 bg-pit-bg/80 px-4 py-3 backdrop-blur-md">
+        <div className={`flex min-h-screen flex-1 flex-col ${contentMarginClass}`}>
+          <header className={`sticky top-0 z-20 flex items-center gap-3 border-b border-pit-border/60 bg-pit-bg/80 backdrop-blur-md ${headerPaddingClass}`}>
             {back ? (
               <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
                 <ChevronLeft size={18} />
@@ -107,7 +131,7 @@ export default function Layout({ children, title, back, tab, onTabChange }: Prop
             {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
           </header>
 
-          <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 md:p-6 md:pb-8">
+          <main className={`mx-auto w-full flex-1 ${mainPaddingClass} ${mainWidthClassName}`}>
             {children}
           </main>
         </div>

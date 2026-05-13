@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, BlindLevel } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
+import { announceFiveMinuteWarning, announceOneMinuteWarning, primeTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -24,6 +25,11 @@ export default function PlayerLobbyPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
+    fiveMin: false,
+    oneMin: false,
+    level: null,
+  });
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const [timer, setTimer] = useState<TimerState | null>(null);
@@ -39,6 +45,11 @@ export default function PlayerLobbyPage() {
     enabled: !!id,
     refetchInterval: 15_000,
   });
+
+  const tournament = data?.tournament;
+  const field = data?.field;
+  const seating = data?.seating ?? [];
+  const entry = data?.entry;
 
   const selfCheckinMutation = useMutation({
     mutationFn: () => api.lobbySelfCheckin(id!),
@@ -58,14 +69,36 @@ export default function PlayerLobbyPage() {
     },
   });
 
+  const guestRecheckinMutation = useMutation({
+    mutationFn: () => api.lobbyGuestCheckin(id!, {
+      guestUserId,
+      displayname: entry?.displayname ?? undefined,
+    }),
+    onSuccess: (result) => {
+      if (!id) return;
+      localStorage.setItem(guestStorageKey(id), result.guestUserId);
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+    },
+  });
+
   useEffect(() => {
     if (!id) return;
+    primeTimerAudio();
+
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
     socket.emit('join-tournament', id);
-    socket.on('timer-state', (state: TimerState) => setTimer(state));
+    socket.on('timer-state', (state: TimerState) => {
+      setTimer(state);
+      handleLobbyCues(state, true);
+    });
     socket.on('timer-tick', (tick: TimerTick) => {
-      setTimer((current) => (current ? { ...current, ...tick } : null));
+      setTimer((current) => {
+        if (!current) return null;
+        const nextState = { ...current, ...tick };
+        handleLobbyCues(nextState);
+        return nextState;
+      });
     });
     socket.on('tournament-updated', () => {
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
@@ -75,15 +108,43 @@ export default function PlayerLobbyPage() {
     };
   }, [id, qc]);
 
-  const tournament = data?.tournament;
-  const field = data?.field;
-  const seating = data?.seating ?? [];
-  const entry = data?.entry;
+  function handleLobbyCues(state: TimerState, initial = false) {
+    const warningState = lastWarningRef.current;
+
+    if (warningState.level !== state.currentlevel) {
+      warningState.level = state.currentlevel;
+      warningState.fiveMin = false;
+      warningState.oneMin = false;
+      if (initial) return;
+    }
+
+    if (state.remainingsecs > 300) {
+      warningState.fiveMin = false;
+      warningState.oneMin = false;
+    } else if (state.remainingsecs > 60) {
+      warningState.oneMin = false;
+    }
+
+    if (state.remainingsecs <= 300 && state.remainingsecs > 60 && !warningState.fiveMin) {
+      warningState.fiveMin = true;
+      announceFiveMinuteWarning();
+    }
+    if (state.remainingsecs <= 60 && state.remainingsecs > 0 && !warningState.oneMin) {
+      warningState.oneMin = true;
+      announceOneMinuteWarning();
+    }
+  }
 
   const currentBlind = timer?.blinds.find((blind) => blind.level === timer.currentlevel) ?? timer?.blinds[0];
+  const nextBlind = timer?.blinds.find((blind) => blind.level === timer.currentlevel + 1) ?? null;
   const secs = timer?.remainingsecs ?? 0;
   const timeStr = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
   const urgency = secs <= 60 ? 'text-red-400' : secs <= 300 ? 'text-yellow-400' : 'text-white';
+  const timerTone = secs <= 60
+    ? 'border-red-400/40 bg-red-500/10 animate-pulse'
+    : secs <= 300
+      ? 'border-yellow-300/40 bg-yellow-300/10'
+      : 'border-pit-border bg-pit-bg/50';
 
   const tables = useMemo(() => {
     const grouped = new Map<number, typeof seating>();
@@ -106,6 +167,10 @@ export default function PlayerLobbyPage() {
       return;
     }
     selfCheckinMutation.mutate();
+  }
+
+  function handleGuestRecheckin() {
+    guestRecheckinMutation.mutate();
   }
 
   if (isLoading) {
@@ -148,9 +213,9 @@ export default function PlayerLobbyPage() {
 
       <div className="mx-auto max-w-5xl space-y-6">
         {currentBlind && (
-          <div className="card space-y-3 text-center">
+          <div className={`card space-y-3 text-center ${timerTone}`}>
             <p className="text-xs uppercase tracking-wider text-pit-text">
-              {currentBlind.label} - Level {timer?.currentlevel}
+              Level {timer?.currentlevel} of {timer?.blinds.length ?? 0}
               {!timer?.running && <span className="ml-2 text-yellow-400">Paused</span>}
             </p>
             <p className={`font-mono text-6xl font-bold tabular-nums ${urgency}`}>{timeStr}</p>
@@ -161,6 +226,11 @@ export default function PlayerLobbyPage() {
                 <span>Ante: <strong className="text-white">{currentBlind.ante.toLocaleString()}</strong></span>
               )}
             </div>
+            <p className="text-sm text-pit-text">
+              {nextBlind
+                ? <>Next: <strong className="text-white">{nextBlind.smallblind.toLocaleString()} / {nextBlind.bigblind.toLocaleString()}</strong>{nextBlind.ante > 0 && <> - Ante <strong className="text-white">{nextBlind.ante.toLocaleString()}</strong></>}</>
+                : 'Final level'}
+            </p>
           </div>
         )}
 
@@ -168,10 +238,12 @@ export default function PlayerLobbyPage() {
           <div className="text-center">
             <h2 className="text-lg font-semibold text-white">Field Status</h2>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {stats.map((stat) => (
-              <LobbyStat key={stat.label} label={stat.label} value={stat.value} accent={stat.accent} />
-            ))}
+          <div className="overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-3">
+              {stats.map((stat) => (
+                <LobbyStat key={stat.label} label={stat.label} value={stat.value} accent={stat.accent} />
+              ))}
+            </div>
           </div>
         </section>
 
@@ -187,14 +259,43 @@ export default function PlayerLobbyPage() {
             {entry ? (
               <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
                 <p className="text-sm font-semibold text-white">{entry.displayname ?? entry.emailaddress ?? 'Guest Player'}</p>
-                <p className="mt-1 text-sm text-pit-text">
-                  {entry.checkedin ? 'You are checked in.' : 'You are registered for this tournament.'}
-                </p>
-                {entry.seat != null ? (
+                {entry.placed != null ? (
+                  <p className="mt-1 text-sm text-pit-text">You have already finished in place #{entry.placed}.</p>
+                ) : entry.checkedin ? (
+                  <p className="mt-1 text-sm text-pit-text">You are checked in.</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    <p className="text-sm text-pit-text">You are registered, but not currently checked in.</p>
+                    {token ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleSelfCheckin}
+                        disabled={selfCheckinMutation.isPending}
+                      >
+                        {selfCheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+                      </button>
+                    ) : guestUserId ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleGuestRecheckin}
+                        disabled={guestRecheckinMutation.isPending}
+                      >
+                        {guestRecheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+                      </button>
+                    ) : (
+                      <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Check In</button>
+                    )}
+                    {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
+                    {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
+                  </div>
+                )}
+                {entry.placed == null && (entry.seat != null ? (
                   <p className="mt-3 text-base font-semibold text-pit-teal">Seat: Table {entry.tablenumber}, Seat {entry.seat}</p>
                 ) : (
                   <p className="mt-3 text-sm text-pit-text">Seat assignment has not been posted yet.</p>
-                )}
+                ))}
               </div>
             ) : (
               <>
@@ -295,7 +396,7 @@ function LobbyStat({
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-pit-border bg-pit-bg/50 px-3 py-3 text-center">
+    <div className="min-w-[140px] rounded-xl border border-pit-border bg-pit-bg/50 px-4 py-3 text-center">
       <p className={`text-2xl font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
       <p className="mt-1 text-xs uppercase tracking-wide text-pit-muted">{label}</p>
     </div>
