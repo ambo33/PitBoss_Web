@@ -39,19 +39,11 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
     : '/branding/pokerplanner-logo.png';
 
   return (
-    <div
-      className={`shrink-0 overflow-hidden rounded-full bg-black ${
-        compact
-          ? 'border border-white/8 shadow-[0_10px_24px_rgba(0,0,0,0.28)]'
-          : 'border border-white/10 shadow-[0_18px_40px_rgba(0,0,0,0.38)]'
-      }`}
+    <img
+      src={src}
+      alt="PokerPlanner.bet logo"
+      className="shrink-0 rounded-full object-cover"
       style={{ width: size, height: size }}
-    >
-      <img
-        src={src}
-        alt="PokerPlanner.bet logo"
-        className="h-full w-full object-cover"
-      />
-    </div>
+    />
   );
 }

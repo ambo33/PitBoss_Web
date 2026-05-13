@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, CircleDollarSign, Clock3, Lock } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { api } from '../../api/client';
+import BrandLockup from '../../components/BrandLockup';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
@@ -100,7 +101,14 @@ export default function PreTournamentPage() {
   ];
 
   return (
-    <Layout title={tournament.name} back="/" compactSidebar mainWidthClassName="max-w-[1800px]">
+    <Layout
+      title={tournament.name}
+      back="/"
+      compactSidebar
+      hideSidebar={tab === 'run'}
+      headerRight={<BrandLockup compact showSlogan={false} className="items-center gap-2" />}
+      mainWidthClassName="max-w-[1800px]"
+    >
       <div className="mb-6 overflow-x-auto border-b border-pit-border">
         <div className="flex gap-1">
           {tabs.map((currentTab) => (

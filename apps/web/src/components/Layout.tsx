@@ -12,6 +12,8 @@ interface Props {
   tab?: NavTab;
   onTabChange?: (tab: NavTab) => void;
   compactSidebar?: boolean;
+  hideSidebar?: boolean;
+  headerRight?: React.ReactNode;
   mainWidthClassName?: string;
 }
 
@@ -28,12 +30,14 @@ export default function Layout({
   tab,
   onTabChange,
   compactSidebar = false,
+  hideSidebar = false,
+  headerRight,
   mainWidthClassName = 'max-w-5xl',
 }: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const sidebarWidthClass = compactSidebar ? 'w-20' : 'w-56';
-  const contentMarginClass = compactSidebar ? 'md:ml-20' : 'md:ml-56';
+  const contentMarginClass = hideSidebar ? '' : compactSidebar ? 'md:ml-20' : 'md:ml-56';
   const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
   const mainPaddingClass = compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
 
@@ -60,7 +64,8 @@ export default function Layout({
   return (
     <div className="min-h-screen bg-pit-bg">
       <div className="flex min-h-screen">
-        <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
+        {!hideSidebar && (
+          <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
           <div className={`border-b border-pit-border/60 py-5 ${compactSidebar ? 'px-3' : 'px-5'}`}>
             <BrandLockup
               compact
@@ -116,21 +121,25 @@ export default function Layout({
               </button>
             </div>
           )}
-        </aside>
+          </aside>
+        )}
 
         <div className={`flex min-h-screen flex-1 flex-col ${contentMarginClass}`}>
-          <header className={`sticky top-0 z-20 flex items-center gap-3 border-b border-pit-border/60 bg-pit-bg/80 backdrop-blur-md ${headerPaddingClass}`}>
-            {back ? (
-              <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
-                <ChevronLeft size={18} />
-                <span className="hidden sm:inline">Back</span>
-              </Link>
-            ) : (
-              <div className="md:hidden">
-                <BrandLockup compact showSlogan={false} className="items-center gap-2" />
-              </div>
-            )}
-            {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
+          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/60 bg-pit-bg/80 backdrop-blur-md ${headerPaddingClass}`}>
+            <div className="flex min-w-0 items-center gap-3">
+              {back ? (
+                <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
+                  <ChevronLeft size={18} />
+                  <span className="hidden sm:inline">Back</span>
+                </Link>
+              ) : (
+                <div className="md:hidden">
+                  <BrandLockup compact showSlogan={false} className="items-center gap-2" />
+                </div>
+              )}
+              {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
+            </div>
+            {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
           </header>
 
           <main className={`mx-auto w-full flex-1 ${mainPaddingClass} ${mainWidthClassName}`}>

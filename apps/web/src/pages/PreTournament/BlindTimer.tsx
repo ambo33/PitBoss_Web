@@ -552,13 +552,24 @@ function BlindEditor({
   return (
     <div className="space-y-3">
       {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[34rem] grid-cols-[88px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
+          <span>Level</span>
+          <span>SB</span>
+          <span>BB</span>
+          <span>Ante</span>
+          <span>Min</span>
+          <span className="sr-only">Remove</span>
+        </div>
+      </div>
       <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
         {levels.map((level, index) => (
-          <div key={index} className="grid grid-cols-5 items-center gap-1.5 text-sm">
+          <div key={index} className="grid min-w-[34rem] grid-cols-[88px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 text-sm">
             <div className="px-2 text-xs font-medium text-pit-text">Level {index + 1}</div>
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" value={level.smallblind} onChange={(event) => update(index, 'smallblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" value={level.bigblind} onChange={(event) => update(index, 'bigblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} onChange={(event) => update(index, 'smallblind', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} onChange={(event) => update(index, 'bigblind', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} onChange={(event) => update(index, 'ante', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" aria-label={`Level ${index + 1} minutes`} value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
             <button type="button" onClick={() => removeLevel(index)} className="text-lg leading-none text-red-400 hover:text-red-300">x</button>
           </div>
         ))}
