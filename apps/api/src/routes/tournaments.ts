@@ -24,6 +24,19 @@ async function createUniqueTvCode(): Promise<string> {
   throw new Error('Failed to create a unique TV display code.');
 }
 
+async function ensureTournamentTvCode(tournamentId: string, currentCode: string | null | undefined) {
+  if (currentCode) return currentCode;
+  if (!isFeatureEnabled('tvBoard')) return null;
+  const code = await createUniqueTvCode();
+  await query(
+    `UPDATE tournaments
+     SET tvdisplaycode = $2
+     WHERE tournamentid = $1 AND tvdisplaycode IS NULL`,
+    [tournamentId, code]
+  );
+  return code;
+}
+
 async function canManageTournament(tournamentId: string, userId: string): Promise<boolean> {
   const row = await queryOne<{ canmanage: boolean }>(
     `SELECT CASE
@@ -200,6 +213,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
     [req.params.id, req.userId]
   );
   if (!row) { res.status(404).json({ error: 'Tournament not found' }); return; }
+  row.tvdisplaycode = await ensureTournamentTvCode(row.tournamentid, row.tvdisplaycode);
   res.json(row);
 });
 
