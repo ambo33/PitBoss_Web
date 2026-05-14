@@ -79,9 +79,22 @@ const DEFAULT_CHIPS: EditableChip[] = [
   { denomination: '5000', color: 'Red', quantity: '0', sortorder: 4 },
 ];
 
+function toDraftLevel(level: BlindLevel): DraftLevel {
+  return {
+    level: Number(level.level),
+    label: level.label ?? `Level ${level.level}`,
+    smallblind: Number(level.smallblind),
+    bigblind: Number(level.bigblind),
+    ante: Number(level.ante),
+    minutes: Number(level.minutes),
+    islastlevel: Boolean(level.islastlevel),
+  };
+}
+
 export default function BlindTimer({ tournamentId, isOwner, playerCount, tournament }: BlindTimerProps) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [saveStructureName, setSaveStructureName] = useState('');
 
   const { data: blinds = [], isLoading } = useQuery({
     queryKey: ['blinds', tournamentId],
@@ -104,6 +117,15 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
   const saveChipsMutation = useMutation({
     mutationFn: (values: Omit<TournamentChip, 'id'>[]) => api.saveChips(tournamentId, values),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['chips', tournamentId] }),
+  });
+
+  const saveGroupStructureMutation = useMutation({
+    mutationFn: ({ name, levels }: { name: string; levels: DraftLevel[] }) =>
+      api.createGroupBlindStructure(tournament.groupid!, { name, levels }),
+    onSuccess: () => {
+      setSaveStructureName('');
+      qc.invalidateQueries({ queryKey: ['group', tournament.groupid, 'blind-structures'] });
+    },
   });
 
   const visibleBlinds = blinds;
@@ -130,6 +152,30 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
           />
         ) : (
           <BlindTable blinds={visibleBlinds} />
+        )}
+        {isOwner && tournament.groupid && visibleBlinds.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-pit-border bg-pit-bg/40 p-3 sm:flex-row sm:items-center">
+            <input
+              className="input flex-1"
+              placeholder="Save this structure to group as..."
+              value={saveStructureName}
+              onChange={(event) => setSaveStructureName(event.target.value)}
+            />
+            <button
+              className="btn-ghost shrink-0"
+              onClick={() => saveGroupStructureMutation.mutate({
+                name: saveStructureName.trim(),
+                levels: visibleBlinds.map(toDraftLevel),
+              })}
+              disabled={saveGroupStructureMutation.isPending || !saveStructureName.trim()}
+            >
+              <Save size={14} />
+              Save to Group
+            </button>
+          </div>
+        )}
+        {saveGroupStructureMutation.error && (
+          <p className="text-sm text-red-400">{saveGroupStructureMutation.error.message}</p>
         )}
       </div>
 

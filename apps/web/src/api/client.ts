@@ -55,8 +55,14 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string }) =>
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode }) =>
     put(`/groups/${id}`, data),
+  getGroupBlindStructures: (groupId: string) =>
+    get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
+  createGroupBlindStructure: (groupId: string, data: { name: string; levels: Omit<BlindLevel, 'id'>[] }) =>
+    post<{ id: string; success: boolean }>(`/groups/${groupId}/blind-structures`, data),
+  deleteGroupBlindStructure: (groupId: string, structureId: string) =>
+    del<{ success: boolean }>(`/groups/${groupId}/blind-structures/${structureId}`),
   sendGroupInvite: (groupId: string, data: { email?: string; phone?: string; note?: string }) =>
     post<{ success: boolean; emailed: boolean; joinLink: string; smsLink: string; smsBody: string }>(`/groups/${groupId}/invite`, data),
   joinGroup: (invitecode: string) =>
@@ -148,8 +154,10 @@ export const api = {
 export interface Group {
   groupid: string; ownerid: string; name: string; invitecode: string;
   approvalneeded: boolean; active: boolean; createdat: string;
+  defaulttrackingmode?: TrackingMode;
   membercount?: number; isadmin?: boolean; approved?: boolean;
 }
+export type TrackingMode = 'standard' | 'player';
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
@@ -162,6 +170,7 @@ export interface Tournament {
   addonprice: number; addonchips: number;
   genericaddons?: number;
   maxplayers: number;
+  savedstructureid?: string | null;
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
   groupid?: string | null; groupname?: string | null;
   tvdisplaycode?: string | null;
@@ -204,6 +213,11 @@ export interface BlindLevel {
   id: string; level: number; label: string;
   smallblind: number; bigblind: number; ante: number;
   minutes: number; islastlevel: boolean;
+}
+export interface GroupBlindStructure {
+  id: string; groupid: string; name: string;
+  levels: Omit<BlindLevel, 'id'>[];
+  createdat: string;
 }
 export interface TournamentChip {
   id: string; denomination: number; color: string;

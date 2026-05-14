@@ -1,10 +1,7 @@
-import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Clock3, QrCode, Users } from 'lucide-react';
-import { api } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
-import { useAuthStore } from '../../store/auth';
 
 const features = [
   {
@@ -31,8 +28,6 @@ const steps = [
 ];
 
 export default function LandingPage() {
-  const [showSignIn, setShowSignIn] = useState(false);
-
   return (
     <main className="min-h-screen bg-pit-bg text-white">
       <section className="relative overflow-hidden border-b border-pit-border bg-[#111113]">
@@ -45,7 +40,7 @@ export default function LandingPage() {
             <BrandLockup compact />
             <nav className="flex items-center gap-2">
               <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/pricing">Pricing</Link>
-              <button className="btn-ghost px-3 py-2 text-xs sm:text-sm" type="button" onClick={() => setShowSignIn(true)}>Sign in</button>
+              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/login">Sign in</Link>
               <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
             </nav>
           </header>
@@ -64,7 +59,7 @@ export default function LandingPage() {
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
                 <Link className="btn-ghost px-5 py-3" to="/pricing">Compare plans</Link>
-                <button className="btn-ghost px-5 py-3" type="button" onClick={() => setShowSignIn(true)}>I already have an account</button>
+                <Link className="btn-ghost px-5 py-3" to="/login">I already have an account</Link>
               </div>
               <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
                 {steps.map((step, index) => (
@@ -154,77 +149,11 @@ export default function LandingPage() {
           <div className="mt-6 flex flex-wrap gap-3 lg:mt-0">
             <Link className="btn-primary px-5 py-3" to="/login?mode=register">Create account</Link>
             <Link className="btn-ghost px-5 py-3" to="/pricing">View pricing</Link>
-            <button className="btn-ghost px-5 py-3" type="button" onClick={() => setShowSignIn(true)}>Sign in</button>
+            <Link className="btn-ghost px-5 py-3" to="/login">Sign in</Link>
           </div>
         </div>
       </section>
-
-      {showSignIn && <LandingSignIn onClose={() => setShowSignIn(false)} />}
     </main>
-  );
-}
-
-export function LandingSignIn({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
-  const setAuth = useAuthStore((state) => state.setAuth);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const { token } = await api.login({ email, password });
-      localStorage.setItem('pb_token', token);
-      const user = await api.me();
-      setAuth(token, user);
-      navigate('/');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-3 py-6 backdrop-blur-sm sm:p-4">
-      <div className="max-h-[calc(100vh-3rem)] w-full max-w-sm overflow-y-auto overflow-x-hidden rounded-2xl border border-pit-border bg-pit-surface shadow-[0_24px_64px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-2rem)]">
-        <div className="h-1 bg-[linear-gradient(90deg,#14b8a6_0%,#ffffff_52%,#14b8a6_100%)]" />
-        <form className="space-y-4 p-6" onSubmit={submit}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-white">Sign in</h2>
-              <p className="mt-1 text-sm text-pit-text">Welcome back to PokerPlanner.bet.</p>
-            </div>
-            <button
-              type="button"
-              className="rounded-lg px-2 py-1 text-sm text-pit-muted transition-colors hover:bg-white/10 hover:text-white"
-              onClick={onClose}
-              aria-label="Close sign in"
-            >
-              X
-            </button>
-          </div>
-          {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>}
-          <input className="input" type="email" placeholder="Email address" value={email} onChange={(event) => setEmail(event.target.value)} required autoFocus />
-          <input className="input" type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-          <button type="submit" className="btn-primary w-full py-2.5" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
-          <div className="flex justify-between pt-1 text-sm">
-            <Link className="text-pit-muted transition-colors hover:text-white" to="/login?mode=register">
-              Create account
-            </Link>
-            <Link className="text-pit-muted transition-colors hover:text-white" to="/login">
-              Need help signing in?
-            </Link>
-          </div>
-        </form>
-      </div>
-    </div>
   );
 }
 

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save } from 'lucide-react';
+import { Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -190,7 +190,7 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
   );
 }
 
-type DetailTab = 'members' | 'tournaments';
+type DetailTab = 'members' | 'tournaments' | 'structures';
 
 function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => void }) {
   const qc = useQueryClient();
@@ -201,6 +201,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteNote, setInviteNote] = useState('');
+  const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
   const [smsStatus, setSmsStatus] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
 
@@ -215,6 +216,11 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
     queryKey: ['group', group.groupid, 'tournaments'],
     queryFn: () => api.getGroupTournaments(group.groupid),
     enabled: detailTab === 'tournaments',
+  });
+  const { data: savedStructures = [], isLoading: loadingStructures } = useQuery({
+    queryKey: ['group', group.groupid, 'blind-structures'],
+    queryFn: () => api.getGroupBlindStructures(group.groupid),
+    enabled: detailTab === 'structures',
   });
 
   const approveMutation = useMutation({
@@ -237,11 +243,15 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'tournaments'] }),
   });
   const updateGroupMutation = useMutation({
-    mutationFn: (payload: { invitecode: string }) => api.updateGroup(group.groupid, payload),
+    mutationFn: (payload: { invitecode?: string; defaulttrackingmode?: 'standard' | 'player' }) => api.updateGroup(group.groupid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
     },
+  });
+  const deleteStructureMutation = useMutation({
+    mutationFn: (structureId: string) => api.deleteGroupBlindStructure(group.groupid, structureId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'blind-structures'] }),
   });
   const inviteMutation = useMutation({
     mutationFn: (payload: { email?: string; phone?: string; note?: string }) => api.sendGroupInvite(group.groupid, payload),
@@ -262,6 +272,11 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
   const pending = members.filter(m => !m.approved);
   const approved = members.filter(m => m.approved);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
+  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures || user?.tierid === 2 || user?.tierid === 3);
+
+  useEffect(() => {
+    setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
+  }, [effectiveGroup.defaulttrackingmode]);
 
   return (
     <Modal title={effectiveGroup.name} open onClose={onClose}
@@ -309,7 +324,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-white">Group invite settings</p>
+              <p className="text-sm font-semibold text-white">Group settings</p>
               <div className="flex gap-2">
                 <input
                   className="input font-mono uppercase"
@@ -327,6 +342,34 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
                 </button>
               </div>
               {updateGroupMutation.error && <p className="text-sm text-red-400">{updateGroupMutation.error.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-white">Tournament defaults</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  className="input"
+                  value={canUseClubFeatures ? defaultTrackingMode : 'standard'}
+                  onChange={(event) => setDefaultTrackingMode(event.target.value as 'standard' | 'player')}
+                  disabled={!canUseClubFeatures}
+                >
+                  <option value="standard">Standard tracking</option>
+                  <option value="player">Player tracked stats</option>
+                </select>
+                <button
+                  className="btn-primary shrink-0"
+                  onClick={() => updateGroupMutation.mutate({ defaulttrackingmode: canUseClubFeatures ? defaultTrackingMode : 'standard' })}
+                  disabled={updateGroupMutation.isPending || !canUseClubFeatures}
+                >
+                  <Save size={14} />
+                  Save Default
+                </button>
+              </div>
+              <p className="text-xs text-pit-muted">
+                {canUseClubFeatures
+                  ? 'New tournaments for this group use this stats tracking mode by default.'
+                  : 'Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.'}
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -381,7 +424,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
 
         {/* Sub-tabs */}
         <div className="flex border-b border-pit-border">
-          {(['members', 'tournaments'] as DetailTab[]).map(t => (
+          {(['members', 'tournaments', 'structures'] as DetailTab[]).map(t => (
             <button key={t} onClick={() => setDetailTab(t)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px capitalize transition-colors duration-150 ${
                 detailTab === t
@@ -389,7 +432,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
                   : 'border-transparent text-pit-muted hover:text-pit-text'
               }`}>
               {t === 'members' ? <Users size={13} /> : <Trophy size={13} />}
-              {t === 'members' ? `Members (${approved.length})` : 'Tournaments'}
+              {t === 'members' ? `Members (${approved.length})` : t === 'tournaments' ? 'Tournaments' : 'Structures'}
             </button>
           ))}
         </div>
@@ -480,6 +523,45 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
                   </div>
                 )
             }
+          </div>
+        )}
+
+        {detailTab === 'structures' && (
+          <div>
+            {loadingStructures
+              ? <LoadingSpinner className="py-8" />
+              : savedStructures.length === 0
+                ? (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <Trophy size={28} className="text-pit-muted" />
+                    <div>
+                      <p className="text-sm font-semibold text-white">No saved structures yet</p>
+                      <p className="mt-1 text-xs text-pit-muted">Save one from a tournament's Blind Structure tab.</p>
+                    </div>
+                  </div>
+                )
+                : (
+                  <div className="space-y-2">
+                    {savedStructures.map((structure) => (
+                      <div key={structure.id} className="flex items-center justify-between gap-3 rounded-xl border border-pit-border bg-pit-bg p-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">{structure.name}</p>
+                          <p className="mt-0.5 text-xs text-pit-muted">{structure.levels.length} levels</p>
+                        </div>
+                        {group.isadmin && (
+                          <button
+                            className="btn-ghost px-2 py-1.5 text-xs text-red-300"
+                            onClick={() => deleteStructureMutation.mutate(structure.id)}
+                            disabled={deleteStructureMutation.isPending}
+                          >
+                            <Trash2 size={13} />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
           </div>
         )}
       </div>

@@ -109,6 +109,20 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS avatarfilename STRING(255)
     `);
     await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS defaulttrackingmode STRING(20) DEFAULT 'standard'
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groupblindstructures (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,
+        name STRING(120) NOT NULL,
+        levels JSONB NOT NULL,
+        createdby UUID REFERENCES users(guid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
       UPDATE usermetadata
       SET tierid = CASE
         WHEN COALESCE(accounttier, 'free') = 'premium' THEN 2
@@ -167,7 +181,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS knockedoutat TIMESTAMPTZ
     `);
-    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group fields, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
+    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
   } finally {
     client.release();
     if (options.closePool) {

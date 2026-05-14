@@ -24,6 +24,7 @@ export interface Group {
   name: string;
   invitecode: string;
   approvalneeded: boolean;
+  defaulttrackingmode?: 'standard' | 'player';
   active: boolean;
   createdat: string;
   membercount?: number;
@@ -102,6 +103,14 @@ export interface BlindLevel {
   ante: number;
   minutes: number;
   islastlevel: boolean;
+}
+
+export interface GroupBlindStructure {
+  id: string;
+  groupid: string;
+  name: string;
+  levels: Omit<BlindLevel, 'id'>[];
+  createdat: string;
 }
 
 export interface TournamentChip {

@@ -3,7 +3,7 @@ import { query, queryOne, pool } from '../db';
 import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { getClientUrl } from '../config';
-import { Group, GroupMember } from '../types';
+import { BlindLevel, Group, GroupMember } from '../types';
 import { sendGroupInviteEmail } from '../services/email';
 
 export const groupsRouter = Router();
@@ -18,15 +18,32 @@ function normalizeInviteCode(value: string | undefined): string {
   return (value ?? '').trim().toUpperCase();
 }
 
+function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
+  if (!Array.isArray(levels)) return [];
+  return levels
+    .map((level, index) => ({
+      level: Number((level as Partial<BlindLevel>).level) || index + 1,
+      label: String((level as Partial<BlindLevel>).label ?? `Level ${index + 1}`),
+      smallblind: Number((level as Partial<BlindLevel>).smallblind) || 0,
+      bigblind: Number((level as Partial<BlindLevel>).bigblind) || 0,
+      ante: Number((level as Partial<BlindLevel>).ante) || 0,
+      minutes: Number((level as Partial<BlindLevel>).minutes) || 0,
+      islastlevel: Boolean((level as Partial<BlindLevel>).islastlevel),
+    }))
+    .filter((level) => level.level > 0 && level.smallblind >= 0 && level.bigblind > 0 && level.minutes > 0)
+    .sort((a, b) => a.level - b.level);
+}
+
 groupsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
+            COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             gm.admin AS isadmin, gm.approved,
             (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
      FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $1
      WHERE g.active = TRUE
-     ORDER BY g.createdate DESC`,
+     ORDER BY gm.admin DESC, lower(g.name) ASC`,
     [req.userId]
   );
   res.json(rows);
@@ -93,6 +110,7 @@ groupsRouter.post('/', async (req: Request, res: Response) => {
 groupsRouter.get('/:id', async (req: Request, res: Response) => {
   const group = await queryOne<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
+            COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             gm.admin AS isadmin, gm.approved FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2
      WHERE g.groupid = $1`,
@@ -116,12 +134,28 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response) => {
-  const { name, approvalneeded, invitecode } = req.body as { name?: string; approvalneeded?: boolean; invitecode?: string };
+  const { name, approvalneeded, invitecode, defaulttrackingmode } = req.body as {
+    name?: string;
+    approvalneeded?: boolean;
+    invitecode?: string;
+    defaulttrackingmode?: 'standard' | 'player';
+  };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
     [req.params.id, req.userId]
   );
   if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
+
+  const profile = await getAccountProfile(req.userId!);
+  if (!profile) {
+    res.status(404).json({ error: 'User account not found' });
+    return;
+  }
+  if (defaulttrackingmode === 'player' && !profile.canuseclubfeatures) {
+    res.status(403).json({ error: 'Player-tracked stats are available on Club and Pro tiers.' });
+    return;
+  }
+  const normalizedTrackingMode = defaulttrackingmode === 'player' ? 'player' : defaulttrackingmode === 'standard' ? 'standard' : null;
 
   const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
   if (normalizedInviteCode != null) {
@@ -136,9 +170,10 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
       `UPDATE groups
        SET name = COALESCE($1, name),
            approvalneeded = COALESCE($2, approvalneeded),
-           invitecode = COALESCE($3, invitecode)
-       WHERE groupid = $4`,
-      [name ?? null, approvalneeded ?? null, normalizedInviteCode, req.params.id]
+           invitecode = COALESCE($3, invitecode),
+           defaulttrackingmode = COALESCE($4, defaulttrackingmode)
+       WHERE groupid = $5`,
+      [name ?? null, approvalneeded ?? null, normalizedInviteCode, normalizedTrackingMode, req.params.id]
     );
     res.json({ success: true, invitecode: normalizedInviteCode ?? undefined });
   } catch (err) {
@@ -149,6 +184,74 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     }
     throw err;
   }
+});
+
+groupsRouter.get('/:id/blind-structures', async (req: Request, res: Response) => {
+  const member = await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE`,
+    [req.params.id, req.userId]
+  );
+  if (!member) { res.status(403).json({ error: 'Not a group member' }); return; }
+
+  const rows = await query<{ id: string; groupid: string; name: string; levels: Omit<BlindLevel, 'id'>[]; createdat: string }>(
+    `SELECT id, groupid, name, levels, createdat
+     FROM groupblindstructures
+     WHERE groupid = $1
+     ORDER BY lower(name) ASC`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
+groupsRouter.post('/:id/blind-structures', async (req: Request, res: Response) => {
+  const admin = await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
+    [req.params.id, req.userId]
+  );
+  if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
+
+  const { name, levels } = req.body as { name?: string; levels?: Omit<BlindLevel, 'id'>[] };
+  const trimmedName = name?.trim();
+  if (!trimmedName) { res.status(400).json({ error: 'Structure name required.' }); return; }
+  const cleanLevels = sanitizeBlindLevels(levels);
+  if (cleanLevels.length === 0) { res.status(400).json({ error: 'At least one blind level is required.' }); return; }
+
+  const profile = await getAccountProfile(req.userId!);
+  if (!profile) {
+    res.status(404).json({ error: 'User account not found' });
+    return;
+  }
+  if (!profile.canuseclubfeatures) {
+    const existingCount = await queryOne<{ count: string }>(
+      `SELECT count(*)::STRING AS count FROM groupblindstructures WHERE groupid = $1`,
+      [req.params.id]
+    );
+    if (Number(existingCount?.count ?? 0) >= 1) {
+      res.status(403).json({ error: 'Host tier allows 1 saved blind structure per group.' });
+      return;
+    }
+  }
+
+  const row = await queryOne<{ id: string }>(
+    `INSERT INTO groupblindstructures (groupid, name, levels, createdby)
+     VALUES ($1, $2, $3::JSONB, $4)
+     RETURNING id`,
+    [req.params.id, trimmedName, JSON.stringify(cleanLevels), req.userId]
+  );
+  res.status(201).json({ id: row?.id, success: true });
+});
+
+groupsRouter.delete('/:id/blind-structures/:structureId', async (req: Request, res: Response) => {
+  const admin = await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
+    [req.params.id, req.userId]
+  );
+  if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
+  await query(
+    `DELETE FROM groupblindstructures WHERE groupid = $1 AND id = $2`,
+    [req.params.id, req.params.structureId]
+  );
+  res.json({ success: true });
 });
 
 groupsRouter.post('/join', async (req: Request, res: Response) => {

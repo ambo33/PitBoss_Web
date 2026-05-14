@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
 import { useAuthStore } from '../../store/auth';
@@ -33,15 +33,34 @@ export default function LoginPage() {
   }, [requestedMode]);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-pit-bg px-4">
+    <div className="min-h-screen overflow-hidden bg-pit-bg">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.18),transparent_38%),radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_24%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-10">
         <div className="mx-auto mt-10 h-[42rem] w-[42rem] max-w-full rounded-full border border-pit-teal/40" />
       </div>
 
-      <div className="relative flex min-h-screen flex-col items-center justify-center py-10">
-        <BrandLockup centered className="mb-8 flex-col" />
+      <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
+        <Link to="/" aria-label="PokerPlanner.bet home">
+          <BrandLockup compact />
+        </Link>
+        <nav className="flex items-center gap-2">
+          <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/landing">Overview</Link>
+          <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/pricing">Pricing</Link>
+          {view !== 'reset' && (
+            view === 'register' ? (
+              <button className="btn-ghost px-3 py-2 text-xs sm:text-sm" type="button" onClick={() => setView('login')}>
+                Sign in
+              </button>
+            ) : (
+              <button className="btn-primary px-3 py-2 text-xs sm:text-sm" type="button" onClick={() => setView('register')}>
+                Create account
+              </button>
+            )
+          )}
+        </nav>
+      </header>
 
+      <div className="relative flex min-h-[calc(100vh-88px)] flex-col items-center justify-center px-4 py-8">
         <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-pit-border bg-pit-surface/94 shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
           <div className="h-1 bg-[linear-gradient(90deg,#14b8a6_0%,#ffffff_52%,#14b8a6_100%)]" />
           <div className="p-6">

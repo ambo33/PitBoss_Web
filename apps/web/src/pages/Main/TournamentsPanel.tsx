@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, Trophy, Users } from 'lucide-react';
@@ -297,14 +297,31 @@ function CreateTournamentComposer({
     addonchips: '',
     maxplayers: '',
     registerself: true,
+    playerselftracking: false,
     groupid: '',
+    savedstructureid: '',
   });
 
-  const selectedGroupName = useMemo(
-    () => groups.find((group) => group.groupid === form.groupid)?.name ?? '',
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.groupid === form.groupid) ?? null,
     [groups, form.groupid]
   );
+  const selectedGroupName = selectedGroup?.name ?? '';
+  const canUseClubFeatures = Boolean(me?.issuperadmin || me?.canuseclubfeatures || me?.tierid === 2 || me?.tierid === 3);
   const maxPlayersCap = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && !me?.canuseclubfeatures ? 8 : null;
+  const { data: savedStructures = [] } = useQuery({
+    queryKey: ['group', form.groupid, 'blind-structures'],
+    queryFn: () => api.getGroupBlindStructures(form.groupid),
+    enabled: Boolean(form.groupid),
+  });
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      playerselftracking: canUseClubFeatures && selectedGroup?.defaulttrackingmode === 'player',
+      savedstructureid: '',
+    }));
+  }, [canUseClubFeatures, selectedGroup?.defaulttrackingmode, selectedGroup?.groupid]);
 
   const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((current) => ({
@@ -329,7 +346,9 @@ function CreateTournamentComposer({
       addonchips: Number(form.addonchips) || 0,
       maxplayers: Number(form.maxplayers) || 0,
       registerself: form.registerself,
+      playerselftracking: canUseClubFeatures ? form.playerselftracking : false,
       groupid: form.groupid || undefined,
+      savedstructureid: form.savedstructureid || undefined,
     });
   }
 
@@ -379,6 +398,36 @@ function CreateTournamentComposer({
                 ))}
               </select>
             </label>
+          )}
+
+          {form.groupid && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Stats tracking">
+                <select
+                  className="input"
+                  value={form.playerselftracking ? 'player' : 'standard'}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    playerselftracking: canUseClubFeatures && event.target.value === 'player',
+                  }))}
+                  disabled={!canUseClubFeatures}
+                >
+                  <option value="standard">Standard tracking</option>
+                  <option value="player">Player tracked stats</option>
+                </select>
+                {!canUseClubFeatures && (
+                  <p className="text-xs text-pit-muted">Player stats tracking unlocks with Club or Pro.</p>
+                )}
+              </Field>
+              <Field label="Blind structure">
+                <select className="input" value={form.savedstructureid} onChange={set('savedstructureid')}>
+                  <option value="">Use calculator after creation</option>
+                  {savedStructures.map((structure) => (
+                    <option key={structure.id} value={structure.id}>{structure.name}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
           )}
 
           <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3">

@@ -1,9 +1,7 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { BadgeCheck, Clock3, Crown, LockKeyhole, Sparkles, Users } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
-import { LandingSignIn } from '../Landing';
 
 const hostFeatures = [
   'Blind timer',
@@ -38,8 +36,6 @@ const proFeatures = [
 ];
 
 export default function PricingPage() {
-  const [showSignIn, setShowSignIn] = useState(false);
-
   return (
     <main className="min-h-screen bg-pit-bg text-white">
       <section className="relative overflow-hidden border-b border-pit-border">
@@ -51,7 +47,7 @@ export default function PricingPage() {
             </Link>
             <nav className="flex items-center gap-2">
               <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/landing">Overview</Link>
-              <button className="btn-ghost px-3 py-2 text-xs sm:text-sm" type="button" onClick={() => setShowSignIn(true)}>Sign in</button>
+              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/login">Sign in</Link>
               <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
             </nav>
           </header>
@@ -164,8 +160,6 @@ export default function PricingPage() {
           </div>
         </div>
       </section>
-
-      {showSignIn && <LandingSignIn onClose={() => setShowSignIn(false)} />}
     </main>
   );
 }

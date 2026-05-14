@@ -404,50 +404,7 @@ export default function RunTournament({
                     {selectedPlayer?.addedon ? 'Add-On Used' : 'Add-On'}
                   </button>
                 </>
-              ) : (
-                <>
-                  {tournament.rebuyprice > 0 && (
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1.5 text-xs"
-                      onClick={() => removeGenericRebuyMutation.mutate()}
-                      disabled={removeGenericRebuyMutation.isPending || toNumber(tournament.genericrebuys) <= 0}
-                    >
-                      Rebuy -
-                    </button>
-                  )}
-                  {tournament.rebuyprice > 0 && (
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1.5 text-xs"
-                      onClick={() => genericRebuyMutation.mutate()}
-                      disabled={genericRebuyMutation.isPending}
-                    >
-                      Rebuy +
-                    </button>
-                  )}
-                  {tournament.addonprice > 0 && (
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1.5 text-xs"
-                      onClick={() => removeGenericAddonMutation.mutate()}
-                      disabled={removeGenericAddonMutation.isPending || toNumber(tournament.genericaddons) <= 0}
-                    >
-                      Add-On -
-                    </button>
-                  )}
-                  {tournament.addonprice > 0 && (
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1.5 text-xs"
-                      onClick={() => genericAddonMutation.mutate()}
-                      disabled={genericAddonMutation.isPending}
-                    >
-                      Add-On +
-                    </button>
-                  )}
-                </>
-              )}
+              ) : null}
             </div>
           ) : (
             <div />
@@ -660,12 +617,45 @@ export default function RunTournament({
 
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div className={`grid gap-2 ${displayMode ? 'grid-cols-3 xl:gap-3' : 'sm:grid-cols-3'}`}>
-                    {summaryStats.map((stat) => (
-                      <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${tvMode ? 'px-2 py-2' : displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
-                        <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
-                        <p className={`mt-1 ${tvMode ? 'text-sm xl:text-base' : displayMode ? 'text-base md:text-lg' : 'text-base'} font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
-                      </div>
-                    ))}
+                    {summaryStats.map((stat) => {
+                      const canAdjustRebuys = showAdminControls && !canUseClubFeatures && stat.label === 'Rebuys';
+                      const canAdjustAddons = showAdminControls && !canUseClubFeatures && stat.label === 'Add-Ons';
+                      const canAdjust = canAdjustRebuys || canAdjustAddons;
+                      return (
+                        <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${tvMode ? 'px-2 py-2' : displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
+                          <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
+                          {canAdjust ? (
+                            <div className="mt-1 flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                className="btn-ghost h-7 w-7 justify-center px-0 text-sm"
+                                onClick={() => canAdjustRebuys ? removeGenericRebuyMutation.mutate() : removeGenericAddonMutation.mutate()}
+                                disabled={
+                                  canAdjustRebuys
+                                    ? removeGenericRebuyMutation.isPending || toNumber(tournament.genericrebuys) <= 0
+                                    : removeGenericAddonMutation.isPending || toNumber(tournament.genericaddons) <= 0
+                                }
+                                aria-label={`Remove one ${stat.label.toLowerCase()}`}
+                              >
+                                -
+                              </button>
+                              <p className={`${tvMode ? 'text-sm xl:text-base' : displayMode ? 'text-base md:text-lg' : 'text-base'} min-w-8 font-semibold text-white`}>{stat.value}</p>
+                              <button
+                                type="button"
+                                className="btn-ghost h-7 w-7 justify-center px-0 text-sm"
+                                onClick={() => canAdjustRebuys ? genericRebuyMutation.mutate() : genericAddonMutation.mutate()}
+                                disabled={canAdjustRebuys ? genericRebuyMutation.isPending : genericAddonMutation.isPending}
+                                aria-label={`Add one ${stat.label.toLowerCase()}`}
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : (
+                            <p className={`mt-1 ${tvMode ? 'text-sm xl:text-base' : displayMode ? 'text-base md:text-lg' : 'text-base'} font-semibold ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </section>

@@ -6,7 +6,7 @@ import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
 import { sendTournamentCancelledEmail } from '../services/email';
 import { broadcastTournamentUpdate } from '../socket';
-import { Tournament } from '../types';
+import { BlindLevel, Tournament } from '../types';
 
 export const tournamentsRouter = Router();
 tournamentsRouter.use(requireAuth);
@@ -181,11 +181,12 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
 
 tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
-          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure } = req.body as {
+          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
     buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
           genericrebuys?: number; addonprice?: number; addonchips?: number; genericaddons?: number; maxplayers?: number;
           playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null;
+          savedstructureid?: string | null;
           tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
@@ -209,6 +210,29 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
+  let trackingEnabled = Boolean(playerselftracking);
+  if (groupid && playerselftracking == null) {
+    const groupDefault = await queryOne<{ defaulttrackingmode: string }>(
+      `SELECT COALESCE(defaulttrackingmode, 'standard') AS defaulttrackingmode
+       FROM groups g
+       JOIN groupmembers gm ON gm.groupid = g.groupid
+      WHERE g.groupid = $1
+        AND gm.userid = $2
+        AND gm.approved = TRUE
+        AND gm.admin = TRUE`,
+      [groupid, req.userId]
+    );
+    if (!groupDefault) {
+      res.status(403).json({ error: 'Only group admins can create tournaments for this group.' });
+      return;
+    }
+    trackingEnabled = groupDefault.defaulttrackingmode === 'player';
+  }
+  if (trackingEnabled && !profile.canuseclubfeatures) {
+    res.status(403).json({ error: 'Player-tracked stats are available on Club and Pro tiers.' });
+    return;
+  }
+
   let tvDisplayCode: string | null = null;
   if (isFeatureEnabled('tvBoard')) {
     tvDisplayCode = await createUniqueTvCode();
@@ -223,10 +247,29 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
      rebuychips ?? 0, genericrebuys ?? 0, addonprice ?? 0, addonchips ?? 0, genericaddons ?? 0, maxplayers ?? 0,
-     playerselftracking ?? false, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
+     trackingEnabled, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
      true, true, true]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
+
+  if (savedstructureid && groupid) {
+    const savedStructure = await queryOne<{ levels: Omit<BlindLevel, 'id'>[] }>(
+      `SELECT levels
+       FROM groupblindstructures
+       WHERE id = $1 AND groupid = $2`,
+      [savedstructureid, groupid]
+    );
+    if (savedStructure?.levels && Array.isArray(savedStructure.levels)) {
+      for (const level of savedStructure.levels) {
+        await query(
+          `INSERT INTO blindstructure (tournamentid, level, label, smallblind, bigblind, ante, minutes, islastlevel)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [row.tournamentid, level.level, level.label ?? `Level ${level.level}`,
+           level.smallblind, level.bigblind, level.ante ?? 0, level.minutes, level.islastlevel ?? false]
+        );
+      }
+    }
+  }
 
   await incrementHostedTournamentCount(req.userId!);
 
