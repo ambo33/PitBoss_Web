@@ -190,8 +190,8 @@ export function LandingSignIn({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-3 pb-3 pt-10 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-sm overflow-y-auto overflow-x-hidden rounded-2xl border border-pit-border bg-pit-surface shadow-[0_24px_64px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-2rem)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-3 py-6 backdrop-blur-sm sm:p-4">
+      <div className="max-h-[calc(100vh-3rem)] w-full max-w-sm overflow-y-auto overflow-x-hidden rounded-2xl border border-pit-border bg-pit-surface shadow-[0_24px_64px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-2rem)]">
         <div className="h-1 bg-[linear-gradient(90deg,#14b8a6_0%,#ffffff_52%,#14b8a6_100%)]" />
         <form className="space-y-4 p-6" onSubmit={submit}>
           <div className="flex items-start justify-between gap-4">
