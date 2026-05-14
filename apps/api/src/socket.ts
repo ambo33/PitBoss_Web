@@ -64,6 +64,18 @@ export function initSocket(httpServer: HttpServer): void {
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
     });
+
+    socket.on('timer-level', async ({ tournamentId, level }: { tournamentId: string; level: number }) => {
+      const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
+      const targetBlind = state.blinds.find((blind) => blind.level === Number(level));
+      if (!targetBlind) return;
+      state.currentlevel = targetBlind.level;
+      state.remainingsecs = Math.max((targetBlind.minutes ?? 20) * 60, 60);
+      timerState.set(tournamentId, state);
+      if (state.running) startInterval(tournamentId);
+      await persistTimer(state);
+      io.to(`t:${tournamentId}`).emit('timer-state', state);
+    });
   });
 }
 

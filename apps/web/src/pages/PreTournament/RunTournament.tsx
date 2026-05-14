@@ -363,10 +363,8 @@ export default function RunTournament({
   );
   const summaryStats = [
     { label: 'Players Left', value: activePlayers },
-    { label: 'Checked In', value: checkedIn },
     ...(tournament.rebuyprice > 0 ? [{ label: 'Rebuys', value: totalRebuys }] : []),
     ...(tournament.addonprice > 0 ? [{ label: 'Add-Ons', value: totalAddons }] : []),
-    { label: 'Net Pot', value: formatMoney(totalPot), accent: true },
     ...(knockoutLeader ? [{ label: 'Knockout Leader', value: `${knockoutLeader.name} (${knockoutLeader.count})` }] : []),
   ];
   const seatedPlayers = useMemo(
@@ -447,18 +445,20 @@ export default function RunTournament({
 
           {(showAdminControls || displayMode) && (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                  soundEnabled
-                    ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
-                    : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
-                }`}
-                onClick={() => void enableSound()}
-              >
-                <Volume2 size={14} />
-                {soundEnabled ? 'Sound On' : 'Enable Sound'}
-              </button>
+              {!tvMode && (
+                <button
+                  type="button"
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                    soundEnabled
+                      ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
+                      : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
+                  }`}
+                  onClick={() => void enableSound()}
+                >
+                  <Volume2 size={14} />
+                  {soundEnabled ? 'Sound On' : 'Enable Sound'}
+                </button>
+              )}
               {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
                 <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
                   <p className="text-sm text-white">
@@ -491,9 +491,12 @@ export default function RunTournament({
                       const isCurrent = blind.level === effectiveLevel;
                       const isNext = nextBlind?.level === blind.level;
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={blind.id}
-                          className={`grid grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 leading-tight ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
+                          disabled={!showAdminControls}
+                          onClick={() => showAdminControls && emit('timer-level', { level: blind.level })}
+                          className={`grid w-full grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
                               ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
                               : isNext
@@ -504,7 +507,7 @@ export default function RunTournament({
                           <span className="font-semibold">{blind.level}</span>
                           <span>{blind.smallblind.toLocaleString()} / {blind.bigblind.toLocaleString()}{blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}</span>
                           <span>{blind.minutes}:00</span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -540,10 +543,32 @@ export default function RunTournament({
                       }
                     </div>
                   )}
-                  <p className={`${displayMode ? 'text-sm md:text-base' : 'text-xs md:text-sm'} font-medium uppercase tracking-[0.22em] text-pit-text`}>
-                    Level {displayedLevel} of {effectiveBlinds.length}
-                    {!timerState?.running && <span className="ml-3 text-yellow-400">Paused</span>}
-                  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    {showAdminControls && showAdjustments && (
+                      <button
+                        type="button"
+                        className="btn-ghost h-8 w-8 px-0 text-base"
+                        onClick={() => emit('timer-prev')}
+                        aria-label="Previous blind level"
+                      >
+                        {'<'}
+                      </button>
+                    )}
+                    <p className={`${displayMode ? 'text-sm md:text-base' : 'text-xs md:text-sm'} font-medium uppercase tracking-[0.22em] text-pit-text`}>
+                      Level {displayedLevel} of {effectiveBlinds.length}
+                      {!timerState?.running && <span className="ml-3 text-yellow-400">Paused</span>}
+                    </p>
+                    {showAdminControls && showAdjustments && (
+                      <button
+                        type="button"
+                        className="btn-ghost h-8 w-8 px-0 text-base"
+                        onClick={() => emit('timer-next')}
+                        aria-label="Next blind level"
+                      >
+                        {'>'}
+                      </button>
+                    )}
+                  </div>
                   <div className="mt-2.5 flex items-center justify-center gap-2 md:gap-3">
                     {showAdminControls && showAdjustments && (
                       <div className="flex flex-col gap-1.5">
@@ -667,13 +692,6 @@ export default function RunTournament({
                 </div>
                 )}
 
-                {showAdminControls && showAdjustments && (
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <button className="btn-ghost px-3 py-1.5" onClick={() => emit('timer-prev')}>Prev</button>
-                    <button className="btn-ghost px-3 py-1.5" onClick={() => emit('timer-next')}>Next</button>
-                  </div>
-                )}
-
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div className={`grid gap-2 ${displayMode ? 'grid-cols-3' : 'sm:grid-cols-3'}`}>
                     {summaryStats.map((stat) => {
@@ -733,12 +751,9 @@ export default function RunTournament({
                 <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
                   <div className="mb-2">
                     <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
-                    <p className={`${tvMode ? 'text-[11px]' : displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
-                      Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
-                    </p>
                   </div>
 
-                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${tvMode ? 'px-2 py-1.5' : displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
+                  <div className={`mb-2 flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-bg/40 ${tvMode ? 'px-2 py-1.5' : displayMode ? 'px-3 py-2' : 'px-2.5 py-2'}`}>
                     <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
                     <p className={`${tvMode ? 'text-base' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
                   </div>
