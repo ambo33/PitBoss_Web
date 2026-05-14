@@ -356,6 +356,17 @@ export default function RunTournament({
     { label: 'Net Pot', value: formatMoney(totalPot), accent: true },
     ...(knockoutLeader ? [{ label: 'Knockout Leader', value: `${knockoutLeader.name} (${knockoutLeader.count})` }] : []),
   ];
+  const seatedPlayers = useMemo(
+    () => players
+      .filter((player) => player.tablenumber != null && player.seat != null && player.placed == null)
+      .sort((a, b) => {
+        const tableDelta = Number(a.tablenumber ?? 0) - Number(b.tablenumber ?? 0);
+        if (tableDelta !== 0) return tableDelta;
+        return Number(a.seat ?? 0) - Number(b.seat ?? 0);
+      }),
+    [players]
+  );
+  const showTvSeating = tvMode && !timerState?.running;
 
   return (
     <div className="space-y-4">
@@ -486,7 +497,10 @@ export default function RunTournament({
               </section>
 
               <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'space-y-4'}`}>
-                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3.5' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
+                {showTvSeating ? (
+                  <TvSeatingBoard players={seatedPlayers} />
+                ) : (
+                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <button
@@ -632,6 +646,7 @@ export default function RunTournament({
                     </div>
                   </div>
                 </div>
+                )}
 
                 {showAdminControls && showAdjustments && (
                   <div className="flex flex-wrap justify-center gap-2">
@@ -641,13 +656,13 @@ export default function RunTournament({
                 )}
 
                 <div className="grid gap-2 xl:grid-cols-1">
-                  <div className={`grid gap-2 ${displayMode ? 'grid-cols-3 xl:gap-3' : 'sm:grid-cols-3'}`}>
+                  <div className={`grid gap-2 ${displayMode ? 'grid-cols-3' : 'sm:grid-cols-3'}`}>
                     {summaryStats.map((stat) => {
                       const canAdjustRebuys = showAdminControls && !canUseClubFeatures && stat.label === 'Rebuys';
                       const canAdjustAddons = showAdminControls && !canUseClubFeatures && stat.label === 'Add-Ons';
                       const canAdjust = canAdjustRebuys || canAdjustAddons;
                       return (
-                        <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${tvMode ? 'px-2 py-2' : displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
+                        <div key={stat.label} className={`rounded-lg border border-pit-border bg-pit-bg/50 text-center ${tvMode ? 'px-2 py-1.5' : displayMode ? 'px-2 py-2.5' : 'px-2.5 py-3'}`}>
                           <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>{stat.label}</p>
                           {canAdjust ? (
                             <div className="mt-1 flex items-center justify-center gap-2">
@@ -687,33 +702,33 @@ export default function RunTournament({
 
               <section className={`space-y-2.5 ${displayMode ? 'pt-1' : ''}`}>
                 {showKnockoutQr && (
-                  <div className={`rounded-xl border border-pit-border bg-pit-bg/60 text-center ${tvMode ? 'p-2' : 'p-2.5'}`}>
+                  <div className={`rounded-xl border border-pit-border bg-pit-bg/60 text-center ${tvMode ? 'p-1.5' : 'p-2.5'}`}>
                     <div className="mb-1 text-white">
                       <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-wide`}>Open Player Lobby</p>
                     </div>
-                    <div className={`inline-block rounded-md bg-white ${tvMode ? 'p-1' : 'p-1.5'}`}>
-                      <QRCodeSVG value={playerLobbyUrl} size={tvMode ? 76 : 88} />
+                    <div className={`inline-block rounded-md bg-white ${tvMode ? 'p-0.5' : 'p-1.5'}`}>
+                      <QRCodeSVG value={playerLobbyUrl} size={tvMode ? 58 : 88} />
                     </div>
                   </div>
                 )}
-                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
+                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
                   <div className="mb-2">
                     <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
-                    <p className={`mt-1 ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
+                    <p className={`${tvMode ? 'text-[11px]' : displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>
                       Paying {payoutPlaces} of {fieldSize || registeredCount || 0}
                     </p>
                   </div>
 
-                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${tvMode ? 'px-2.5 py-2.5' : displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
+                  <div className={`mb-2 rounded-lg border border-pit-border bg-pit-bg/40 text-center ${tvMode ? 'px-2 py-1.5' : displayMode ? 'px-3 py-3' : 'px-2.5 py-2'}`}>
                     <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
-                    <p className={`mt-1 ${tvMode ? 'text-lg' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
+                    <p className={`${tvMode ? 'text-base' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
                   </div>
 
-                  <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[26rem]'} space-y-1.5 overflow-y-auto pr-1`}>
+                  <div className={`${tvMode ? 'max-h-[40rem] space-y-1' : displayMode ? 'max-h-[48rem] space-y-1.5' : 'max-h-[26rem] space-y-1.5'} overflow-y-auto pr-1`}>
                     {payoutSplits.map((split, index) => {
                       const finisher = paidFinishers.find((player) => player.placed === index + 1);
                       return (
-                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2.5 py-1.5 text-sm' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
+                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2 py-1 text-xs' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
                             {finisher ? (
@@ -779,6 +794,69 @@ export default function RunTournament({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TvSeatingBoard({ players }: { players: TournamentPlayer[] }) {
+  const tables = useMemo(() => {
+    const grouped = new Map<number, TournamentPlayer[]>();
+    for (const player of players) {
+      const tableNumber = Number(player.tablenumber ?? 0);
+      if (!tableNumber) continue;
+      const tablePlayers = grouped.get(tableNumber) ?? [];
+      tablePlayers.push(player);
+      grouped.set(tableNumber, tablePlayers);
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([tableNumber, tablePlayers]) => ({
+        tableNumber,
+        players: tablePlayers.sort((a, b) => Number(a.seat ?? 0) - Number(b.seat ?? 0)),
+      }));
+  }, [players]);
+
+  return (
+    <div className="rounded-xl border border-yellow-200/35 bg-yellow-200/10 px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-200">Timer Paused</p>
+          <h3 className="text-xl font-semibold uppercase tracking-[0.2em] text-white">Table Seating</h3>
+        </div>
+        <span className="rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
+          {players.length} seated
+        </span>
+      </div>
+
+      {tables.length === 0 ? (
+        <div className="rounded-lg border border-pit-border bg-pit-bg/45 px-4 py-14 text-center">
+          <p className="text-3xl font-semibold text-white">Seats not assigned yet</p>
+          <p className="mt-2 text-sm text-pit-text">Assigned seats will show here while the timer is paused.</p>
+        </div>
+      ) : (
+        <div className="grid max-h-[23.5rem] gap-2 overflow-y-auto pr-1 xl:grid-cols-2">
+          {tables.map((table) => (
+            <div key={table.tableNumber} className="rounded-lg border border-pit-border bg-pit-bg/55 p-2">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white">Table {table.tableNumber}</p>
+                <span className="text-xs text-pit-muted">{table.players.length} players</span>
+              </div>
+              <div className="space-y-1">
+                {table.players.map((player) => (
+                  <div key={player.userid} className="flex items-center justify-between gap-2 rounded-md border border-pit-border/70 bg-pit-surface/35 px-2 py-1.5">
+                    <span className="min-w-0 truncate text-sm font-semibold text-white">
+                      {player.displayname ?? player.emailaddress}
+                    </span>
+                    <span className="shrink-0 rounded-md bg-pit-teal/15 px-2 py-0.5 text-xs font-semibold text-pit-teal">
+                      Seat {player.seat}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
