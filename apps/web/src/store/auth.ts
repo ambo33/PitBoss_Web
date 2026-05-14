@@ -5,6 +5,13 @@ interface AuthUser {
   guid: string;
   emailaddress: string;
   displayname: string;
+  tierid?: number;
+  accounttier?: 'host' | 'club' | 'pro';
+  issuperadmin?: boolean;
+  hostedtournamentcount?: number;
+  trialhostedremaining?: number;
+  trialactive?: boolean;
+  canuseclubfeatures?: boolean;
   avatarimagedata?: string | null;
   hasavatarimage?: boolean;
 }

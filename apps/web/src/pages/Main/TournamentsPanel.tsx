@@ -11,6 +11,11 @@ export default function TournamentsPanel() {
   const [showCreate, setShowCreate] = useState(false);
   const [tab, setTab] = useState<'upcoming' | 'history'>('upcoming');
 
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+  });
+
   const { data: mine = [], isLoading: loadingMine } = useQuery({
     queryKey: ['tournaments', 'mine'],
     queryFn: api.getTournaments,
@@ -52,11 +57,14 @@ export default function TournamentsPanel() {
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
   const list = tab === 'upcoming' ? upcoming : history;
+  const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
+  const hostedTournamentLimitReached = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && hostedUpcomingCount >= 1;
 
   if (showCreate) {
     return (
       <CreateTournamentComposer
         groups={groups}
+        me={me}
         onBack={() => setShowCreate(false)}
         onSubmit={(data) => createMutation.mutate(data)}
         loading={createMutation.isPending}
@@ -83,11 +91,22 @@ export default function TournamentsPanel() {
             </button>
           ))}
         </div>
-        <button className="btn-primary gap-1.5 px-3 py-2" onClick={() => setShowCreate(true)}>
+        <button
+          className="btn-primary gap-1.5 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => setShowCreate(true)}
+          disabled={hostedTournamentLimitReached}
+          title={hostedTournamentLimitReached ? 'Host tier can host 1 upcoming tournament at a time.' : undefined}
+        >
           <Trophy size={14} />
           New
         </button>
       </div>
+
+      {hostedTournamentLimitReached && (
+        <p className="mb-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-200">
+          Host tier can host 1 upcoming tournament at a time. Move this event into history or upgrade to Club or Pro to host more.
+        </p>
+      )}
 
       {loadingMine ? (
         <LoadingSpinner className="mt-16" />
@@ -253,12 +272,14 @@ function EmptyState({ tab, onNew }: { tab: 'upcoming' | 'history'; onNew: () => 
 
 function CreateTournamentComposer({
   groups,
+  me,
   onBack,
   onSubmit,
   loading,
   error,
 }: {
   groups: Group[];
+  me?: Awaited<ReturnType<typeof api.me>>;
   onBack: () => void;
   onSubmit: (data: Partial<Tournament>) => void;
   loading: boolean;
@@ -283,6 +304,7 @@ function CreateTournamentComposer({
     () => groups.find((group) => group.groupid === form.groupid)?.name ?? '',
     [groups, form.groupid]
   );
+  const maxPlayersCap = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && !me?.canuseclubfeatures ? 8 : null;
 
   const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((current) => ({
@@ -384,7 +406,10 @@ function CreateTournamentComposer({
               <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} />
             </Field>
             <Field label="Max players">
-              <input className="input" type="number" placeholder="0" min="0" value={form.maxplayers} onChange={set('maxplayers')} />
+              <input className="input" type="number" placeholder="0" min="0" max={maxPlayersCap ?? undefined} value={form.maxplayers} onChange={set('maxplayers')} />
+              {maxPlayersCap ? (
+                <p className="text-xs text-pit-muted">Host tier tournaments are capped at {maxPlayersCap} players after the 2 hosted-tournament Club trial.</p>
+              ) : null}
             </Field>
             <Field label="Rebuy price">
               <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} />

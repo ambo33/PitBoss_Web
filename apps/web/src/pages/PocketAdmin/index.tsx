@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, RefreshCw } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useAuthStore } from '../../store/auth';
 
 interface TimerTick {
   remainingsecs: number;
@@ -32,6 +33,7 @@ type NavigatorWithWakeLock = Navigator & {
 export default function PocketAdminPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const user = useAuthStore((state) => state.user);
   const socketRef = useRef<Socket | null>(null);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const keepAwakeWantedRef = useRef(false);
@@ -53,6 +55,7 @@ export default function PocketAdminPage() {
   });
 
   const canManage = tournament?.canmanage;
+  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
   const wakeLockSupported = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
 
   const checkinMutation = useMutation({
@@ -69,6 +72,22 @@ export default function PocketAdminPage() {
   });
   const addonMutation = useMutation({
     mutationFn: (userId: string) => api.addAddon(id!, userId),
+    onSuccess: () => refreshTournamentData(qc, id!),
+  });
+  const genericRebuyMutation = useMutation({
+    mutationFn: () => api.addGenericRebuy(id!),
+    onSuccess: () => refreshTournamentData(qc, id!),
+  });
+  const removeGenericRebuyMutation = useMutation({
+    mutationFn: () => api.removeGenericRebuy(id!),
+    onSuccess: () => refreshTournamentData(qc, id!),
+  });
+  const genericAddonMutation = useMutation({
+    mutationFn: () => api.addGenericAddon(id!),
+    onSuccess: () => refreshTournamentData(qc, id!),
+  });
+  const removeGenericAddonMutation = useMutation({
+    mutationFn: () => api.removeGenericAddon(id!),
     onSuccess: () => refreshTournamentData(qc, id!),
   });
   const removeAddonMutation = useMutation({
@@ -327,30 +346,77 @@ export default function PocketAdminPage() {
                 >
                   {selectedPlayer.checkedin ? 'Undo Check-In' : 'Check In'}
                 </button>
-                <button
-                  type="button"
-                  className="btn-ghost justify-center"
-                  onClick={() => rebuyMutation.mutate(selectedPlayer.userid)}
-                  disabled={!selectedPlayer.checkedin || rebuyMutation.isPending}
-                >
-                  Add Rebuy
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost justify-center"
-                  onClick={() => selectedPlayer.rebuys > 0 && removeRebuyMutation.mutate(selectedPlayer.userid)}
-                  disabled={selectedPlayer.rebuys <= 0 || removeRebuyMutation.isPending}
-                >
-                  Remove Rebuy
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost justify-center"
-                  onClick={() => selectedPlayer.addedon ? removeAddonMutation.mutate(selectedPlayer.userid) : addonMutation.mutate(selectedPlayer.userid)}
-                  disabled={!selectedPlayer.checkedin || addonMutation.isPending || removeAddonMutation.isPending}
-                >
-                  {selectedPlayer.addedon ? 'Undo Add-On' : 'Add Add-On'}
-                </button>
+                {canUseClubFeatures ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost justify-center"
+                      onClick={() => rebuyMutation.mutate(selectedPlayer.userid)}
+                      disabled={!selectedPlayer.checkedin || rebuyMutation.isPending}
+                    >
+                      Add Rebuy
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost justify-center"
+                      onClick={() => selectedPlayer.rebuys > 0 && removeRebuyMutation.mutate(selectedPlayer.userid)}
+                      disabled={selectedPlayer.rebuys <= 0 || removeRebuyMutation.isPending}
+                    >
+                      Remove Rebuy
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost justify-center"
+                      onClick={() => selectedPlayer.addedon ? removeAddonMutation.mutate(selectedPlayer.userid) : addonMutation.mutate(selectedPlayer.userid)}
+                      disabled={!selectedPlayer.checkedin || addonMutation.isPending || removeAddonMutation.isPending}
+                    >
+                      {selectedPlayer.addedon ? 'Undo Add-On' : 'Add Add-On'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {tournament.rebuyprice > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost justify-center"
+                        onClick={() => removeGenericRebuyMutation.mutate()}
+                        disabled={removeGenericRebuyMutation.isPending || Number(tournament.genericrebuys ?? 0) <= 0}
+                      >
+                        Rebuy -
+                      </button>
+                    )}
+                    {tournament.rebuyprice > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost justify-center"
+                        onClick={() => genericRebuyMutation.mutate()}
+                        disabled={genericRebuyMutation.isPending}
+                      >
+                        Rebuy +
+                      </button>
+                    )}
+                    {tournament.addonprice > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost justify-center"
+                        onClick={() => removeGenericAddonMutation.mutate()}
+                        disabled={removeGenericAddonMutation.isPending || Number(tournament.genericaddons ?? 0) <= 0}
+                      >
+                        Add-On -
+                      </button>
+                    )}
+                    {tournament.addonprice > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost justify-center"
+                        onClick={() => genericAddonMutation.mutate()}
+                        disabled={genericAddonMutation.isPending}
+                      >
+                        Add Add-On
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )}

@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, GroupMember, Tournament, TournamentPlayer } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
+import { useAuthStore } from '../../store/auth';
 
 interface Props {
   tournamentId: string;
@@ -16,6 +17,7 @@ type QrView = 'checkin' | 'addon';
 
 export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const qc = useQueryClient();
+  const user = useAuthStore((state) => state.user);
   const socketRef = useRef<Socket | null>(null);
   const [filter, setFilter] = useState<'all' | 'in' | 'out'>('all');
   const [search, setSearch] = useState('');
@@ -25,8 +27,9 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const [selected, setSelected] = useState<TournamentPlayer | null>(null);
   const [qrView, setQrView] = useState<QrView>('checkin');
 
-  const checkInUrl = `${window.location.origin}/lobby/${tournamentId}`;
+  const checkInUrl = `${window.location.origin}/checkin/${tournamentId}`;
   const addOnUrl = `${window.location.origin}/addon/${tournamentId}`;
+  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
 
   function refreshTournamentData() {
     qc.invalidateQueries({ queryKey: ['players', tournamentId] });
@@ -78,12 +81,28 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     mutationFn: (uid: string) => api.addAddon(tournamentId, uid),
     onSuccess: () => refreshTournamentData(),
   });
+  const genericRebuyMutation = useMutation({
+    mutationFn: () => api.addGenericRebuy(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const genericAddonMutation = useMutation({
+    mutationFn: () => api.addGenericAddon(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
   const removeRebuyMutation = useMutation({
     mutationFn: (uid: string) => api.removeRebuy(tournamentId, uid),
     onSuccess: () => refreshTournamentData(),
   });
   const removeAddonMutation = useMutation({
     mutationFn: (uid: string) => api.removeAddon(tournamentId, uid),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const removeGenericRebuyMutation = useMutation({
+    mutationFn: () => api.removeGenericRebuy(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const removeGenericAddonMutation = useMutation({
+    mutationFn: () => api.removeGenericAddon(tournamentId),
     onSuccess: () => refreshTournamentData(),
   });
   const knockMutation = useMutation({
@@ -104,8 +123,12 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const actionError = checkinMutation.error
     ?? rebuyMutation.error
     ?? addonMutation.error
+    ?? genericRebuyMutation.error
+    ?? genericAddonMutation.error
     ?? removeRebuyMutation.error
     ?? removeAddonMutation.error
+    ?? removeGenericRebuyMutation.error
+    ?? removeGenericAddonMutation.error
     ?? knockMutation.error
     ?? removeMutation.error;
 
@@ -120,8 +143,8 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const checkedIn = players.filter((player) => player.checkedin).length;
   const placed = players.filter((player) => player.placed != null).length;
   const activePlayers = Math.max(checkedIn - placed, 0);
-  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
-  const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
+  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
+  const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const grossPot = (toNumber(tournament.buyin) * checkedIn)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
@@ -156,7 +179,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               >
                 Check-In QR
               </button>
-              {tournament.addonprice > 0 && tournament.addonchips > 0 && (
+              {canUseClubFeatures && tournament.addonprice > 0 && tournament.addonchips > 0 && (
                 <button
                   type="button"
                   onClick={() => setQrView('addon')}
@@ -195,6 +218,37 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               </div>
             </div>
           </div>
+
+          {isOwner && !canUseClubFeatures && ((tournament.rebuyprice > 0) || (tournament.addonprice > 0)) && (
+            <div className="rounded-xl border border-pit-border bg-pit-bg/50 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="font-semibold text-white">Quick Counters</h3>
+                <p className="text-xs text-pit-muted">Host tier uses tournament-level counts.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {tournament.rebuyprice > 0 && (
+                  <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+                    <p className="text-xs uppercase tracking-wide text-pit-muted">Rebuys</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">{toNumber(tournament.genericrebuys)}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="btn-ghost flex-1 justify-center" onClick={() => removeGenericRebuyMutation.mutate()} disabled={removeGenericRebuyMutation.isPending || toNumber(tournament.genericrebuys) <= 0}>-</button>
+                      <button className="btn-primary flex-1 justify-center" onClick={() => genericRebuyMutation.mutate()} disabled={genericRebuyMutation.isPending}>+</button>
+                    </div>
+                  </div>
+                )}
+                {tournament.addonprice > 0 && (
+                  <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+                    <p className="text-xs uppercase tracking-wide text-pit-muted">Add-Ons</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">{toNumber(tournament.genericaddons)}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="btn-ghost flex-1 justify-center" onClick={() => removeGenericAddonMutation.mutate()} disabled={removeGenericAddonMutation.isPending || toNumber(tournament.genericaddons) <= 0}>-</button>
+                      <button className="btn-primary flex-1 justify-center" onClick={() => genericAddonMutation.mutate()} disabled={genericAddonMutation.isPending}>+</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -250,12 +304,17 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onRemoveAddon={() => removeAddonMutation.mutate(player.userid)}
             onSelect={() => setSelected(player)}
             tournament={tournament}
+            canUseClubFeatures={canUseClubFeatures}
             isBusy={
               checkinMutation.isPending
               || rebuyMutation.isPending
               || addonMutation.isPending
+              || genericRebuyMutation.isPending
+              || genericAddonMutation.isPending
               || removeRebuyMutation.isPending
               || removeAddonMutation.isPending
+              || removeGenericRebuyMutation.isPending
+              || removeGenericAddonMutation.isPending
             }
           />
         ))}
@@ -339,7 +398,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onSelect, tournament, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onSelect, tournament, canUseClubFeatures, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
@@ -349,6 +408,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   onRemoveAddon: () => void;
   onSelect: () => void;
   tournament: Tournament;
+  canUseClubFeatures: boolean;
   isBusy: boolean;
 }) {
   return (
@@ -357,7 +417,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
         <p className="truncate text-sm font-medium text-white">{player.displayname ?? player.emailaddress ?? 'Guest Player'}</p>
         <div className="mt-1 flex gap-2">
           {player.rebuys > 0 && (
-            isOwner ? (
+            isOwner && canUseClubFeatures ? (
               <button
                 type="button"
                 className="badge bg-yellow-900/50 text-xs text-yellow-300 transition hover:bg-yellow-800/60"
@@ -372,7 +432,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             )
           )}
           {player.addedon && (
-            isOwner ? (
+            isOwner && canUseClubFeatures ? (
               <button
                 type="button"
                 className="badge bg-blue-900/50 text-xs text-blue-300 transition hover:bg-blue-800/60"
@@ -392,10 +452,10 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
       </div>
       {isOwner && (
         <div className="flex shrink-0 gap-2">
-          {tournament.rebuyprice > 0 && player.checkedin && player.placed == null && (
+          {canUseClubFeatures && tournament.rebuyprice > 0 && player.checkedin && player.placed == null && (
             <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onRebuy} disabled={isBusy}>Rebuy</button>
           )}
-          {tournament.addonprice > 0 && !player.addedon && (
+          {canUseClubFeatures && tournament.addonprice > 0 && !player.addedon && (
             <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onAddon} disabled={isBusy}>Add-on</button>
           )}
           <button

@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth';
 import LoginPage from './pages/Login';
 import MainPage from './pages/Main';
+import LandingPage from './pages/Landing';
+import PricingPage from './pages/Pricing';
 import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
@@ -15,7 +17,14 @@ import RouteErrorBoundary from './components/RouteErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
-  return token ? <>{children}</> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  const next = `${location.pathname}${location.search}`;
+  return token ? <>{children}</> : <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+}
+
+function HomeRoute() {
+  const token = useAuthStore((s) => s.token);
+  return token ? <MainPage /> : <LandingPage />;
 }
 
 export default function App() {
@@ -23,11 +32,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
-        <Route path="/" element={<RequireAuth><MainPage /></RequireAuth>} />
+        <Route path="/" element={<HomeRoute />} />
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />
         <Route path="/join/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
+        <Route path="/checkin/:id" element={<PlayerLobbyPage mode="checkin" />} />
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
         <Route path="/addon/:id" element={<AddonLobbyPage />} />
         <Route path="/tv" element={<TvBoardEntryPage />} />

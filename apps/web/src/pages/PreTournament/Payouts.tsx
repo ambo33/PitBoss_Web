@@ -23,6 +23,7 @@ const DEFAULT_SPLITS: Record<number, number[]> = {
 export default function Payouts({ tournamentId, tournament }: Props) {
   const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
   const savedPayoutConfig = useMemo(
     () => parsePayoutStructure(tournament.payoutstructure),
     [tournament.payoutstructure]
@@ -71,8 +72,8 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   const registeredCount = players.length;
   const payoutFieldSize = checkedIn > 0 ? checkedIn : registeredCount;
   const payoutFieldLabel = checkedIn > 0 ? 'checked in' : 'registered';
-  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
-  const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
+  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
+  const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const grossPot = (toNumber(tournament.buyin) * checkedIn)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
@@ -109,6 +110,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
 
   function handleModeChange(mode: PayoutMode) {
     if (!canManage) return;
+    if (mode === 'percent' && !canUseClubFeatures) return;
     const nextValue = mode === payoutConfig.mode
       ? payoutConfig.value
       : mode === 'percent'
@@ -123,7 +125,10 @@ export default function Payouts({ tournamentId, tournament }: Props) {
     setSelectionInput(raw);
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
-    setPayoutConfig((current) => normalizePayoutConfig({ mode: current.mode, value: parsed }));
+    setPayoutConfig((current) => normalizePayoutConfig({
+      mode: current.mode,
+      value: current.mode === 'count' && !canUseClubFeatures ? clamp(parsed, 1, 3) : parsed,
+    }));
   }
 
   function handleSelectionInputBlur() {
@@ -132,7 +137,8 @@ export default function Payouts({ tournamentId, tournament }: Props) {
       setSelectionInput(String(payoutConfig.value));
       return;
     }
-    setSelectionInput(String(sanitizePayoutValue(payoutConfig.mode, parsed)));
+    const nextValue = sanitizePayoutValue(payoutConfig.mode, parsed);
+    setSelectionInput(String(payoutConfig.mode === 'count' && !canUseClubFeatures ? clamp(nextValue, 1, 3) : nextValue));
   }
 
   function updateSplit(i: number, val: number) {
@@ -160,7 +166,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
                 type="button"
                 onClick={() => handleModeChange('percent')}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${payoutConfig.mode === 'percent' ? 'bg-pit-teal text-white' : 'text-pit-text hover:text-white'}`}
-                disabled={!canManage}
+                disabled={!canManage || !canUseClubFeatures}
               >
                 Percent
               </button>
@@ -171,7 +177,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
                 className="input w-24"
                 type="number"
                 min="1"
-                max={payoutConfig.mode === 'percent' ? '100' : undefined}
+                max={payoutConfig.mode === 'percent' ? '100' : !canUseClubFeatures ? '3' : undefined}
                 step="1"
                 value={selectionInput}
                 onChange={(e) => handleSelectionInputChange(e.target.value)}
@@ -199,6 +205,12 @@ export default function Payouts({ tournamentId, tournament }: Props) {
           {canManage && payoutStructureMutation.isPending && <span className="text-pit-muted">Saving...</span>}
           {canManage && payoutStructureMutation.error && <span className="text-red-400">{payoutStructureMutation.error.message}</span>}
         </div>
+
+        {!canUseClubFeatures && (
+          <p className="text-xs text-pit-muted">
+            Host tier payouts are limited to paying 1, 2, or 3 places. Club and Pro unlock percent-of-field payouts.
+          </p>
+        )}
 
         {canManage && (
           <div className="flex flex-wrap items-end gap-2">
@@ -254,6 +266,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
                 type="number" min="0" max="100" step="0.5"
                 value={visibleSplits[i] ?? 0}
                 onChange={e => updateSplit(i, Number(e.target.value))}
+                disabled={!canUseClubFeatures}
               />
               <span className="text-pit-text text-sm">%</span>
               <span className="text-white text-sm font-semibold">

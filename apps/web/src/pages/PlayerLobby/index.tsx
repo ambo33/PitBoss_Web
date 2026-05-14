@@ -20,7 +20,7 @@ function guestStorageKey(tournamentId: string) {
   return `pb_guest_lobby_${tournamentId}`;
 }
 
-export default function PlayerLobbyPage() {
+export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | 'checkin' }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -48,11 +48,21 @@ export default function PlayerLobbyPage() {
   const tournament = data?.tournament;
   const field = data?.field;
   const entry = data?.entry;
+  const activePlayers = data?.activePlayers ?? [];
+  const checkInMode = mode === 'checkin';
+  const [knockedOutByUserId, setKnockedOutByUserId] = useState('');
+
+  useEffect(() => {
+    if (checkInMode && id && entry?.checkedin) {
+      navigate(`/lobby/${id}`, { replace: true });
+    }
+  }, [checkInMode, entry?.checkedin, id, navigate]);
 
   const selfCheckinMutation = useMutation({
     mutationFn: () => api.lobbySelfCheckin(id!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+      if (checkInMode && id) navigate(`/lobby/${id}`, { replace: true });
     },
   });
 
@@ -64,6 +74,7 @@ export default function PlayerLobbyPage() {
       setGuestUserId(result.guestUserId);
       setGuestName('');
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+      if (checkInMode) navigate(`/lobby/${id}`, { replace: true });
     },
   });
 
@@ -76,6 +87,36 @@ export default function PlayerLobbyPage() {
       if (!id) return;
       localStorage.setItem(guestStorageKey(id), result.guestUserId);
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+      if (checkInMode) navigate(`/lobby/${id}`, { replace: true });
+    },
+  });
+
+  const selfRegisterMutation = useMutation({
+    mutationFn: () => api.lobbySelfRegister(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+    },
+  });
+
+  const guestRegisterMutation = useMutation({
+    mutationFn: () => api.lobbyGuestRegister(id!, { displayname: guestName.trim() }),
+    onSuccess: (result) => {
+      if (!id) return;
+      localStorage.setItem(guestStorageKey(id), result.guestUserId);
+      setGuestUserId(result.guestUserId);
+      setGuestName('');
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+    },
+  });
+
+  const knockoutMutation = useMutation({
+    mutationFn: () => api.publicSelfKnockout(id!, {
+      guestUserId: guestUserId || undefined,
+      knockedOutByUserId: knockedOutByUserId || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+      setKnockedOutByUserId('');
     },
   });
 
@@ -152,7 +193,7 @@ export default function PlayerLobbyPage() {
 
   function handleSignIn() {
     if (!id) return;
-    navigate(`/login?next=${encodeURIComponent(`/lobby/${id}`)}`);
+    navigate(`/login?next=${encodeURIComponent(checkInMode ? `/checkin/${id}` : `/lobby/${id}`)}`);
   }
 
   function handleSelfCheckin() {
@@ -203,16 +244,23 @@ export default function PlayerLobbyPage() {
     ? `PLEASE BE SEATED AT: TABLE ${entry.tablenumber} SEAT ${entry.seat}`
     : 'TABLE SEATS NOT YET ASSIGNED';
   const displayIdentity = entry?.displayname ?? entry?.emailaddress ?? user?.displayname ?? user?.emailaddress ?? (guestUserId ? 'Guest Player' : null);
+  const registeredStatus = entry ? 'Registered' : 'Not registered';
+  const checkInStatus = entry?.checkedin ? 'Checked in' : entry ? 'Not checked in' : 'Check-in required';
 
   return (
     <div className="min-h-screen bg-pit-bg p-3 text-white">
       <header className="mb-4 text-center">
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
         {displayIdentity && <p className="mt-1 text-sm text-pit-text">PokerPlanner.bet - {displayIdentity}</p>}
-        <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>
+        {entry && <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>}
       </header>
 
       <div className="mx-auto max-w-md space-y-4">
+        <section className="card grid grid-cols-2 gap-2 p-3">
+          <LobbyStat label="Registration" value={registeredStatus} />
+          <LobbyStat label="Check-In" value={checkInStatus} accent={Boolean(entry?.checkedin)} />
+        </section>
+
         {currentBlind && (
           <div className={`card space-y-3 p-3 text-center ${timerTone}`}>
             <p className="text-xs uppercase tracking-wider text-pit-text">
@@ -311,7 +359,7 @@ export default function PlayerLobbyPage() {
           </div>
         </section>
 
-        {!entry ? (
+        {checkInMode && !entry ? (
           <div className="grid gap-4">
             <section className="card space-y-3 p-3">
               <div>
@@ -323,7 +371,7 @@ export default function PlayerLobbyPage() {
                   <p className="text-sm font-semibold text-white">Use your account</p>
                   <p className="mt-1 text-sm text-pit-text">
                     {token
-                      ? 'You are signed in. Tap below to register and check in for this tournament.'
+                      ? 'You are signed in. Tap below to register and check in, then we will send you to your player lobby.'
                       : 'Sign in first, then your registration and check-in will finish here automatically.'}
                   </p>
                   <button
@@ -371,11 +419,53 @@ export default function PlayerLobbyPage() {
               </>
             </section>
           </div>
-        ) : entry.placed != null ? (
-          <section className="card p-3">
-            <p className="text-sm text-pit-text">You have already finished in place #{entry.placed}.</p>
+        ) : !checkInMode && !entry ? (
+          <section className="card space-y-3 p-3">
+            <h2 className="text-base font-semibold text-white">Player Lobby</h2>
+            <p className="text-sm text-pit-text">
+              You are not registered for this tournament yet. Register here, then see the host to complete check-in.
+            </p>
+            {token ? (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => selfRegisterMutation.mutate()}
+                disabled={selfRegisterMutation.isPending}
+              >
+                {selfRegisterMutation.isPending ? 'Registering...' : 'Register for Tournament'}
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Register</button>
+                <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+                  <p className="text-sm font-semibold text-white">Continue as guest</p>
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                    <input
+                      className="input flex-1"
+                      placeholder="Your name"
+                      value={guestName}
+                      onChange={(event) => setGuestName(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => guestRegisterMutation.mutate()}
+                      disabled={guestRegisterMutation.isPending || !guestName.trim()}
+                    >
+                      {guestRegisterMutation.isPending ? 'Registering...' : 'Register Guest'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {selfRegisterMutation.error && <p className="text-sm text-red-400">{selfRegisterMutation.error.message}</p>}
+            {guestRegisterMutation.error && <p className="text-sm text-red-400">{guestRegisterMutation.error.message}</p>}
           </section>
-        ) : !entry.checkedin ? (
+        ) : entry?.placed != null ? (
+          <section className="card p-3">
+            <p className="text-sm text-pit-text">You have already finished in place #{entry?.placed}.</p>
+          </section>
+        ) : checkInMode && !entry?.checkedin ? (
           <section className="card space-y-3 p-3">
             <p className="text-sm text-pit-text">You are registered, but not currently checked in.</p>
             {token ? (
@@ -401,6 +491,44 @@ export default function PlayerLobbyPage() {
             )}
             {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
             {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
+          </section>
+        ) : !checkInMode && !entry?.checkedin ? (
+          <section className="card p-3">
+            <h2 className="text-base font-semibold text-white">{entry?.displayname ?? entry?.emailaddress ?? 'Player'}</h2>
+            <p className="mt-2 text-sm text-pit-text">
+              You are registered, but not checked in yet. Please see the host to pay and scan the check-in QR.
+            </p>
+          </section>
+        ) : entry?.checkedin ? (
+          <section className="card space-y-3 p-3">
+            <div>
+              <h2 className="text-base font-semibold text-white">{entry?.displayname ?? entry?.emailaddress ?? 'Player'}</h2>
+              <p className="mt-1 text-sm text-pit-text">Still playing. Use this when you are knocked out.</p>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-pit-text">Who knocked you out? (optional)</span>
+              <select
+                className="input"
+                value={knockedOutByUserId}
+                onChange={(event) => setKnockedOutByUserId(event.target.value)}
+              >
+                <option value="">No selection</option>
+                {activePlayers.map((player) => (
+                  <option key={player.userid} value={player.userid}>
+                    {player.displayname ?? player.emailaddress}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => knockoutMutation.mutate()}
+              disabled={knockoutMutation.isPending}
+            >
+              {knockoutMutation.isPending ? 'Reporting...' : 'I Have Been Knocked Out'}
+            </button>
+            {knockoutMutation.error && <p className="text-sm text-red-400">{knockoutMutation.error.message}</p>}
           </section>
         ) : null}
       </div>

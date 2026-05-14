@@ -14,6 +14,7 @@ import { playersRouter } from './routes/players';
 import { blindsRouter } from './routes/blinds';
 import { seatingRouter } from './routes/seating';
 import { publicRouter } from './routes/public';
+import { adminRouter } from './routes/admin';
 import { getClientUrl } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
@@ -49,6 +50,7 @@ app.get('/healthz', (_req, res) => {
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/public', publicRouter);
 app.use('/api/groups', groupsRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/tournaments', playersRouter);
 app.use('/api/tournaments', blindsRouter);

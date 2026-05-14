@@ -13,6 +13,26 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS accounttiers (
+        tierid INT PRIMARY KEY,
+        tierkey STRING(20) NOT NULL UNIQUE,
+        displayname STRING(40) NOT NULL,
+        sortorder INT NOT NULL DEFAULT 0
+      )
+    `);
+    await client.query(`
+      INSERT INTO accounttiers (tierid, tierkey, displayname, sortorder)
+      VALUES
+        (1, 'host', 'Host', 1),
+        (2, 'club', 'Club', 2),
+        (3, 'pro', 'Pro', 3)
+      ON CONFLICT (tierid)
+      DO UPDATE SET
+        tierkey = EXCLUDED.tierkey,
+        displayname = EXCLUDED.displayname,
+        sortorder = EXCLUDED.sortorder
+    `);
+    await client.query(`
       ALTER TABLE tournaments
       ADD COLUMN IF NOT EXISTS groupid UUID REFERENCES groups(groupid) ON DELETE SET NULL
     `);
@@ -34,6 +54,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS genericrebuys INT DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS genericaddons INT DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
       ADD COLUMN IF NOT EXISTS tvdisplaycode STRING(8)
     `);
     await client.query(`
@@ -50,6 +78,22 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS tierid INT REFERENCES accounttiers(tierid)
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS issuperadmin BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS hostedtournamentcount INT DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS checkinaudiodata STRING
     `);
     await client.query(`
@@ -63,6 +107,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS avatarfilename STRING(255)
+    `);
+    await client.query(`
+      UPDATE usermetadata
+      SET tierid = CASE
+        WHEN COALESCE(accounttier, 'free') = 'premium' THEN 2
+        ELSE 1
+      END
+      WHERE tierid IS NULL
     `);
 
     const existingCodeRows = await client.query<{ tvdisplaycode: string | null }>(`
@@ -115,7 +167,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS knockedoutat TIMESTAMPTZ
     `);
-    console.log('Schema ready: tournament group fields, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
+    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group fields, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
   } finally {
     client.release();
     if (options.closePool) {

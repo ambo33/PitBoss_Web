@@ -13,6 +13,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resetToken = searchParams.get('token');
+  const requestedMode = searchParams.get('mode');
   const inviteCode = searchParams.get('invite') ?? getPendingGroupInvite() ?? '';
   const nextPath = searchParams.get('next');
 
@@ -26,6 +27,10 @@ export default function LoginPage() {
   useEffect(() => {
     if (inviteCode) setPendingGroupInvite(inviteCode);
   }, [inviteCode]);
+
+  useEffect(() => {
+    if (requestedMode === 'register') setView('register');
+  }, [requestedMode]);
 
   return (
     <div className="min-h-screen overflow-hidden bg-pit-bg px-4">

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne, pool } from '../db';
+import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { getClientUrl } from '../config';
 import { Group, GroupMember } from '../types';
@@ -35,6 +36,17 @@ groupsRouter.post('/', async (req: Request, res: Response) => {
   const { name, approvalneeded } = req.body as { name: string; approvalneeded?: boolean };
   const trimmedName = name?.trim();
   if (!trimmedName) { res.status(400).json({ error: 'Name required' }); return; }
+
+  const profile = await getAccountProfile(req.userId!);
+  if (!profile) {
+    res.status(404).json({ error: 'User account not found' });
+    return;
+  }
+  const ownedGroupCount = await getOwnedGroupCount(req.userId!);
+  if (ownedGroupCount >= profile.maxgroups) {
+    res.status(403).json({ error: 'Host tier allows only 1 hosted group.' });
+    return;
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const invitecode = generateInviteCode();

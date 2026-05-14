@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
+import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
@@ -48,6 +49,7 @@ export default function RunTournament({
   queryKeysToRefresh?: unknown[][];
 }) {
   const qc = useQueryClient();
+  const user = useAuthStore((state) => state.user);
   const socketRef = useRef<Socket | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   const [timerState, setTimerState] = useState<TimerState | null>(null);
@@ -64,6 +66,7 @@ export default function RunTournament({
   const greetingTimeoutRef = useRef<number | null>(null);
 
   const showAdminControls = isOwner && mode === 'admin';
+  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
   const tvMode = mode === 'tv';
   const displayMode = mode === 'display' || tvMode;
   const tvGreetingDisplayEnabled = tournament.tvgreetingdisplayenabled ?? true;
@@ -85,6 +88,22 @@ export default function RunTournament({
   });
   const addonMutation = useMutation({
     mutationFn: (userId: string) => api.addAddon(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const genericRebuyMutation = useMutation({
+    mutationFn: () => api.addGenericRebuy(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const removeGenericRebuyMutation = useMutation({
+    mutationFn: () => api.removeGenericRebuy(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const genericAddonMutation = useMutation({
+    mutationFn: () => api.addGenericAddon(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const removeGenericAddonMutation = useMutation({
+    mutationFn: () => api.removeGenericAddon(tournamentId),
     onSuccess: () => refreshTournamentData(),
   });
   const checkinMutation = useMutation({
@@ -277,13 +296,13 @@ export default function RunTournament({
     : secs <= 300
       ? 'border-yellow-300/40 bg-yellow-300/10'
       : 'border-pit-border bg-pit-bg/50';
-  const knockoutUrl = `${window.location.origin}/bust/${tournamentId}`;
+  const playerLobbyUrl = `${window.location.origin}/lobby/${tournamentId}`;
 
   const checkedIn = players.filter((player) => player.checkedin).length;
   const registeredCount = players.length;
   const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
-  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
-  const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
+  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
+  const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const fieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
   const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), fieldSize);
@@ -366,28 +385,75 @@ export default function RunTournament({
               >
                 {selectedPlayer?.checkedin ? 'Undo Check-In' : 'Check In'}
               </button>
-              <button
-                type="button"
-                className="btn-ghost px-3 py-1.5 text-xs"
-                onClick={() => selectedPlayer && rebuyMutation.mutate(selectedPlayer.userid)}
-                disabled={!selectedPlayer || !selectedPlayer.checkedin || rebuyMutation.isPending}
-              >
-                Rebuy
-              </button>
-              <button
-                type="button"
-                className="btn-ghost px-3 py-1.5 text-xs"
-                onClick={() => selectedPlayer && addonMutation.mutate(selectedPlayer.userid)}
-                disabled={!selectedPlayer || selectedPlayer.addedon || addonMutation.isPending}
-              >
-                {selectedPlayer?.addedon ? 'Add-On Used' : 'Add-On'}
-              </button>
+              {canUseClubFeatures ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1.5 text-xs"
+                    onClick={() => selectedPlayer && rebuyMutation.mutate(selectedPlayer.userid)}
+                    disabled={!selectedPlayer || !selectedPlayer.checkedin || rebuyMutation.isPending}
+                  >
+                    Rebuy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1.5 text-xs"
+                    onClick={() => selectedPlayer && addonMutation.mutate(selectedPlayer.userid)}
+                    disabled={!selectedPlayer || selectedPlayer.addedon || addonMutation.isPending}
+                  >
+                    {selectedPlayer?.addedon ? 'Add-On Used' : 'Add-On'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {tournament.rebuyprice > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1.5 text-xs"
+                      onClick={() => removeGenericRebuyMutation.mutate()}
+                      disabled={removeGenericRebuyMutation.isPending || toNumber(tournament.genericrebuys) <= 0}
+                    >
+                      Rebuy -
+                    </button>
+                  )}
+                  {tournament.rebuyprice > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1.5 text-xs"
+                      onClick={() => genericRebuyMutation.mutate()}
+                      disabled={genericRebuyMutation.isPending}
+                    >
+                      Rebuy +
+                    </button>
+                  )}
+                  {tournament.addonprice > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1.5 text-xs"
+                      onClick={() => removeGenericAddonMutation.mutate()}
+                      disabled={removeGenericAddonMutation.isPending || toNumber(tournament.genericaddons) <= 0}
+                    >
+                      Add-On -
+                    </button>
+                  )}
+                  {tournament.addonprice > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1.5 text-xs"
+                      onClick={() => genericAddonMutation.mutate()}
+                      disabled={genericAddonMutation.isPending}
+                    >
+                      Add-On +
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <div />
           )}
 
-          {showAdminControls && featureFlags.tvBoard && (
+          {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
             <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
               <p className="text-sm text-white">
                 <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
@@ -608,10 +674,10 @@ export default function RunTournament({
                 {showKnockoutQr && (
                   <div className={`rounded-xl border border-pit-border bg-pit-bg/60 text-center ${tvMode ? 'p-2' : 'p-2.5'}`}>
                     <div className="mb-1 text-white">
-                      <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-wide`}>Report Your Knockout!</p>
+                      <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-wide`}>Open Player Lobby</p>
                     </div>
                     <div className={`inline-block rounded-md bg-white ${tvMode ? 'p-1' : 'p-1.5'}`}>
-                      <QRCodeSVG value={knockoutUrl} size={tvMode ? 76 : 88} />
+                      <QRCodeSVG value={playerLobbyUrl} size={tvMode ? 76 : 88} />
                     </div>
                   </div>
                 )}

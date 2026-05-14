@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ImageIcon, LogOut, Music4, Shield, Trash2, Upload } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
+import AdminPanel from './AdminPanel';
 import GroupsPanel from './GroupsPanel';
 import TournamentsPanel from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
@@ -26,6 +27,7 @@ export default function MainPage() {
       {tab === 'tournaments' && <TournamentsPanel />}
       {tab === 'groups'      && <GroupsPanel />}
       {tab === 'profile'     && <ProfilePanel />}
+      {tab === 'admin'       && <AdminPanel />}
     </Layout>
   );
 }
@@ -163,6 +165,38 @@ function ProfilePanel() {
         </p>
       )}
 
+      <section className="card space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-white">Account Tier</h3>
+            <p className="text-sm text-pit-muted">Your current hosting limits and feature access.</p>
+          </div>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
+            profile?.accounttier === 'host'
+              ? 'bg-pit-border/40 text-pit-text'
+              : 'bg-pit-teal/15 text-pit-teal'
+          }`}>
+            {formatTierName(profile?.accounttier)}
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <TierStat label="Hosted tournaments" value={profile?.hostedtournamentcount ?? 0} />
+          <TierStat label="Trial remaining" value={profile?.trialhostedremaining ?? 0} />
+          <TierStat
+            label="Club features"
+            value={profile?.canuseclubfeatures ? 'Enabled' : 'Locked'}
+            accent={profile?.canuseclubfeatures}
+          />
+        </div>
+        <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
+          {profile?.canuseclubfeatures
+            ? profile?.accounttier === 'club' || profile?.accounttier === 'pro'
+              ? `${formatTierName(profile?.accounttier)} tier: larger tournaments and advanced Club features are unlocked.`
+              : `Trial access: Club features stay unlocked for your first ${Math.max(profile?.trialhostedremaining ?? 0, 0)} hosted tournament${(profile?.trialhostedremaining ?? 0) === 1 ? '' : 's'}.`
+            : 'Host tier: 1 group, 1 upcoming hosted tournament, up to 8 players per tournament, and payouts limited to paying 1, 2, or 3 places.'}
+        </div>
+      </section>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card space-y-4">
           <div className="flex items-center gap-3">
@@ -292,4 +326,27 @@ function getAudioDurationSeconds(file: File): Promise<number> {
     };
     audio.src = url;
   });
+}
+
+function TierStat({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string | number;
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3">
+      <p className="text-xs uppercase tracking-wide text-pit-muted">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
+    </div>
+  );
+}
+
+function formatTierName(tier: 'host' | 'club' | 'pro' | undefined) {
+  if (tier === 'club') return 'Club';
+  if (tier === 'pro') return 'Pro';
+  return 'Host';
 }

@@ -89,9 +89,11 @@ export default function PreTournamentPage() {
 
   const canManage = tournament.canmanage ?? tournament.ownerid === user?.guid;
   const scheduleLocked = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
-  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0);
-  const totalAddons = players.filter((player) => Boolean(player.addedon)).length;
+  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
+  const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const pocketAdminUrl = `${window.location.origin}/pocket-admin/${id}`;
+  const showPocketAdmin = canManage;
+  const showTvBoard = featureFlags.tvBoard;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'details', label: 'Details' },
@@ -141,7 +143,8 @@ export default function PreTournamentPage() {
             onSave={(data) => updateTournamentMutation.mutate(data)}
             onUpdateTvOptions={(data) => updateTournamentMutation.mutate(data)}
             onDelete={() => deleteTournamentMutation.mutate()}
-            pocketAdminUrl={pocketAdminUrl}
+            pocketAdminUrl={showPocketAdmin ? pocketAdminUrl : null}
+            showTvBoard={showTvBoard}
           />
 
           <Payouts tournamentId={id!} tournament={tournament} />
@@ -172,6 +175,7 @@ function TournamentDetailsCard({
   onUpdateTvOptions,
   onDelete,
   pocketAdminUrl,
+  showTvBoard,
 }: {
   tournament: Awaited<ReturnType<typeof api.getTournament>>;
   totalRebuys: number;
@@ -186,7 +190,8 @@ function TournamentDetailsCard({
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onUpdateTvOptions: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onDelete: () => void;
-  pocketAdminUrl: string;
+  pocketAdminUrl: string | null;
+  showTvBoard: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -239,7 +244,7 @@ function TournamentDetailsCard({
           <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
         </div>
         <div className="flex flex-col items-end gap-3">
-          {canManage && (
+          {pocketAdminUrl && (
             <div className="flex items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2">
               <div className="inline-block rounded-md bg-white p-1">
                 <QRCodeSVG value={pocketAdminUrl} size={56} />
@@ -339,7 +344,7 @@ function TournamentDetailsCard({
           />
           <Row label="Rebuys taken" value={totalRebuys} />
           <Row label="Add-ons taken" value={totalAddons} />
-          {featureFlags.tvBoard && (
+          {showTvBoard && (
             <Row
               label="TV board"
               value={
@@ -372,7 +377,7 @@ function TournamentDetailsCard({
                         onClick={() => onUpdateTvOptions({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
                       />
                       <TvOptionToggle
-                        label="Knockout QR"
+                        label="Player Lobby QR"
                         enabled={tournament.tvshowknockoutqrenabled ?? true}
                         disabled={tvOptionsSaving}
                         onClick={() => onUpdateTvOptions({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}

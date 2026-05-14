@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { query, queryOne, pool } from '../db';
+import { getAccountProfile } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
@@ -37,6 +38,11 @@ async function isGroupAdmin(tournamentId: string, userId: string): Promise<boole
 
 async function canManagePlayers(tournamentId: string, userId: string): Promise<boolean> {
   return await isOwner(tournamentId, userId) || await isGroupAdmin(tournamentId, userId);
+}
+
+async function canUsePlayerAccounting(userId: string): Promise<boolean> {
+  const profile = await getAccountProfile(userId);
+  return Boolean(profile?.canuseclubfeatures);
 }
 
 function parsePlaced(value: unknown): number | null {
@@ -242,6 +248,9 @@ playersRouter.post('/:tid/players/:uid/rebuy', async (req: Request, res: Respons
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  if (!await canUsePlayerAccounting(req.userId!)) {
+    res.status(403).json({ error: 'Club tier is required for player-level rebuy tracking.' }); return;
+  }
   const updated = await queryOne<{ rebuys: number }>(
     `UPDATE tournamentplayers
      SET rebuys = COALESCE(rebuys, 0) + 1
@@ -260,6 +269,9 @@ playersRouter.post('/:tid/players/:uid/rebuy', async (req: Request, res: Respons
 playersRouter.delete('/:tid/players/:uid/rebuy', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  if (!await canUsePlayerAccounting(req.userId!)) {
+    res.status(403).json({ error: 'Club tier is required for player-level rebuy tracking.' }); return;
   }
   const updated = await queryOne<{ rebuys: number }>(
     `UPDATE tournamentplayers
@@ -280,6 +292,9 @@ playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Respons
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  if (!await canUsePlayerAccounting(req.userId!)) {
+    res.status(403).json({ error: 'Club tier is required for player-level add-on tracking.' }); return;
+  }
   const updated = await queryOne<{ addedon: boolean }>(
     `UPDATE tournamentplayers
      SET addedon = TRUE
@@ -299,6 +314,9 @@ playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Respo
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  if (!await canUsePlayerAccounting(req.userId!)) {
+    res.status(403).json({ error: 'Club tier is required for player-level add-on tracking.' }); return;
+  }
   const updated = await queryOne<{ addedon: boolean }>(
     `UPDATE tournamentplayers
      SET addedon = FALSE
@@ -312,6 +330,82 @@ playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Respo
   }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon-undo' });
   res.json({ success: true, addedon: updated.addedon });
+});
+
+playersRouter.post('/:tid/rebuys', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ genericrebuys: number }>(
+    `UPDATE tournaments
+     SET genericrebuys = COALESCE(genericrebuys, 0) + 1
+     WHERE tournamentid = $1
+     RETURNING COALESCE(genericrebuys, 0) AS genericrebuys`,
+    [req.params.tid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-rebuy' });
+  res.json({ success: true, genericrebuys: updated.genericrebuys });
+});
+
+playersRouter.delete('/:tid/rebuys', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ genericrebuys: number }>(
+    `UPDATE tournaments
+     SET genericrebuys = GREATEST(COALESCE(genericrebuys, 0) - 1, 0)
+     WHERE tournamentid = $1
+     RETURNING COALESCE(genericrebuys, 0) AS genericrebuys`,
+    [req.params.tid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-rebuy-undo' });
+  res.json({ success: true, genericrebuys: updated.genericrebuys });
+});
+
+playersRouter.post('/:tid/addons', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ genericaddons: number }>(
+    `UPDATE tournaments
+     SET genericaddons = COALESCE(genericaddons, 0) + 1
+     WHERE tournamentid = $1
+     RETURNING COALESCE(genericaddons, 0) AS genericaddons`,
+    [req.params.tid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-addon' });
+  res.json({ success: true, genericaddons: updated.genericaddons });
+});
+
+playersRouter.delete('/:tid/addons', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const updated = await queryOne<{ genericaddons: number }>(
+    `UPDATE tournaments
+     SET genericaddons = GREATEST(COALESCE(genericaddons, 0) - 1, 0)
+     WHERE tournamentid = $1
+     RETURNING COALESCE(genericaddons, 0) AS genericaddons`,
+    [req.params.tid]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-addon-undo' });
+  res.json({ success: true, genericaddons: updated.genericaddons });
 });
 
 playersRouter.delete('/:tid/players/:uid', async (req: Request, res: Response) => {

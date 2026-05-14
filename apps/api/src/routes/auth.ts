@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db';
+import { sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
 
@@ -33,9 +34,11 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   if (!row) { res.status(500).json({ error: 'Failed to create user' }); return; }
 
   await query(
-    `INSERT INTO usermetadata (userid, nickname) VALUES ($1, $2)`,
+    `INSERT INTO usermetadata (userid, nickname, tierid, issuperadmin, hostedtournamentcount)
+     VALUES ($1, $2, 1, FALSE, 0)`,
     [row.guid, displayname ?? normalizedEmail.split('@')[0]]
   );
+  await syncSuperAdminByEmail(row.guid);
 
   try { await sendVerificationEmail(normalizedEmail, pin); } catch { /* non-fatal */ }
 
@@ -111,19 +114,8 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
 });
 
 authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
-  const row = await queryOne<{ guid: string; emailaddress: string; emailverified: boolean; displayname: string; checkinaudiodata?: string | null; checkinaudiofilename?: string | null; hascheckinaudio?: boolean; avatarimagedata?: string | null; avatarfilename?: string | null; hasavatarimage?: boolean }>(
-    `SELECT u.guid, u.emailaddress, u.emailverified,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
-            m.checkinaudiodata,
-            m.checkinaudiofilename,
-            CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
-            m.avatarimagedata,
-            m.avatarfilename,
-            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
-     FROM users u LEFT JOIN usermetadata m ON m.userid = u.guid
-     WHERE u.guid = $1`,
-    [req.userId]
-  );
+  await syncSuperAdminByEmail(req.userId!);
+  const row = await selectAuthProfile(req.userId!);
   if (!row) { res.status(404).json({ error: 'User not found' }); return; }
   res.json(row);
 });
@@ -202,22 +194,57 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     ]
   );
 
-  const row = await queryOne<{ guid: string; emailaddress: string; emailverified: boolean; displayname: string; checkinaudiodata?: string | null; checkinaudiofilename?: string | null; hascheckinaudio?: boolean; avatarimagedata?: string | null; avatarfilename?: string | null; hasavatarimage?: boolean }>(
-    `SELECT u.guid, u.emailaddress, u.emailverified,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
-            m.checkinaudiodata,
-            m.checkinaudiofilename,
-            CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
-            m.avatarimagedata,
-            m.avatarfilename,
-            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
-     FROM users u LEFT JOIN usermetadata m ON m.userid = u.guid
-     WHERE u.guid = $1`,
-    [req.userId]
-  );
+  await syncSuperAdminByEmail(req.userId!);
+  const row = await selectAuthProfile(req.userId!);
   if (!row) {
     res.status(404).json({ error: 'User not found' });
     return;
   }
   res.json(row);
 });
+
+async function selectAuthProfile(userId: string) {
+  return queryOne<{
+    guid: string;
+    emailaddress: string;
+    emailverified: boolean;
+    displayname: string;
+    tierid: number;
+    accounttier: string;
+    issuperadmin: boolean;
+    hostedtournamentcount: number;
+    trialhostedremaining: number;
+    trialactive: boolean;
+    canuseclubfeatures: boolean;
+    checkinaudiodata?: string | null;
+    checkinaudiofilename?: string | null;
+    hascheckinaudio?: boolean;
+    avatarimagedata?: string | null;
+    avatarfilename?: string | null;
+    hasavatarimage?: boolean;
+  }>(
+    `SELECT u.guid, u.emailaddress, u.emailverified,
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            ${sqlResolveTierId('m')} AS tierid,
+            ${sqlResolveTierKey('m')} AS accounttier,
+            COALESCE(m.issuperadmin, FALSE) AS issuperadmin,
+            COALESCE(CAST(m.hostedtournamentcount AS INT), 0) AS hostedtournamentcount,
+            GREATEST(2 - COALESCE(CAST(m.hostedtournamentcount AS INT), 0), 0) AS trialhostedremaining,
+            CASE
+              WHEN ${sqlResolveTierId('m')} = 1 AND COALESCE(CAST(m.hostedtournamentcount AS INT), 0) < 2 THEN TRUE
+              ELSE FALSE
+            END AS trialactive,
+            ${sqlCanUseClubFeatures('m')} AS canuseclubfeatures,
+            m.checkinaudiodata,
+            m.checkinaudiofilename,
+            CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
+            m.avatarimagedata,
+            m.avatarfilename,
+            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
+     FROM users u
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}
+     WHERE u.guid = $1`,
+    [userId]
+  );
+}

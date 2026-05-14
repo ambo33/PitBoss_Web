@@ -3,6 +3,13 @@ export interface User {
   emailaddress: string;
   emailverified: boolean;
   displayname?: string;
+  tierid?: number;
+  accounttier?: 'host' | 'club' | 'pro';
+  issuperadmin?: boolean;
+  hostedtournamentcount?: number;
+  trialhostedremaining?: number;
+  trialactive?: boolean;
+  canuseclubfeatures?: boolean;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;
@@ -43,8 +50,10 @@ export interface Tournament {
   payoutstructure?: string | null;
   rebuyprice: number;
   rebuychips: number;
+  genericrebuys?: number;
   addonprice: number;
   addonchips: number;
+  genericaddons?: number;
   maxplayers: number;
   playerselftracking: boolean;
   active: boolean;
@@ -57,6 +66,8 @@ export interface Tournament {
   tvgreetingdisplayenabled?: boolean;
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
+  tvfeatureenabled?: boolean;
+  pocketadminenabled?: boolean;
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;

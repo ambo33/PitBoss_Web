@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
+import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTournamentCount } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
@@ -64,13 +65,28 @@ function truthySql(column: string) {
   return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
 }
 
+function validateHostPayoutStructure(payoutstructure: string | null | undefined): boolean {
+  if (!payoutstructure) return true;
+  try {
+    const parsed = JSON.parse(payoutstructure) as { mode?: string; value?: unknown };
+    const mode = parsed.mode;
+    const value = Number(parsed.value);
+    return mode === 'count' && [1, 2, 3].includes(Math.round(value));
+  } catch {
+    return false;
+  }
+}
+
 async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> = {}): Promise<number> {
   const tournament = await queryOne<{
     buyin: number;
     rebuyprice: number;
+    genericrebuys: number;
     addonprice: number;
+    genericaddons: number;
   }>(
-    `SELECT buyin, rebuycost AS rebuyprice, addoncost AS addonprice
+    `SELECT buyin, rebuycost AS rebuyprice, COALESCE(genericrebuys, 0) AS genericrebuys,
+            addoncost AS addonprice, COALESCE(genericaddons, 0) AS genericaddons
      FROM tournaments
      WHERE tournamentid = $1`,
     [tournamentId]
@@ -97,20 +113,26 @@ async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> 
   const checkedIn = Number(field?.checkedincount ?? 0);
   const totalRebuys = Number(field?.totalrebuys ?? 0);
   const totalAddons = Number(field?.totaladdons ?? 0);
+  const genericRebuys = Number(overrides.genericrebuys ?? tournament.genericrebuys ?? 0);
+  const genericAddons = Number(overrides.genericaddons ?? tournament.genericaddons ?? 0);
 
-  return (buyin * checkedIn) + (rebuyprice * totalRebuys) + (addonprice * totalAddons);
+  return (buyin * checkedIn) + (rebuyprice * (totalRebuys + genericRebuys)) + (addonprice * (totalAddons + genericAddons));
 }
 
 tournamentsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
-            t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
+            t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            t.tvdisplaycode,
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            TRUE AS tvfeatureenabled,
+            TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
@@ -137,13 +159,17 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
 tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
-            t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
+            t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid, t.tvdisplaycode,
+            t.createdate AS createdat, t.groupid,
+            t.tvdisplaycode,
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            TRUE AS tvfeatureenabled,
+            TRUE AS pocketadminenabled,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
      FROM tournaments t
      JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid AND tp.userid = $1
@@ -154,15 +180,34 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
 });
 
 tournamentsRouter.post('/', async (req: Request, res: Response) => {
-  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips,
-          addonprice, addonchips, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure } = req.body as {
+  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
+          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
     buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
-          addonprice?: number; addonchips?: number; maxplayers?: number;
+          genericrebuys?: number; addonprice?: number; addonchips?: number; genericaddons?: number; maxplayers?: number;
           playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null;
           tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
+
+  const profile = await getAccountProfile(req.userId!);
+  if (!profile) {
+    res.status(404).json({ error: 'User account not found' });
+    return;
+  }
+  const upcomingHostedCount = await getUpcomingHostedTournamentCount(req.userId!);
+  if (upcomingHostedCount >= profile.maxupcominghostedtournaments) {
+    res.status(403).json({ error: 'Your current tier allows only 1 upcoming hosted tournament at a time.' });
+    return;
+  }
+  if (!profile.canuseclubfeatures && Number(maxplayers ?? 0) > profile.maxplayerspertournament) {
+    res.status(403).json({ error: `Host tier tournaments are limited to ${profile.maxplayerspertournament} players.` });
+    return;
+  }
+  if (!profile.canuseclubfeatures && !validateHostPayoutStructure(payoutstructure)) {
+    res.status(403).json({ error: 'Host tier payouts are limited to paying 1, 2, or 3 places.' });
+    return;
+  }
 
   let tvDisplayCode: string | null = null;
   if (isFeatureEnabled('tvBoard')) {
@@ -172,16 +217,18 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const row = await queryOne<{ tournamentid: string }>(
       `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
-        rebuychips, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
+        rebuychips, genericrebuys, addoncost, addonchips, genericaddons, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
         tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING tournamentid`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
-     rebuychips ?? 0, addonprice ?? 0, addonchips ?? 0, maxplayers ?? 0,
+     rebuychips ?? 0, genericrebuys ?? 0, addonprice ?? 0, addonchips ?? 0, genericaddons ?? 0, maxplayers ?? 0,
      playerselftracking ?? false, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
      true, true, true]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
+
+  await incrementHostedTournamentCount(req.userId!);
 
   if (registerself) {
     await query(
@@ -201,13 +248,17 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
 
   const row = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, t.addoncost AS addonprice,
-            t.addonchips, t.maxplayers, t.playerselftracking, TRUE AS active,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
+            t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
-            t.createdate AS createdat, t.groupid, g.name AS groupname, t.tvdisplaycode,
+            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            t.tvdisplaycode,
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            TRUE AS tvfeatureenabled,
+            TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
@@ -227,7 +278,11 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
     [req.params.id, req.userId]
   );
   if (!row) { res.status(404).json({ error: 'Tournament not found' }); return; }
-  row.tvdisplaycode = await ensureTournamentTvCode(row.tournamentid, row.tvdisplaycode);
+  if (isFeatureEnabled('tvBoard')) {
+    row.tvdisplaycode = await ensureTournamentTvCode(row.tournamentid, row.tvdisplaycode);
+  } else {
+    row.tvdisplaycode = null;
+  }
   res.json(row);
 });
 
@@ -235,9 +290,14 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   if (!await canManageTournament(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  const currentProfile = await getAccountProfile(req.userId!);
+  if (!currentProfile) {
+    res.status(404).json({ error: 'User account not found' });
+    return;
+  }
 
-  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips,
-          addonprice, addonchips, maxplayers, playerselftracking, groupid, rake, payoutstructure,
+  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
+          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
           tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled } = req.body as Partial<Tournament>;
   const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
     `SELECT date AS tourneydate, time AS tourneytime
@@ -263,11 +323,19 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     return;
   }
   if (rake != null) {
-    const grossPot = await getGrossPot(req.params.id, { buyin, rebuyprice, addonprice });
+    const grossPot = await getGrossPot(req.params.id, { buyin, rebuyprice, genericrebuys, addonprice, genericaddons });
     if (Number(rake) > grossPot) {
       res.status(400).json({ error: 'Rake cannot exceed the gross pot.' });
       return;
     }
+  }
+  if (!currentProfile.canuseclubfeatures && maxplayers != null && Number(maxplayers) > currentProfile.maxplayerspertournament) {
+    res.status(403).json({ error: `Host tier tournaments are limited to ${currentProfile.maxplayerspertournament} players.` });
+    return;
+  }
+  if (!currentProfile.canuseclubfeatures && payoutstructure != null && !validateHostPayoutStructure(payoutstructure)) {
+    res.status(403).json({ error: 'Host tier payouts are limited to paying 1, 2, or 3 places.' });
+    return;
   }
   await query(
     `UPDATE tournaments SET
@@ -278,19 +346,21 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        adjustment = COALESCE($5, adjustment),
        rebuycost = COALESCE($6, rebuycost),
        rebuychips = COALESCE($7, rebuychips),
-       addoncost = COALESCE($8, addoncost),
-       addonchips = COALESCE($9, addonchips),
-       maxplayers = COALESCE($10, maxplayers),
-       playerselftracking = COALESCE($11, playerselftracking),
-       groupid = COALESCE($13, groupid),
-       payoutstructure = COALESCE($14, payoutstructure),
-       tvgreetingdisplayenabled = COALESCE($15, tvgreetingdisplayenabled),
-       tvgreetingaudioenabled = COALESCE($16, tvgreetingaudioenabled),
-       tvshowknockoutqrenabled = COALESCE($17, tvshowknockoutqrenabled)
-     WHERE tournamentid = $12`,
+       genericrebuys = COALESCE($8, genericrebuys),
+       addoncost = COALESCE($9, addoncost),
+       addonchips = COALESCE($10, addonchips),
+       genericaddons = COALESCE($11, genericaddons),
+       maxplayers = COALESCE($12, maxplayers),
+       playerselftracking = COALESCE($13, playerselftracking),
+       groupid = COALESCE($15, groupid),
+       payoutstructure = COALESCE($16, payoutstructure),
+       tvgreetingdisplayenabled = COALESCE($17, tvgreetingdisplayenabled),
+       tvgreetingaudioenabled = COALESCE($18, tvgreetingaudioenabled),
+       tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled)
+     WHERE tournamentid = $14`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
-     rebuychips ?? null, addonprice ?? null, addonchips ?? null, maxplayers ?? null,
+     rebuychips ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
      tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null]
   );

@@ -86,6 +86,10 @@ export const api = {
     post<{ success: boolean }>(`/public/tournaments/${id}/checkin/self`),
   lobbyGuestCheckin: (id: string, data: { displayname?: string; guestUserId?: string }) =>
     post<{ success: boolean; guestUserId: string }>(`/public/tournaments/${id}/checkin/guest`, data),
+  lobbySelfRegister: (id: string) =>
+    post<{ success: boolean }>(`/public/tournaments/${id}/register/self`),
+  lobbyGuestRegister: (id: string, data: { displayname?: string; guestUserId?: string }) =>
+    post<{ success: boolean; guestUserId: string }>(`/public/tournaments/${id}/register/guest`, data),
   getPublicAddon: (id: string, guestUserId?: string) =>
     get<PublicAddonResponse>(`/public/tournaments/${id}/addon${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   publicSelfAddon: (id: string, data: { guestUserId?: string }) =>
@@ -109,6 +113,10 @@ export const api = {
   removeRebuy: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}/rebuy`),
   addAddon: (tid: string, uid: string) => post(`/tournaments/${tid}/players/${uid}/addon`),
   removeAddon: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}/addon`),
+  addGenericRebuy: (tid: string) => post(`/tournaments/${tid}/rebuys`),
+  removeGenericRebuy: (tid: string) => del(`/tournaments/${tid}/rebuys`),
+  addGenericAddon: (tid: string) => post(`/tournaments/${tid}/addons`),
+  removeGenericAddon: (tid: string) => del(`/tournaments/${tid}/addons`),
   knockPlayer: (tid: string, uid: string, placed: number | null) =>
     put(`/tournaments/${tid}/players/${uid}/knock`, { placed }),
   togglePaid: (tid: string, uid: string) =>
@@ -128,6 +136,12 @@ export const api = {
   assignSeats: (tid: string, maxPerTable?: number) =>
     post<{ assigned: number }>(`/tournaments/${tid}/seating/assign`, { maxPerTable }),
   clearSeating: (tid: string) => del(`/tournaments/${tid}/seating`),
+
+  // Admin
+  getAdminUsers: () => get<AdminUserSummary[]>('/admin/users'),
+  getAdminUser: (id: string) => get<AdminUserDetail>(`/admin/users/${id}`),
+  updateAdminUser: (id: string, data: { tierid?: number; issuperadmin?: boolean }) =>
+    put<{ success: boolean; account: AuthProfile }>(`/admin/users/${id}`, data),
 };
 
 // Shared type re-exports so pages don't need separate imports
@@ -144,13 +158,19 @@ export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
   tourneydate: string | null; tourneytime: string | null;
   buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number;
-  addonprice: number; addonchips: number; maxplayers: number;
+  genericrebuys?: number;
+  addonprice: number; addonchips: number;
+  genericaddons?: number;
+  maxplayers: number;
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
   groupid?: string | null; groupname?: string | null;
   tvdisplaycode?: string | null;
   tvgreetingdisplayenabled?: boolean;
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
+  tvfeatureenabled?: boolean;
+  pocketadminenabled?: boolean;
+  isowner?: boolean;
   playercount?: number; checkedincount?: number; isregistered?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
 }
@@ -166,6 +186,13 @@ export interface AuthProfile {
   guid: string;
   emailaddress: string;
   displayname: string;
+  tierid?: number;
+  accounttier?: AccountTier;
+  issuperadmin?: boolean;
+  hostedtournamentcount?: number;
+  trialhostedremaining?: number;
+  trialactive?: boolean;
+  canuseclubfeatures?: boolean;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;
@@ -207,6 +234,7 @@ export interface PublicLobbyResponse {
   field: LobbyFieldStats;
   seating: SeatingAssignment[];
   entry: LobbyEntry | null;
+  activePlayers?: KnockoutOption[];
 }
 export interface KnockoutOption {
   userid: string; emailaddress: string; displayname?: string;
@@ -215,4 +243,29 @@ export interface PublicKnockoutResponse {
   tournament: Tournament;
   entry: LobbyEntry | null;
   activePlayers: KnockoutOption[];
+}
+
+export type AccountTier = 'host' | 'club' | 'pro';
+
+export interface AdminUserSummary {
+  userid: string;
+  emailaddress: string;
+  displayname?: string;
+  tierid: number;
+  accounttier: AccountTier;
+  issuperadmin: boolean;
+  hostedtournamentcount: number;
+  trialhostedremaining: number;
+  trialactive: boolean;
+  canuseclubfeatures: boolean;
+  groupcount: number;
+  hostedgroupcount: number;
+  upcominghostedcount: number;
+  totalhostedcount: number;
+}
+
+export interface AdminUserDetail {
+  account: AuthProfile;
+  groups: Group[];
+  tournaments: Tournament[];
 }

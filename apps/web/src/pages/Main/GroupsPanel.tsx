@@ -14,6 +14,10 @@ export default function GroupsPanel() {
   const [showJoin, setShowJoin] = useState(false);
   const [selected, setSelected] = useState<Group | null>(null);
 
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+  });
   const { data: groups = [], isLoading } = useQuery({ queryKey: ['groups'], queryFn: api.getGroups });
 
   const createMutation = useMutation({
@@ -24,6 +28,8 @@ export default function GroupsPanel() {
     mutationFn: (code: string) => api.joinGroup(code),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); setShowJoin(false); },
   });
+  const hostedGroupCount = groups.filter((group) => group.isadmin).length;
+  const hostedGroupLimitReached = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && hostedGroupCount >= 1;
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
@@ -35,11 +41,22 @@ export default function GroupsPanel() {
           <button className="btn-ghost gap-1.5 px-3 py-2 text-xs" onClick={() => setShowJoin(true)}>
             <Hash size={13} /> Join
           </button>
-          <button className="btn-primary gap-1.5 px-3 py-2 text-xs" onClick={() => setShowCreate(true)}>
+          <button
+            className="btn-primary gap-1.5 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setShowCreate(true)}
+            disabled={hostedGroupLimitReached}
+            title={hostedGroupLimitReached ? 'Host tier can host 1 group.' : undefined}
+          >
             <Users size={13} /> New group
           </button>
         </div>
       </div>
+
+      {hostedGroupLimitReached && (
+        <p className="mb-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-200">
+          Host tier can host 1 group at a time. Upgrade to Club or Pro to create more hosted groups.
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {groups.map(g => (

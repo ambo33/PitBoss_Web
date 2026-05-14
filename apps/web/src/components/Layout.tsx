@@ -1,9 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Trophy, Users, User, LogOut, ChevronLeft } from 'lucide-react';
+import { Trophy, Users, User, LogOut, ChevronLeft, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
 
-export type NavTab = 'tournaments' | 'groups' | 'profile';
+export type NavTab = 'tournaments' | 'groups' | 'profile' | 'admin';
 
 interface Props {
   children: React.ReactNode;
@@ -21,6 +21,7 @@ const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
   { id: 'tournaments', label: 'Tournaments', Icon: Trophy },
   { id: 'groups', label: 'Groups', Icon: Users },
   { id: 'profile', label: 'Profile', Icon: User },
+  { id: 'admin', label: 'Admin', Icon: Shield },
 ];
 
 export default function Layout({
@@ -61,6 +62,8 @@ export default function Layout({
     .slice(0, 2)
     .toUpperCase() ?? '?';
 
+  const navItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || user?.issuperadmin);
+
   return (
     <div className="min-h-screen bg-pit-bg">
       <div className="flex min-h-screen">
@@ -76,7 +79,7 @@ export default function Layout({
           </div>
 
           <nav className={`flex-1 space-y-0.5 py-4 ${compactSidebar ? 'px-2' : 'px-3'}`}>
-            {NAV_ITEMS.map(({ id, label, Icon }) => {
+            {navItems.map(({ id, label, Icon }) => {
               const active = tab === id;
               return (
                 <button
@@ -149,7 +152,7 @@ export default function Layout({
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
-        {NAV_ITEMS.map(({ id, label, Icon }) => {
+        {navItems.map(({ id, label, Icon }) => {
           const active = tab === id;
           return (
             <button
