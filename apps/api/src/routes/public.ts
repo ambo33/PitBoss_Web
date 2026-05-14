@@ -7,6 +7,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth';
 import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
+import { assignSeatIfSeatingStarted } from '../services/seating';
 
 export const publicRouter = Router();
 
@@ -35,6 +36,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -258,6 +261,7 @@ publicRouter.post('/tournaments/:id/checkin/self', requireAuth, async (req: Requ
     );
   }
 
+  await assignSeatIfSeatingStarted(req.params.id, req.userId!);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-checkin' });
   res.json({ success: true });
 });
@@ -283,6 +287,7 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
          WHERE tournamentid = $1 AND userid = $2`,
         [req.params.id, guestUserId]
       );
+      await assignSeatIfSeatingStarted(req.params.id, guestUserId);
       broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-recheckin' });
       res.json({ success: true, guestUserId });
       return;
@@ -331,6 +336,7 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
     );
 
     await client.query('COMMIT');
+    await assignSeatIfSeatingStarted(req.params.id, createdUser.guid);
     broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-checkin' });
     res.status(201).json({ success: true, guestUserId: createdUser.guid });
   } catch (err) {

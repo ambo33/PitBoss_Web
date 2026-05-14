@@ -202,6 +202,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteNote, setInviteNote] = useState('');
   const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
+  const [tvSeatingMessage, setTvSeatingMessage] = useState(group.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
   const [smsStatus, setSmsStatus] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
 
@@ -243,7 +244,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'tournaments'] }),
   });
   const updateGroupMutation = useMutation({
-    mutationFn: (payload: { invitecode?: string; defaulttrackingmode?: 'standard' | 'player' }) => api.updateGroup(group.groupid, payload),
+    mutationFn: (payload: { invitecode?: string; defaulttrackingmode?: 'standard' | 'player'; tvseatingwelcomemessage?: string }) => api.updateGroup(group.groupid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
@@ -276,7 +277,8 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
 
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
-  }, [effectiveGroup.defaulttrackingmode]);
+    setTvSeatingMessage(effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
+  }, [effectiveGroup.defaulttrackingmode, effectiveGroup.tvseatingwelcomemessage]);
 
   return (
     <Modal title={effectiveGroup.name} open onClose={onClose}
@@ -369,6 +371,32 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
                 {canUseClubFeatures
                   ? 'New tournaments for this group use this stats tracking mode by default.'
                   : 'Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-white">TV seating message</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  className="input"
+                  value={canUseClubFeatures ? tvSeatingMessage : (effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!')}
+                  onChange={(event) => setTvSeatingMessage(event.target.value)}
+                  disabled={!canUseClubFeatures}
+                  maxLength={180}
+                />
+                <button
+                  className="btn-primary shrink-0"
+                  onClick={() => updateGroupMutation.mutate({ tvseatingwelcomemessage: tvSeatingMessage })}
+                  disabled={updateGroupMutation.isPending || !canUseClubFeatures}
+                >
+                  <Save size={14} />
+                  Save Message
+                </button>
+              </div>
+              <p className="text-xs text-pit-muted">
+                {canUseClubFeatures
+                  ? 'Shown on the TV seating view before seats are assigned.'
+                  : 'Host accounts use the default TV seating message. Custom wording unlocks with Club or Pro.'}
               </p>
             </div>
 

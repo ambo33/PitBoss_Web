@@ -5,6 +5,7 @@ import { getAccountProfile } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
+import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
 
 export const playersRouter = Router();
 playersRouter.use(requireAuth);
@@ -239,6 +240,11 @@ playersRouter.put('/:tid/players/:uid/checkin', async (req: Request, res: Respon
   if (!updated) {
     res.status(404).json({ error: 'Player not found' });
     return;
+  }
+  if (updated.checkedin) {
+    await assignSeatIfSeatingStarted(req.params.tid, req.params.uid);
+  } else {
+    await clearSeatForPlayer(req.params.tid, req.params.uid);
   }
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'checkin' });
   res.json({ success: true, checkedin: updated.checkedin });

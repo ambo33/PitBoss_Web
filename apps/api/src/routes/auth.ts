@@ -8,17 +8,18 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 
 export const authRouter = Router();
 
-const AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav);base64,[A-Za-z0-9+/=]+$/i;
-const MAX_AUDIO_DATA_URL_LENGTH = 2_800_000;
+const AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav|mp4|m4a|x-m4a|aac);base64,[A-Za-z0-9+/=]+$/i;
+const MAX_AUDIO_DATA_URL_LENGTH = 4_200_000;
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
 
 authRouter.post('/register', async (req: Request, res: Response) => {
-  const { email, password, displayname } = req.body as {
-    email: string; password: string; displayname?: string;
+  const { email, password, displayname, acceptterms } = req.body as {
+    email: string; password: string; displayname?: string; acceptterms?: boolean;
   };
   const normalizedEmail = email?.trim().toLowerCase();
   if (!normalizedEmail || !password) { res.status(400).json({ error: 'Email and password required' }); return; }
+  if (acceptterms !== true) { res.status(400).json({ error: 'You must agree to the Terms of Service to create an account.' }); return; }
 
   const existing = await queryOne('SELECT guid FROM users WHERE LOWER(emailaddress) = $1', [normalizedEmail]);
   if (existing) { res.status(409).json({ error: 'Email already registered' }); return; }
@@ -34,8 +35,8 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   if (!row) { res.status(500).json({ error: 'Failed to create user' }); return; }
 
   await query(
-    `INSERT INTO usermetadata (userid, nickname, tierid, issuperadmin, hostedtournamentcount)
-     VALUES ($1, $2, 1, FALSE, 0)`,
+    `INSERT INTO usermetadata (userid, nickname, tierid, issuperadmin, hostedtournamentcount, termsacceptedat)
+     VALUES ($1, $2, 1, FALSE, 0, now())`,
     [row.guid, displayname ?? normalizedEmail.split('@')[0]]
   );
   await syncSuperAdminByEmail(row.guid);
@@ -139,11 +140,11 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
 
   if (normalizedAudioData !== undefined) {
     if (!AUDIO_DATA_URL_PATTERN.test(normalizedAudioData)) {
-      res.status(400).json({ error: 'Only MP3 or WAV audio is supported.' });
+      res.status(400).json({ error: 'Only MP3, WAV, M4A, or AAC audio is supported.' });
       return;
     }
     if (normalizedAudioData.length > MAX_AUDIO_DATA_URL_LENGTH) {
-      res.status(400).json({ error: 'Audio file is too large. Keep it under about 2 MB.' });
+      res.status(400).json({ error: 'Audio file is too large. Keep it under about 3 MB.' });
       return;
     }
   }

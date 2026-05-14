@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { ChevronDown, ChevronUp, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trophy, Volume2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
@@ -31,6 +31,8 @@ interface GreetingQueueItem {
   name: string;
   audioDataUrl?: string | null;
   avatarImageUrl?: string | null;
+  tableNumber?: number | null;
+  seat?: number | null;
 }
 
 export default function RunTournament({
@@ -158,6 +160,8 @@ export default function RunTournament({
         name: player.displayname ?? player.emailaddress ?? 'Player',
         audioDataUrl: player.checkinaudiodata ?? null,
         avatarImageUrl: player.avatarimagedata ?? null,
+        tableNumber: player.tablenumber ?? null,
+        seat: player.seat ?? null,
       }));
     const currentSet = new Set(checkedInPlayers.map((player) => player.id));
     const previousSet = seenCheckedInRef.current;
@@ -368,14 +372,16 @@ export default function RunTournament({
   const seatedPlayers = useMemo(
     () => players
       .filter((player) => player.tablenumber != null && player.seat != null && player.placed == null)
-      .sort((a, b) => {
-        const tableDelta = Number(a.tablenumber ?? 0) - Number(b.tablenumber ?? 0);
-        if (tableDelta !== 0) return tableDelta;
-        return Number(a.seat ?? 0) - Number(b.seat ?? 0);
-      }),
+      .sort((a, b) => (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress)),
     [players]
   );
-  const showTvSeating = tvMode && !timerState?.running;
+  const checkedInRoster = useMemo(
+    () => players
+      .filter((player) => player.checkedin && player.placed == null)
+      .sort((a, b) => (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress)),
+    [players]
+  );
+  const showTvSeating = tvMode && tournament.tvdisplaymode === 'seating';
 
   return (
     <div className="space-y-4">
@@ -507,7 +513,11 @@ export default function RunTournament({
 
               <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'space-y-4'}`}>
                 {showTvSeating ? (
-                  <TvSeatingBoard players={seatedPlayers} />
+                  <TvSeatingBoard
+                    seatedPlayers={seatedPlayers}
+                    checkedInPlayers={checkedInRoster}
+                    welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
+                  />
                 ) : (
                 <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
                   {showAdminControls && (
@@ -799,6 +809,11 @@ export default function RunTournament({
               <h2 className="mt-4 text-7xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
                 {activeGreeting.name}
               </h2>
+              {activeGreeting.tableNumber != null && activeGreeting.seat != null && (
+                <p className="mt-3 text-3xl font-semibold uppercase tracking-[0.18em] text-yellow-200 xl:text-4xl">
+                  Table {activeGreeting.tableNumber} Seat {activeGreeting.seat}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -807,60 +822,62 @@ export default function RunTournament({
   );
 }
 
-function TvSeatingBoard({ players }: { players: TournamentPlayer[] }) {
-  const tables = useMemo(() => {
-    const grouped = new Map<number, TournamentPlayer[]>();
-    for (const player of players) {
-      const tableNumber = Number(player.tablenumber ?? 0);
-      if (!tableNumber) continue;
-      const tablePlayers = grouped.get(tableNumber) ?? [];
-      tablePlayers.push(player);
-      grouped.set(tableNumber, tablePlayers);
-    }
-    return [...grouped.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([tableNumber, tablePlayers]) => ({
-        tableNumber,
-        players: tablePlayers.sort((a, b) => Number(a.seat ?? 0) - Number(b.seat ?? 0)),
-      }));
-  }, [players]);
+function TvSeatingBoard({
+  seatedPlayers,
+  checkedInPlayers,
+  welcomeMessage,
+}: {
+  seatedPlayers: TournamentPlayer[];
+  checkedInPlayers: TournamentPlayer[];
+  welcomeMessage: string;
+}) {
+  const hasAssignments = seatedPlayers.length > 0;
+  const roster = hasAssignments ? seatedPlayers : checkedInPlayers;
 
   return (
     <div className="rounded-xl border border-yellow-200/35 bg-yellow-200/10 px-3 py-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-yellow-200">Timer Paused</p>
-          <h3 className="text-xl font-semibold uppercase tracking-[0.2em] text-white">Table Seating</h3>
+          {!hasAssignments && (
+            <p className="mb-1 text-base font-semibold text-yellow-200 xl:text-lg">{welcomeMessage}</p>
+          )}
+          <h3 className="text-xl font-semibold uppercase tracking-[0.2em] text-white">
+            {hasAssignments ? 'Table Assignments' : 'Checked-In Players'}
+          </h3>
         </div>
         <span className="rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
-          {players.length} seated
+          {roster.length} {hasAssignments ? 'seated' : 'checked in'}
         </span>
       </div>
 
-      {tables.length === 0 ? (
+      {roster.length === 0 ? (
         <div className="rounded-lg border border-pit-border bg-pit-bg/45 px-4 py-14 text-center">
-          <p className="text-3xl font-semibold text-white">Seats not assigned yet</p>
-          <p className="mt-2 text-sm text-pit-text">Assigned seats will show here while the timer is paused.</p>
+          <p className="text-3xl font-semibold text-white">No checked-in players yet</p>
+          <p className="mt-2 text-sm text-pit-text">Players will appear here as the host checks them in.</p>
         </div>
       ) : (
-        <div className="grid max-h-[23.5rem] gap-2 overflow-y-auto pr-1 xl:grid-cols-2">
-          {tables.map((table) => (
-            <div key={table.tableNumber} className="rounded-lg border border-pit-border bg-pit-bg/55 p-2">
-              <div className="mb-1.5 flex items-center justify-between">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white">Table {table.tableNumber}</p>
-                <span className="text-xs text-pit-muted">{table.players.length} players</span>
+        <div className="grid max-h-[32rem] grid-cols-2 gap-2 overflow-y-auto pr-1 xl:grid-cols-3 2xl:grid-cols-4">
+          {roster.map((player) => (
+            <div key={player.userid} className="flex min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/55 px-2 py-1.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface text-xs font-semibold text-white">
+                {player.avatarimagedata ? (
+                  <img src={player.avatarimagedata} alt={player.displayname ?? player.emailaddress} className="h-full w-full object-cover" />
+                ) : (
+                  getInitials(player.displayname ?? player.emailaddress)
+                )}
               </div>
-              <div className="space-y-1">
-                {table.players.map((player) => (
-                  <div key={player.userid} className="flex items-center justify-between gap-2 rounded-md border border-pit-border/70 bg-pit-surface/35 px-2 py-1.5">
-                    <span className="min-w-0 truncate text-sm font-semibold text-white">
-                      {player.displayname ?? player.emailaddress}
-                    </span>
-                    <span className="shrink-0 rounded-md bg-pit-teal/15 px-2 py-0.5 text-xs font-semibold text-pit-teal">
-                      Seat {player.seat}
-                    </span>
-                  </div>
-                ))}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{player.displayname ?? player.emailaddress}</p>
+                {hasAssignments ? (
+                  <p className="text-xs font-medium text-yellow-200">
+                    Table {player.tablenumber} Seat {player.seat}
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-1 text-xs text-pit-muted">
+                    <Trophy size={12} />
+                    Checked in
+                  </p>
+                )}
               </div>
             </div>
           ))}

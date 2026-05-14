@@ -77,6 +77,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS tvshowknockoutqrenabled BOOL DEFAULT TRUE
     `);
     await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS tvdisplaymode STRING(20) DEFAULT 'timer'
+    `);
+    await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
     `);
@@ -109,8 +113,16 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS avatarfilename STRING(255)
     `);
     await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS termsacceptedat TIMESTAMPTZ
+    `);
+    await client.query(`
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS defaulttrackingmode STRING(20) DEFAULT 'standard'
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS tvseatingwelcomemessage STRING(180) DEFAULT 'Welcome! Please see host to check-in!'
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS groupblindstructures (

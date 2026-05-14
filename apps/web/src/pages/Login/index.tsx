@@ -161,6 +161,7 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
   const [displayname, setDisplayname] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -170,10 +171,14 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
       setError('Passwords do not match');
       return;
     }
+    if (!acceptTerms) {
+      setError('You must agree to the Terms of Service to create an account.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      await api.register({ email, password, displayname });
+      await api.register({ email, password, displayname, acceptterms: acceptTerms });
       onSuccess(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -190,6 +195,18 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
       <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       <input className="input" type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-left">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4 rounded border-pit-border bg-pit-bg accent-pit-teal"
+          checked={acceptTerms}
+          onChange={(e) => setAcceptTerms(e.target.checked)}
+          required
+        />
+        <span className="text-xs leading-5 text-pit-text">
+          I agree to the Terms of Service and understand uploaded avatars or clips must be mine to use and appropriate for a poker group.
+        </span>
+      </label>
       <button type="submit" className="btn-primary mt-1 w-full py-2.5" disabled={loading}>
         {loading ? 'Creating...' : 'Create account'}
       </button>

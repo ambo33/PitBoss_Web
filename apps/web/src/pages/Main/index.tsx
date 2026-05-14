@@ -109,16 +109,16 @@ function ProfilePanel() {
     setMediaError(null);
     setMediaSuccess(null);
     if (!isSupportedAudioType(file)) {
-      setMediaError('Please choose an MP3 or WAV file.');
+      setMediaError('Please choose an MP3, WAV, M4A, or AAC file.');
       return;
     }
-    if (file.size > 2_000_000) {
-      setMediaError('Keep check-in clips under 2 MB.');
+    if (file.size > 3_000_000) {
+      setMediaError('Keep check-in clips under 3 MB.');
       return;
     }
 
-    const durationSeconds = await getAudioDurationSeconds(file);
-    if (durationSeconds > 5.05) {
+    const durationSeconds = await getAudioDurationSeconds(file).catch(() => null);
+    if (durationSeconds != null && durationSeconds > 5.05) {
       setMediaError('Check-in clips must be 5 seconds or shorter.');
       return;
     }
@@ -241,7 +241,7 @@ function ProfilePanel() {
             <Music4 size={18} className="text-pit-teal" />
             <div>
               <h3 className="font-semibold text-white">Check-In Clip</h3>
-              <p className="text-sm text-pit-muted">Upload a 5 second MP3 or WAV clip for TV check-in greetings.</p>
+              <p className="text-sm text-pit-muted">Upload a 5 second MP3, WAV, M4A, or AAC clip for TV check-in greetings.</p>
             </div>
           </div>
           <p className="text-sm text-pit-text">{audioSummary}</p>
@@ -274,7 +274,7 @@ function ProfilePanel() {
           <input
             ref={audioInputRef}
             type="file"
-            accept=".mp3,.wav,audio/mpeg,audio/wav"
+            accept=".mp3,.wav,.m4a,.aac,audio/mpeg,audio/wav,audio/mp4,audio/aac"
             className="hidden"
             onChange={handleAudioFile}
           />
@@ -299,7 +299,7 @@ function ProfilePanel() {
 }
 
 function isSupportedAudioType(file: File) {
-  return ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'].includes(file.type) || /\.(mp3|wav)$/i.test(file.name);
+  return ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac', 'audio/x-m4a'].includes(file.type) || /\.(mp3|wav|m4a|aac)$/i.test(file.name);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -311,18 +311,25 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function getAudioDurationSeconds(file: File): Promise<number> {
-  return new Promise((resolve, reject) => {
+function getAudioDurationSeconds(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
     const audio = document.createElement('audio');
     const url = URL.createObjectURL(file);
+    const timeout = window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    }, 2500);
     audio.preload = 'metadata';
     audio.onloadedmetadata = () => {
+      window.clearTimeout(timeout);
       URL.revokeObjectURL(url);
-      resolve(Number(audio.duration) || 0);
+      const duration = Number(audio.duration);
+      resolve(Number.isFinite(duration) ? duration : null);
     };
     audio.onerror = () => {
+      window.clearTimeout(timeout);
       URL.revokeObjectURL(url);
-      reject(new Error('Could not read the audio file.'));
+      resolve(null);
     };
     audio.src = url;
   });

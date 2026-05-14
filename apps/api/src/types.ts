@@ -25,6 +25,7 @@ export interface Group {
   invitecode: string;
   approvalneeded: boolean;
   defaulttrackingmode?: 'standard' | 'player';
+  tvseatingwelcomemessage?: string | null;
   active: boolean;
   createdat: string;
   membercount?: number;
@@ -67,6 +68,8 @@ export interface Tournament {
   tvgreetingdisplayenabled?: boolean;
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
+  tvdisplaymode?: 'timer' | 'seating';
+  tvseatingwelcomemessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   playercount?: number;

@@ -113,7 +113,7 @@ export default function PreTournamentPage() {
       headerRight={<BrandLockup compact showSlogan={false} className="items-center gap-2" />}
       mainWidthClassName="max-w-[1800px]"
     >
-      <div className="mb-6 overflow-x-auto border-b border-pit-border">
+      <div className="relative z-10 mb-6 mt-2 overflow-x-auto border-b border-pit-border md:mt-3">
         <div className="flex gap-1">
           {tabs.map((currentTab) => (
             <button
@@ -381,6 +381,18 @@ function TournamentDetailsCard({
                         enabled={tournament.tvshowknockoutqrenabled ?? true}
                         disabled={tvOptionsSaving}
                         onClick={() => onUpdateTvOptions({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
+                      />
+                      <TvOptionToggle
+                        label="Timer"
+                        enabled={(tournament.tvdisplaymode ?? 'timer') === 'timer'}
+                        disabled={tvOptionsSaving}
+                        onClick={() => onUpdateTvOptions({ tvdisplaymode: 'timer' })}
+                      />
+                      <TvOptionToggle
+                        label="Seating"
+                        enabled={tournament.tvdisplaymode === 'seating'}
+                        disabled={tvOptionsSaving}
+                        onClick={() => onUpdateTvOptions({ tvdisplaymode: 'seating' })}
                       />
                     </div>
                   )}

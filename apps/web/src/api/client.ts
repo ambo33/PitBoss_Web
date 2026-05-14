@@ -30,7 +30,7 @@ const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 export const api = {
   // Auth
-  register: (data: { email: string; password: string; displayname?: string }) =>
+  register: (data: { email: string; password: string; displayname?: string; acceptterms?: boolean }) =>
     post('/auth/register', data),
   verifyEmail: (data: { email: string; pin: string }) =>
     post<{ token: string }>('/auth/verify-email', data),
@@ -55,7 +55,7 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode }) =>
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string }) =>
     put(`/groups/${id}`, data),
   getGroupBlindStructures: (groupId: string) =>
     get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
@@ -155,6 +155,7 @@ export interface Group {
   groupid: string; ownerid: string; name: string; invitecode: string;
   approvalneeded: boolean; active: boolean; createdat: string;
   defaulttrackingmode?: TrackingMode;
+  tvseatingwelcomemessage?: string | null;
   membercount?: number; isadmin?: boolean; approved?: boolean;
 }
 export type TrackingMode = 'standard' | 'player';
@@ -177,6 +178,8 @@ export interface Tournament {
   tvgreetingdisplayenabled?: boolean;
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
+  tvdisplaymode?: 'timer' | 'seating';
+  tvseatingwelcomemessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   isowner?: boolean;

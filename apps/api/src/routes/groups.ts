@@ -38,6 +38,7 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
+            COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             gm.admin AS isadmin, gm.approved,
             (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
      FROM groups g
@@ -111,6 +112,7 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
   const group = await queryOne<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
+            COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             gm.admin AS isadmin, gm.approved FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2
      WHERE g.groupid = $1`,
@@ -134,11 +136,12 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response) => {
-  const { name, approvalneeded, invitecode, defaulttrackingmode } = req.body as {
+  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage } = req.body as {
     name?: string;
     approvalneeded?: boolean;
     invitecode?: string;
     defaulttrackingmode?: 'standard' | 'player';
+    tvseatingwelcomemessage?: string;
   };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -155,7 +158,14 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Player-tracked stats are available on Club and Pro tiers.' });
     return;
   }
+  if (tvseatingwelcomemessage != null && !profile.canuseclubfeatures) {
+    res.status(403).json({ error: 'Custom TV seating messages are available on Club and Pro tiers.' });
+    return;
+  }
   const normalizedTrackingMode = defaulttrackingmode === 'player' ? 'player' : defaulttrackingmode === 'standard' ? 'standard' : null;
+  const normalizedTvMessage = tvseatingwelcomemessage == null
+    ? null
+    : tvseatingwelcomemessage.trim().slice(0, 180) || 'Welcome! Please see host to check-in!';
 
   const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
   if (normalizedInviteCode != null) {
@@ -171,9 +181,10 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
        SET name = COALESCE($1, name),
            approvalneeded = COALESCE($2, approvalneeded),
            invitecode = COALESCE($3, invitecode),
-           defaulttrackingmode = COALESCE($4, defaulttrackingmode)
-       WHERE groupid = $5`,
-      [name ?? null, approvalneeded ?? null, normalizedInviteCode, normalizedTrackingMode, req.params.id]
+           defaulttrackingmode = COALESCE($4, defaulttrackingmode),
+           tvseatingwelcomemessage = COALESCE($5, tvseatingwelcomemessage)
+       WHERE groupid = $6`,
+      [name ?? null, approvalneeded ?? null, normalizedInviteCode, normalizedTrackingMode, normalizedTvMessage, req.params.id]
     );
     res.json({ success: true, invitecode: normalizedInviteCode ?? undefined });
   } catch (err) {

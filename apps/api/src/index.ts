@@ -40,7 +40,7 @@ initSocket(httpServer);
 
 app.use(helmet());
 app.use(cors({ origin: getClientUrl(), credentials: true }));
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '8mb' }));
 app.use('/api', apiLimiter);
 
 app.get('/healthz', (_req, res) => {

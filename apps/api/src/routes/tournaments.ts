@@ -131,6 +131,8 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
@@ -168,6 +170,7 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
@@ -300,6 +303,8 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
+            COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
@@ -341,7 +346,8 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
-          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled } = req.body as Partial<Tournament>;
+          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode } = req.body as Partial<Tournament>;
+  const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
   const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
     `SELECT date AS tourneydate, time AS tourneytime
      FROM tournaments
@@ -399,13 +405,14 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        payoutstructure = COALESCE($16, payoutstructure),
        tvgreetingdisplayenabled = COALESCE($17, tvgreetingdisplayenabled),
        tvgreetingaudioenabled = COALESCE($18, tvgreetingaudioenabled),
-       tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled)
+       tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled),
+       tvdisplaymode = COALESCE($20, tvdisplaymode)
      WHERE tournamentid = $14`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
      rebuychips ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
-     tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null]
+     tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode]
   );
   broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
   res.json({ success: true });
