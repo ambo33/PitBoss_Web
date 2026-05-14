@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Volume2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, isTimerAudioUnlocked, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -56,6 +56,7 @@ export default function RunTournament({
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
@@ -113,6 +114,8 @@ export default function RunTournament({
 
   useEffect(() => {
     primeTimerAudio();
+    const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
+    window.addEventListener('pb-audio-unlocked', syncSoundState);
 
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
@@ -139,6 +142,7 @@ export default function RunTournament({
       refreshTournamentData();
     });
     return () => {
+      window.removeEventListener('pb-audio-unlocked', syncSoundState);
       socket.disconnect();
     };
   }, [qc, tournamentId]);
@@ -235,6 +239,11 @@ export default function RunTournament({
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
+  }
+
+  async function enableSound() {
+    const unlocked = await unlockTimerAudio({ announce: true });
+    setSoundEnabled(unlocked);
   }
 
   function handleTimerCues(state: TimerState, initial = false) {
@@ -410,13 +419,29 @@ export default function RunTournament({
             <div />
           )}
 
-          {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
-              <p className="text-sm text-white">
-                <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
-                <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
-                <span className="ml-2 text-[11px] text-pit-muted">/tv</span>
-              </p>
+          {(showAdminControls || displayMode) && (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                  soundEnabled
+                    ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
+                    : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
+                }`}
+                onClick={() => void enableSound()}
+              >
+                <Volume2 size={14} />
+                {soundEnabled ? 'Sound On' : 'Enable Sound'}
+              </button>
+              {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
+                <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
+                  <p className="text-sm text-white">
+                    <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
+                    <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
+                    <span className="ml-2 text-[11px] text-pit-muted">/tv</span>
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -477,8 +502,8 @@ export default function RunTournament({
                         Adjust Timer
                       </button>
                       {timerState?.running
-                        ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => emit('timer-pause')}>Pause</button>
-                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => emit('timer-start')}>Start</button>
+                        ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void enableSound(); emit('timer-pause'); }}>Pause</button>
+                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => { void enableSound(); emit('timer-start'); }}>Start</button>
                       }
                     </div>
                   )}

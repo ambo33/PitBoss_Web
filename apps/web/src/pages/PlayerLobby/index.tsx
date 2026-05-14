@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Volume2 } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
-import { announceFiveMinuteWarning, announceOneMinuteWarning, primeTimerAudio } from '../../utils/timerAudio';
+import { announceFiveMinuteWarning, announceOneMinuteWarning, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -38,6 +39,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     if (!id) return '';
     return localStorage.getItem(guestStorageKey(id)) ?? '';
   });
+  const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['public-lobby', id, guestUserId, user?.guid],
@@ -123,6 +125,8 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   useEffect(() => {
     if (!id) return;
     primeTimerAudio();
+    const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
+    window.addEventListener('pb-audio-unlocked', syncSoundState);
 
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
@@ -149,9 +153,15 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
     });
     return () => {
+      window.removeEventListener('pb-audio-unlocked', syncSoundState);
       socket.disconnect();
     };
   }, [id, qc]);
+
+  async function enableSound() {
+    const unlocked = await unlockTimerAudio({ announce: true });
+    setSoundEnabled(unlocked);
+  }
 
   function handleLobbyCues(state: TimerState, initial = false) {
     const warningState = lastWarningRef.current;
@@ -253,6 +263,18 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
         {displayIdentity && <p className="mt-1 text-sm text-pit-text">PokerPlanner.bet - {displayIdentity}</p>}
         {entry && <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>}
+        <button
+          type="button"
+          className={`mx-auto mt-3 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
+            soundEnabled
+              ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
+              : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
+          }`}
+          onClick={() => void enableSound()}
+        >
+          <Volume2 size={14} />
+          {soundEnabled ? 'Sound On' : 'Enable Sound'}
+        </button>
       </header>
 
       <div className="mx-auto max-w-md space-y-4">

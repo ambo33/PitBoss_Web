@@ -3,6 +3,12 @@ let unlockAttached = false;
 let preferredVoice: SpeechSynthesisVoice | null = null;
 let speechPrimed = false;
 let currentCheckinAudio: HTMLAudioElement | null = null;
+let audioUnlocked = false;
+
+function notifyAudioUnlocked(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('pb-audio-unlocked'));
+}
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -54,6 +60,64 @@ async function resumeAudio(): Promise<void> {
   }
 }
 
+async function playUnlockTone(ctx: AudioContext): Promise<void> {
+  if (ctx.state !== 'running') return;
+  const silentSource = ctx.createBufferSource();
+  silentSource.buffer = ctx.createBuffer(1, 1, 22050);
+  silentSource.connect(ctx.destination);
+  silentSource.start(0);
+
+  const oscillator = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  const now = ctx.currentTime;
+
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(660, now);
+  gainNode.gain.setValueAtTime(0.0001, now);
+  gainNode.gain.exponentialRampToValueAtTime(0.035, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.16);
+}
+
+export function isTimerAudioUnlocked(): boolean {
+  const ctx = audioContext;
+  return audioUnlocked || Boolean(ctx && ctx.state === 'running');
+}
+
+export async function unlockTimerAudio(options: { announce?: boolean } = {}): Promise<boolean> {
+  const ctx = getAudioContext();
+  if (ctx) {
+    await resumeAudio();
+    await playUnlockTone(ctx);
+  }
+
+  getPreferredVoice();
+  if (options.announce && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance('Sound enabled.');
+      utterance.voice = getPreferredVoice();
+      utterance.rate = 1;
+      utterance.pitch = 1.08;
+      utterance.volume = 0.9;
+      window.speechSynthesis.speak(utterance);
+      speechPrimed = true;
+    } catch {
+      // Web Audio tone above is the fallback.
+    }
+  } else {
+    primeSpeech();
+  }
+
+  audioUnlocked = Boolean(ctx ? ctx.state === 'running' : typeof window !== 'undefined' && 'speechSynthesis' in window);
+  if (audioUnlocked) notifyAudioUnlocked();
+  return audioUnlocked;
+}
+
 export function primeTimerAudio(): void {
   if (typeof window === 'undefined' || unlockAttached) return;
   unlockAttached = true;
@@ -66,11 +130,16 @@ export function primeTimerAudio(): void {
   }
 
   const unlock = () => {
-    void resumeAudio();
-    getPreferredVoice();
-    primeSpeech();
-    const ctx = getAudioContext();
-    if (!ctx || ctx.state === 'running') {
+    void unlockTimerAudio().then((unlocked) => {
+      const ctx = getAudioContext();
+      if (unlocked || !ctx || ctx.state === 'running') {
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('keydown', unlock);
+        window.removeEventListener('touchstart', unlock);
+        unlockAttached = false;
+      }
+    });
+    if (isTimerAudioUnlocked()) {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
       window.removeEventListener('touchstart', unlock);
@@ -159,6 +228,7 @@ function speak(message: string, fallback?: () => void): void {
   }
   try {
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
     const utterance = new SpeechSynthesisUtterance(message);
     utterance.voice = getPreferredVoice();
     utterance.rate = 1.03;
@@ -204,8 +274,10 @@ export function playCheckinGreetingClip(audioDataUrl: string): void {
     currentCheckinAudio.currentTime = 0;
     void currentCheckinAudio.play().catch(() => {
       currentCheckinAudio = null;
+      playLevelChangeTone();
     });
   } catch {
     currentCheckinAudio = null;
+    playLevelChangeTone();
   }
 }
