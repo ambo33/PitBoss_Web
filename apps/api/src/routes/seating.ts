@@ -25,17 +25,18 @@ seatingRouter.get('/:tid/seating', async (req: Request, res: Response) => {
   res.json(rows);
 });
 
-// Assign seats: randomise checked-in, non-placed players across balanced tables
+// Assign seats: randomise checked-in, non-placed players across balanced tables.
+// Reassignment is intentionally a full reseat so table numbers restart at 1.
 seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) => {
   if (!await isOwner(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
   const { maxPerTable = 9 } = req.body as { maxPerTable?: number };
+  const seatsPerTable = Math.max(2, Math.floor(Number(maxPerTable) || 9));
 
   const players = await query<{ userid: string }>(
     `SELECT tp.userid FROM tournamentplayers tp
-     LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
-     WHERE tp.tournamentid = $1 AND tp.checkedin = TRUE AND tp.placed IS NULL AND ts.userid IS NULL`,
+     WHERE tp.tournamentid = $1 AND tp.checkedin = TRUE AND tp.placed IS NULL`,
     [req.params.tid]
   );
 
@@ -50,27 +51,20 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  // Get the highest existing table number so we can continue numbering
-  const existingMax = await queryOne<{ max: number }>(
-    `SELECT COALESCE(MAX(CAST("Table" AS INT)), 0) AS max FROM tournamentseating WHERE tournamentid = $1`,
-    [req.params.tid]
-  );
-  const tableOffset = (existingMax?.max ?? 0);
-  const numTables = Math.ceil(shuffled.length / maxPerTable);
+  await query(`DELETE FROM tournamentseating WHERE tournamentid = $1`, [req.params.tid]);
+
+  const numTables = Math.max(1, Math.ceil(shuffled.length / seatsPerTable));
 
   const assignments = shuffled.map((p, i) => ({
     userid: p.userid,
-    tablenumber: tableOffset + (i % numTables) + 1,
+    tablenumber: Number((i % numTables) + 1),
     seat: Math.floor(i / numTables) + 1,
   }));
 
   for (const a of assignments) {
     await query(
       `INSERT INTO tournamentseating (tournamentid, userid, "Table", seat)
-       SELECT $1, $2, $3, $4
-       WHERE NOT EXISTS (
-         SELECT 1 FROM tournamentseating WHERE tournamentid = $1 AND userid = $2
-       )`,
+       VALUES ($1, $2, $3, $4)`,
       [req.params.tid, a.userid, a.tablenumber, a.seat]
     );
   }

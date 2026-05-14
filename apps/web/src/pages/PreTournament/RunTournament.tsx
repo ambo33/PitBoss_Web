@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, isTimerAudioUnlocked, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -62,6 +62,7 @@ export default function RunTournament({
     oneMin: false,
     level: null,
   });
+  const lastRunningRef = useRef<boolean | null>(null);
   const seenCheckedInRef = useRef<Set<string> | null>(null);
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
   const greetingTimeoutRef = useRef<number | null>(null);
@@ -248,6 +249,14 @@ export default function RunTournament({
 
   function handleTimerCues(state: TimerState, initial = false) {
     const warningState = lastWarningRef.current;
+
+    if (lastRunningRef.current !== state.running) {
+      if (!initial && lastRunningRef.current != null) {
+        if (state.running) announceTimerStarted();
+        else announceTimerPaused();
+      }
+      lastRunningRef.current = state.running;
+    }
 
     if (warningState.level !== state.currentlevel) {
       if (!initial && warningState.level != null) {

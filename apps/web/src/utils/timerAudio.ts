@@ -252,10 +252,28 @@ export function announceLevel(level: number, smallBlind: number, bigBlind: numbe
   speak(`Level ${level}. Small blind ${smallBlind}. Big blind ${bigBlind}.`, playLevelChangeTone);
 }
 
+export function announceTimerStarted(): void {
+  speak('Timer started.', () => {
+    void playSequence([
+      { frequency: 660, duration: 0.1, gain: 0.045 },
+      { frequency: 880, duration: 0.14, delay: 0.14, gain: 0.055 },
+    ]);
+  });
+}
+
+export function announceTimerPaused(): void {
+  speak('Timer paused.', () => {
+    void playSequence([
+      { frequency: 523, duration: 0.14, gain: 0.055 },
+      { frequency: 392, duration: 0.16, delay: 0.18, gain: 0.045 },
+    ]);
+  });
+}
+
 export function announceCheckinGreeting(playerName: string): void {
   const trimmedName = playerName.trim();
   speak(
-    `${trimmedName} has checked in to the tournament.`,
+    `Good luck, ${trimmedName}.`,
     () => {
       void playSequence([
         { frequency: 880, duration: 0.14, gain: 0.05 },

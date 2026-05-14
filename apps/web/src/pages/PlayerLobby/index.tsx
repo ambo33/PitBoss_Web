@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Volume2 } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
-import { announceFiveMinuteWarning, announceOneMinuteWarning, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceFiveMinuteWarning, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -31,6 +31,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     oneMin: false,
     level: null,
   });
+  const lastRunningRef = useRef<boolean | null>(null);
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const [timer, setTimer] = useState<TimerState | null>(null);
@@ -165,6 +166,14 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
 
   function handleLobbyCues(state: TimerState, initial = false) {
     const warningState = lastWarningRef.current;
+
+    if (lastRunningRef.current !== state.running) {
+      if (!initial && lastRunningRef.current != null) {
+        if (state.running) announceTimerStarted();
+        else announceTimerPaused();
+      }
+      lastRunningRef.current = state.running;
+    }
 
     if (warningState.level !== state.currentlevel) {
       warningState.level = state.currentlevel;

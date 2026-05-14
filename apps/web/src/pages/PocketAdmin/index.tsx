@@ -6,6 +6,7 @@ import { ChevronLeft, RefreshCw } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
+import { announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -37,10 +38,12 @@ export default function PocketAdminPage() {
   const socketRef = useRef<Socket | null>(null);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const keepAwakeWantedRef = useRef(false);
+  const lastRunningRef = useRef<boolean | null>(null);
   const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [wakeLockEnabled, setWakeLockEnabled] = useState(false);
   const [wakeLockError, setWakeLockError] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
 
   const { data: tournament, isLoading: loadingTournament, error: tournamentError } = useQuery({
     queryKey: ['tournament', id],
@@ -97,6 +100,9 @@ export default function PocketAdminPage() {
 
   useEffect(() => {
     if (!id) return;
+    primeTimerAudio();
+    const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
+    window.addEventListener('pb-audio-unlocked', syncSoundState);
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
     const joinTournament = () => {
@@ -106,14 +112,23 @@ export default function PocketAdminPage() {
     if (socket.connected) {
       joinTournament();
     }
-    socket.on('timer-state', (state: TimerState) => setTimerState(state));
+    socket.on('timer-state', (state: TimerState) => {
+      setTimerState(state);
+      handleTimerRunningCue(state, true);
+    });
     socket.on('timer-tick', (tick: TimerTick) => {
-      setTimerState((current) => current ? { ...current, ...tick } : null);
+      setTimerState((current) => {
+        if (!current) return null;
+        const nextState = { ...current, ...tick };
+        handleTimerRunningCue(nextState);
+        return nextState;
+      });
     });
     socket.on('tournament-updated', () => {
       refreshTournamentData(qc, id);
     });
     return () => {
+      window.removeEventListener('pb-audio-unlocked', syncSoundState);
       socket.disconnect();
     };
   }, [id, qc]);
@@ -176,6 +191,21 @@ export default function PocketAdminPage() {
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId: id, ...payload });
+  }
+
+  function handleTimerRunningCue(state: TimerState, initial = false) {
+    if (lastRunningRef.current !== state.running) {
+      if (!initial && lastRunningRef.current != null) {
+        if (state.running) announceTimerStarted();
+        else announceTimerPaused();
+      }
+      lastRunningRef.current = state.running;
+    }
+  }
+
+  async function enableSound() {
+    const unlocked = await unlockTimerAudio({ announce: true });
+    setSoundEnabled(unlocked);
   }
 
   async function requestWakeLock() {
@@ -261,6 +291,18 @@ export default function PocketAdminPage() {
           )}
         </header>
 
+        <button
+          type="button"
+          className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold ${
+            soundEnabled
+              ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
+              : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
+          }`}
+          onClick={() => void enableSound()}
+        >
+          {soundEnabled ? 'Sound On' : 'Enable Sound'}
+        </button>
+
         {wakeLockError && (
           <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs text-yellow-200">
             Wake lock unavailable: {wakeLockError}
@@ -285,7 +327,7 @@ export default function PocketAdminPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn-primary justify-center" onClick={() => emit(timerState?.running ? 'timer-pause' : 'timer-start')}>
+            <button type="button" className="btn-primary justify-center" onClick={() => { void enableSound(); emit(timerState?.running ? 'timer-pause' : 'timer-start'); }}>
               {timerState?.running ? 'Pause' : 'Start'}
             </button>
             <button type="button" className="btn-ghost justify-center" onClick={() => emit('timer-prev')}>
