@@ -246,6 +246,10 @@ function ProfilePanel() {
     }
 
     const durationSeconds = await getAudioDurationSeconds(file).catch(() => null);
+    if (durationSeconds != null && durationSeconds < 0.1) {
+      setMediaError('That audio file looks empty. Please choose a clip with audible sound.');
+      return;
+    }
     if (durationSeconds != null && durationSeconds > 5.05) {
       setMediaError('Check-in clips must be 5 seconds or shorter.');
       return;

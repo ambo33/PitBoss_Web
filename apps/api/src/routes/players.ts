@@ -58,6 +58,7 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
   const rows = await query<TournamentPlayer>(
     `SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            m.checkinaudiodata,
             m.avatarimagedata,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
             COALESCE(CAST(tp.rebuys AS INT), 0) AS rebuys,

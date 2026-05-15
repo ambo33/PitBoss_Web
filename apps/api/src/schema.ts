@@ -82,6 +82,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS tvdisplaymode STRING(20) DEFAULT 'timer'
     `);
     await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS seatingmaxpertable INT DEFAULT 9
+    `);
+    await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
     `);

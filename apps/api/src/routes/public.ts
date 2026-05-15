@@ -38,6 +38,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { ChevronDown, ChevronUp, Menu, Volume2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Menu, Volume2, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, playCheckinGreetingClip, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, playCheckinGreetingClip, playKachingSound, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -35,6 +35,12 @@ interface GreetingQueueItem {
   seat?: number | null;
 }
 
+interface MoneyBurst {
+  id: string;
+  name: string;
+  type: 'rebuy' | 'add-on';
+}
+
 export default function RunTournament({
   tournamentId,
   isOwner,
@@ -57,7 +63,9 @@ export default function RunTournament({
   const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
+  const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
   const [showTvMenu, setShowTvMenu] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
@@ -67,8 +75,10 @@ export default function RunTournament({
   });
   const lastRunningRef = useRef<boolean | null>(null);
   const seenCheckedInRef = useRef<Set<string> | null>(null);
+  const moneyActionCountsRef = useRef<Map<string, { rebuys: number; addedon: number }> | null>(null);
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
   const greetingTimeoutRef = useRef<number | null>(null);
+  const moneyBurstTimeoutRef = useRef<number | null>(null);
 
   const showAdminControls = isOwner && mode === 'admin';
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
@@ -119,6 +129,14 @@ export default function RunTournament({
     mutationFn: (data: Partial<Tournament>) => api.updateTournament(tournamentId, data),
     onSuccess: () => refreshTournamentData(),
   });
+  const assignSeatsMutation = useMutation({
+    mutationFn: (mode: 'all' | 'remaining') => api.assignSeats(tournamentId, seatingMaxPerTable, mode),
+    onSuccess: () => refreshTournamentData(),
+  });
+
+  useEffect(() => {
+    setSeatingMaxPerTable(Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
+  }, [tournament.seatingmaxpertable]);
 
   useEffect(() => {
     primeTimerAudio();
@@ -196,7 +214,7 @@ export default function RunTournament({
 
     if (tvGreetingAudioEnabled) {
       if (activeGreeting.audioDataUrl) {
-        playCheckinGreetingClip(activeGreeting.audioDataUrl);
+        playCheckinGreetingClip(activeGreeting.audioDataUrl, activeGreeting.name);
       } else {
         announceCheckinGreeting(activeGreeting.name);
       }
@@ -212,6 +230,55 @@ export default function RunTournament({
       }
     };
   }, [activeGreeting, tvGreetingAudioEnabled, tvGreetingDisplayEnabled]);
+
+  useEffect(() => {
+    if (!showAdminControls && !displayMode) return;
+
+    const currentCounts = new Map<string, { rebuys: number; addedon: number }>();
+    for (const player of players) {
+      currentCounts.set(player.userid, {
+        rebuys: toNumber(player.rebuys),
+        addedon: player.addedon ? 1 : 0,
+      });
+    }
+
+    const previousCounts = moneyActionCountsRef.current;
+    if (!previousCounts) {
+      moneyActionCountsRef.current = currentCounts;
+      return;
+    }
+
+    let nextBurst: MoneyBurst | null = null;
+    for (const player of players) {
+      const previous = previousCounts.get(player.userid) ?? { rebuys: 0, addedon: 0 };
+      const current = currentCounts.get(player.userid) ?? { rebuys: 0, addedon: 0 };
+      if (current.rebuys > previous.rebuys) {
+        nextBurst = {
+          id: `${player.userid}-rebuy-${current.rebuys}-${Date.now()}`,
+          name: player.displayname ?? player.emailaddress ?? 'Player',
+          type: 'rebuy',
+        };
+        break;
+      }
+      if (current.addedon > previous.addedon) {
+        nextBurst = {
+          id: `${player.userid}-addon-${Date.now()}`,
+          name: player.displayname ?? player.emailaddress ?? 'Player',
+          type: 'add-on',
+        };
+        break;
+      }
+    }
+
+    moneyActionCountsRef.current = currentCounts;
+
+    if (nextBurst) {
+      setActiveMoneyBurst(nextBurst);
+      playKachingSound();
+      if (moneyBurstTimeoutRef.current) window.clearTimeout(moneyBurstTimeoutRef.current);
+      moneyBurstTimeoutRef.current = window.setTimeout(() => setActiveMoneyBurst(null), 2400);
+    }
+  }, [displayMode, players, showAdminControls]);
 
   const actionablePlayers = useMemo(
     () => [...players]
@@ -245,6 +312,9 @@ export default function RunTournament({
     if (greetingTimeoutRef.current) {
       window.clearTimeout(greetingTimeoutRef.current);
     }
+    if (moneyBurstTimeoutRef.current) {
+      window.clearTimeout(moneyBurstTimeoutRef.current);
+    }
   }, []);
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
@@ -254,6 +324,32 @@ export default function RunTournament({
   async function enableSound() {
     const unlocked = await unlockTimerAudio({ announce: true });
     setSoundEnabled(unlocked);
+  }
+
+  async function warmTimerAudio() {
+    const unlocked = await unlockTimerAudio();
+    setSoundEnabled(unlocked);
+  }
+
+  function handleStartTimer() {
+    void warmTimerAudio();
+
+    if (showAdminControls && seatedPlayers.length === 0 && checkedInRoster.length > 0) {
+      const promptKey = `pb-start-without-seating:${tournamentId}`;
+      const hasSeenPrompt = window.localStorage.getItem(promptKey) === '1';
+      if (!hasSeenPrompt) {
+        window.localStorage.setItem(promptKey, '1');
+        const startWithoutSeating = window.confirm('Start tourney without seating players?');
+        if (!startWithoutSeating) {
+          if (tournament.tvdisplaymode !== 'seating') {
+            tvOptionsMutation.mutate({ tvdisplaymode: 'seating' });
+          }
+          return;
+        }
+      }
+    }
+
+    emit('timer-start');
   }
 
   function handleTimerCues(state: TimerState, initial = false) {
@@ -548,13 +644,50 @@ export default function RunTournament({
         {currentBlind ? (
           <>
             {showSeatingBoard ? (
-              <TvSeatingBoard
-                seatedPlayers={seatedPlayers}
-                checkedInPlayers={checkedInRoster}
-                registeredPlayers={seatingRoster}
-                welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
-                fullWidth
-              />
+              <div className="space-y-2">
+                {showAdminControls && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-pit-border bg-pit-bg/55 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-pit-muted">Max per table</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={12}
+                        className="input w-20 py-1.5 text-sm"
+                        value={seatingMaxPerTable}
+                        onChange={(event) => setSeatingMaxPerTable(Math.max(2, Math.floor(Number(event.target.value) || 2)))}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-primary px-3 py-1.5 text-xs"
+                        disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0}
+                        onClick={() => assignSeatsMutation.mutate('all')}
+                      >
+                        Seat Players
+                      </button>
+                      {seatedPlayers.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn-ghost px-3 py-1.5 text-xs"
+                          disabled={assignSeatsMutation.isPending || checkedInRoster.length === seatedPlayers.length}
+                          onClick={() => assignSeatsMutation.mutate('remaining')}
+                        >
+                          Re-seat Remaining
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <TvSeatingBoard
+                  seatedPlayers={seatedPlayers}
+                  checkedInPlayers={checkedInRoster}
+                  registeredPlayers={seatingRoster}
+                  welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
+                  fullWidth
+                />
+              </div>
             ) : (
             <div className={`grid items-start ${tvMode ? 'grid-cols-[248px_minmax(0,1fr)_248px] gap-3 2xl:grid-cols-[260px_minmax(0,1fr)_260px]' : displayMode ? 'grid-cols-[300px_minmax(0,1fr)_300px] gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_320px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
@@ -613,8 +746,8 @@ export default function RunTournament({
                         Adjust Timer
                       </button>
                       {timerState?.running
-                        ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void enableSound(); emit('timer-pause'); }}>Pause</button>
-                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => { void enableSound(); emit('timer-start'); }}>Start</button>
+                        ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void warmTimerAudio(); emit('timer-pause'); }}>Pause</button>
+                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={handleStartTimer}>Start</button>
                       }
                     </div>
                   )}
@@ -907,6 +1040,35 @@ export default function RunTournament({
             </div>
           </div>
         )}
+
+        {(showAdminControls || displayMode) && activeMoneyBurst && (
+          <div className="pointer-events-none absolute inset-0 z-40 flex items-start justify-center overflow-hidden rounded-[inherit]">
+            <style>{`
+              @keyframes money-bill-fall {
+                0% { transform: translate3d(0, -20px, 0) rotate(0deg); opacity: 0; }
+                10% { opacity: 1; }
+                100% { transform: translate3d(0, 80vh, 0) rotate(500deg); opacity: 0; }
+              }
+            `}</style>
+            {confettiPieces.map((piece, index) => (
+              <span
+                key={`${activeMoneyBurst.id}-${piece.id}`}
+                className="absolute top-0 flex h-5 w-10 items-center justify-center rounded-sm border border-emerald-200/70 bg-emerald-400 text-[10px] font-black text-emerald-950 shadow-lg"
+                style={{
+                  left: piece.left,
+                  transform: `rotate(${piece.rotation})`,
+                  animation: `money-bill-fall ${piece.duration} ease-out ${piece.delay} forwards`,
+                }}
+              >
+                ${index % 3 === 0 ? '$' : ''}
+              </span>
+            ))}
+            <div className="mt-12 rounded-2xl border border-emerald-300/30 bg-black/60 px-6 py-4 text-center shadow-2xl backdrop-blur-md">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">{activeMoneyBurst.type}</p>
+              <p className="mt-1 text-3xl font-bold text-white">{activeMoneyBurst.name}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -964,6 +1126,11 @@ function TvSeatingBoard({
                   : 'border-pit-border bg-pit-bg/45 text-pit-muted'
               } ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
             >
+              {checkedIn ? (
+                <CheckCircle2 className={`shrink-0 text-emerald-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
+              ) : (
+                <XCircle className={`shrink-0 text-red-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
+              )}
               <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${fullWidth ? 'h-9 w-9 text-xs' : 'h-7 w-7 text-[11px]'}`}>
                 {player.avatarimagedata ? (
                   <img src={player.avatarimagedata} alt={player.displayname ?? player.emailaddress} className="h-full w-full object-cover" />

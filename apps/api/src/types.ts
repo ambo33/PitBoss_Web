@@ -69,6 +69,7 @@ export interface Tournament {
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
+  seatingmaxpertable?: number;
   tvseatingwelcomemessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;

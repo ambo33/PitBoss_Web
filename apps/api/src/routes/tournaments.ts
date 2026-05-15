@@ -133,6 +133,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
@@ -172,6 +173,7 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
@@ -335,6 +337,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
@@ -377,7 +380,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
-          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode } = req.body as Partial<Tournament>;
+          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, seatingmaxpertable } = req.body as Partial<Tournament>;
   const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
   const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
     `SELECT date AS tourneydate, time AS tourneytime
@@ -437,13 +440,15 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        tvgreetingdisplayenabled = COALESCE($17, tvgreetingdisplayenabled),
        tvgreetingaudioenabled = COALESCE($18, tvgreetingaudioenabled),
        tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled),
-       tvdisplaymode = COALESCE($20, tvdisplaymode)
+       tvdisplaymode = COALESCE($20, tvdisplaymode),
+       seatingmaxpertable = COALESCE($21, seatingmaxpertable)
      WHERE tournamentid = $14`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
      rebuychips ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
-     tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode]
+     tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode,
+     seatingmaxpertable ?? null]
   );
   broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
   res.json({ success: true });

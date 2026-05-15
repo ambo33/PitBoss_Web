@@ -284,7 +284,7 @@ export function announceCheckinGreeting(playerName: string): void {
   );
 }
 
-export function playCheckinGreetingClip(audioDataUrl: string): void {
+export function playCheckinGreetingClip(audioDataUrl: string, fallbackName?: string): void {
   if (typeof window === 'undefined') return;
   try {
     currentCheckinAudio?.pause();
@@ -292,10 +292,33 @@ export function playCheckinGreetingClip(audioDataUrl: string): void {
     currentCheckinAudio.currentTime = 0;
     void currentCheckinAudio.play().catch(() => {
       currentCheckinAudio = null;
-      playLevelChangeTone();
+      if (fallbackName) announceCheckinGreeting(fallbackName);
+      else playLevelChangeTone();
     });
   } catch {
     currentCheckinAudio = null;
-    playLevelChangeTone();
+    if (fallbackName) announceCheckinGreeting(fallbackName);
+    else playLevelChangeTone();
+  }
+}
+
+export function playKachingSound(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const audio = new Audio('/sounds/ka-ching.mp3');
+    audio.volume = 0.95;
+    void audio.play().catch(() => {
+      void playSequence([
+        { frequency: 988, duration: 0.08, gain: 0.06 },
+        { frequency: 1318, duration: 0.1, delay: 0.1, gain: 0.07 },
+        { frequency: 1760, duration: 0.14, delay: 0.22, gain: 0.06 },
+      ]);
+    });
+  } catch {
+    void playSequence([
+      { frequency: 988, duration: 0.08, gain: 0.06 },
+      { frequency: 1318, duration: 0.1, delay: 0.1, gain: 0.07 },
+      { frequency: 1760, duration: 0.14, delay: 0.22, gain: 0.06 },
+    ]);
   }
 }

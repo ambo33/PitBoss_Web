@@ -208,6 +208,11 @@ export default function PocketAdminPage() {
     setSoundEnabled(unlocked);
   }
 
+  async function warmTimerAudio() {
+    const unlocked = await unlockTimerAudio();
+    setSoundEnabled(unlocked);
+  }
+
   async function requestWakeLock() {
     try {
       const nav = navigator as NavigatorWithWakeLock;
@@ -327,7 +332,7 @@ export default function PocketAdminPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn-primary justify-center" onClick={() => { void enableSound(); emit(timerState?.running ? 'timer-pause' : 'timer-start'); }}>
+            <button type="button" className="btn-primary justify-center" onClick={() => { void warmTimerAudio(); emit(timerState?.running ? 'timer-pause' : 'timer-start'); }}>
               {timerState?.running ? 'Pause' : 'Start'}
             </button>
             <button type="button" className="btn-ghost justify-center" onClick={() => emit('timer-prev')}>

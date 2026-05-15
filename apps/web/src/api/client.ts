@@ -150,8 +150,8 @@ export const api = {
 
   // Seating
   getSeating: (tid: string) => get<SeatingAssignment[]>(`/tournaments/${tid}/seating`),
-  assignSeats: (tid: string, maxPerTable?: number) =>
-    post<{ assigned: number }>(`/tournaments/${tid}/seating/assign`, { maxPerTable }),
+  assignSeats: (tid: string, maxPerTable?: number, mode?: 'all' | 'remaining') =>
+    post<{ assigned: number }>(`/tournaments/${tid}/seating/assign`, { maxPerTable, mode }),
   clearSeating: (tid: string) => del(`/tournaments/${tid}/seating`),
 
   // Admin
@@ -191,6 +191,7 @@ export interface Tournament {
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
+  seatingmaxpertable?: number;
   tvseatingwelcomemessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
