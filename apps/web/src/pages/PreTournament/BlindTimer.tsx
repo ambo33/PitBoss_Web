@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Plus, Save, Trash2, Wand2 } from 'lucide-react';
-import { api, BlindLevel, Tournament, TournamentChip } from '../../api/client';
+import { Calculator, Save, Wand2 } from 'lucide-react';
+import { api, BlindLevel, Tournament } from '../../api/client';
 
 interface BlindTimerProps {
   tournamentId: string;
@@ -19,13 +19,6 @@ interface EditableBlindLevel {
   ante: string;
   minutes: string;
   islastlevel: boolean;
-}
-
-interface EditableChip {
-  denomination: string;
-  color: string;
-  quantity: string;
-  sortorder: number;
 }
 
 interface CalculatorSettings {
@@ -58,27 +51,6 @@ interface ParsedCalculatorSettings {
   addonChips: number;
 }
 
-const CHIP_COLORS = [
-  { name: 'White', value: '#f8fafc' },
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Black', value: '#111827' },
-  { name: 'Purple', value: '#8b5cf6' },
-  { name: 'Yellow', value: '#eab308' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Pink', value: '#ec4899' },
-  { name: 'Gray', value: '#64748b' },
-];
-
-const DEFAULT_CHIPS: EditableChip[] = [
-  { denomination: '25', color: 'Green', quantity: '0', sortorder: 0 },
-  { denomination: '100', color: 'Black', quantity: '0', sortorder: 1 },
-  { denomination: '500', color: 'Purple', quantity: '0', sortorder: 2 },
-  { denomination: '1000', color: 'Yellow', quantity: '0', sortorder: 3 },
-  { denomination: '5000', color: 'Red', quantity: '0', sortorder: 4 },
-];
-
 function toDraftLevel(level: BlindLevel): DraftLevel {
   return {
     level: Number(level.level),
@@ -101,22 +73,12 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
     queryFn: () => api.getBlinds(tournamentId),
   });
 
-  const { data: chips = [] } = useQuery({
-    queryKey: ['chips', tournamentId],
-    queryFn: () => api.getChips(tournamentId),
-  });
-
   const saveMutation = useMutation({
     mutationFn: (levels: DraftLevel[]) => api.saveBlinds(tournamentId, levels),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['blinds', tournamentId] });
       setEditing(false);
     },
-  });
-
-  const saveChipsMutation = useMutation({
-    mutationFn: (values: Omit<TournamentChip, 'id'>[]) => api.saveChips(tournamentId, values),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chips', tournamentId] }),
   });
 
   const saveGroupStructureMutation = useMutation({
@@ -134,6 +96,16 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
 
   return (
     <div className="space-y-6">
+      {isOwner && (
+        <BlindCalculator
+          playerCount={playerCount}
+          tournament={tournament}
+          saving={saveMutation.isPending}
+          error={saveMutation.error?.message}
+          onSave={(levels) => saveMutation.mutate(levels)}
+        />
+      )}
+
       <div className="card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold text-white">Blind Structure</h3>
@@ -178,24 +150,6 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
           <p className="text-sm text-red-400">{saveGroupStructureMutation.error.message}</p>
         )}
       </div>
-
-      <ChipSet
-        chips={chips}
-        isOwner={isOwner}
-        saving={saveChipsMutation.isPending}
-        error={saveChipsMutation.error?.message}
-        onSave={(values) => saveChipsMutation.mutate(values)}
-      />
-
-      {isOwner && (
-        <BlindCalculator
-          playerCount={playerCount}
-          tournament={tournament}
-          saving={saveMutation.isPending}
-          error={saveMutation.error?.message}
-          onSave={(levels) => saveMutation.mutate(levels)}
-        />
-      )}
     </div>
   );
 }
@@ -337,169 +291,6 @@ function NumberField({
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
-  );
-}
-
-function ChipSet({
-  chips,
-  isOwner,
-  saving,
-  error,
-  onSave,
-}: {
-  chips: TournamentChip[];
-  isOwner: boolean;
-  saving: boolean;
-  error?: string;
-  onSave: (chips: Omit<TournamentChip, 'id'>[]) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const totalBank = chips.reduce((sum, chip) => sum + (Number(chip.denomination) * Number(chip.quantity)), 0);
-
-  return (
-    <div className="card space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-white">Chips In Play</h3>
-          {chips.length > 0 && <p className="mt-1 text-sm text-pit-text">Bank: {totalBank.toLocaleString()}</p>}
-        </div>
-        {isOwner && (
-          <button type="button" className="btn-ghost text-sm" onClick={() => setEditing((value) => !value)}>
-            {editing ? 'Cancel' : 'Edit chips'}
-          </button>
-        )}
-      </div>
-
-      {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>}
-
-      {editing ? (
-        <ChipEditor
-          initial={chips}
-          saving={saving}
-          onSave={(values) => {
-            onSave(values);
-            setEditing(false);
-          }}
-        />
-      ) : (
-        <ChipLegend chips={chips} />
-      )}
-    </div>
-  );
-}
-
-function ChipLegend({ chips }: { chips: TournamentChip[] }) {
-  if (chips.length === 0) return <p className="text-sm text-pit-text">No chip set configured.</p>;
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-      {chips.map((chip) => (
-        <div key={chip.id} className="flex items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
-          <ChipSwatch color={chip.color} />
-          <div className="min-w-0">
-            <p className="font-semibold text-white">{Number(chip.denomination).toLocaleString()}</p>
-            <p className="text-xs text-pit-muted">{chip.quantity.toLocaleString()} chips</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ChipEditor({
-  initial,
-  saving,
-  onSave,
-}: {
-  initial: TournamentChip[];
-  saving: boolean;
-  onSave: (chips: Omit<TournamentChip, 'id'>[]) => void;
-}) {
-  const [chips, setChips] = useState<EditableChip[]>(
-    initial.length > 0
-      ? initial.map((chip, index) => ({
-        denomination: String(chip.denomination),
-        color: chip.color,
-        quantity: String(chip.quantity),
-        sortorder: chip.sortorder ?? index,
-      }))
-      : DEFAULT_CHIPS
-  );
-
-  function update(index: number, field: keyof EditableChip, value: string | number) {
-    setChips((current) => current.map((chip, chipIndex) => chipIndex === index ? { ...chip, [field]: value } : chip));
-  }
-
-  function addChip() {
-    setChips((current) => [...current, { denomination: '', color: 'White', quantity: '', sortorder: current.length }]);
-  }
-
-  function removeChip(index: number) {
-    setChips((current) => current
-      .filter((_chip, chipIndex) => chipIndex !== index)
-      .map((chip, chipIndex) => ({ ...chip, sortorder: chipIndex })));
-  }
-
-  function save() {
-    onSave(chips
-      .map((chip, index) => ({
-        denomination: parseSetting(chip.denomination, 0),
-        color: chip.color,
-        quantity: parseSetting(chip.quantity, 0),
-        sortorder: index,
-      }))
-      .filter((chip) => chip.denomination > 0));
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="space-y-2">
-        {chips.map((chip, index) => (
-          <div key={index} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Denom</span>
-              <input className="input" type="text" inputMode="numeric" value={chip.denomination} onChange={(event) => update(index, 'denomination', event.target.value)} />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Color</span>
-              <select className="input" value={chip.color} onChange={(event) => update(index, 'color', event.target.value)}>
-                {CHIP_COLORS.map((color) => (
-                  <option key={color.name} value={color.name}>{color.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Qty</span>
-              <input className="input" type="text" inputMode="numeric" value={chip.quantity} onChange={(event) => update(index, 'quantity', event.target.value)} />
-            </label>
-            <button type="button" className="btn-ghost h-10 w-10 px-0" onClick={() => removeChip(index)} aria-label="Remove chip">
-              <Trash2 size={15} />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-ghost text-sm" onClick={addChip}>
-          <Plus size={15} />
-          Add chip
-        </button>
-        <button type="button" className="btn-primary text-sm" onClick={save} disabled={saving}>
-          {saving ? 'Saving...' : 'Save chips'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ChipSwatch({ color }: { color: string }) {
-  const hex = CHIP_COLORS.find((chipColor) => chipColor.name === color)?.value ?? color;
-  return (
-    <span
-      className="h-9 w-9 shrink-0 rounded-full border-4 border-white/20 shadow-inner"
-      style={{ backgroundColor: hex }}
-      title={color}
-    />
   );
 }
 

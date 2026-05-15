@@ -178,6 +178,17 @@ function ProfilePanel() {
     queryFn: api.me,
   });
 
+  useEffect(() => {
+    if (!profile) return;
+    updateUser({
+      displayname: profile.displayname,
+      emailaddress: profile.emailaddress,
+      avatarimagedata: profile.avatarimagedata ?? null,
+      hasavatarimage: profile.hasavatarimage ?? false,
+      onboardingcomplete: profile.onboardingcomplete,
+    });
+  }, [profile, updateUser]);
+
   const updateProfileMutation = useMutation({
     mutationFn: api.updateMe,
     onSuccess: (updated, variables) => {

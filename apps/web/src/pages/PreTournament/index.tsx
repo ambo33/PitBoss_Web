@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
@@ -15,9 +15,8 @@ import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
 import Payouts from './Payouts';
 import RunTournament from './RunTournament';
-import Seating from './Seating';
 
-type Tab = 'details' | 'players' | 'blinds' | 'seating' | 'results' | 'run';
+type Tab = 'details' | 'players' | 'blinds' | 'run';
 
 export default function PreTournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -59,14 +58,6 @@ export default function PreTournamentPage() {
     };
   }, [id, qc]);
 
-  const finishers = useMemo(
-    () => players
-      .filter((player) => player.placed != null)
-      .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999))
-      .slice(0, 5),
-    [players]
-  );
-
   const updateTournamentMutation = useMutation({
     mutationFn: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => api.updateTournament(id!, data),
     onSuccess: () => {
@@ -105,8 +96,6 @@ export default function PreTournamentPage() {
     { id: 'details', label: 'Details' },
     { id: 'players', label: 'Players' },
     { id: 'blinds', label: 'Blind Structure' },
-    { id: 'seating', label: 'Seating' },
-    { id: 'results', label: 'Results' },
     { id: 'run', label: 'Run Tournament' },
   ];
 
@@ -157,8 +146,6 @@ export default function PreTournamentPage() {
 
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
-      {tab === 'seating' && <Seating tournamentId={id!} isOwner={canManage} />}
-      {tab === 'results' && <ResultsPanel finishers={finishers} />}
       {tab === 'run' && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
     </Layout>
   );
@@ -404,29 +391,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="text-pit-muted">{label}</span>
       <span className="font-medium text-white">{value}</span>
     </div>
-  );
-}
-
-function ResultsPanel({ finishers }: { finishers: { userid: string; displayname?: string; emailaddress: string; placed: number | null }[] }) {
-  return (
-    <section className="card">
-      <h3 className="mb-3 text-lg font-semibold text-white">Results</h3>
-      {finishers.length === 0 ? (
-        <p className="text-sm text-pit-text">Results will appear here once players start finishing.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {finishers.map((player) => (
-            <div key={player.userid} className="flex items-center justify-between rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2">
-              <div>
-                <p className="text-sm font-medium text-white">{player.displayname ?? player.emailaddress ?? 'Guest Player'}</p>
-                <p className="text-xs text-pit-text">Placed #{player.placed}</p>
-              </div>
-              <span className="badge bg-red-900/40 text-red-300">#{player.placed}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 
