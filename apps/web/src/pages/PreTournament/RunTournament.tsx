@@ -133,6 +133,10 @@ export default function RunTournament({
     mutationFn: (mode: 'all' | 'remaining') => api.assignSeats(tournamentId, seatingMaxPerTable, mode),
     onSuccess: () => refreshTournamentData(),
   });
+  const clearSeatingMutation = useMutation({
+    mutationFn: () => api.clearSeating(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
 
   useEffect(() => {
     setSeatingMaxPerTable(Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
@@ -651,9 +655,9 @@ export default function RunTournament({
                       type="button"
                       className="rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0}
-                      onClick={() => assignSeatsMutation.mutate('all')}
+                      onClick={() => assignSeatsMutation.mutate(seatedPlayers.length > 0 ? 'remaining' : 'all')}
                     >
-                      Seat Players
+                      {seatedPlayers.length > 0 ? 'Re-seat Remaining Players' : 'Seat Players'}
                     </button>
                     <div className="flex items-center gap-2 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-yellow-100">Max per table</span>
@@ -669,11 +673,11 @@ export default function RunTournament({
                     {seatedPlayers.length > 0 && (
                       <button
                         type="button"
-                        className="rounded-xl border border-yellow-200/35 bg-yellow-200/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-yellow-100 transition hover:bg-yellow-200/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={assignSeatsMutation.isPending || checkedInRoster.length === seatedPlayers.length}
-                        onClick={() => assignSeatsMutation.mutate('remaining')}
+                        className="rounded-xl border border-red-300/35 bg-red-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={clearSeatingMutation.isPending}
+                        onClick={() => clearSeatingMutation.mutate()}
                       >
-                        Re-seat Remaining
+                        Clear Seating
                       </button>
                     )}
                   </div>
