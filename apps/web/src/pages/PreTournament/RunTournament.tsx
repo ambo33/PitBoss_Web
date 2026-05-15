@@ -684,6 +684,12 @@ export default function RunTournament({
                   registeredPlayers={seatingRoster}
                   welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
                   fullWidth
+                  canToggleCheckin={showAdminControls}
+                  checkinPendingUserId={checkinMutation.isPending ? checkinMutation.variables ?? null : null}
+                  onToggleCheckin={(player) => {
+                    setSelectedPlayerId(player.userid);
+                    checkinMutation.mutate(player.userid);
+                  }}
                 />
               </div>
             ) : (
@@ -1078,12 +1084,18 @@ function TvSeatingBoard({
   registeredPlayers,
   welcomeMessage,
   fullWidth = false,
+  canToggleCheckin = false,
+  checkinPendingUserId = null,
+  onToggleCheckin,
 }: {
   seatedPlayers: TournamentPlayer[];
   checkedInPlayers: TournamentPlayer[];
   registeredPlayers: TournamentPlayer[];
   welcomeMessage: string;
   fullWidth?: boolean;
+  canToggleCheckin?: boolean;
+  checkinPendingUserId?: string | null;
+  onToggleCheckin?: (player: TournamentPlayer) => void;
 }) {
   const hasAssignments = seatedPlayers.length > 0;
   const checkedInIds = new Set(checkedInPlayers.map((player) => player.userid));
@@ -1115,14 +1127,20 @@ function TvSeatingBoard({
         <div className={`grid overflow-y-auto pr-1 ${fullWidth ? 'max-h-[70vh] grid-cols-4 gap-2 xl:grid-cols-5 2xl:grid-cols-6' : 'max-h-[32rem] grid-cols-2 gap-1.5 xl:grid-cols-3 2xl:grid-cols-4'}`}>
           {roster.map((player) => {
             const checkedIn = checkedInIds.has(player.userid) || Boolean(player.checkedin);
+            const tileIsPending = checkinPendingUserId === player.userid;
+            const TileElement = canToggleCheckin ? 'button' : 'div';
             return (
-            <div
+            <TileElement
               key={player.userid}
-              className={`flex min-w-0 items-center rounded-lg border ${
+              type={canToggleCheckin ? 'button' : undefined}
+              disabled={canToggleCheckin ? tileIsPending : undefined}
+              onClick={canToggleCheckin ? () => onToggleCheckin?.(player) : undefined}
+              title={canToggleCheckin ? `${checkedIn ? 'Undo check-in for' : 'Check in'} ${player.displayname ?? player.emailaddress}` : undefined}
+              className={`flex min-w-0 items-center rounded-lg border text-left transition ${
                 checkedIn
                   ? 'border-emerald-400/45 bg-emerald-400/12 text-white'
                   : 'border-pit-border bg-pit-bg/45 text-pit-muted'
-              } ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
+              } ${canToggleCheckin ? 'cursor-pointer hover:border-yellow-200/55 hover:bg-yellow-200/10 focus:outline-none focus:ring-2 focus:ring-yellow-200/40 disabled:cursor-wait disabled:opacity-60' : ''} ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
             >
               {checkedIn ? (
                 <CheckCircle2 className={`shrink-0 text-emerald-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
@@ -1144,7 +1162,7 @@ function TvSeatingBoard({
                   </p>
                 ) : null}
               </div>
-            </div>
+            </TileElement>
           );})}
         </div>
       )}
