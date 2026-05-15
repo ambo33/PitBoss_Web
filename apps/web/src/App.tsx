@@ -4,6 +4,7 @@ import LoginPage from './pages/Login';
 import MainPage from './pages/Main';
 import LandingPage from './pages/Landing';
 import PricingPage from './pages/Pricing';
+import TermsPage from './pages/Terms';
 import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
         <Route path="/" element={<HomeRoute />} />
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />

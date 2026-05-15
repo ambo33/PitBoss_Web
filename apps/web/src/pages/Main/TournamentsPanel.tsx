@@ -298,6 +298,7 @@ function CreateTournamentComposer({
     addonprice: '',
     addonchips: '',
     maxplayers: '',
+    maxplayersmode: '',
     registerself: true,
     playerselftracking: false,
     groupid: '',
@@ -348,7 +349,7 @@ function CreateTournamentComposer({
       rebuychips: Number(form.rebuychips) || 0,
       addonprice: Number(form.addonprice) || 0,
       addonchips: Number(form.addonchips) || 0,
-      maxplayers: Number(form.maxplayers) || 0,
+      maxplayers: form.maxplayersmode === 'unlimited' ? 0 : Number(form.maxplayers) || 0,
       registerself: form.registerself,
       playerselftracking: canUseClubFeatures ? form.playerselftracking : false,
       groupid: form.groupid || undefined,
@@ -357,8 +358,17 @@ function CreateTournamentComposer({
     });
   }
 
-  const canAdvance = step !== 0 || Boolean(form.name.trim());
+  const basicsComplete = Boolean(form.name.trim() && form.tourneydate && form.tourneytime && form.groupid);
+  const maxPlayersComplete = form.maxplayersmode === 'unlimited' || (form.maxplayersmode === 'capped' && Number(form.maxplayers) > 0);
+  const canAdvance = step === 0 ? basicsComplete : step === 1 ? maxPlayersComplete : true;
   const selectedStructure = savedStructures.find((structure) => structure.id === form.savedstructureid);
+  const maxPlayersReview = form.maxplayersmode === 'unlimited' ? 'Unlimited' : form.maxplayers;
+  const canOpenStep = (targetStep: number) => {
+    if (targetStep <= step) return true;
+    if (targetStep >= 1 && !basicsComplete) return false;
+    if (targetStep >= 2 && !maxPlayersComplete) return false;
+    return true;
+  };
 
   return (
     <div className="mx-auto w-full max-w-4xl">
@@ -372,10 +382,13 @@ function CreateTournamentComposer({
             <button
               key={label}
               type="button"
-              onClick={() => setStep(index)}
+              onClick={() => {
+                if (canOpenStep(index)) setStep(index);
+              }}
+              disabled={!canOpenStep(index)}
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
                 step === index ? 'border-pit-teal bg-pit-teal/15 text-pit-teal' : 'border-pit-border text-pit-muted'
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-45`}
             >
               {index + 1}. {label}
             </button>
@@ -405,8 +418,8 @@ function CreateTournamentComposer({
               <div className="space-y-4">
                 <input className="input text-lg" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Date"><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} /></Field>
-                  <Field label="Time"><input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} /></Field>
+                  <Field label="Date"><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} required /></Field>
+                  <Field label="Time"><input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} required /></Field>
                 </div>
                 <Field label="Group">
                   <select className="input" value={form.groupid} onChange={set('groupid')} required>
@@ -416,6 +429,11 @@ function CreateTournamentComposer({
                     ))}
                   </select>
                 </Field>
+                {!basicsComplete && (
+                  <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
+                    Add a tournament name, date, time, and group before continuing.
+                  </p>
+                )}
               </div>
             )}
 
@@ -424,12 +442,44 @@ function CreateTournamentComposer({
                 <Field label="Buy-in"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} /></Field>
                 <Field label="Rake"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} /></Field>
                 <Field label="Max players">
-                  <input className="input" type="number" placeholder="0" min="0" max={maxPlayersCap ?? undefined} value={form.maxplayers} onChange={set('maxplayers')} />
+                  <select
+                    className="input"
+                    value={form.maxplayersmode}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      maxplayersmode: event.target.value,
+                      maxplayers: event.target.value === 'unlimited' ? '' : current.maxplayers,
+                    }))}
+                    required
+                  >
+                    <option value="">Choose max players</option>
+                    <option value="unlimited">Unlimited</option>
+                    <option value="capped">Set a player cap</option>
+                  </select>
                 </Field>
+                {form.maxplayersmode === 'capped' && (
+                  <Field label="Player cap">
+                    <input
+                      className="input"
+                      type="number"
+                      placeholder="e.g. 16"
+                      min="1"
+                      max={maxPlayersCap ?? undefined}
+                      value={form.maxplayers}
+                      onChange={set('maxplayers')}
+                      required
+                    />
+                  </Field>
+                )}
                 <Field label="Rebuy price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} /></Field>
                 <Field label="Rebuy chips"><input className="input" type="number" placeholder="0" min="0" value={form.rebuychips} onChange={set('rebuychips')} /></Field>
                 <Field label="Add-on price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} /></Field>
                 <Field label="Add-on chips"><input className="input" type="number" placeholder="0" min="0" value={form.addonchips} onChange={set('addonchips')} /></Field>
+                {!maxPlayersComplete && (
+                  <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
+                    Choose Unlimited or set a max player count before continuing.
+                  </p>
+                )}
               </div>
             )}
 
@@ -479,7 +529,7 @@ function CreateTournamentComposer({
                 <ReviewItem label="Group" value={selectedGroupName || 'Private'} />
                 <ReviewItem label="Date and time" value={`${form.tourneydate || 'Date TBD'} ${form.tourneytime || ''}`.trim()} />
                 <ReviewItem label="Buy-in" value={`$${Number(form.buyin || 0).toFixed(2)}`} />
-                <ReviewItem label="Max players" value={form.maxplayers || 'No cap set'} />
+                <ReviewItem label="Max players" value={maxPlayersReview || 'Not set'} />
                 <ReviewItem label="Tracking" value={form.playerselftracking ? 'Player tracked stats' : 'Standard'} />
                 <ReviewItem label="Blind structure" value={selectedStructure?.name || 'Calculator after creation'} />
                 <ReviewItem label="Notifications" value={form.groupid && form.notifygroup ? 'Email group members' : 'No group email'} />
@@ -498,7 +548,7 @@ function CreateTournamentComposer({
                 Next <ChevronRight size={15} />
               </button>
             ) : (
-              <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading || !form.name.trim()}>
+              <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading || !basicsComplete || !maxPlayersComplete}>
                 {loading ? 'Creating...' : 'Create tournament'}
               </button>
             )}

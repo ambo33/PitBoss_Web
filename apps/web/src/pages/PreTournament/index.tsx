@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock } from 'lucide-react';
+import { ClipboardList, Lock, Play, Timer, Users } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
@@ -92,11 +92,11 @@ export default function PreTournamentPage() {
   const showPocketAdmin = canManage;
   const showTvBoard = featureFlags.tvBoard;
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'details', label: 'Details' },
-    { id: 'players', label: 'Players' },
-    { id: 'blinds', label: 'Blind Structure' },
-    { id: 'run', label: 'Run Tournament' },
+  const tabs: { id: Tab; label: string; mobileLabel: string; Icon: React.ElementType }[] = [
+    { id: 'details', label: 'Details', mobileLabel: 'Details', Icon: ClipboardList },
+    { id: 'players', label: 'Players', mobileLabel: 'Players', Icon: Users },
+    { id: 'blinds', label: 'Blind Structure', mobileLabel: 'Blinds', Icon: Timer },
+    { id: 'run', label: 'Run Tournament', mobileLabel: 'Run', Icon: Play },
   ];
 
   return (
@@ -105,20 +105,29 @@ export default function PreTournamentPage() {
       back="/"
       compactSidebar
       hideSidebar={tab === 'run'}
-      headerRight={<BrandLockup compact showSlogan={false} className="items-center gap-2" />}
+      headerRight={<BrandLockup compact showSlogan={false} showWordmark={false} className="items-center gap-2" />}
       mainWidthClassName="max-w-[1800px]"
     >
-      <div className="relative z-10 mb-6 mt-2 overflow-x-auto border-b border-pit-border md:mt-3">
-        <div className="flex gap-1">
-          {tabs.map((currentTab) => (
+      <div className="relative z-10 mb-5 mt-2 border-b border-pit-border md:mt-3">
+        <div className="grid grid-cols-4 gap-1 md:flex md:gap-1">
+          {tabs.map((currentTab) => {
+            const Icon = currentTab.Icon;
+            return (
             <button
               key={currentTab.id}
-              className={tab === currentTab.id ? 'tab-active whitespace-nowrap' : 'tab-inactive whitespace-nowrap'}
+              className={`flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-1.5 py-3 text-[11px] font-semibold transition-colors sm:px-3 sm:text-sm md:min-w-36 md:justify-start ${
+                tab === currentTab.id
+                  ? 'border-pit-teal text-white'
+                  : 'border-transparent text-pit-muted hover:text-pit-text'
+              }`}
               onClick={() => setTab(currentTab.id)}
             >
-              {currentTab.label}
+              <Icon size={15} className="shrink-0" />
+              <span className="truncate md:hidden">{currentTab.mobileLabel}</span>
+              <span className="hidden md:inline">{currentTab.label}</span>
             </button>
-          ))}
+          );
+          })}
         </div>
       </div>
 
@@ -225,19 +234,19 @@ function TournamentDetailsCard({
   }
 
   return (
-    <section className="card">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="space-y-2">
+    <section className="card overflow-hidden">
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-2">
           <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
         </div>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex w-full min-w-0 flex-col gap-3 lg:w-auto lg:items-end">
           {pocketAdminUrl && (
-            <div className="flex items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2">
+            <div className="flex w-full min-w-0 items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2 lg:w-auto">
               <div className="inline-block rounded-md bg-white p-1">
-                <QRCodeSVG value={pocketAdminUrl} size={56} />
+                <QRCodeSVG value={pocketAdminUrl} size={52} />
               </div>
               <a
-                className="text-sm font-medium text-pit-teal hover:text-pit-teal/80"
+                className="min-w-0 text-sm font-medium text-pit-teal hover:text-pit-teal/80"
                 href={pocketAdminUrl}
                 target="_blank"
                 rel="noreferrer"
@@ -247,7 +256,7 @@ function TournamentDetailsCard({
             </div>
           )}
           {canManage && (
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
               <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
                 {editing ? 'Cancel' : 'Edit Details'}
               </button>

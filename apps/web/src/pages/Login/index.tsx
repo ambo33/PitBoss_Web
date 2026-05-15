@@ -218,7 +218,11 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
           required
         />
         <span className="text-xs leading-5 text-pit-text">
-          I agree to the Terms of Service and understand uploaded avatars or clips must be mine to use and appropriate for a poker group.
+          I agree to the{' '}
+          <Link to="/terms" target="_blank" rel="noreferrer" className="font-semibold text-pit-teal hover:text-pit-teal-hover">
+            Terms of Service
+          </Link>
+          , including the rules against using PokerPlanner to facilitate illegal gambling or illegal activity, and understand uploaded avatars or clips must be mine to use and appropriate for a poker group.
         </span>
       </label>
       <button type="submit" className="btn-primary mt-1 w-full py-2.5" disabled={loading}>

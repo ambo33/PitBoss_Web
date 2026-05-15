@@ -198,6 +198,7 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
           tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
+  if (!tourneydate || !tourneytime) { res.status(400).json({ error: 'Tournament date and time required.' }); return; }
   if (!groupid) { res.status(400).json({ error: 'Choose a group for this tournament.' }); return; }
 
   const profile = await getAccountProfile(req.userId!);
