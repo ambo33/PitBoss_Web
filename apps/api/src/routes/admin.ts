@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getAccountProfile, requireSuperAdmin, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey } from '../account';
 import { query } from '../db';
 import { requireAuth } from '../middleware/auth';
-import { publicEmail } from '../privacy';
+import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -15,7 +15,9 @@ adminRouter.use(async (req: Request, res: Response, next) => {
   next();
 });
 
-adminRouter.get('/users', async (_req: Request, res: Response) => {
+adminRouter.get('/users', async (req: Request, res: Response) => {
+  const emailSearch = typeof req.query.email === 'string' ? normalizeEmail(req.query.email) : '';
+  const emailHash = emailSearch ? hashEmail(emailSearch) : null;
   const rows = await query<{
     userid: string;
     emailaddress: string | null;
@@ -76,11 +78,13 @@ adminRouter.get('/users', async (_req: Request, res: Response) => {
      FROM users u
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
+     WHERE $2::STRING IS NULL OR u.emailhash = $2
      ORDER BY u.emailaddress`,
-    [nowInAppTimezone()]
+    [nowInAppTimezone(), emailHash]
   );
   res.json(rows.map((row) => {
-    const emailaddress = publicEmail(row.emailencrypted, row.emailaddress);
+    const decryptedEmail = publicEmail(row.emailencrypted, row.emailaddress);
+    const emailaddress = decryptedEmail || (emailHash ? emailSearch : '');
     return {
       ...row,
       emailaddress,
@@ -107,13 +111,16 @@ adminRouter.get('/users/:id', async (req: Request, res: Response) => {
   );
 
   const tournaments = await query(
-    `SELECT t.tournamentid, t.name, t.date AS tourneydate, t.time AS tourneytime,
+    `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
             t.buyin, t.rebuycost AS rebuyprice, t.addoncost AS addonprice, t.maxplayers,
             t.createdate AS createdat, t.userid = $1 AS isowner,
+            t.groupid, g.name AS groupname, TRUE AS canmanage,
             EXISTS(SELECT 1 FROM tournamentplayers tp WHERE tp.tournamentid = t.tournamentid AND tp.userid = $1) AS isregistered,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
+            (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid AND checkedin = TRUE) AS checkedincount,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed
      FROM tournaments t
+     LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.userid = $1
         OR EXISTS(SELECT 1 FROM tournamentplayers tp WHERE tp.tournamentid = t.tournamentid AND tp.userid = $1)
      ORDER BY t.createdate DESC`,

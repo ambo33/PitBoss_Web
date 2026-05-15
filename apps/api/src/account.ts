@@ -90,14 +90,14 @@ export async function syncSuperAdminByEmail(userId: string): Promise<void> {
 
   const email = publicEmail(row.emailencrypted, row.emailaddress);
   const shouldBeAdmin = Boolean(email) && getAdminEmails().has(email.toLowerCase());
-  if (Boolean(row.issuperadmin) === shouldBeAdmin) return;
+  if (!shouldBeAdmin || Boolean(row.issuperadmin)) return;
 
   await query(
     `INSERT INTO usermetadata (userid, issuperadmin)
-     VALUES ($1, $2)
+     VALUES ($1, TRUE)
      ON CONFLICT (userid)
-     DO UPDATE SET issuperadmin = EXCLUDED.issuperadmin`,
-    [userId, shouldBeAdmin]
+     DO UPDATE SET issuperadmin = TRUE`,
+    [userId]
   );
 }
 

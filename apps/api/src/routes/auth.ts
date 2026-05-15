@@ -60,6 +60,7 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid PIN' }); return;
   }
   await query(`UPDATE users SET emailverified = TRUE, verificationpin = NULL WHERE guid = $1`, [user.guid]);
+  await repairEmailEncryption(user.guid, normalizedEmail);
   const token = signToken(user.guid);
   res.json({ token });
 });
@@ -67,8 +68,8 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
 authRouter.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body as { email: string; password: string };
   const normalizedEmail = normalizeEmail(email);
-  const user = await queryOne<{ guid: string; password: string; emailverified: boolean }>(
-    `SELECT guid, password, emailverified FROM users WHERE emailhash = $1`,
+  const user = await queryOne<{ guid: string; password: string; emailverified: boolean; emailaddress: string | null; emailencrypted: string | null }>(
+    `SELECT guid, password, emailverified, emailaddress, emailencrypted FROM users WHERE emailhash = $1`,
     [hashEmail(normalizedEmail)]
   );
   if (!user) { res.status(401).json({ error: 'Invalid credentials' }); return; }
@@ -86,6 +87,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   if (!user.emailverified) {
     res.status(403).json({ error: 'Please verify your email before logging in.' }); return;
   }
+
+  await repairEmailEncryption(user.guid, normalizedEmail, user.emailencrypted, user.emailaddress);
 
   const token = signToken(user.guid);
   res.json({ token });
@@ -266,4 +269,21 @@ async function selectAuthProfile(userId: string) {
     emailaddress: publicEmail(row.emailencrypted, row.emailaddress),
     displayname: row.displayname === row.emailaddress ? publicEmail(row.emailencrypted, row.emailaddress) : row.displayname,
   } : null);
+}
+
+async function repairEmailEncryption(
+  userId: string,
+  normalizedEmail: string,
+  emailencrypted?: string | null,
+  emailaddress?: string | null
+) {
+  if (publicEmail(emailencrypted, emailaddress) === normalizedEmail) return;
+  await query(
+    `UPDATE users
+     SET emailencrypted = $2,
+         emailaddress = $3,
+         emailhash = $4
+     WHERE guid = $1`,
+    [userId, encryptEmail(normalizedEmail), privateEmailPlaceholder(userId), hashEmail(normalizedEmail)]
+  );
 }

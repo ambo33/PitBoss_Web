@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
-import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTournamentCount } from '../account';
+import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTournamentCount, requireSuperAdmin } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
@@ -42,6 +42,8 @@ async function ensureTournamentTvCode(tournamentId: string, currentCode: string 
 }
 
 async function canManageTournament(tournamentId: string, userId: string): Promise<boolean> {
+  if (await requireSuperAdmin(userId)) return true;
+
   const row = await queryOne<{ canmanage: boolean }>(
     `SELECT CASE
         WHEN t.userid = $2 THEN TRUE
@@ -325,6 +327,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
     return;
   }
 
+  const isSuperAdmin = await requireSuperAdmin(req.userId!);
   const row = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
@@ -344,6 +347,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
+              WHEN $3 = TRUE THEN TRUE
               WHEN t.userid = $2 THEN TRUE
               WHEN t.groupid IS NOT NULL AND gm.admin = TRUE THEN TRUE
               ELSE FALSE
@@ -357,7 +361,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
       AND gm.userid = $2
       AND gm.approved = TRUE
      WHERE t.tournamentid = $1`,
-    [req.params.id, req.userId]
+    [req.params.id, req.userId, isSuperAdmin]
   );
   if (!row) { res.status(404).json({ error: 'Tournament not found' }); return; }
   if (isFeatureEnabled('tvBoard')) {

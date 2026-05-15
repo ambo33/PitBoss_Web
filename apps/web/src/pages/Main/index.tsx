@@ -21,6 +21,12 @@ export default function MainPage() {
   const [tab, setTab] = useState<NavTab>(requestedTab ?? 'tournaments');
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
 
+  const { data: currentProfile } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+    enabled: Boolean(user),
+  });
+
   const completeTourMutation = useMutation({
     mutationFn: () => api.updateMe({ completeonboarding: true }),
     onSuccess: (updated) => {
@@ -46,9 +52,27 @@ export default function MainPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!currentProfile) return;
+    updateUser({
+      displayname: currentProfile.displayname,
+      emailaddress: currentProfile.emailaddress,
+      tierid: currentProfile.tierid,
+      accounttier: currentProfile.accounttier,
+      issuperadmin: currentProfile.issuperadmin,
+      hostedtournamentcount: currentProfile.hostedtournamentcount,
+      trialhostedremaining: currentProfile.trialhostedremaining,
+      trialactive: currentProfile.trialactive,
+      canuseclubfeatures: currentProfile.canuseclubfeatures,
+      avatarimagedata: currentProfile.avatarimagedata ?? null,
+      hasavatarimage: currentProfile.hasavatarimage ?? false,
+      onboardingcomplete: currentProfile.onboardingcomplete,
+    });
+  }, [currentProfile, updateUser]);
+
   return (
     <>
-      <Layout tab={tab} onTabChange={setTab}>
+      <Layout tab={tab} onTabChange={setTab} mainWidthClassName={tab === 'admin' ? 'max-w-7xl' : 'max-w-5xl'}>
         {tab === 'tournaments' && <TournamentsPanel />}
         {tab === 'groups'      && <GroupsPanel />}
         {tab === 'profile'     && <ProfilePanel />}

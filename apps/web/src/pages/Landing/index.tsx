@@ -185,8 +185,8 @@ function HeroBoard() {
               <p className="text-xs font-semibold uppercase text-pit-text">Level 4 of 12</p>
               <p className="mt-3 font-mono text-6xl font-black leading-none text-white sm:text-7xl">18:42</p>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <MiniBlind label="Current" value="200 / 400" />
-                <MiniBlind label="Next" value="300 / 600" />
+                <MiniBlind label="Current" value="300 / 600" />
+                <MiniBlind label="Next" value="500 / 1K" />
               </div>
             </div>
             <MiniPayout />
@@ -207,7 +207,7 @@ function MiniStructure() {
       </div>
       <div className="space-y-1">
         {levels.map((level, index) => (
-          <div key={level} className={`flex justify-between rounded-md px-2 py-1 text-xs ${index === 2 ? 'bg-yellow-200/80 text-yellow-950' : 'bg-pit-bg/70 text-pit-text'}`}>
+          <div key={level} className={`flex justify-between rounded-md px-2 py-1 text-xs ${index === 3 ? 'bg-yellow-200/80 text-yellow-950' : 'bg-pit-bg/70 text-pit-text'}`}>
             <span>{index + 1}</span>
             <span>{level}</span>
           </div>

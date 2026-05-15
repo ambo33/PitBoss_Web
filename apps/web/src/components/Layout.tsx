@@ -107,19 +107,28 @@ export default function Layout({
           <nav className={`flex-1 space-y-0.5 py-4 ${compactSidebar ? 'px-2' : 'px-3'}`}>
             {navItems.map(({ id, label, Icon }) => {
               const active = tab === id;
+              const isAdmin = id === 'admin';
               return (
                 <button
                   key={id}
                   onClick={() => handleNavClick(id)}
-                  className={`w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
-                    active
-                      ? 'bg-pit-teal/10 text-pit-teal shadow-[inset_3px_0_0_theme(colors.pit.teal)]'
+                  className={`w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                    active && isAdmin
+                      ? 'bg-red-500/12 text-red-300'
+                      : active
+                      ? 'bg-pit-teal/10 text-pit-teal'
+                      : isAdmin
+                      ? 'text-red-300/80 hover:bg-red-500/10 hover:text-red-200'
                       : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
                   } flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}
                   aria-label={label}
                   title={label}
                 >
-                  <Icon size={17} strokeWidth={active ? 2.5 : 2} />
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                    active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : 'bg-transparent'
+                  }`}>
+                    <Icon size={17} strokeWidth={active ? 2.5 : 2} />
+                  </span>
                   {!compactSidebar && label}
                 </button>
               );
@@ -185,15 +194,18 @@ export default function Layout({
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
         {navItems.map(({ id, label, Icon }) => {
           const active = tab === id;
+          const isAdmin = id === 'admin';
           return (
             <button
               key={id}
               onClick={() => handleNavClick(id)}
               className={`flex-1 flex flex-col items-center gap-1 pt-3 pb-4 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-                active ? 'text-pit-teal' : 'text-pit-muted'
+                active && isAdmin ? 'text-red-300' : active ? 'text-pit-teal' : isAdmin ? 'text-red-300/80' : 'text-pit-muted'
               }`}
             >
-              <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${active ? 'bg-pit-teal/15' : ''}`}>
+              <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+                active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : ''
+              }`}>
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
               </div>
               {label}

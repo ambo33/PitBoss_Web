@@ -155,7 +155,7 @@ export const api = {
   clearSeating: (tid: string) => del(`/tournaments/${tid}/seating`),
 
   // Admin
-  getAdminUsers: () => get<AdminUserSummary[]>('/admin/users'),
+  getAdminUsers: (email?: string) => get<AdminUserSummary[]>(`/admin/users${email ? `?email=${encodeURIComponent(email)}` : ''}`),
   getAdminUser: (id: string) => get<AdminUserDetail>(`/admin/users/${id}`),
   updateAdminUser: (id: string, data: { tierid?: number; issuperadmin?: boolean }) =>
     put<{ success: boolean; account: AuthProfile }>(`/admin/users/${id}`, data),
