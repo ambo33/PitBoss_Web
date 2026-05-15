@@ -15,3 +15,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+
+const isLocalDev = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+if ('serviceWorker' in navigator && !isLocalDev) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

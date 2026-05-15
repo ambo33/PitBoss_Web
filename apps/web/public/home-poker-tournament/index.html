@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Run a Home Poker Tournament | PokerPlanner</title>
+    <meta name="description" content="A practical guide to running a home poker tournament with blinds, chips, players, breaks, payouts, seating, and a tournament clock.">
+    <link rel="canonical" href="https://pokerplanner.bet/home-poker-tournament/">
+    <meta property="og:title" content="How to Run a Home Poker Tournament | PokerPlanner">
+    <meta property="og:description" content="A practical guide to running a home poker tournament with blinds, chips, players, breaks, payouts, seating, and a tournament clock.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://pokerplanner.bet/home-poker-tournament/">
+    <meta property="og:image" content="https://pokerplanner.bet/seo-assets/home-tournament.svg">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"PokerPlanner","applicationCategory":"GameApplication","operatingSystem":"Web browser","url":"https://pokerplanner.bet/home-poker-tournament/","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"A practical guide to running a home poker tournament with blinds, chips, players, breaks, payouts, seating, and a tournament clock."}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is PokerPlanner free to use?","acceptedAnswer":{"@type":"Answer","text":"All features are free during the beta and a free model will always be available. Hosts can create groups, build tournaments, run the clock, use the TV board, track players, and use the core planning tools."}},{"@type":"Question","name":"Can I use it for a casual home poker game?","acceptedAnswer":{"@type":"Answer","text":"Yes. The tool is designed for home poker tournaments first, with simple setup for buy-ins, blinds, breaks, seats, rebuys, add-ons, payouts, and player check-in."}},{"@type":"Question","name":"Does the poker timer work on a TV?","acceptedAnswer":{"@type":"Answer","text":"Yes. PokerPlanner includes a TV-friendly tournament clock that can be opened on a shared screen so players can see the current level, next blinds, and timer."}},{"@type":"Question","name":"Do players need to download an app?","acceptedAnswer":{"@type":"Answer","text":"No. PokerPlanner runs in the browser. Players can use links or QR codes to view lobby information, check in, and follow tournament status without installing anything."}},{"@type":"Question","name":"How long should a home poker tournament last?","acceptedAnswer":{"@type":"Answer","text":"Many casual home tournaments run two to four hours. Field size, starting chips, blind level length, and rebuy rules all affect the finish time."}}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://pokerplanner.bet"},{"@type":"ListItem","position":2,"name":"How to Run a Home Poker Tournament","item":"https://pokerplanner.bet/home-poker-tournament/"}]}</script>
+    <style>
+      :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; --gold:#f4b24a; --red:#ef4444; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; }
+      a { color: inherit; }
+      .skip { position:absolute; left:-999px; top:auto; }
+      .skip:focus { left: 1rem; top: 1rem; z-index: 10; background: var(--teal); color: #041010; padding: .65rem .9rem; border-radius: .5rem; }
+      header { border-bottom: 1px solid var(--line); background: rgba(16,17,20,.92); position: sticky; top: 0; z-index: 3; backdrop-filter: blur(14px); }
+      .nav { max-width: 1120px; margin: 0 auto; padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+      .brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; font-weight: 800; letter-spacing: 0; }
+      .brand img { width: 34px; height: 34px; }
+      .navlinks { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; justify-content: flex-end; }
+      .navlinks a { text-decoration: none; color: var(--muted); font-size: .92rem; font-weight: 650; padding: .45rem .65rem; border-radius: .5rem; }
+      .navlinks a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+      .cta { background: var(--teal); color: #041010 !important; }
+      main { max-width: 1120px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+      .hero { display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr); padding: 4.5rem 0 3rem; }
+      .eyebrow { display: inline-flex; color: var(--teal); border: 1px solid rgba(20,184,166,.35); background: rgba(20,184,166,.1); border-radius: 999px; padding: .35rem .7rem; font-size: .78rem; font-weight: 750; text-transform: uppercase; }
+      h1 { font-size: clamp(2.45rem, 7vw, 5.1rem); line-height: .98; margin: 1rem 0 1.1rem; letter-spacing: 0; max-width: 860px; }
+      h2 { font-size: clamp(1.45rem, 2.6vw, 2rem); line-height: 1.16; margin: 0 0 .75rem; letter-spacing: 0; }
+      h3 { font-size: 1.08rem; margin: 0 0 .4rem; }
+      p { color: var(--muted); margin: 0 0 1rem; }
+      .lead { font-size: 1.12rem; max-width: 780px; color: #d3dae3; }
+      .buttons { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.45rem; }
+      .button { border: 1px solid var(--line); background: var(--card); color: var(--text); text-decoration: none; padding: .82rem 1rem; border-radius: .55rem; font-weight: 750; display: inline-flex; }
+      .button.primary { border-color: var(--teal); background: var(--teal); color: #041010; }
+      .screenshot { margin-top: .8rem; border: 1px solid var(--line); border-radius: .8rem; overflow: hidden; background: var(--surface); box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+      .screenshot img { display: block; width: 100%; height: auto; }
+      .grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+      .content { display: grid; gap: 1rem; margin-top: 1rem; }
+      section, .panel { border: 1px solid var(--line); background: var(--surface); border-radius: .8rem; padding: 1.2rem; }
+      .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; }
+      .links a { text-decoration: none; border: 1px solid var(--line); background: var(--card); border-radius: .55rem; padding: .75rem; font-weight: 700; color: #d9e2ea; }
+      details { border: 1px solid var(--line); border-radius: .65rem; background: rgba(255,255,255,.03); padding: .9rem 1rem; }
+      details + details { margin-top: .7rem; }
+      summary { cursor: pointer; font-weight: 800; color: var(--text); }
+      details p { margin-top: .65rem; margin-bottom: 0; }
+      footer { border-top: 1px solid var(--line); padding: 2rem 1.25rem; color: var(--muted); text-align: center; }
+      @media (min-width: 840px) {
+        .hero { grid-template-columns: minmax(0, .85fr) minmax(390px, 1fr); align-items: center; }
+        .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 560px) {
+        .nav { align-items: flex-start; }
+        .navlinks a:not(.cta) { display: none; }
+        main { padding-left: 1rem; padding-right: 1rem; }
+        .hero { padding-top: 3rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to content</a>
+    <header>
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/branding/pokerplanner-logo-compact.png" alt="" width="34" height="34">
+          <span>PokerPlanner</span>
+        </a>
+        <div class="navlinks">
+          <a href="/poker-timer/">Poker timer</a>
+          <a href="/home-poker-tournament/">Home game guide</a>
+          <a href="https://app.pokerplanner.bet/login?mode=register" class="cta">Create account</a>
+        </div>
+      </nav>
+    </header>
+    <main id="content">
+      <article>
+        <div class="hero">
+          <div>
+            <span class="eyebrow">Home poker guide</span>
+            <h1>How to Run a Home Poker Tournament</h1>
+            <p class="lead">Running a home poker tournament is mostly about clear structure. If players know the buy-in, chips, blind levels, breaks, payouts, and timing, the night feels smooth. PokerPlanner helps hosts put those pieces in one place and keep the game moving.</p>
+            <div class="buttons">
+              <a class="button primary" href="https://app.pokerplanner.bet/login?mode=register">Start free</a>
+              <a class="button" href="/poker-tournament-clock/">See tournament clock</a>
+            </div>
+          </div>
+          <figure class="screenshot">
+            <img src="/seo-assets/home-tournament.svg" alt="Home poker tournament setup with players, chip stacks, blind schedule, and tournament timer" width="960" height="620" loading="eager">
+          </figure>
+        </div>
+        <div class="content">
+
+        <section>
+          <h2>Start with the field size and time limit</h2>
+          <p>Before choosing blinds, decide how many players you expect and how long the tournament should last. A 6-player weeknight game has different needs than a 16-player Saturday event. The blind schedule, starting chips, rebuy rules, and break timing should all support the length of night you want. PokerPlanner helps connect those choices so the timer and structure match the actual game.</p>
+        </section>
+
+        <section>
+          <h2>Choose a blind schedule players can follow</h2>
+          <p>The blind schedule should rise steadily without making the early levels meaningless or the late levels chaotic. Home tournaments often work best with simple levels, clear breaks, and enough time for players to settle in. Showing current and next blinds on a TV or laptop keeps everyone oriented, especially when a host is also playing.</p>
+        </section>
+
+        <section>
+          <h2>Make check-in and seating clear</h2>
+          <p>A little organization before cards are dealt saves time later. Decide who is in, whether guests can register, how seating will work, and how late arrivals are handled. PokerPlanner supports group members, player check-in, table seating, and player-facing lobby links so the host can spend less time answering the same setup questions.</p>
+        </section>
+
+        <section>
+          <h2>Set payouts before the bubble</h2>
+          <p>Payout arguments are avoidable. Decide how many places pay and what percentages make sense for the field before the tournament starts. PokerPlanner includes payout tools and tournament state so the prize pool can stay visible as players register, rebuy, or add on. That keeps the night friendly when the money gets real.</p>
+        </section>
+        </div>
+        <section style="margin-top:1rem">
+          <h2>Related poker tournament tools and guides</h2>
+          <div class="links">
+            <a href="/poker-timer/">Poker timer</a>
+<a href="/poker-tournament-clock/">Tournament clock</a>
+<a href="/poker-tournament-director/">Tournament director</a>
+<a href="/poker-blinds-schedule/">Blind schedule</a>
+<a href="/poker-chip-calculator/">Chip calculator</a>
+          </div>
+        </section>
+        <section style="margin-top:1rem">
+          <h2>FAQ</h2>
+          
+    <details>
+      <summary>Is PokerPlanner free to use?</summary>
+      <p>All features are free during the beta and a free model will always be available. Hosts can create groups, build tournaments, run the clock, use the TV board, track players, and use the core planning tools.</p>
+    </details>
+
+    <details>
+      <summary>Can I use it for a casual home poker game?</summary>
+      <p>Yes. The tool is designed for home poker tournaments first, with simple setup for buy-ins, blinds, breaks, seats, rebuys, add-ons, payouts, and player check-in.</p>
+    </details>
+
+    <details>
+      <summary>Does the poker timer work on a TV?</summary>
+      <p>Yes. PokerPlanner includes a TV-friendly tournament clock that can be opened on a shared screen so players can see the current level, next blinds, and timer.</p>
+    </details>
+
+    <details>
+      <summary>Do players need to download an app?</summary>
+      <p>No. PokerPlanner runs in the browser. Players can use links or QR codes to view lobby information, check in, and follow tournament status without installing anything.</p>
+    </details>
+
+    <details>
+      <summary>How long should a home poker tournament last?</summary>
+      <p>Many casual home tournaments run two to four hours. Field size, starting chips, blind level length, and rebuy rules all affect the finish time.</p>
+    </details>
+        </section>
+      </article>
+    </main>
+    <footer>
+      <p>PokerPlanner.bet helps home-game hosts plan tournaments, run the clock, and keep players informed.</p>
+    </footer>
+  </body>
+</html>

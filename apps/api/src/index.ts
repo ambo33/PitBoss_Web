@@ -65,6 +65,19 @@ const webDistPath = path.resolve(__dirname, '../../web/dist');
 if (existsSync(webDistPath)) {
   app.use(express.static(webDistPath));
 
+  const seoStaticPaths = [
+    '/poker-timer',
+    '/poker-tournament-clock',
+    '/poker-tournament-director',
+    '/home-poker-tournament',
+    '/poker-blinds-schedule',
+    '/poker-chip-calculator',
+  ];
+
+  app.get(seoStaticPaths, (req, res) => {
+    res.sendFile(path.join(webDistPath, req.path, 'index.html'));
+  });
+
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path === '/healthz') {
       next();

@@ -5,6 +5,7 @@ import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send }
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
 import Modal from './Modal';
+import PwaInstallPrompt from './PwaInstallPrompt';
 import { api } from '../api/client';
 
 export type NavTab = 'tournaments' | 'groups' | 'profile' | 'admin';
@@ -224,6 +225,8 @@ export default function Layout({
           Feedback
         </button>
       )}
+
+      {user && <PwaInstallPrompt />}
 
       <Modal
         title="Send Feedback"

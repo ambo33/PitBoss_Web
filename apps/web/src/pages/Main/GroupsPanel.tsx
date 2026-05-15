@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2, Vote } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -32,6 +32,10 @@ export default function GroupsPanel() {
   const hostedGroupLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedGroupCount >= 1;
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
+
+  if (selected) {
+    return <GroupDetailView group={selected} onBack={() => setSelected(null)} />;
+  }
 
   return (
     <>
@@ -73,9 +77,6 @@ export default function GroupsPanel() {
         onSubmit={(code) => joinMutation.mutate(code)}
         loading={joinMutation.isPending} error={joinMutation.error?.message} />
 
-      {selected && (
-        <GroupDetailModal group={selected} onClose={() => setSelected(null)} />
-      )}
     </>
   );
 }
@@ -192,7 +193,7 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
 
 type DetailTab = 'posts' | 'members' | 'tournaments' | 'structures';
 
-function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => void }) {
+function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -246,7 +247,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
   });
   const leaveMutation = useMutation({
     mutationFn: () => api.leaveGroup(group.groupid, user!.guid),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); onClose(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); onBack(); },
   });
   const registerMutation = useMutation({
     mutationFn: (tid: string) => api.groupRegister(tid),
@@ -314,21 +315,41 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
   }, [effectiveGroup.defaulttrackingmode, effectiveGroup.tvseatingwelcomemessage]);
 
   return (
-    <Modal title={effectiveGroup.name} open onClose={onClose}
-      footer={
-        !group.isadmin
-          ? <button
-              className="flex items-center gap-1.5 text-sm text-pit-muted hover:text-red-400 transition-colors"
-              onClick={() => leaveMutation.mutate()} disabled={leaveMutation.isPending}>
-              <LogOut size={14} />
-              {leaveMutation.isPending ? 'Leaving…' : 'Leave group'}
-            </button>
-          : <div />
-      }
-    >
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <button
+            type="button"
+            className="mb-3 flex items-center gap-1.5 text-sm font-medium text-pit-muted transition-colors hover:text-white"
+            onClick={onBack}
+          >
+            <ArrowLeft size={15} />
+            Groups
+          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-2xl font-bold text-white">{effectiveGroup.name}</h2>
+            {group.isadmin && (
+              <span className="badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold">
+                <Crown size={9} className="mr-0.5" /> Admin
+              </span>
+            )}
+          </div>
+        </div>
+        {!group.isadmin && (
+          <button
+            className="btn-ghost justify-center gap-1.5 text-red-300 hover:text-red-200 sm:shrink-0"
+            onClick={() => leaveMutation.mutate()}
+            disabled={leaveMutation.isPending}
+          >
+            <LogOut size={14} />
+            {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}
+          </button>
+        )}
+      </div>
+
       <div className="space-y-4">
         {/* Invite code */}
-        <div className="flex items-center justify-between rounded-xl bg-pit-bg border border-pit-border px-4 py-3">
+        <div className="flex flex-col gap-1 rounded-xl bg-pit-bg border border-pit-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs text-pit-muted">Invite code</span>
           <span className="font-mono font-bold text-white tracking-[0.2em]">{effectiveGroup.invitecode}</span>
         </div>
@@ -360,7 +381,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
 
             <div className="space-y-2">
               <p className="text-sm font-semibold text-white">Group settings</p>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   className="input font-mono uppercase"
                   value={inviteCode}
@@ -484,7 +505,8 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
         )}
 
         {/* Sub-tabs */}
-        <div className="flex border-b border-pit-border">
+        <div className="-mx-4 overflow-x-auto border-b border-pit-border px-4 sm:mx-0 sm:px-0">
+          <div className="flex min-w-max">
           {(['posts', 'members', 'tournaments', 'structures'] as DetailTab[]).map(t => (
             <button key={t} onClick={() => setDetailTab(t)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px capitalize transition-colors duration-150 ${
@@ -496,6 +518,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
               {t === 'posts' ? 'Posts' : t === 'members' ? `Members (${approved.length})` : t === 'tournaments' ? 'Tournaments' : 'Structures'}
             </button>
           ))}
+          </div>
         </div>
 
         {detailTab === 'posts' && (
@@ -707,7 +730,7 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
                           }
                           <button
                             className="flex items-center justify-center w-7 h-7 rounded-lg text-pit-muted hover:text-white hover:bg-pit-surface transition-all"
-                            onClick={() => { onClose(); navigate(`/tournament/${t.tournamentid}`); }}>
+                            onClick={() => navigate(`/tournament/${t.tournamentid}`)}>
                             <ExternalLink size={13} />
                           </button>
                         </div>
@@ -758,6 +781,6 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
           </div>
         )}
       </div>
-    </Modal>
+    </div>
   );
 }

@@ -13,6 +13,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resetToken = searchParams.get('token');
+  const resetStatus = searchParams.get('reset');
   const requestedMode = searchParams.get('mode');
   const inviteCode = searchParams.get('invite') ?? getPendingGroupInvite() ?? '';
   const nextPath = searchParams.get('next');
@@ -23,14 +24,14 @@ export default function LoginPage() {
     return '/';
   }
 
-  if (resetToken && view !== 'reset') setView('reset');
   useEffect(() => {
     if (inviteCode) setPendingGroupInvite(inviteCode);
   }, [inviteCode]);
 
   useEffect(() => {
+    if (resetToken) setView('reset');
     if (requestedMode === 'register') setView('register');
-  }, [requestedMode]);
+  }, [requestedMode, resetToken]);
 
   return (
     <div className="min-h-screen overflow-hidden bg-pit-bg">
@@ -67,6 +68,7 @@ export default function LoginPage() {
             {view === 'login' && (
               <LoginForm
                 inviteCode={inviteCode}
+                resetSuccess={resetStatus === 'success'}
                 onSwitch={setView}
                 onSuccess={() => navigate(resolveSuccessPath())}
               />
@@ -88,7 +90,12 @@ export default function LoginPage() {
               />
             )}
             {view === 'forgot' && <ForgotForm onBack={() => setView('login')} />}
-            {view === 'reset' && <ResetForm token={resetToken ?? ''} onSuccess={() => setView('login')} />}
+            {view === 'reset' && (
+              <ResetForm
+                token={resetToken ?? ''}
+                onSuccess={() => navigate('/login?reset=success', { replace: true })}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -104,10 +111,12 @@ function ErrorBanner({ msg }: { msg: string }) {
 
 function LoginForm({
   inviteCode,
+  resetSuccess,
   onSwitch,
   onSuccess,
 }: {
   inviteCode: string;
+  resetSuccess?: boolean;
   onSwitch: (v: View) => void;
   onSuccess: () => void;
 }) {
@@ -138,6 +147,11 @@ function LoginForm({
     <form onSubmit={submit} className="space-y-4">
       <h2 className="mb-5 text-xl font-bold text-white">Sign in</h2>
       {inviteCode && <p className="text-sm text-pit-text">Sign in to join your invited group.</p>}
+      {resetSuccess && (
+        <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
+          Password reset successful. Sign in with your new password.
+        </p>
+      )}
       {error && <ErrorBanner msg={error} />}
       <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
       <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
