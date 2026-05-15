@@ -80,7 +80,13 @@ export default function PreTournamentPage() {
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['tournaments'] });
       qc.invalidateQueries({ queryKey: ['players', id] });
-      navigate('/');
+      navigate('/', { replace: true });
+    },
+    onError: (err) => {
+      if (err instanceof Error && /not found/i.test(err.message)) {
+        qc.invalidateQueries({ queryKey: ['tournaments'] });
+        navigate('/', { replace: true });
+      }
     },
   });
 

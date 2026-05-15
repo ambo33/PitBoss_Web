@@ -409,8 +409,8 @@ function CreateTournamentComposer({
                   <Field label="Time"><input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} /></Field>
                 </div>
                 <Field label="Group">
-                  <select className="input" value={form.groupid} onChange={set('groupid')}>
-                    <option value="">Private tournament</option>
+                  <select className="input" value={form.groupid} onChange={set('groupid')} required>
+                    <option value="">Choose a group</option>
                     {groups.map((group) => (
                       <option key={group.groupid} value={group.groupid}>{group.name}</option>
                     ))}
@@ -572,36 +572,21 @@ function getDateKey(value: string | null | undefined): string | null {
   return value.slice(0, 10);
 }
 
-function nowInAppTimezone() {
+function isUpcomingTournament(tournament: Tournament): boolean {
+  if (tournament.completed) return false;
+  if (!tournament.tourneydate) return false;
+  return tournament.tourneydate.slice(0, 10) >= todayInAppTimezone();
+}
+
+function todayInAppTimezone() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
   });
   const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-function isUpcomingTournament(tournament: Tournament): boolean {
-  if (tournament.completed) return false;
-  if (!tournament.tourneydate) return false;
-  const effectiveTime = normalizeTimeForComparison(tournament.tourneytime);
-  return `${tournament.tourneydate.slice(0, 10)}T${effectiveTime}` >= nowInAppTimezone();
-}
-
-function normalizeTimeForComparison(value: string | null | undefined): string {
-  if (!value) return '23:59:59';
-  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) return '23:59:59';
-  const hours = String(Number(match[1])).padStart(2, '0');
-  const minutes = match[2];
-  const seconds = match[3] ?? '00';
-  return `${hours}:${minutes}:${seconds}`;
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function formatTime12Hour(value: string | null | undefined): string {
