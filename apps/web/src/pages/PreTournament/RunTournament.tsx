@@ -623,7 +623,7 @@ export default function RunTournament({
               {!tvMode && (
                 <button
                   type="button"
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                     soundEnabled
                       ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
                       : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'

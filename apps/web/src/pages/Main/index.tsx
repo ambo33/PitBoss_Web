@@ -374,9 +374,13 @@ function ProfilePanel() {
           </div>
           <p className="text-sm text-pit-text">{audioSummary}</p>
           {profile?.checkinaudiodata && (
-            <audio controls className="w-full">
-              <source src={profile.checkinaudiodata} />
-            </audio>
+            <audio
+              key={`${profile.checkinaudiofilename ?? 'check-in-clip'}-${profile.checkinaudiodata.length}`}
+              controls
+              preload="metadata"
+              src={profile.checkinaudiodata}
+              className="w-full"
+            />
           )}
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className="btn-primary gap-2" onClick={() => audioInputRef.current?.click()} disabled={updateProfileMutation.isPending}>
