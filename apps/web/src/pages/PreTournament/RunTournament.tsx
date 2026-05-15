@@ -646,38 +646,36 @@ export default function RunTournament({
             {showSeatingBoard ? (
               <div className="space-y-2">
                 {showAdminControls && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-pit-border bg-pit-bg/55 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-pit-muted">Max per table</span>
+                  <div className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-3 rounded-2xl border border-yellow-300/45 bg-yellow-300/12 px-4 py-3 shadow-[0_0_28px_rgba(253,224,71,0.12)]">
+                    <button
+                      type="button"
+                      className="rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0}
+                      onClick={() => assignSeatsMutation.mutate('all')}
+                    >
+                      Seat Players
+                    </button>
+                    <div className="flex items-center gap-2 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-yellow-100">Max per table</span>
                       <input
                         type="number"
                         min={2}
                         max={12}
-                        className="input w-20 py-1.5 text-sm"
+                        className="input w-16 border-yellow-200/30 py-1.5 text-center text-sm"
                         value={seatingMaxPerTable}
                         onChange={(event) => setSeatingMaxPerTable(Math.max(2, Math.floor(Number(event.target.value) || 2)))}
                       />
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    {seatedPlayers.length > 0 && (
                       <button
                         type="button"
-                        className="btn-primary px-3 py-1.5 text-xs"
-                        disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0}
-                        onClick={() => assignSeatsMutation.mutate('all')}
+                        className="rounded-xl border border-yellow-200/35 bg-yellow-200/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-yellow-100 transition hover:bg-yellow-200/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={assignSeatsMutation.isPending || checkedInRoster.length === seatedPlayers.length}
+                        onClick={() => assignSeatsMutation.mutate('remaining')}
                       >
-                        Seat Players
+                        Re-seat Remaining
                       </button>
-                      {seatedPlayers.length > 0 && (
-                        <button
-                          type="button"
-                          className="btn-ghost px-3 py-1.5 text-xs"
-                          disabled={assignSeatsMutation.isPending || checkedInRoster.length === seatedPlayers.length}
-                          onClick={() => assignSeatsMutation.mutate('remaining')}
-                        >
-                          Re-seat Remaining
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 )}
                 <TvSeatingBoard
