@@ -1,14 +1,79 @@
 import nodemailer from 'nodemailer';
+import https from 'https';
 import { getClientUrl } from '../config';
 
-const transporter = nodemailer.createTransport({
+const resendApiKey = process.env.RESEND_API_KEY;
+const from = process.env.EMAIL_FROM ?? 'PokerPlanner.bet <noreply@pokerplanner.bet>';
+const clientUrl = getClientUrl();
+
+type EmailPayload = {
+  to: string;
+  subject: string;
+  html: string;
+};
+
+const smtpTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
   port: Number(process.env.SMTP_PORT ?? 587),
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
-const from = process.env.EMAIL_FROM ?? 'PokerPlanner.bet <noreply@pokerplanner.bet>';
-const clientUrl = getClientUrl();
+function postResendEmail(payload: EmailPayload): Promise<void> {
+  if (!resendApiKey) return Promise.resolve();
+
+  const body = JSON.stringify({
+    from,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.resend.com',
+        path: '/emails',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let responseBody = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          const status = res.statusCode ?? 500;
+          if (status >= 200 && status < 300) {
+            resolve();
+            return;
+          }
+          reject(new Error(`Resend email failed with ${status}: ${responseBody}`));
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendMail(payload: EmailPayload): Promise<void> {
+  if (resendApiKey) {
+    await postResendEmail(payload);
+    return;
+  }
+
+  await smtpTransporter.sendMail({
+    from,
+    ...payload,
+  });
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -96,8 +161,7 @@ function emailLayout({
 }
 
 export async function sendVerificationEmail(email: string, pin: string): Promise<void> {
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: 'Verify your PokerPlanner.bet account',
     html: emailLayout({
@@ -111,8 +175,7 @@ export async function sendVerificationEmail(email: string, pin: string): Promise
 
 export async function sendPasswordResetEmail(email: string, resetGuid: string): Promise<void> {
   const link = `${clientUrl}/reset-password?token=${resetGuid}`;
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: 'Reset your PokerPlanner.bet password',
     html: emailLayout({
@@ -133,8 +196,7 @@ export async function sendGroupInviteEmail(
   note?: string
 ): Promise<void> {
   const joinLink = `${clientUrl}/join/${encodeURIComponent(inviteCode)}`;
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: `You're invited to join ${groupName} on PokerPlanner.bet`,
     html: emailLayout({
@@ -162,8 +224,7 @@ export async function sendTournamentPostedEmail(
 ): Promise<void> {
   const link = `${clientUrl}/lobby/${encodeURIComponent(tournamentId)}`;
   const when = formatTournamentWhen(tournamentDate, tournamentTime);
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: `${tournamentName} is open for registration`,
     html: emailLayout({
@@ -189,8 +250,7 @@ export async function sendTournamentReminderEmail(
 ): Promise<void> {
   const link = `${clientUrl}/lobby/${encodeURIComponent(tournamentId)}`;
   const when = formatTournamentWhen(tournamentDate, tournamentTime);
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: `Reminder: ${tournamentName} is coming up`,
     html: emailLayout({
@@ -211,8 +271,7 @@ export async function sendTournamentCancelledEmail(
   tournamentTime?: string | null
 ): Promise<void> {
   const when = [tournamentDate, tournamentTime].filter(Boolean).join(' at ');
-  await transporter.sendMail({
-    from,
+  await sendMail({
     to: email,
     subject: `${tournamentName} has been cancelled`,
     html: emailLayout({
