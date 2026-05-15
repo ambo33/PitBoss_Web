@@ -490,6 +490,47 @@ export default function RunTournament({
       .sort((a, b) => (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress)),
     [players]
   );
+  const seatingValidationMessage = useMemo(() => {
+    const maxPerTable = Math.max(2, Math.floor(Number(seatingMaxPerTable) || 2));
+    const hasExistingSeats = seatedPlayers.length > 0;
+    const playersToSeat = hasExistingSeats
+      ? checkedInRoster.filter((player) => player.tablenumber == null || player.seat == null)
+      : checkedInRoster;
+
+    if (playersToSeat.length === 0) return null;
+
+    let tableSizes: number[];
+    if (!hasExistingSeats) {
+      const playerCount = playersToSeat.length;
+      const tableCount = Math.max(1, Math.ceil(playerCount / maxPerTable));
+      tableSizes = Array.from({ length: tableCount }, (_, tableIndex) => {
+        const base = Math.floor(playerCount / tableCount);
+        const extra = tableIndex < playerCount % tableCount ? 1 : 0;
+        return base + extra;
+      });
+    } else {
+      const tableMap = new Map<number, number>();
+      for (const player of seatedPlayers) {
+        const table = Number(player.tablenumber ?? 0);
+        if (!table) continue;
+        tableMap.set(table, (tableMap.get(table) ?? 0) + 1);
+      }
+      for (const _player of playersToSeat) {
+        const openTable = [...tableMap.entries()]
+          .filter(([, count]) => count < maxPerTable)
+          .sort((a, b) => a[1] - b[1] || a[0] - b[0])[0];
+        const tableNumber = openTable?.[0] ?? (Math.max(0, ...tableMap.keys()) + 1);
+        tableMap.set(tableNumber, (tableMap.get(tableNumber) ?? 0) + 1);
+      }
+      tableSizes = [...tableMap.values()];
+    }
+
+    const seatedCount = tableSizes.reduce((sum, count) => sum + count, 0);
+    if (seatedCount > 1 && tableSizes.some((count) => count === 1)) {
+      return 'Invalid table size. One player would be stranded alone.';
+    }
+    return null;
+  }, [checkedInRoster, seatedPlayers, seatingMaxPerTable]);
   const isPreStart = !timerState?.running && displayedLevel === 1 && secs === (currentBlind?.minutes ?? 0) * 60;
   const showSeatingBoard = tvMode
     ? tournament.tvdisplaymode === 'seating' || isPreStart
@@ -650,35 +691,42 @@ export default function RunTournament({
             {showSeatingBoard ? (
               <div className="space-y-2">
                 {showAdminControls && (
-                  <div className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-3 rounded-2xl border border-yellow-300/45 bg-yellow-300/12 px-4 py-3 shadow-[0_0_28px_rgba(253,224,71,0.12)]">
-                    <button
-                      type="button"
-                      className="rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0}
-                      onClick={() => assignSeatsMutation.mutate(seatedPlayers.length > 0 ? 'remaining' : 'all')}
-                    >
-                      {seatedPlayers.length > 0 ? 'Re-seat Remaining Players' : 'Seat Players'}
-                    </button>
-                    <div className="flex items-center gap-2 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-yellow-100">Max per table</span>
-                      <input
-                        type="number"
-                        min={2}
-                        max={12}
-                        className="input w-16 border-yellow-200/30 py-1.5 text-center text-sm"
-                        value={seatingMaxPerTable}
-                        onChange={(event) => setSeatingMaxPerTable(Math.max(2, Math.floor(Number(event.target.value) || 2)))}
-                      />
-                    </div>
-                    {seatedPlayers.length > 0 && (
+                  <div className="mx-auto w-fit max-w-full rounded-2xl border border-yellow-300/45 bg-yellow-300/12 px-4 py-3 shadow-[0_0_28px_rgba(253,224,71,0.12)]">
+                    <div className="flex flex-wrap items-center justify-center gap-3">
                       <button
                         type="button"
-                        className="rounded-xl border border-red-300/35 bg-red-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={clearSeatingMutation.isPending}
-                        onClick={() => clearSeatingMutation.mutate()}
+                        className="rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0 || Boolean(seatingValidationMessage)}
+                        onClick={() => assignSeatsMutation.mutate(seatedPlayers.length > 0 ? 'remaining' : 'all')}
                       >
-                        Clear Seating
+                        {seatedPlayers.length > 0 ? 'Re-seat Remaining Players' : 'Seat Players'}
                       </button>
+                      <div className="flex items-center gap-2 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-yellow-100">Max per table</span>
+                        <input
+                          type="number"
+                          min={2}
+                          max={12}
+                          className="input w-16 border-yellow-200/30 py-1.5 text-center text-sm"
+                          value={seatingMaxPerTable}
+                          onChange={(event) => setSeatingMaxPerTable(Math.max(2, Math.floor(Number(event.target.value) || 2)))}
+                        />
+                      </div>
+                      {seatedPlayers.length > 0 && (
+                        <button
+                          type="button"
+                          className="rounded-xl border border-red-300/35 bg-red-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={clearSeatingMutation.isPending}
+                          onClick={() => clearSeatingMutation.mutate()}
+                        >
+                          Clear Seating
+                        </button>
+                      )}
+                    </div>
+                    {seatingValidationMessage && (
+                      <p className="mt-2 text-center text-xs font-semibold text-red-300">
+                        {seatingValidationMessage}
+                      </p>
                     )}
                   </div>
                 )}
