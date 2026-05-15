@@ -1,4 +1,5 @@
 import { query, queryOne } from './db';
+import { publicEmail } from './privacy';
 
 export type AccountTier = 'host' | 'club' | 'pro';
 
@@ -26,6 +27,7 @@ const PRO_TIER_ID = 3;
 const HOST_MAX_GROUPS = 1;
 const HOST_MAX_UPCOMING_HOSTED_TOURNAMENTS = 1;
 const HOST_MAX_PLAYERS = 8;
+const BETA_ALL_FEATURES = process.env.BETA_ALL_FEATURES !== 'false';
 
 function normalizeTier(value: string | null | undefined): AccountTier {
   if (value === 'club' || value === 'pro') return value;
@@ -55,6 +57,7 @@ function tierFromLegacyValue(value: string | null | undefined): number {
 }
 
 function clubFeatureSql(tierIdColumn: string, hostedCountColumn: string, adminColumn: string) {
+  if (BETA_ALL_FEATURES) return 'TRUE';
   return `CASE
     WHEN COALESCE(${adminColumn}, FALSE) = TRUE THEN TRUE
     WHEN COALESCE(CAST(${tierIdColumn} AS INT), 0) >= ${CLUB_TIER_ID} THEN TRUE
@@ -76,8 +79,8 @@ export function sqlCanUseClubFeatures(userMetadataAlias: string, tierAlias = 'at
 }
 
 export async function syncSuperAdminByEmail(userId: string): Promise<void> {
-  const row = await queryOne<{ emailaddress: string; issuperadmin: boolean | null }>(
-    `SELECT u.emailaddress, COALESCE(um.issuperadmin, FALSE) AS issuperadmin
+  const row = await queryOne<{ emailaddress: string | null; emailencrypted: string | null; issuperadmin: boolean | null }>(
+    `SELECT u.emailaddress, u.emailencrypted, COALESCE(um.issuperadmin, FALSE) AS issuperadmin
      FROM users u
      LEFT JOIN usermetadata um ON um.userid = u.guid
      WHERE u.guid = $1`,
@@ -85,7 +88,8 @@ export async function syncSuperAdminByEmail(userId: string): Promise<void> {
   );
   if (!row) return;
 
-  const shouldBeAdmin = getAdminEmails().has(row.emailaddress.toLowerCase());
+  const email = publicEmail(row.emailencrypted, row.emailaddress);
+  const shouldBeAdmin = Boolean(email) && getAdminEmails().has(email.toLowerCase());
   if (Boolean(row.issuperadmin) === shouldBeAdmin) return;
 
   await query(
@@ -103,7 +107,8 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
   const row = await queryOne<{
     userid: string;
     displayname: string;
-    emailaddress: string;
+    emailaddress: string | null;
+    emailencrypted: string | null;
     tierid: number | string | null;
     accounttier: string | null;
     issuperadmin: boolean | null;
@@ -112,6 +117,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     `SELECT u.guid AS userid,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
             u.emailaddress,
+            u.emailencrypted,
             ${sqlResolveTierId('um')} AS tierid,
             ${sqlResolveTierKey('um')} AS accounttier,
             COALESCE(um.issuperadmin, FALSE) AS issuperadmin,
@@ -130,13 +136,15 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
   const hostedtournamentcount = Number(row.hostedtournamentcount ?? 0);
   const trialhostedremaining = Math.max(TRIAL_HOSTED_TOURNAMENT_LIMIT - hostedtournamentcount, 0);
   const trialactive = tierid === HOST_TIER_ID && trialhostedremaining > 0;
-  const canuseclubfeatures = issuperadmin || tierid >= CLUB_TIER_ID || trialactive;
+  const canuseclubfeatures = BETA_ALL_FEATURES || issuperadmin || tierid >= CLUB_TIER_ID || trialactive;
+  const unrestrictedHosting = BETA_ALL_FEATURES || issuperadmin || tierid >= CLUB_TIER_ID;
 
+  const emailaddress = publicEmail(row.emailencrypted, row.emailaddress);
   return {
     guid: row.userid,
     userid: row.userid,
-    displayname: row.displayname,
-    emailaddress: row.emailaddress,
+    displayname: row.displayname === row.emailaddress ? emailaddress : row.displayname,
+    emailaddress,
     tierid,
     accounttier,
     issuperadmin,
@@ -144,8 +152,8 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     trialhostedremaining,
     trialactive,
     canuseclubfeatures,
-    maxgroups: issuperadmin || tierid >= CLUB_TIER_ID ? Number.MAX_SAFE_INTEGER : HOST_MAX_GROUPS,
-    maxupcominghostedtournaments: issuperadmin || tierid >= CLUB_TIER_ID ? Number.MAX_SAFE_INTEGER : HOST_MAX_UPCOMING_HOSTED_TOURNAMENTS,
+    maxgroups: unrestrictedHosting ? Number.MAX_SAFE_INTEGER : HOST_MAX_GROUPS,
+    maxupcominghostedtournaments: unrestrictedHosting ? Number.MAX_SAFE_INTEGER : HOST_MAX_UPCOMING_HOSTED_TOURNAMENTS,
     maxplayerspertournament: canuseclubfeatures ? Number.MAX_SAFE_INTEGER : HOST_MAX_PLAYERS,
   };
 }

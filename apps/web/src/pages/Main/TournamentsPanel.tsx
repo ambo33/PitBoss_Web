@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, Trophy, Users } from 'lucide-react';
 import { api, Group, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -58,7 +58,7 @@ export default function TournamentsPanel() {
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
   const list = tab === 'upcoming' ? upcoming : history;
   const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
-  const hostedTournamentLimitReached = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && hostedUpcomingCount >= 1;
+  const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
 
   if (showCreate) {
     return (
@@ -285,6 +285,8 @@ function CreateTournamentComposer({
   loading: boolean;
   error?: string;
 }) {
+  const steps = ['Basics', 'Game', 'Options', 'Review'] as const;
+  const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     name: '',
     tourneydate: '',
@@ -300,6 +302,7 @@ function CreateTournamentComposer({
     playerselftracking: false,
     groupid: '',
     savedstructureid: '',
+    notifygroup: true,
   });
 
   const selectedGroup = useMemo(
@@ -308,7 +311,7 @@ function CreateTournamentComposer({
   );
   const selectedGroupName = selectedGroup?.name ?? '';
   const canUseClubFeatures = Boolean(me?.issuperadmin || me?.canuseclubfeatures || me?.tierid === 2 || me?.tierid === 3);
-  const maxPlayersCap = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && !me?.canuseclubfeatures ? 8 : null;
+  const maxPlayersCap = !me?.issuperadmin && !me?.canuseclubfeatures ? 8 : null;
   const { data: savedStructures = [] } = useQuery({
     queryKey: ['group', form.groupid, 'blind-structures'],
     queryFn: () => api.getGroupBlindStructures(form.groupid),
@@ -319,6 +322,7 @@ function CreateTournamentComposer({
     setForm((current) => ({
       ...current,
       playerselftracking: canUseClubFeatures && selectedGroup?.defaulttrackingmode === 'player',
+      notifygroup: Boolean(selectedGroup),
       savedstructureid: '',
     }));
   }, [canUseClubFeatures, selectedGroup?.defaulttrackingmode, selectedGroup?.groupid]);
@@ -349,19 +353,34 @@ function CreateTournamentComposer({
       playerselftracking: canUseClubFeatures ? form.playerselftracking : false,
       groupid: form.groupid || undefined,
       savedstructureid: form.savedstructureid || undefined,
+      notifygroup: Boolean(form.groupid) && form.notifygroup,
     });
   }
 
+  const canAdvance = step !== 0 || Boolean(form.name.trim());
+  const selectedStructure = savedStructures.find((structure) => structure.id === form.savedstructureid);
+
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-4xl">
       <div className="mb-5 flex items-center justify-between gap-3">
         <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={onBack}>
           <ArrowLeft size={15} />
           Back
         </button>
-        <button type="submit" className="btn-primary px-4 py-2.5" form="create-tourney" disabled={loading}>
-          {loading ? 'Creating...' : 'Create tournament'}
-        </button>
+        <div className="hidden items-center gap-2 sm:flex">
+          {steps.map((label, index) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setStep(index)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                step === index ? 'border-pit-teal bg-pit-teal/15 text-pit-teal' : 'border-pit-border text-pit-muted'
+              }`}
+            >
+              {index + 1}. {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <form id="create-tourney" onSubmit={submit} className="space-y-5 pb-24 sm:pb-6">
@@ -369,118 +388,120 @@ function CreateTournamentComposer({
           <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
         )}
 
-        <section className="space-y-4 rounded-xl border border-pit-border bg-pit-surface/70 p-4 sm:p-5">
+        <section className="rounded-xl border border-pit-border bg-pit-surface/70 p-4 sm:p-5">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-white">New tournament</h2>
-            <p className="text-sm text-pit-muted">Give the event a name, date, and home before you fill in the structure.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-teal">Step {step + 1} of {steps.length}</p>
+            <h2 className="text-xl font-semibold text-white">{steps[step]}</h2>
+            <p className="text-sm text-pit-muted">
+              {step === 0 && 'Name it, schedule it, and connect it to a group.'}
+              {step === 1 && 'Set the buy-in, field size, rebuys, and add-ons.'}
+              {step === 2 && 'Choose tracking, blind structure, registration, and notifications.'}
+              {step === 3 && 'Confirm the tournament details before creating it.'}
+            </p>
           </div>
 
-          <input className="input" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
+          <div className="mt-5">
+            {step === 0 && (
+              <div className="space-y-4">
+                <input className="input text-lg" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Date"><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} /></Field>
+                  <Field label="Time"><input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} /></Field>
+                </div>
+                <Field label="Group">
+                  <select className="input" value={form.groupid} onChange={set('groupid')}>
+                    <option value="">Private tournament</option>
+                    {groups.map((group) => (
+                      <option key={group.groupid} value={group.groupid}>{group.name}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-pit-text">Date</span>
-              <input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-pit-text">Time</span>
-              <input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} />
-            </label>
-          </div>
+            {step === 1 && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Buy-in"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} /></Field>
+                <Field label="Rake"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} /></Field>
+                <Field label="Max players">
+                  <input className="input" type="number" placeholder="0" min="0" max={maxPlayersCap ?? undefined} value={form.maxplayers} onChange={set('maxplayers')} />
+                </Field>
+                <Field label="Rebuy price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} /></Field>
+                <Field label="Rebuy chips"><input className="input" type="number" placeholder="0" min="0" value={form.rebuychips} onChange={set('rebuychips')} /></Field>
+                <Field label="Add-on price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} /></Field>
+                <Field label="Add-on chips"><input className="input" type="number" placeholder="0" min="0" value={form.addonchips} onChange={set('addonchips')} /></Field>
+              </div>
+            )}
 
-          {groups.length > 0 && (
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-pit-text">Group</span>
-              <select className="input" value={form.groupid} onChange={set('groupid')}>
-                <option value="">Private tournament</option>
-                {groups.map((group) => (
-                  <option key={group.groupid} value={group.groupid}>{group.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
+            {step === 2 && (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Stats tracking">
+                    <select
+                      className="input"
+                      value={form.playerselftracking ? 'player' : 'standard'}
+                      onChange={(event) => setForm((current) => ({ ...current, playerselftracking: canUseClubFeatures && event.target.value === 'player' }))}
+                      disabled={!canUseClubFeatures}
+                    >
+                      <option value="standard">Standard tracking</option>
+                      <option value="player">Player tracked stats</option>
+                    </select>
+                  </Field>
+                  <Field label="Blind structure">
+                    <select className="input" value={form.savedstructureid} onChange={set('savedstructureid')} disabled={!form.groupid}>
+                      <option value="">Use calculator after creation</option>
+                      {savedStructures.map((structure) => (
+                        <option key={structure.id} value={structure.id}>{structure.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <ToggleRow
+                  checked={form.registerself}
+                  onChange={set('registerself')}
+                  title="Register me"
+                  description={selectedGroupName ? `Add me to ${selectedGroupName} right away.` : 'Add me as soon as it is created.'}
+                />
+                <ToggleRow
+                  checked={Boolean(form.groupid) && form.notifygroup}
+                  disabled={!form.groupid}
+                  onChange={set('notifygroup')}
+                  title="Email group members"
+                  description={form.groupid ? 'Send a polished tournament announcement to approved group members.' : 'Choose a group first to email its members.'}
+                  icon={<Bell size={16} />}
+                />
+              </div>
+            )}
 
-          {form.groupid && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Stats tracking">
-                <select
-                  className="input"
-                  value={form.playerselftracking ? 'player' : 'standard'}
-                  onChange={(event) => setForm((current) => ({
-                    ...current,
-                    playerselftracking: canUseClubFeatures && event.target.value === 'player',
-                  }))}
-                  disabled={!canUseClubFeatures}
-                >
-                  <option value="standard">Standard tracking</option>
-                  <option value="player">Player tracked stats</option>
-                </select>
-                {!canUseClubFeatures && (
-                  <p className="text-xs text-pit-muted">Player stats tracking unlocks with Club or Pro.</p>
-                )}
-              </Field>
-              <Field label="Blind structure">
-                <select className="input" value={form.savedstructureid} onChange={set('savedstructureid')}>
-                  <option value="">Use calculator after creation</option>
-                  {savedStructures.map((structure) => (
-                    <option key={structure.id} value={structure.id}>{structure.name}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-          )}
-
-          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-white">Register me</p>
-              <p className="text-xs text-pit-muted">
-                {selectedGroupName ? `Add me to ${selectedGroupName} as soon as it is created.` : 'Add me as soon as it is created.'}
-              </p>
-            </div>
-            <div className={`flex h-5 w-9 items-center rounded-full px-0.5 transition-colors duration-150 ${form.registerself ? 'bg-pit-teal' : 'bg-pit-border'}`}>
-              <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 ${form.registerself ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <input type="checkbox" className="sr-only" checked={form.registerself} onChange={set('registerself')} />
-          </label>
-        </section>
-
-        <section className="space-y-4 rounded-xl border border-pit-border bg-pit-surface/70 p-4 sm:p-5">
-          <h3 className="text-base font-semibold text-white">Buy-in and structure</h3>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Buy-in">
-              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} />
-            </Field>
-            <Field label="Rake">
-              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} />
-            </Field>
-            <Field label="Max players">
-              <input className="input" type="number" placeholder="0" min="0" max={maxPlayersCap ?? undefined} value={form.maxplayers} onChange={set('maxplayers')} />
-              {maxPlayersCap ? (
-                <p className="text-xs text-pit-muted">Host tier tournaments are capped at {maxPlayersCap} players after the 2 hosted-tournament Club trial.</p>
-              ) : null}
-            </Field>
-            <Field label="Rebuy price">
-              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} />
-            </Field>
-            <Field label="Rebuy chips">
-              <input className="input" type="number" placeholder="0" min="0" value={form.rebuychips} onChange={set('rebuychips')} />
-            </Field>
-            <Field label="Add-on price">
-              <input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} />
-            </Field>
-            <Field label="Add-on chips" className="sm:col-span-2">
-              <input className="input" type="number" placeholder="0" min="0" value={form.addonchips} onChange={set('addonchips')} />
-            </Field>
+            {step === 3 && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ReviewItem label="Tournament" value={form.name || 'Untitled'} />
+                <ReviewItem label="Group" value={selectedGroupName || 'Private'} />
+                <ReviewItem label="Date and time" value={`${form.tourneydate || 'Date TBD'} ${form.tourneytime || ''}`.trim()} />
+                <ReviewItem label="Buy-in" value={`$${Number(form.buyin || 0).toFixed(2)}`} />
+                <ReviewItem label="Max players" value={form.maxplayers || 'No cap set'} />
+                <ReviewItem label="Tracking" value={form.playerselftracking ? 'Player tracked stats' : 'Standard'} />
+                <ReviewItem label="Blind structure" value={selectedStructure?.name || 'Calculator after creation'} />
+                <ReviewItem label="Notifications" value={form.groupid && form.notifygroup ? 'Email group members' : 'No group email'} />
+              </div>
+            )}
           </div>
         </section>
 
         <div className="fixed inset-x-0 bottom-0 border-t border-pit-border bg-pit-bg/95 px-4 py-3 backdrop-blur sm:static sm:rounded-xl sm:border sm:bg-pit-surface/90 sm:px-5">
           <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
-            <button type="button" className="btn-ghost px-3 py-2" onClick={onBack}>Cancel</button>
-            <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading}>
-              {loading ? 'Creating...' : 'Create tournament'}
+            <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={() => step === 0 ? onBack() : setStep((current) => current - 1)}>
+              {step === 0 ? 'Cancel' : <><ChevronLeft size={15} /> Back</>}
             </button>
+            {step < steps.length - 1 ? (
+              <button type="button" className="btn-primary gap-2 px-4 py-2.5" disabled={!canAdvance} onClick={() => setStep((current) => current + 1)}>
+                Next <ChevronRight size={15} />
+              </button>
+            ) : (
+              <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading || !form.name.trim()}>
+                {loading ? 'Creating...' : 'Create tournament'}
+              </button>
+            )}
           </div>
         </div>
       </form>
@@ -502,6 +523,47 @@ function Field({
       <span className="text-sm font-medium text-pit-text">{label}</span>
       {children}
     </label>
+  );
+}
+
+function ToggleRow({
+  checked,
+  disabled,
+  onChange,
+  title,
+  description,
+  icon,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  title: string;
+  description: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <label className={`flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 ${disabled ? 'opacity-55' : ''}`}>
+      <div className="flex items-center gap-3">
+        {icon && <div className="text-pit-teal">{icon}</div>}
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-white">{title}</p>
+          <p className="text-xs text-pit-muted">{description}</p>
+        </div>
+      </div>
+      <div className={`flex h-5 w-9 items-center rounded-full px-0.5 transition-colors duration-150 ${checked ? 'bg-pit-teal' : 'bg-pit-border'}`}>
+        <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 ${checked ? 'translate-x-4' : 'translate-x-0'}`} />
+      </div>
+      <input type="checkbox" className="sr-only" checked={checked} disabled={disabled} onChange={onChange} />
+    </label>
+  );
+}
+
+function ReviewItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-pit-border bg-pit-bg/45 px-3 py-3">
+      <p className="text-xs uppercase tracking-[0.18em] text-pit-muted">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    </div>
   );
 }
 

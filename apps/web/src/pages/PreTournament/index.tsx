@@ -136,12 +136,10 @@ export default function PreTournamentPage() {
             canManage={canManage}
             scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
-            tvOptionsSaving={updateTournamentMutation.isPending}
             deleting={deleteTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
             deleteError={deleteTournamentMutation.error?.message}
             onSave={(data) => updateTournamentMutation.mutate(data)}
-            onUpdateTvOptions={(data) => updateTournamentMutation.mutate(data)}
             onDelete={() => deleteTournamentMutation.mutate()}
             pocketAdminUrl={showPocketAdmin ? pocketAdminUrl : null}
             showTvBoard={showTvBoard}
@@ -167,12 +165,10 @@ function TournamentDetailsCard({
   canManage,
   scheduleLocked,
   saving,
-  tvOptionsSaving,
   deleting,
   error,
   deleteError,
   onSave,
-  onUpdateTvOptions,
   onDelete,
   pocketAdminUrl,
   showTvBoard,
@@ -183,12 +179,10 @@ function TournamentDetailsCard({
   canManage: boolean;
   scheduleLocked: boolean;
   saving: boolean;
-  tvOptionsSaving: boolean;
   deleting: boolean;
   error?: string;
   deleteError?: string;
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
-  onUpdateTvOptions: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
   onDelete: () => void;
   pocketAdminUrl: string | null;
   showTvBoard: boolean;
@@ -362,40 +356,6 @@ function TournamentDetailsCard({
                   ) : (
                     <div className="text-xs text-pit-muted">Refresh if code is still generating</div>
                   )}
-                  {canManage && (
-                    <div className="flex flex-wrap justify-end gap-2 pt-1">
-                      <TvOptionToggle
-                        label="Greeting Display"
-                        enabled={tournament.tvgreetingdisplayenabled ?? true}
-                        disabled={tvOptionsSaving}
-                        onClick={() => onUpdateTvOptions({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
-                      />
-                      <TvOptionToggle
-                        label="Greeting Audio"
-                        enabled={tournament.tvgreetingaudioenabled ?? true}
-                        disabled={tvOptionsSaving}
-                        onClick={() => onUpdateTvOptions({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
-                      />
-                      <TvOptionToggle
-                        label="Player Lobby QR"
-                        enabled={tournament.tvshowknockoutqrenabled ?? true}
-                        disabled={tvOptionsSaving}
-                        onClick={() => onUpdateTvOptions({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
-                      />
-                      <TvOptionToggle
-                        label="Timer"
-                        enabled={(tournament.tvdisplaymode ?? 'timer') === 'timer'}
-                        disabled={tvOptionsSaving}
-                        onClick={() => onUpdateTvOptions({ tvdisplaymode: 'timer' })}
-                      />
-                      <TvOptionToggle
-                        label="Seating"
-                        enabled={tournament.tvdisplaymode === 'seating'}
-                        disabled={tvOptionsSaving}
-                        onClick={() => onUpdateTvOptions({ tvdisplaymode: 'seating' })}
-                      />
-                    </div>
-                  )}
                 </div>
               }
             />
@@ -546,32 +506,5 @@ function LockHint() {
       <Lock size={12} />
       Locked
     </span>
-  );
-}
-
-function TvOptionToggle({
-  label,
-  enabled,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  enabled: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
-        enabled
-          ? 'border-yellow-300/70 bg-yellow-300/15 text-yellow-200'
-          : 'border-pit-border bg-pit-bg/40 text-pit-muted'
-      }`}
-    >
-      {label}
-    </button>
   );
 }

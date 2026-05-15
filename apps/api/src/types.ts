@@ -167,6 +167,34 @@ export interface KnockoutOption {
   displayname?: string;
 }
 
+export interface GroupPollOption {
+  id: string;
+  label: string;
+  sortorder: number;
+  votecount: number;
+  votedbyme?: boolean;
+}
+
+export interface GroupComment {
+  id: string;
+  userid: string;
+  displayname?: string;
+  message: string;
+  createdat: string;
+}
+
+export interface GroupPost {
+  id: string;
+  groupid: string;
+  createdby: string;
+  displayname?: string;
+  posttype: 'message' | 'poll';
+  message: string;
+  createdat: string;
+  options?: GroupPollOption[];
+  comments?: GroupComment[];
+}
+
 // Express request augmentation
 declare global {
   namespace Express {

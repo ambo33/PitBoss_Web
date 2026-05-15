@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { ChevronDown, ChevronUp, Trophy, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Menu, Trophy, Volume2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
@@ -59,6 +59,7 @@ export default function RunTournament({
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
+  const [showTvMenu, setShowTvMenu] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
@@ -112,6 +113,10 @@ export default function RunTournament({
   });
   const checkinMutation = useMutation({
     mutationFn: (userId: string) => api.toggleCheckin(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const tvOptionsMutation = useMutation({
+    mutationFn: (data: Partial<Tournament>) => api.updateTournament(tournamentId, data),
     onSuccess: () => refreshTournamentData(),
   });
 
@@ -379,7 +384,10 @@ export default function RunTournament({
       .sort((a, b) => (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress)),
     [players]
   );
-  const showTvSeating = tvMode && tournament.tvdisplaymode === 'seating';
+  const isPreStart = !timerState?.running && displayedLevel === 1 && secs === (currentBlind?.minutes ?? 0) * 60;
+  const showSeatingBoard = tvMode
+    ? isPreStart
+    : showAdminControls && tournament.tvdisplaymode === 'seating';
 
   return (
     <div className="space-y-4">
@@ -460,12 +468,69 @@ export default function RunTournament({
                 </button>
               )}
               {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
-                <div className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-right">
-                  <p className="text-sm text-white">
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-sm text-white hover:border-pit-muted hover:bg-pit-surface/70"
+                    onClick={() => setShowTvMenu((current) => !current)}
+                    aria-expanded={showTvMenu}
+                    aria-label="TV board options"
+                  >
                     <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
                     <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
-                    <span className="ml-2 text-[11px] text-pit-muted">/tv</span>
-                  </p>
+                    <Menu size={15} className="text-pit-muted" />
+                  </button>
+                  {showTvMenu && (
+                    <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 text-left shadow-2xl">
+                      <a
+                        className="mb-2 block rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-xs font-medium text-pit-teal hover:text-pit-teal/80"
+                        href={`/tv/${tournament.tvdisplaycode}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open TV board
+                      </a>
+                      <TvMenuToggle
+                        label="Greeting Display"
+                        enabled={tournament.tvgreetingdisplayenabled ?? true}
+                        disabled={tvOptionsMutation.isPending}
+                        onClick={() => tvOptionsMutation.mutate({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
+                      />
+                      <TvMenuToggle
+                        label="Greeting Audio"
+                        enabled={tournament.tvgreetingaudioenabled ?? true}
+                        disabled={tvOptionsMutation.isPending}
+                        onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
+                      />
+                      <TvMenuToggle
+                        label="Player Lobby QR"
+                        enabled={tournament.tvshowknockoutqrenabled ?? true}
+                        disabled={tvOptionsMutation.isPending}
+                        onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
+                      />
+                      <div className="mt-2 grid grid-cols-2 gap-2 border-t border-pit-border pt-2">
+                        <button
+                          type="button"
+                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${((tournament.tvdisplaymode ?? 'timer') === 'timer') ? 'border-yellow-300/70 bg-yellow-300/15 text-yellow-200' : 'border-pit-border bg-pit-bg/40 text-pit-muted'}`}
+                          disabled={tvOptionsMutation.isPending}
+                          onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'timer' })}
+                        >
+                          Timer
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${tournament.tvdisplaymode === 'seating' ? 'border-yellow-300/70 bg-yellow-300/15 text-yellow-200' : 'border-pit-border bg-pit-bg/40 text-pit-muted'}`}
+                          disabled={tvOptionsMutation.isPending}
+                          onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'seating' })}
+                        >
+                          Seating
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-4 text-pit-muted">
+                        TV auto-shows seating only before Level 1 starts. Running timers always show the clock.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -474,6 +539,14 @@ export default function RunTournament({
 
         {currentBlind ? (
           <>
+            {showSeatingBoard ? (
+              <TvSeatingBoard
+                seatedPlayers={seatedPlayers}
+                checkedInPlayers={checkedInRoster}
+                welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
+                fullWidth
+              />
+            ) : (
             <div className={`grid items-start ${tvMode ? 'grid-cols-[248px_minmax(0,1fr)_248px] gap-3 2xl:grid-cols-[260px_minmax(0,1fr)_260px]' : displayMode ? 'grid-cols-[300px_minmax(0,1fr)_300px] gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_320px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between">
@@ -515,13 +588,6 @@ export default function RunTournament({
               </section>
 
               <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'space-y-4'}`}>
-                {showTvSeating ? (
-                  <TvSeatingBoard
-                    seatedPlayers={seatedPlayers}
-                    checkedInPlayers={checkedInRoster}
-                    welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
-                  />
-                ) : (
                 <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -690,7 +756,6 @@ export default function RunTournament({
                     </div>
                   </div>
                 </div>
-                )}
 
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div className={`grid gap-2 ${displayMode ? 'grid-cols-3' : 'sm:grid-cols-3'}`}>
@@ -779,6 +844,7 @@ export default function RunTournament({
                 </div>
               </section>
             </div>
+            )}
           </>
         ) : (
           <p className="py-8 text-center text-pit-text">No blind structure yet.</p>
@@ -841,22 +907,24 @@ function TvSeatingBoard({
   seatedPlayers,
   checkedInPlayers,
   welcomeMessage,
+  fullWidth = false,
 }: {
   seatedPlayers: TournamentPlayer[];
   checkedInPlayers: TournamentPlayer[];
   welcomeMessage: string;
+  fullWidth?: boolean;
 }) {
   const hasAssignments = seatedPlayers.length > 0;
   const roster = hasAssignments ? seatedPlayers : checkedInPlayers;
 
   return (
-    <div className="rounded-xl border border-yellow-200/35 bg-yellow-200/10 px-3 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className={`rounded-xl border border-yellow-200/35 bg-yellow-200/10 ${fullWidth ? 'px-5 py-5' : 'px-3 py-3'}`}>
+      <div className={`${fullWidth ? 'mb-4' : 'mb-2'} flex items-center justify-between gap-3`}>
         <div>
           {!hasAssignments && (
-            <p className="mb-1 text-base font-semibold text-yellow-200 xl:text-lg">{welcomeMessage}</p>
+            <p className={`${fullWidth ? 'mb-2 text-2xl xl:text-3xl' : 'mb-1 text-base xl:text-lg'} font-semibold text-yellow-200`}>{welcomeMessage}</p>
           )}
-          <h3 className="text-xl font-semibold uppercase tracking-[0.2em] text-white">
+          <h3 className={`${fullWidth ? 'text-4xl xl:text-5xl' : 'text-xl'} font-semibold uppercase tracking-[0.2em] text-white`}>
             {hasAssignments ? 'Table Assignments' : 'Checked-In Players'}
           </h3>
         </div>
@@ -871,10 +939,10 @@ function TvSeatingBoard({
           <p className="mt-2 text-sm text-pit-text">Players will appear here as the host checks them in.</p>
         </div>
       ) : (
-        <div className="grid max-h-[32rem] grid-cols-2 gap-2 overflow-y-auto pr-1 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className={`grid overflow-y-auto pr-1 ${fullWidth ? 'max-h-[68vh] grid-cols-3 gap-3 xl:grid-cols-4 2xl:grid-cols-5' : 'max-h-[32rem] grid-cols-2 gap-2 xl:grid-cols-3 2xl:grid-cols-4'}`}>
           {roster.map((player) => (
-            <div key={player.userid} className="flex min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/55 px-2 py-1.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface text-xs font-semibold text-white">
+            <div key={player.userid} className={`flex min-w-0 items-center rounded-lg border border-pit-border bg-pit-bg/55 ${fullWidth ? 'gap-3 px-3 py-3' : 'gap-2 px-2 py-1.5'}`}>
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold text-white ${fullWidth ? 'h-14 w-14 text-lg' : 'h-8 w-8 text-xs'}`}>
                 {player.avatarimagedata ? (
                   <img src={player.avatarimagedata} alt={player.displayname ?? player.emailaddress} className="h-full w-full object-cover" />
                 ) : (
@@ -882,14 +950,14 @@ function TvSeatingBoard({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-white">{player.displayname ?? player.emailaddress}</p>
+                <p className={`truncate font-semibold text-white ${fullWidth ? 'text-xl xl:text-2xl' : 'text-sm'}`}>{player.displayname ?? player.emailaddress}</p>
                 {hasAssignments ? (
-                  <p className="text-xs font-medium text-yellow-200">
+                  <p className={`${fullWidth ? 'text-base xl:text-lg' : 'text-xs'} font-medium text-yellow-200`}>
                     Table {player.tablenumber} Seat {player.seat}
                   </p>
                 ) : (
-                  <p className="flex items-center gap-1 text-xs text-pit-muted">
-                    <Trophy size={12} />
+                  <p className={`${fullWidth ? 'text-sm' : 'text-xs'} flex items-center gap-1 text-pit-muted`}>
+                    <Trophy size={fullWidth ? 15 : 12} />
                     Checked in
                   </p>
                 )}
@@ -899,6 +967,30 @@ function TvSeatingBoard({
         </div>
       )}
     </div>
+  );
+}
+
+function TvMenuToggle({
+  label,
+  enabled,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm text-pit-text hover:bg-pit-bg/70 disabled:opacity-50"
+    >
+      <span>{label}</span>
+      <span className={`h-2.5 w-2.5 rounded-full ${enabled ? 'bg-pit-teal shadow-[0_0_10px_rgba(19,173,173,0.75)]' : 'bg-pit-border'}`} />
+    </button>
   );
 }
 

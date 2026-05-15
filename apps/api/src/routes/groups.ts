@@ -3,7 +3,7 @@ import { query, queryOne, pool } from '../db';
 import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { getClientUrl } from '../config';
-import { BlindLevel, Group, GroupMember } from '../types';
+import { BlindLevel, Group, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
 import { sendGroupInviteEmail } from '../services/email';
 
 export const groupsRouter = Router();
@@ -32,6 +32,30 @@ function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
     }))
     .filter((level) => level.level > 0 && level.smallblind >= 0 && level.bigblind > 0 && level.minutes > 0)
     .sort((a, b) => a.level - b.level);
+}
+
+async function requireApprovedMember(groupId: string, userId: string): Promise<boolean> {
+  return Boolean(await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE`,
+    [groupId, userId]
+  ));
+}
+
+async function requireGroupAdmin(groupId: string, userId: string): Promise<boolean> {
+  return Boolean(await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE AND admin = TRUE`,
+    [groupId, userId]
+  ));
+}
+
+async function getGroupConversationAccess(groupId: string): Promise<{ exists: boolean; enabled: boolean }> {
+  const group = await queryOne<{ ownerid: string }>(
+    `SELECT userid AS ownerid FROM groups WHERE groupid = $1`,
+    [groupId]
+  );
+  if (!group) return { exists: false, enabled: false };
+  const ownerProfile = await getAccountProfile(group.ownerid);
+  return { exists: true, enabled: Boolean(ownerProfile?.canuseclubfeatures) };
 }
 
 groupsRouter.get('/', async (req: Request, res: Response) => {
@@ -263,6 +287,195 @@ groupsRouter.delete('/:id/blind-structures/:structureId', async (req: Request, r
     [req.params.id, req.params.structureId]
   );
   res.json({ success: true });
+});
+
+groupsRouter.get('/:id/posts', async (req: Request, res: Response) => {
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
+    return;
+  }
+
+  const access = await getGroupConversationAccess(req.params.id);
+  if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
+  if (!access.enabled) {
+    res.json({ enabled: false, posts: [] });
+    return;
+  }
+
+  const posts = await query<GroupPost>(
+    `SELECT gp.id, gp.groupid, gp.createdby, gp.posttype, gp.message, gp.createdat,
+            COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname
+     FROM groupposts gp
+     JOIN users u ON u.guid = gp.createdby
+     LEFT JOIN usermetadata um ON um.userid = gp.createdby
+     WHERE gp.groupid = $1 AND COALESCE(gp.active, TRUE) = TRUE
+     ORDER BY gp.createdat DESC
+     LIMIT 25`,
+    [req.params.id]
+  );
+  const postIds = posts.map((post) => post.id);
+  if (postIds.length === 0) {
+    res.json({ enabled: true, posts: [] });
+    return;
+  }
+
+  const options = await query<GroupPollOption & { postid: string }>(
+    `SELECT po.postid, po.id, po.label, COALESCE(po.sortorder, 0) AS sortorder,
+            CAST(count(pv.userid) AS INT) AS votecount,
+            EXISTS(
+              SELECT 1 FROM grouppollvotes mine
+              WHERE mine.postid = po.postid AND mine.optionid = po.id AND mine.userid = $2
+            ) AS votedbyme
+     FROM grouppolloptions po
+     LEFT JOIN grouppollvotes pv ON pv.optionid = po.id
+     WHERE po.postid = ANY($1::UUID[])
+     GROUP BY po.postid, po.id, po.label, po.sortorder
+     ORDER BY po.sortorder ASC`,
+    [postIds, req.userId]
+  );
+  const comments = await query<GroupComment & { postid: string }>(
+    `SELECT gc.postid, gc.id, gc.userid, gc.message, gc.createdat,
+            COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname
+     FROM groupcomments gc
+     JOIN users u ON u.guid = gc.userid
+     LEFT JOIN usermetadata um ON um.userid = gc.userid
+     WHERE gc.postid = ANY($1::UUID[])
+     ORDER BY gc.createdat ASC`,
+    [postIds]
+  );
+
+  res.json({
+    enabled: true,
+    posts: posts.map((post) => ({
+      ...post,
+      options: options.filter((option) => option.postid === post.id),
+      comments: comments.filter((comment) => comment.postid === post.id),
+    })),
+  });
+});
+
+groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const access = await getGroupConversationAccess(req.params.id);
+  if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
+  if (!access.enabled) {
+    res.status(403).json({ error: 'Group polls and conversations are available on Club and Pro tiers.' });
+    return;
+  }
+
+  const { posttype, message, options } = req.body as { posttype?: 'message' | 'poll'; message?: string; options?: string[] };
+  const normalizedType = posttype === 'poll' ? 'poll' : 'message';
+  const trimmedMessage = String(message ?? '').trim().slice(0, 1200);
+  const cleanOptions = Array.isArray(options)
+    ? options.map((option) => String(option).trim().slice(0, 240)).filter(Boolean).slice(0, 8)
+    : [];
+  if (!trimmedMessage) {
+    res.status(400).json({ error: 'Message required' });
+    return;
+  }
+  if (normalizedType === 'poll' && cleanOptions.length < 2) {
+    res.status(400).json({ error: 'Polls need at least 2 options.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const postResult = await client.query<{ id: string }>(
+      `INSERT INTO groupposts (groupid, createdby, posttype, message)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [req.params.id, req.userId, normalizedType, trimmedMessage]
+    );
+    const post = postResult.rows[0];
+    if (!post) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ error: 'Failed to create post' });
+      return;
+    }
+    if (normalizedType === 'poll') {
+      for (const [index, option] of cleanOptions.entries()) {
+        await client.query(
+          `INSERT INTO grouppolloptions (postid, label, sortorder)
+           VALUES ($1, $2, $3)`,
+          [post.id, option, index]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ id: post.id, success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+groupsRouter.post('/:id/posts/:postId/vote', async (req: Request, res: Response) => {
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
+    return;
+  }
+  const access = await getGroupConversationAccess(req.params.id);
+  if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
+  if (!access.enabled) {
+    res.status(403).json({ error: 'Group polls and conversations are available on Club and Pro tiers.' });
+    return;
+  }
+  const { optionid } = req.body as { optionid?: string };
+  const option = await queryOne(
+    `SELECT 1
+     FROM grouppolloptions po
+     JOIN groupposts gp ON gp.id = po.postid
+     WHERE gp.groupid = $1 AND gp.id = $2 AND po.id = $3`,
+    [req.params.id, req.params.postId, optionid]
+  );
+  if (!option) {
+    res.status(404).json({ error: 'Poll option not found' });
+    return;
+  }
+  await query(
+    `INSERT INTO grouppollvotes (postid, optionid, userid)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (postid, userid) DO UPDATE SET optionid = $2, createdat = now()`,
+    [req.params.postId, optionid, req.userId]
+  );
+  res.json({ success: true });
+});
+
+groupsRouter.post('/:id/posts/:postId/comments', async (req: Request, res: Response) => {
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
+    return;
+  }
+  const access = await getGroupConversationAccess(req.params.id);
+  if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
+  if (!access.enabled) {
+    res.status(403).json({ error: 'Group polls and conversations are available on Club and Pro tiers.' });
+    return;
+  }
+  const post = await queryOne(
+    `SELECT 1 FROM groupposts WHERE groupid = $1 AND id = $2 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id, req.params.postId]
+  );
+  if (!post) {
+    res.status(404).json({ error: 'Post not found' });
+    return;
+  }
+  const message = String((req.body as { message?: string }).message ?? '').trim().slice(0, 800);
+  if (!message) {
+    res.status(400).json({ error: 'Comment required' });
+    return;
+  }
+  await query(
+    `INSERT INTO groupcomments (postid, userid, message) VALUES ($1, $2, $3)`,
+    [req.params.postId, req.userId, message]
+  );
+  res.status(201).json({ success: true });
 });
 
 groupsRouter.post('/join', async (req: Request, res: Response) => {

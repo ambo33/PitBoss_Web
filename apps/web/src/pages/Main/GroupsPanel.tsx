@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2 } from 'lucide-react';
+import { Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -29,7 +29,7 @@ export default function GroupsPanel() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); setShowJoin(false); },
   });
   const hostedGroupCount = groups.filter((group) => group.isadmin).length;
-  const hostedGroupLimitReached = !me?.issuperadmin && me?.tierid !== 2 && me?.tierid !== 3 && hostedGroupCount >= 1;
+  const hostedGroupLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedGroupCount >= 1;
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
@@ -190,19 +190,23 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
   );
 }
 
-type DetailTab = 'members' | 'tournaments' | 'structures';
+type DetailTab = 'posts' | 'members' | 'tournaments' | 'structures';
 
 function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => void }) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [detailTab, setDetailTab] = useState<DetailTab>('members');
+  const [detailTab, setDetailTab] = useState<DetailTab>('posts');
   const [inviteCode, setInviteCode] = useState(group.invitecode);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteNote, setInviteNote] = useState('');
   const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
   const [tvSeatingMessage, setTvSeatingMessage] = useState(group.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
+  const [postType, setPostType] = useState<'message' | 'poll'>('message');
+  const [postMessage, setPostMessage] = useState('');
+  const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [smsStatus, setSmsStatus] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
 
@@ -222,6 +226,11 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
     queryKey: ['group', group.groupid, 'blind-structures'],
     queryFn: () => api.getGroupBlindStructures(group.groupid),
     enabled: detailTab === 'structures',
+  });
+  const { data: postsData, isLoading: loadingPosts } = useQuery({
+    queryKey: ['group', group.groupid, 'posts'],
+    queryFn: () => api.getGroupPosts(group.groupid),
+    enabled: detailTab === 'posts',
   });
 
   const approveMutation = useMutation({
@@ -268,12 +277,36 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
       setInviteNote('');
     },
   });
+  const createPostMutation = useMutation({
+    mutationFn: () => api.createGroupPost(group.groupid, {
+      posttype: postType,
+      message: postMessage,
+      options: postType === 'poll' ? pollOptionsText.split('\n') : undefined,
+    }),
+    onSuccess: () => {
+      setPostMessage('');
+      setPollOptionsText('Yes\nNo');
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] });
+    },
+  });
+  const voteMutation = useMutation({
+    mutationFn: ({ postId, optionId }: { postId: string; optionId: string }) => api.voteGroupPoll(group.groupid, postId, optionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] }),
+  });
+  const commentMutation = useMutation({
+    mutationFn: ({ postId, message }: { postId: string; message: string }) => api.commentOnGroupPost(group.groupid, postId, message),
+    onSuccess: (_result, variables) => {
+      setCommentDrafts((current) => ({ ...current, [variables.postId]: '' }));
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] });
+    },
+  });
 
   const members: GroupMember[] = data?.members ?? [];
   const pending = members.filter(m => !m.approved);
   const approved = members.filter(m => m.approved);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures || user?.tierid === 2 || user?.tierid === 3);
+  const postsEnabled = postsData?.enabled ?? canUseClubFeatures;
 
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
@@ -452,18 +485,150 @@ function GroupDetailModal({ group, onClose }: { group: Group; onClose: () => voi
 
         {/* Sub-tabs */}
         <div className="flex border-b border-pit-border">
-          {(['members', 'tournaments', 'structures'] as DetailTab[]).map(t => (
+          {(['posts', 'members', 'tournaments', 'structures'] as DetailTab[]).map(t => (
             <button key={t} onClick={() => setDetailTab(t)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px capitalize transition-colors duration-150 ${
                 detailTab === t
                   ? 'border-pit-teal text-white'
                   : 'border-transparent text-pit-muted hover:text-pit-text'
               }`}>
-              {t === 'members' ? <Users size={13} /> : <Trophy size={13} />}
-              {t === 'members' ? `Members (${approved.length})` : t === 'tournaments' ? 'Tournaments' : 'Structures'}
+              {t === 'members' ? <Users size={13} /> : t === 'posts' ? <MessageSquare size={13} /> : <Trophy size={13} />}
+              {t === 'posts' ? 'Posts' : t === 'members' ? `Members (${approved.length})` : t === 'tournaments' ? 'Tournaments' : 'Structures'}
             </button>
           ))}
         </div>
+
+        {detailTab === 'posts' && (
+          <div className="space-y-4">
+            {group.isadmin && (
+              <div className={`rounded-xl border p-3 ${postsEnabled ? 'border-pit-border bg-pit-bg' : 'border-yellow-300/25 bg-yellow-300/10'}`}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-white">Post to group</p>
+                  {!postsEnabled && <span className="badge border border-yellow-300/25 bg-yellow-300/10 text-yellow-200">Club</span>}
+                </div>
+                <textarea
+                  className="input min-h-20"
+                  placeholder="Ask a question or post an update..."
+                  value={postMessage}
+                  onChange={(event) => setPostMessage(event.target.value)}
+                  disabled={!postsEnabled}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <select
+                    className="input w-auto"
+                    value={postType}
+                    onChange={(event) => setPostType(event.target.value as 'message' | 'poll')}
+                    disabled={!postsEnabled}
+                  >
+                    <option value="message">Message</option>
+                    <option value="poll">Poll</option>
+                  </select>
+                  <button
+                    className="btn-primary"
+                    onClick={() => createPostMutation.mutate()}
+                    disabled={!postsEnabled || createPostMutation.isPending || !postMessage.trim()}
+                  >
+                    Post
+                  </button>
+                </div>
+                {postType === 'poll' && (
+                  <textarea
+                    className="input mt-2 min-h-24 font-mono text-xs"
+                    value={pollOptionsText}
+                    onChange={(event) => setPollOptionsText(event.target.value)}
+                    disabled={!postsEnabled}
+                    placeholder="One option per line"
+                  />
+                )}
+                {!postsEnabled && (
+                  <p className="mt-2 text-xs text-yellow-200">
+                    Polls and group conversations are available during the 2-tournament trial, then unlock with Club or Pro.
+                  </p>
+                )}
+                {createPostMutation.error && <p className="mt-2 text-sm text-red-400">{createPostMutation.error.message}</p>}
+              </div>
+            )}
+
+            {!postsEnabled && (
+              <div className="rounded-xl border border-yellow-300/25 bg-yellow-300/10 px-4 py-5 text-sm text-yellow-100">
+                Group polls and conversations are a Club feature. They are enabled during the host's first two tournaments, then lock until the group upgrades.
+              </div>
+            )}
+
+            {loadingPosts ? (
+              <LoadingSpinner className="py-8" />
+            ) : (postsData?.posts ?? []).length === 0 ? (
+              <div className="rounded-xl border border-pit-border bg-pit-bg px-4 py-10 text-center text-sm text-pit-text">
+                No group posts yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(postsData?.posts ?? []).map((post) => {
+                  const totalVotes = (post.options ?? []).reduce((sum, option) => sum + Number(option.votecount ?? 0), 0);
+                  return (
+                    <article key={post.id} className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{post.displayname ?? 'Group admin'}</p>
+                          <p className="text-xs text-pit-muted">{new Date(post.createdat).toLocaleString()}</p>
+                        </div>
+                        <span className="chip">{post.posttype === 'poll' ? <Vote size={11} /> : <MessageSquare size={11} />}{post.posttype}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-pit-text">{post.message}</p>
+                      {post.posttype === 'poll' && (
+                        <div className="mt-3 space-y-2">
+                          {(post.options ?? []).map((option) => {
+                            const pct = totalVotes > 0 ? Math.round((Number(option.votecount ?? 0) / totalVotes) * 100) : 0;
+                            return (
+                              <button
+                                key={option.id}
+                                className={`w-full overflow-hidden rounded-lg border text-left ${option.votedbyme ? 'border-pit-teal/50 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'}`}
+                                onClick={() => voteMutation.mutate({ postId: post.id, optionId: option.id })}
+                                disabled={voteMutation.isPending || !postsEnabled}
+                              >
+                                <div className="relative px-3 py-2">
+                                  <div className="absolute inset-y-0 left-0 bg-pit-teal/15" style={{ width: `${pct}%` }} />
+                                  <div className="relative flex items-center justify-between gap-3 text-sm">
+                                    <span className="font-medium text-white">{option.label}</span>
+                                    <span className="text-xs text-pit-muted">{option.votecount} votes - {pct}%</span>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-3 space-y-2 border-t border-pit-border pt-3">
+                        {(post.comments ?? []).map((comment) => (
+                          <div key={comment.id} className="rounded-lg bg-pit-surface/40 px-3 py-2">
+                            <p className="text-xs font-semibold text-white">{comment.displayname ?? 'Member'}</p>
+                            <p className="mt-0.5 text-sm text-pit-text">{comment.message}</p>
+                          </div>
+                        ))}
+                        <div className="flex gap-2">
+                          <input
+                            className="input"
+                            placeholder="Reply..."
+                            value={commentDrafts[post.id] ?? ''}
+                            onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
+                            disabled={!postsEnabled}
+                          />
+                          <button
+                            className="btn-ghost shrink-0"
+                            disabled={!postsEnabled || commentMutation.isPending || !(commentDrafts[post.id] ?? '').trim()}
+                            onClick={() => commentMutation.mutate({ postId: post.id, message: commentDrafts[post.id] ?? '' })}
+                          >
+                            Reply
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Members tab */}
         {detailTab === 'members' && (

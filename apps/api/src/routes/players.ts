@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
+import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 
 export const playersRouter = Router();
 playersRouter.use(requireAuth);
@@ -98,7 +99,7 @@ playersRouter.post('/:tid/players', async (req: Request, res: Response) => {
     targetUserId = userid;
   } else if (email?.trim()) {
     const user = await queryOne<{ guid: string }>(
-      `SELECT guid FROM users WHERE LOWER(emailaddress) = $1`, [email.trim().toLowerCase()]
+      `SELECT guid FROM users WHERE emailhash = $1`, [hashEmail(normalizeEmail(email))]
     );
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
     targetUserId = user.guid;
@@ -106,10 +107,12 @@ playersRouter.post('/:tid/players', async (req: Request, res: Response) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      const guestId = crypto.randomUUID();
+      const guestEmail = createGuestEmail();
       const createdUserResult = await client.query<{ guid: string }>(
-        `INSERT INTO users (emailaddress, password, emailverified)
-         VALUES ($1, $2, TRUE) RETURNING guid`,
-        [createGuestEmail(), `guest:${crypto.randomUUID()}`]
+        `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+         VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING guid`,
+        [guestId, privateEmailPlaceholder(guestId), hashEmail(guestEmail), encryptEmail(guestEmail), `guest:${crypto.randomUUID()}`]
       );
       const createdUser = createdUserResult.rows[0];
       if (!createdUser) {

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getAccountProfile, requireSuperAdmin, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey } from '../account';
 import { query } from '../db';
 import { requireAuth } from '../middleware/auth';
+import { publicEmail } from '../privacy';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -15,9 +16,16 @@ adminRouter.use(async (req: Request, res: Response, next) => {
 });
 
 adminRouter.get('/users', async (_req: Request, res: Response) => {
-  const rows = await query(
+  const rows = await query<{
+    userid: string;
+    emailaddress: string | null;
+    emailencrypted: string | null;
+    displayname: string;
+    [key: string]: unknown;
+  }>(
     `SELECT u.guid AS userid,
             u.emailaddress,
+            u.emailencrypted,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
             ${sqlResolveTierId('um')} AS tierid,
             ${sqlResolveTierKey('um')} AS accounttier,
@@ -71,7 +79,14 @@ adminRouter.get('/users', async (_req: Request, res: Response) => {
      ORDER BY u.emailaddress`,
     [nowInAppTimezone()]
   );
-  res.json(rows);
+  res.json(rows.map((row) => {
+    const emailaddress = publicEmail(row.emailencrypted, row.emailaddress);
+    return {
+      ...row,
+      emailaddress,
+      displayname: row.displayname === row.emailaddress ? emailaddress : row.displayname,
+    };
+  }));
 });
 
 adminRouter.get('/users/:id', async (req: Request, res: Response) => {

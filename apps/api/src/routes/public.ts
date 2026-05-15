@@ -8,6 +8,7 @@ import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
+import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 
 export const publicRouter = Router();
 
@@ -311,10 +312,12 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const guestId = crypto.randomUUID();
+    const guestEmail = createGuestEmail();
     const createdUserResult = await client.query<{ guid: string }>(
-      `INSERT INTO users (emailaddress, password, emailverified)
-       VALUES ($1, $2, TRUE) RETURNING guid`,
-      [createGuestEmail(), `guest:${crypto.randomUUID()}`]
+      `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+       VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING guid`,
+      [guestId, privateEmailPlaceholder(guestId), hashEmail(guestEmail), encryptEmail(guestEmail), `guest:${crypto.randomUUID()}`]
     );
     const createdUser = createdUserResult.rows[0];
     if (!createdUser) {
@@ -429,10 +432,12 @@ publicRouter.post('/tournaments/:id/register/guest', async (req: Request, res: R
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const guestId = crypto.randomUUID();
+    const guestEmail = createGuestEmail();
     const createdUserResult = await client.query<{ guid: string }>(
-      `INSERT INTO users (emailaddress, password, emailverified)
-       VALUES ($1, $2, TRUE) RETURNING guid`,
-      [createGuestEmail(), `guest:${crypto.randomUUID()}`]
+      `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+       VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING guid`,
+      [guestId, privateEmailPlaceholder(guestId), hashEmail(guestEmail), encryptEmail(guestEmail), `guest:${crypto.randomUUID()}`]
     );
     const createdUser = createdUserResult.rows[0];
     if (!createdUser) {

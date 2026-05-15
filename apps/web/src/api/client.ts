@@ -48,7 +48,10 @@ export const api = {
     avatarimagedata?: string | null;
     avatarfilename?: string | null;
     clearavatarimage?: boolean;
+    completeonboarding?: boolean;
   }) => put<AuthProfile>('/auth/me', data),
+  submitFeedback: (data: { type: 'issue' | 'idea' | 'question'; message: string; pageurl?: string; useragent?: string }) =>
+    post<{ success: boolean; id: string }>('/feedback', data),
 
   // Groups
   getGroups: () => get<Group[]>('/groups'),
@@ -75,6 +78,14 @@ export const api = {
     del(`/groups/${groupId}/members/${userId}`),
   getGroupTournaments: (groupId: string) =>
     get<(Tournament & { isregistered: boolean })[]>(`/groups/${groupId}/tournaments`),
+  getGroupPosts: (groupId: string) =>
+    get<{ enabled: boolean; posts: GroupPost[] }>(`/groups/${groupId}/posts`),
+  createGroupPost: (groupId: string, data: { posttype: 'message' | 'poll'; message: string; options?: string[] }) =>
+    post<{ id: string; success: boolean }>(`/groups/${groupId}/posts`, data),
+  voteGroupPoll: (groupId: string, postId: string, optionId: string) =>
+    post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/vote`, { optionid: optionId }),
+  commentOnGroupPost: (groupId: string, postId: string, message: string) =>
+    post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/comments`, { message }),
 
   // Tournaments
   getTournaments: () => get<Tournament[]>('/tournaments'),
@@ -172,6 +183,7 @@ export interface Tournament {
   genericaddons?: number;
   maxplayers: number;
   savedstructureid?: string | null;
+  notifygroup?: boolean;
   playerselftracking: boolean; active: boolean; completed?: boolean; registerself?: boolean; createdat: string;
   groupid?: string | null; groupname?: string | null;
   tvdisplaycode?: string | null;
@@ -211,6 +223,8 @@ export interface AuthProfile {
   avatarimagedata?: string | null;
   avatarfilename?: string | null;
   hasavatarimage?: boolean;
+  onboardingcomplete?: boolean;
+  onboardingtourcompletedat?: string | null;
 }
 export interface BlindLevel {
   id: string; level: number; label: string;
@@ -221,6 +235,17 @@ export interface GroupBlindStructure {
   id: string; groupid: string; name: string;
   levels: Omit<BlindLevel, 'id'>[];
   createdat: string;
+}
+export interface GroupPollOption {
+  id: string; label: string; sortorder: number; votecount: number; votedbyme?: boolean;
+}
+export interface GroupComment {
+  id: string; userid: string; displayname?: string; message: string; createdat: string;
+}
+export interface GroupPost {
+  id: string; groupid: string; createdby: string; displayname?: string;
+  posttype: 'message' | 'poll'; message: string; createdat: string;
+  options?: GroupPollOption[]; comments?: GroupComment[];
 }
 export interface TournamentChip {
   id: string; denomination: number; color: string;

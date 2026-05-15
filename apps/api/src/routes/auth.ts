@@ -5,6 +5,7 @@ import { query, queryOne } from '../db';
 import { sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
+import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 
 export const authRouter = Router();
 
@@ -17,20 +18,22 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   const { email, password, displayname, acceptterms } = req.body as {
     email: string; password: string; displayname?: string; acceptterms?: boolean;
   };
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !password) { res.status(400).json({ error: 'Email and password required' }); return; }
   if (acceptterms !== true) { res.status(400).json({ error: 'You must agree to the Terms of Service to create an account.' }); return; }
 
-  const existing = await queryOne('SELECT guid FROM users WHERE LOWER(emailaddress) = $1', [normalizedEmail]);
+  const emailhash = hashEmail(normalizedEmail);
+  const existing = await queryOne('SELECT guid FROM users WHERE emailhash = $1', [emailhash]);
   if (existing) { res.status(409).json({ error: 'Email already registered' }); return; }
 
   const hash = await bcrypt.hash(password, 12);
   const pin = Math.floor(100000 + Math.random() * 900000).toString();
+  const userId = uuidv4();
 
   const row = await queryOne<{ guid: string }>(
-    `INSERT INTO users (emailaddress, password, verificationpin)
-     VALUES ($1, $2, $3) RETURNING guid`,
-    [normalizedEmail, hash, pin]
+    `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, verificationpin)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING guid`,
+    [userId, privateEmailPlaceholder(userId), emailhash, encryptEmail(normalizedEmail), hash, pin]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create user' }); return; }
 
@@ -48,10 +51,10 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
 authRouter.post('/verify-email', async (req: Request, res: Response) => {
   const { email, pin } = req.body as { email: string; pin: string };
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const user = await queryOne<{ guid: string; verificationpin: string }>(
-    `SELECT guid, verificationpin FROM users WHERE LOWER(emailaddress) = $1`,
-    [normalizedEmail]
+    `SELECT guid, verificationpin FROM users WHERE emailhash = $1`,
+    [hashEmail(normalizedEmail)]
   );
   if (!user || user.verificationpin !== pin) {
     res.status(400).json({ error: 'Invalid PIN' }); return;
@@ -63,10 +66,10 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
 
 authRouter.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body as { email: string; password: string };
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const user = await queryOne<{ guid: string; password: string; emailverified: boolean }>(
-    `SELECT guid, password, emailverified FROM users WHERE LOWER(emailaddress) = $1`,
-    [normalizedEmail]
+    `SELECT guid, password, emailverified FROM users WHERE emailhash = $1`,
+    [hashEmail(normalizedEmail)]
   );
   if (!user) { res.status(401).json({ error: 'Invalid credentials' }); return; }
 
@@ -90,15 +93,15 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
 authRouter.post('/request-reset', async (req: Request, res: Response) => {
   const { email } = req.body as { email: string };
-  const normalizedEmail = email?.trim().toLowerCase();
-  const user = await queryOne<{ guid: string }>(
-    `SELECT guid FROM users WHERE LOWER(emailaddress) = $1`, [normalizedEmail]
+  const normalizedEmail = normalizeEmail(email);
+  const user = await queryOne<{ guid: string; emailencrypted: string | null; emailaddress: string | null }>(
+    `SELECT guid, emailencrypted, emailaddress FROM users WHERE emailhash = $1`, [hashEmail(normalizedEmail)]
   );
   // Always respond 200 to prevent user enumeration
   if (user) {
     const resetPin = Math.floor(100000 + Math.random() * 900000).toString();
     await query(`UPDATE users SET verificationpin = $1 WHERE guid = $2`, [resetPin, user.guid]);
-    try { await sendPasswordResetEmail(normalizedEmail, resetPin); } catch { /* non-fatal */ }
+    try { await sendPasswordResetEmail(publicEmail(user.emailencrypted, user.emailaddress) || normalizedEmail, resetPin); } catch { /* non-fatal */ }
   }
   res.json({ message: 'If that email is registered, a reset link has been sent.' });
 });
@@ -122,7 +125,7 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
-  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage } = req.body as {
+  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding } = req.body as {
     displayname?: string;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
@@ -130,6 +133,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     avatarimagedata?: string | null;
     avatarfilename?: string | null;
     clearavatarimage?: boolean;
+    completeonboarding?: boolean;
   };
 
   const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim() : undefined;
@@ -181,6 +185,10 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
            WHEN $8::BOOL = TRUE THEN NULL
            WHEN $7::STRING IS NOT NULL THEN $7::STRING
            ELSE avatarfilename
+         END,
+         onboardingtourcompletedat = CASE
+           WHEN $9::BOOL = TRUE THEN COALESCE(onboardingtourcompletedat, now())
+           ELSE onboardingtourcompletedat
          END
      WHERE userid = $1`,
     [
@@ -192,6 +200,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
       normalizedAvatarData ?? null,
       normalizedAvatarFilename ?? null,
       clearavatarimage === true,
+      completeonboarding === true,
     ]
   );
 
@@ -208,6 +217,7 @@ async function selectAuthProfile(userId: string) {
   return queryOne<{
     guid: string;
     emailaddress: string;
+    emailencrypted?: string | null;
     emailverified: boolean;
     displayname: string;
     tierid: number;
@@ -223,8 +233,10 @@ async function selectAuthProfile(userId: string) {
     avatarimagedata?: string | null;
     avatarfilename?: string | null;
     hasavatarimage?: boolean;
+    onboardingtourcompletedat?: string | null;
+    onboardingcomplete?: boolean;
   }>(
-    `SELECT u.guid, u.emailaddress, u.emailverified,
+    `SELECT u.guid, u.emailaddress, u.emailencrypted, u.emailverified,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             ${sqlResolveTierId('m')} AS tierid,
             ${sqlResolveTierKey('m')} AS accounttier,
@@ -241,11 +253,17 @@ async function selectAuthProfile(userId: string) {
             CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
             m.avatarimagedata,
             m.avatarfilename,
-            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage
+            CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage,
+            m.onboardingtourcompletedat,
+            CASE WHEN m.onboardingtourcompletedat IS NOT NULL THEN TRUE ELSE FALSE END AS onboardingcomplete
      FROM users u
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}
      WHERE u.guid = $1`,
     [userId]
-  );
+  ).then((row) => row ? {
+    ...row,
+    emailaddress: publicEmail(row.emailencrypted, row.emailaddress),
+    displayname: row.displayname === row.emailaddress ? publicEmail(row.emailencrypted, row.emailaddress) : row.displayname,
+  } : null);
 }

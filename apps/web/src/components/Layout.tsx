@@ -1,7 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Trophy, Users, User, LogOut, ChevronLeft, Shield } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
+import Modal from './Modal';
+import { api } from '../api/client';
 
 export type NavTab = 'tournaments' | 'groups' | 'profile' | 'admin';
 
@@ -37,6 +41,10 @@ export default function Layout({
 }: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<'issue' | 'idea' | 'question'>('issue');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const sidebarWidthClass = compactSidebar ? 'w-20' : 'w-56';
   const contentMarginClass = hideSidebar ? '' : compactSidebar ? 'md:ml-20' : 'md:ml-56';
   const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
@@ -53,6 +61,24 @@ export default function Layout({
       return;
     }
     navigate('/', { state: { tab: nextTab } });
+  }
+
+  const feedbackMutation = useMutation({
+    mutationFn: () => api.submitFeedback({
+      type: feedbackType,
+      message: feedbackMessage,
+      pageurl: window.location.href,
+      useragent: navigator.userAgent,
+    }),
+    onSuccess: () => {
+      setFeedbackMessage('');
+      setFeedbackSent(true);
+    },
+  });
+
+  function openFeedback() {
+    setFeedbackSent(false);
+    setFeedbackOpen(true);
   }
 
   const initials = user?.displayname
@@ -170,6 +196,77 @@ export default function Layout({
           );
         })}
       </nav>
+
+      {user && (
+        <button
+          type="button"
+          onClick={openFeedback}
+          className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-full border border-pit-border bg-pit-card px-3 py-2 text-xs font-semibold text-pit-text shadow-2xl transition-colors hover:border-pit-teal/50 hover:text-white md:bottom-5"
+        >
+          <MessageSquare size={14} />
+          Feedback
+        </button>
+      )}
+
+      <Modal
+        title="Send Feedback"
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        footer={
+          <>
+            <button type="button" className="btn-ghost" onClick={() => setFeedbackOpen(false)}>
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn-primary gap-2"
+              disabled={feedbackMutation.isPending || !feedbackMessage.trim()}
+              onClick={() => feedbackMutation.mutate()}
+            >
+              <Send size={14} />
+              Send
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {feedbackSent && (
+            <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
+              Got it. Thanks for helping shape the beta.
+            </p>
+          )}
+          {feedbackMutation.error && (
+            <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+              {feedbackMutation.error.message}
+            </p>
+          )}
+          <div className="grid grid-cols-3 gap-2">
+            {(['issue', 'idea', 'question'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setFeedbackType(type)}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
+                  feedbackType === type
+                    ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
+                    : 'border-pit-border bg-pit-bg text-pit-muted'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+          <textarea
+            className="input min-h-36"
+            value={feedbackMessage}
+            onChange={(event) => setFeedbackMessage(event.target.value)}
+            placeholder="What happened, what feels rough, or what should we build next?"
+          />
+          <p className="text-xs leading-5 text-pit-muted">
+            We include the current page and browser details so beta reports are easier to debug.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

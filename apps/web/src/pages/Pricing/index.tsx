@@ -12,7 +12,7 @@ const hostFeatures = [
   'Rebuy/Add-on tracking',
   '1 hosted group',
   '1 upcoming hosted tournament',
-  '8 player max after trial',
+  'Future public tier keeps casual hosting approachable',
 ];
 
 const clubFeatures = [
@@ -54,13 +54,13 @@ export default function PricingPage() {
 
           <div className="mx-auto max-w-4xl py-16 text-center sm:py-20">
             <p className="mb-4 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal">
-              Pricing
+              Beta Access
             </p>
             <h1 className="text-4xl font-black leading-tight text-white sm:text-6xl">
-              Start free. Upgrade when your game becomes a group.
+              Every feature is free during beta.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-pit-text sm:text-lg">
-              PokerPlanner.bet is meant to be useful at Host level. Club is where running a recurring poker group becomes easier: player profiles, stats, detailed tracking, and tools built for repeat play.
+              Help us shape PokerPlanner.bet while it is in beta. If paid tiers happen later, beta users will receive discounted rates as a thank-you for testing early.
             </p>
           </div>
         </div>
@@ -72,41 +72,41 @@ export default function PricingPage() {
             <div>
               <div className="mb-2 flex items-center gap-2 text-pit-teal">
                 <Sparkles size={18} />
-                <p className="text-sm font-semibold uppercase">New account trial</p>
+                <p className="text-sm font-semibold uppercase">Beta promise</p>
               </div>
-              <h2 className="text-2xl font-bold text-white">Your first 2 hosted tournaments include Club features.</h2>
+              <h2 className="text-2xl font-bold text-white">No beta paywalls. No surprise lockouts.</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-pit-text">
-                Invite the whole crew, run two full games, test the TV board, player tracking, avatars, entrance songs, and Club-style operations. After those two tournaments, Host accounts are limited to hosting games with up to 8 players.
+                During beta, Host, Club, and Pro-style features are available so real poker nights can test the full product. Future paid tiers are shown as a roadmap, not a current checkout.
               </p>
             </div>
-            <Link className="btn-primary shrink-0 px-5 py-3" to="/login?mode=register">Try it free</Link>
+            <Link className="btn-primary shrink-0 px-5 py-3" to="/login?mode=register">Join the beta</Link>
           </div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
           <PlanCard
             name="Host"
-            eyebrow="Useful forever"
-            price="$0"
-            cadence="for casual home games"
+            eyebrow="Beta included"
+            price="Free"
+            cadence="during beta"
             icon={<Users size={22} />}
-            description="Host is intentionally useful. The real limitations are concurrent groups, concurrent games, and player count."
+            description="Host is the future entry tier for casual games. In beta, these limits are relaxed so testers can run real events."
             features={hostFeatures}
-            cta="Start hosting"
+            cta="Join beta"
             ctaHref="/login?mode=register"
           />
 
           <PlanCard
             name="Club"
-            eyebrow="Best for recurring groups"
-            price="$2.99"
-            cadence="per month, billed annually"
-            secondaryPrice="$4.99 billed monthly"
+            eyebrow="Beta included"
+            price="Free"
+            cadence="during beta"
+            secondaryPrice="Future target: $2.99/mo annually or $4.99 monthly"
             icon={<Crown size={22} />}
             featured
-            description="Club unlocks the ease of running a real group: player histories, detailed tracking, deeper payout tools, and more identity for your players."
+            description="Club is where recurring groups get smoother: player histories, detailed tracking, deeper payout tools, and more identity for your players."
             features={clubFeatures}
-            cta="Upgrade to Club"
+            cta="Use Club features"
             ctaHref="/login?mode=register"
           />
 
@@ -116,7 +116,7 @@ export default function PricingPage() {
             price="Contact Us"
             cadence="for larger leagues"
             icon={<LockKeyhole size={22} />}
-            description="Pro is reserved for bigger league and multi-group workflows once the Club foundation is fully dialed in."
+            description="Pro is reserved for bigger league and multi-group workflows. Beta feedback will help decide what belongs here."
             features={proFeatures}
             comingSoon
           />
@@ -126,10 +126,10 @@ export default function PricingPage() {
       <section className="border-y border-pit-border bg-pit-surface/30">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="mb-8 max-w-3xl">
-            <p className="text-sm font-semibold uppercase text-pit-teal">Host vs Club</p>
-            <h2 className="mt-2 text-3xl font-bold text-white">The difference is how much the app remembers for you.</h2>
+            <p className="text-sm font-semibold uppercase text-pit-teal">Future tiers</p>
+            <h2 className="mt-2 text-3xl font-bold text-white">The roadmap is useful, but beta access is wide open.</h2>
             <p className="mt-3 text-sm leading-6 text-pit-text">
-              Host gives you the core tournament tools. Club starts turning your poker night into an organized group with player identity, history, stats, and detailed event tracking.
+              We still think Host and Club are the right shape long term. For beta, every tester gets the full set so we can learn what actually matters at a table.
             </p>
           </div>
 
@@ -142,7 +142,7 @@ export default function PricingPage() {
             <ComparisonCard
               icon={<BadgeCheck size={20} />}
               title="Club tracks the people behind the game"
-              body="Club adds player-level rebuys, add-ons, knockouts, avatars, entrance songs, stats, history, standings, seasons, advanced payouts, and more saved structures for groups that play regularly."
+              body="Club adds player-level rebuys, add-ons, knockouts, avatars, entrance songs, stats, history, standings, advanced payouts, group posts, polls, and more saved structures for groups that play regularly."
             />
           </div>
         </div>
@@ -150,9 +150,9 @@ export default function PricingPage() {
 
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
         <div className="rounded-2xl border border-pit-border bg-pit-card p-6 text-center sm:p-8">
-          <h2 className="text-3xl font-bold text-white">Two games is enough to know.</h2>
+          <h2 className="text-3xl font-bold text-white">Beta testers help decide what this becomes.</h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-pit-text">
-            Run two Club-level tournaments with your full crew. If PokerPlanner.bet makes hosting smoother, Club is priced to be an easy yes for a recurring home game.
+            Run real games, send feedback, and tell us what feels missing. Beta users will receive discounted rates if paid tiers launch later.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Link className="btn-primary px-5 py-3" to="/login?mode=register">Create account</Link>

@@ -45,6 +45,16 @@ export default function LandingPage() {
             </nav>
           </header>
 
+          <div className="mt-5 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <span className="font-semibold text-white">PokerPlanner.bet is getting ready for launch.</span>
+              <span className="ml-1">Beta is live with every feature free for testers.</span>
+            </div>
+            <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/pricing">
+              See beta access
+            </Link>
+          </div>
+
           <div className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:py-16">
             <div className="max-w-2xl">
               <p className="mb-4 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal">
@@ -58,7 +68,7 @@ export default function LandingPage() {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
-                <Link className="btn-ghost px-5 py-3" to="/pricing">Compare plans</Link>
+                <Link className="btn-ghost px-5 py-3" to="/pricing">Beta access</Link>
                 <Link className="btn-ghost px-5 py-3" to="/login">I already have an account</Link>
               </div>
               <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
@@ -143,12 +153,12 @@ export default function LandingPage() {
           <div>
             <h2 className="text-3xl font-bold text-white">Ready for the next poker night?</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-pit-text">
-              Start on Host, run your first games, and unlock Club tools when your group is ready for deeper tracking.
+              Beta access is open: run real games with the full feature set and help shape what comes next.
             </p>
           </div>
           <div className="mt-6 flex flex-wrap gap-3 lg:mt-0">
             <Link className="btn-primary px-5 py-3" to="/login?mode=register">Create account</Link>
-            <Link className="btn-ghost px-5 py-3" to="/pricing">View pricing</Link>
+            <Link className="btn-ghost px-5 py-3" to="/pricing">Beta details</Link>
             <Link className="btn-ghost px-5 py-3" to="/login">Sign in</Link>
           </div>
         </div>

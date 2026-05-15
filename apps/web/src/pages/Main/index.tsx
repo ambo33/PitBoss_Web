@@ -1,20 +1,34 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImageIcon, LogOut, Music4, Shield, Trash2, Upload } from 'lucide-react';
+import { ImageIcon, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
 import GroupsPanel from './GroupsPanel';
 import TournamentsPanel from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
+import Modal from '../../components/Modal';
 
 export default function MainPage() {
   const location = useLocation();
+  const queryClient = useQueryClient();
+  const { user, updateUser } = useAuthStore();
   const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
     ? location.state.tab as NavTab
     : undefined;
   const [tab, setTab] = useState<NavTab>(requestedTab ?? 'tournaments');
+  const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
+
+  const completeTourMutation = useMutation({
+    mutationFn: () => api.updateMe({ completeonboarding: true }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['me'], updated);
+      updateUser({ onboardingcomplete: true });
+      setShowTour(false);
+    },
+    onError: () => setShowTour(false),
+  });
 
   useEffect(() => {
     if (requestedTab && requestedTab !== tab) {
@@ -22,13 +36,127 @@ export default function MainPage() {
     }
   }, [requestedTab, tab]);
 
+  useEffect(() => {
+    if (user && user.onboardingcomplete === false) {
+      setShowTour(true);
+    }
+  }, [user]);
+
   return (
-    <Layout tab={tab} onTabChange={setTab}>
-      {tab === 'tournaments' && <TournamentsPanel />}
-      {tab === 'groups'      && <GroupsPanel />}
-      {tab === 'profile'     && <ProfilePanel />}
-      {tab === 'admin'       && <AdminPanel />}
-    </Layout>
+    <>
+      <Layout tab={tab} onTabChange={setTab}>
+        {tab === 'tournaments' && <TournamentsPanel />}
+        {tab === 'groups'      && <GroupsPanel />}
+        {tab === 'profile'     && <ProfilePanel />}
+        {tab === 'admin'       && <AdminPanel />}
+      </Layout>
+      <OnboardingTour
+        open={showTour}
+        onClose={() => completeTourMutation.mutate()}
+        onGoToGroups={() => {
+          setTab('groups');
+          completeTourMutation.mutate();
+        }}
+      />
+    </>
+  );
+}
+
+const onboardingSlides = [
+  {
+    title: 'Start with a group',
+    body: 'Groups are your home base. Create one, set the join code, and invite the people who play with you.',
+    icon: Users,
+  },
+  {
+    title: 'Invite your players',
+    body: 'Share the invite link or code so members can join once, then future tournaments are easy to announce.',
+    icon: QrCode,
+  },
+  {
+    title: 'Create the tournament',
+    body: 'Use the guided creator to set the name, schedule, buy-in, rebuys, add-ons, tracking, and group email alerts.',
+    icon: Trophy,
+  },
+  {
+    title: 'Build the structure',
+    body: 'Pick a saved blind structure or use the calculator after creation. The TV board and run screen use it immediately.',
+    icon: Timer,
+  },
+  {
+    title: 'Send feedback',
+    body: 'This is beta. Use the Feedback button for bugs, rough edges, and feature ideas while you run real games.',
+    icon: MessageSquare,
+  },
+];
+
+function OnboardingTour({
+  open,
+  onClose,
+  onGoToGroups,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onGoToGroups: () => void;
+}) {
+  const [slide, setSlide] = useState(0);
+  const current = onboardingSlides[slide];
+  const Icon = current.icon;
+  const isLast = slide === onboardingSlides.length - 1;
+
+  return (
+    <Modal
+      title="Welcome to PokerPlanner.bet"
+      open={open}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Skip
+          </button>
+          <div className="flex gap-2">
+            {slide > 0 && (
+              <button type="button" className="btn-ghost" onClick={() => setSlide((value) => value - 1)}>
+                Back
+              </button>
+            )}
+            {isLast ? (
+              <button type="button" className="btn-primary" onClick={onGoToGroups}>
+                Create a group
+              </button>
+            ) : (
+              <button type="button" className="btn-primary" onClick={() => setSlide((value) => value + 1)}>
+                Next
+              </button>
+            )}
+          </div>
+        </>
+      }
+    >
+      <div className="space-y-5 text-center">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-pit-teal/30 bg-pit-teal/15 text-pit-teal">
+          <Icon size={30} />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-pit-teal">
+            {slide + 1} of {onboardingSlides.length}
+          </p>
+          <h3 className="mt-2 text-2xl font-bold text-white">{current.title}</h3>
+          <p className="mt-3 text-sm leading-6 text-pit-text">{current.body}</p>
+        </div>
+        <div className="flex justify-center gap-1.5">
+          {onboardingSlides.map((item, index) => (
+            <button
+              key={item.title}
+              type="button"
+              onClick={() => setSlide(index)}
+              className={`h-2 rounded-full transition-all ${index === slide ? 'w-8 bg-pit-teal' : 'w-2 bg-pit-border'}`}
+              aria-label={`Go to slide ${index + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -168,8 +296,8 @@ function ProfilePanel() {
       <section className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-white">Account Tier</h3>
-            <p className="text-sm text-pit-muted">Your current hosting limits and feature access.</p>
+            <h3 className="font-semibold text-white">Beta Access</h3>
+            <p className="text-sm text-pit-muted">Every feature is unlocked while PokerPlanner.bet is in beta.</p>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
             profile?.accounttier === 'host'
@@ -181,7 +309,7 @@ function ProfilePanel() {
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <TierStat label="Hosted tournaments" value={profile?.hostedtournamentcount ?? 0} />
-          <TierStat label="Trial remaining" value={profile?.trialhostedremaining ?? 0} />
+          <TierStat label="Beta status" value="Free" accent />
           <TierStat
             label="Club features"
             value={profile?.canuseclubfeatures ? 'Enabled' : 'Locked'}
@@ -189,11 +317,7 @@ function ProfilePanel() {
           />
         </div>
         <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
-          {profile?.canuseclubfeatures
-            ? profile?.accounttier === 'club' || profile?.accounttier === 'pro'
-              ? `${formatTierName(profile?.accounttier)} tier: larger tournaments and advanced Club features are unlocked.`
-              : `Trial access: Club features stay unlocked for your first ${Math.max(profile?.trialhostedremaining ?? 0, 0)} hosted tournament${(profile?.trialhostedremaining ?? 0) === 1 ? '' : 's'}.`
-            : 'Host tier: 1 group, 1 upcoming hosted tournament, up to 8 players per tournament, and payouts limited to paying 1, 2, or 3 places.'}
+          Beta users have full access while we test the product. If paid tiers launch later, beta testers will receive discounted rates.
         </div>
       </section>
 

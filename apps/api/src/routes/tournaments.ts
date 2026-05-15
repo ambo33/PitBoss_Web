@@ -4,9 +4,10 @@ import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTou
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
-import { sendTournamentCancelledEmail } from '../services/email';
+import { sendTournamentCancelledEmail, sendTournamentPostedEmail } from '../services/email';
 import { broadcastTournamentUpdate } from '../socket';
 import { BlindLevel, Tournament } from '../types';
+import { publicEmail } from '../privacy';
 
 export const tournamentsRouter = Router();
 tournamentsRouter.use(requireAuth);
@@ -184,11 +185,11 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
 
 tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
-          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid } = req.body as {
+          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid, notifygroup } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
     buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
           genericrebuys?: number; addonprice?: number; addonchips?: number; genericaddons?: number; maxplayers?: number;
-          playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null;
+          playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null; notifygroup?: boolean;
           savedstructureid?: string | null;
           tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
@@ -280,6 +281,35 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     await query(
       `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [row.tournamentid, req.userId]
+    );
+  }
+
+  if (groupid && notifygroup !== false) {
+    const recipients = await query<{ emailaddress: string | null; emailencrypted: string | null; groupname: string | null }>(
+      `SELECT DISTINCT u.emailaddress, u.emailencrypted, g.name AS groupname
+       FROM groupmembers gm
+       JOIN users u ON u.guid = gm.userid
+       JOIN groups g ON g.groupid = gm.groupid
+       LEFT JOIN usermetadata um ON um.userid = u.guid
+       WHERE gm.groupid = $1
+         AND gm.approved = TRUE
+         AND COALESCE(um.isguestuser, FALSE) = FALSE
+         AND u.emailencrypted IS NOT NULL`,
+      [groupid]
+    );
+    await Promise.allSettled(
+      recipients.map((recipient) => {
+        const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
+        if (!email) return Promise.resolve();
+        return sendTournamentPostedEmail(
+          email,
+          row.tournamentid,
+          name,
+          recipient.groupname,
+          tourneydate ?? null,
+          tourneytime ?? null
+        );
+      })
     );
   }
 
@@ -434,29 +464,30 @@ tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  const recipients = await query<{ emailaddress: string }>(
-    `SELECT DISTINCT u.emailaddress
+  const recipients = await query<{ emailaddress: string | null; emailencrypted: string | null }>(
+    `SELECT DISTINCT u.emailaddress, u.emailencrypted
      FROM tournamentplayers tp
      JOIN users u ON u.guid = tp.userid
      LEFT JOIN usermetadata um ON um.userid = tp.userid
      WHERE tp.tournamentid = $1
        AND COALESCE(um.isguestuser, FALSE) = FALSE
-       AND u.emailaddress IS NOT NULL
-       AND u.emailaddress NOT LIKE 'guest+%@guest.pokerplanner.bet'`,
+       AND u.emailencrypted IS NOT NULL`,
     [req.params.id]
   );
 
   await query(`DELETE FROM tournaments WHERE tournamentid = $1`, [req.params.id]);
 
   await Promise.allSettled(
-    recipients.map((recipient) =>
-      sendTournamentCancelledEmail(
-        recipient.emailaddress,
+    recipients.map((recipient) => {
+      const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
+      if (!email) return Promise.resolve();
+      return sendTournamentCancelledEmail(
+        email,
         tournament.name,
         tournament.tourneydate instanceof Date ? tournament.tourneydate.toISOString().slice(0, 10) : tournament.tourneydate,
         tournament.tourneytime instanceof Date ? tournament.tourneytime.toISOString().slice(11, 19) : tournament.tourneytime
-      )
-    )
+      );
+    })
   );
 
   res.json({ success: true, notified: recipients.length });

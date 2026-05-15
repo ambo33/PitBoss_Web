@@ -1,4 +1,5 @@
 import { pool } from './db';
+import { encryptEmail, hashEmail, isPrivateEmailPlaceholder, privateEmailPlaceholder } from './privacy';
 
 function generateTvCode(existing: Set<string>): string {
   let code = '';
@@ -117,6 +118,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS termsacceptedat TIMESTAMPTZ
     `);
     await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS onboardingtourcompletedat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS emailhash STRING(64)
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS emailencrypted STRING
+    `);
+    await client.query(`
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS defaulttrackingmode STRING(20) DEFAULT 'standard'
     `);
@@ -131,6 +144,55 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         name STRING(120) NOT NULL,
         levels JSONB NOT NULL,
         createdby UUID REFERENCES users(guid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groupposts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,
+        createdby UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        posttype STRING(20) NOT NULL DEFAULT 'message',
+        message STRING(1200) NOT NULL,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        active BOOL DEFAULT TRUE
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS grouppolloptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        postid UUID NOT NULL REFERENCES groupposts(id) ON DELETE CASCADE,
+        label STRING(240) NOT NULL,
+        sortorder INT DEFAULT 0
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS grouppollvotes (
+        postid UUID NOT NULL REFERENCES groupposts(id) ON DELETE CASCADE,
+        optionid UUID NOT NULL REFERENCES grouppolloptions(id) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (postid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groupcomments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        postid UUID NOT NULL REFERENCES groupposts(id) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        message STRING(800) NOT NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        userid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        type STRING(30) NOT NULL DEFAULT 'issue',
+        message STRING(2000) NOT NULL,
+        pageurl STRING(500),
+        useragent STRING(500),
+        status STRING(30) NOT NULL DEFAULT 'new',
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
@@ -171,6 +233,29 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       CREATE UNIQUE INDEX IF NOT EXISTS unique_invitecode
       ON groups (invitecode)
     `);
+    const emailRows = await client.query<{ guid: string; emailaddress: string | null; emailhash: string | null; emailencrypted: string | null }>(`
+      SELECT guid, emailaddress, emailhash, emailencrypted
+      FROM users
+      WHERE emailaddress IS NOT NULL
+    `);
+    for (const row of emailRows.rows) {
+      if (!row.emailaddress) continue;
+      const sourceEmail = isPrivateEmailPlaceholder(row.emailaddress) ? null : row.emailaddress;
+      const nextHash = row.emailhash ?? (sourceEmail ? hashEmail(sourceEmail) : null);
+      const nextEncrypted = row.emailencrypted ?? (sourceEmail ? encryptEmail(sourceEmail) : null);
+      await client.query(
+        `UPDATE users
+         SET emailhash = COALESCE($2, emailhash),
+             emailencrypted = COALESCE($3, emailencrypted),
+             emailaddress = $4
+         WHERE guid = $1`,
+        [row.guid, nextHash, nextEncrypted, privateEmailPlaceholder(row.guid)]
+      );
+    }
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_users_emailhash
+      ON users (emailhash)
+    `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS unique_tournament_tvdisplaycode
       ON tournaments (tvdisplaycode)
@@ -192,6 +277,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS knockedoutat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS reminderemailsentat TIMESTAMPTZ
     `);
     console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
   } finally {

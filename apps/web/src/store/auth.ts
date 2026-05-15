@@ -14,6 +14,7 @@ interface AuthUser {
   canuseclubfeatures?: boolean;
   avatarimagedata?: string | null;
   hasavatarimage?: boolean;
+  onboardingcomplete?: boolean;
 }
 
 interface AuthState {
