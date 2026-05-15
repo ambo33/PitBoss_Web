@@ -253,7 +253,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       );
     }
     await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS unique_users_emailhash
+      DROP INDEX IF EXISTS unique_users_emailhash
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_emailhash
       ON users (emailhash)
     `);
     await client.query(`
