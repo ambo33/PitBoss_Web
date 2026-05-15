@@ -12,6 +12,7 @@ import Modal from '../../components/Modal';
 
 export default function MainPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, updateUser } = useAuthStore();
   const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
@@ -34,7 +35,10 @@ export default function MainPage() {
     if (requestedTab && requestedTab !== tab) {
       setTab(requestedTab);
     }
-  }, [requestedTab, tab]);
+    if (requestedTab) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, navigate, requestedTab]);
 
   useEffect(() => {
     if (user && user.onboardingcomplete === false) {

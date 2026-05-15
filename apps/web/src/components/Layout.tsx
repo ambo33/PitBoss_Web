@@ -128,7 +128,12 @@ export default function Layout({
 
           {user && (
             <div className={`mb-4 rounded-xl border border-pit-border bg-pit-bg p-3 ${compactSidebar ? 'mx-2' : 'mx-3'}`}>
-              <div className={`mb-3 flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}>
+              <button
+                type="button"
+                onClick={() => handleNavClick('profile')}
+                className={`mb-3 flex w-full items-center rounded-lg text-left transition-colors hover:text-white ${compactSidebar ? 'justify-center' : 'gap-3 hover:bg-white/5'}`}
+                title="Open profile"
+              >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
                   {user?.avatarimagedata ? (
                     <img src={user.avatarimagedata} alt={user.displayname} className="h-8 w-8 rounded-full object-cover" />
@@ -140,7 +145,7 @@ export default function Layout({
                     <p className="truncate text-[10px] text-pit-muted">{user.emailaddress}</p>
                   </div>
                 )}
-              </div>
+              </button>
               <button
                 onClick={handleLogout}
                 className="flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition-colors duration-150 hover:text-red-400"
