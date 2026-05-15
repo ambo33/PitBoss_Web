@@ -307,7 +307,7 @@ playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Respons
   }
   const updated = await queryOne<{ addedon: boolean }>(
     `UPDATE tournamentplayers
-     SET addedon = TRUE
+     SET addedon = 1
      WHERE tournamentid = $1 AND userid = $2
      RETURNING CASE WHEN ${truthySql('addedon')} THEN TRUE ELSE FALSE END AS addedon`,
     [req.params.tid, req.params.uid]
@@ -329,7 +329,7 @@ playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Respo
   }
   const updated = await queryOne<{ addedon: boolean }>(
     `UPDATE tournamentplayers
-     SET addedon = FALSE
+     SET addedon = 0
      WHERE tournamentid = $1 AND userid = $2
      RETURNING CASE WHEN ${truthySql('addedon')} THEN TRUE ELSE FALSE END AS addedon`,
     [req.params.tid, req.params.uid]

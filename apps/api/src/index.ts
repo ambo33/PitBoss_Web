@@ -23,6 +23,7 @@ import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
 
 const app = express();
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

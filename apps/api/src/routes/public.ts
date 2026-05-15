@@ -619,7 +619,7 @@ publicRouter.post('/tournaments/:id/addon/self', optionalAuth, async (req: Reque
 
   await query(
     `UPDATE tournamentplayers
-     SET addedon = TRUE
+     SET addedon = 1
      WHERE tournamentid = $1 AND userid = $2`,
     [req.params.id, playerUserId]
   );
