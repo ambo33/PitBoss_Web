@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronUp, Menu, Volume2, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Menu, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, playCheckinGreetingClip, playKachingSound, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playKachingSound, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -66,7 +66,6 @@ export default function RunTournament({
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
   const [showTvMenu, setShowTvMenu] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
@@ -74,6 +73,11 @@ export default function RunTournament({
     level: null,
   });
   const lastRunningRef = useRef<boolean | null>(null);
+  const announcementTemplatesRef = useRef({
+    fiveMinute: tournament.speechfiveminutemessage,
+    oneMinute: tournament.speechoneminutemessage,
+    levelUp: tournament.speechlevelupmessage,
+  });
   const seenCheckedInRef = useRef<Set<string> | null>(null);
   const moneyActionCountsRef = useRef<Map<string, { rebuys: number; addedon: number }> | null>(null);
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
@@ -103,6 +107,10 @@ export default function RunTournament({
   });
   const addonMutation = useMutation({
     mutationFn: (userId: string) => api.addAddon(tournamentId, userId),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const knockMutation = useMutation({
+    mutationFn: ({ userId, placed }: { userId: string; placed: number | null }) => api.knockPlayer(tournamentId, userId, placed),
     onSuccess: () => refreshTournamentData(),
   });
   const genericRebuyMutation = useMutation({
@@ -143,9 +151,15 @@ export default function RunTournament({
   }, [tournament.seatingmaxpertable]);
 
   useEffect(() => {
+    announcementTemplatesRef.current = {
+      fiveMinute: tournament.speechfiveminutemessage,
+      oneMinute: tournament.speechoneminutemessage,
+      levelUp: tournament.speechlevelupmessage,
+    };
+  }, [tournament.speechfiveminutemessage, tournament.speechlevelupmessage, tournament.speechoneminutemessage]);
+
+  useEffect(() => {
     primeTimerAudio();
-    const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
-    window.addEventListener('pb-audio-unlocked', syncSoundState);
 
     const socket = io('/', { path: '/socket.io' });
     socketRef.current = socket;
@@ -172,7 +186,6 @@ export default function RunTournament({
       refreshTournamentData();
     });
     return () => {
-      window.removeEventListener('pb-audio-unlocked', syncSoundState);
       socket.disconnect();
     };
   }, [qc, tournamentId]);
@@ -325,14 +338,8 @@ export default function RunTournament({
     socketRef.current?.emit(event, { tournamentId, ...payload });
   }
 
-  async function enableSound() {
-    const unlocked = await unlockTimerAudio({ announce: true });
-    setSoundEnabled(unlocked);
-  }
-
   async function warmTimerAudio() {
-    const unlocked = await unlockTimerAudio();
-    setSoundEnabled(unlocked);
+    await unlockTimerAudio();
   }
 
   function handleStartTimer() {
@@ -372,7 +379,13 @@ export default function RunTournament({
         const announcedBlind = state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel));
         if (announcedBlind) {
           playLevelChangeTone();
-          announceLevel(state.currentlevel, announcedBlind.smallblind, announcedBlind.bigblind);
+          announceLevel(
+            state.currentlevel,
+            announcedBlind.smallblind,
+            announcedBlind.bigblind,
+            announcementTemplatesRef.current.levelUp,
+            announcedBlind.ante
+          );
         }
       }
       warningState.level = state.currentlevel;
@@ -389,11 +402,13 @@ export default function RunTournament({
 
     if (state.remainingsecs <= 300 && state.remainingsecs > 60 && !warningState.fiveMin) {
       warningState.fiveMin = true;
-      announceFiveMinuteWarning();
+      const blind = getStateBlind(state);
+      announceFiveMinuteWarning(announcementTemplatesRef.current.fiveMinute, buildAnnouncementTokens(state, blind));
     }
     if (state.remainingsecs <= 60 && state.remainingsecs > 0 && !warningState.oneMin) {
       warningState.oneMin = true;
-      announceOneMinuteWarning();
+      const blind = getStateBlind(state);
+      announceOneMinuteWarning(announcementTemplatesRef.current.oneMinute, buildAnnouncementTokens(state, blind));
     }
   }
 
@@ -444,6 +459,12 @@ export default function RunTournament({
       .filter((player) => player.placed != null && (player.placed ?? 999) <= payoutPlaces)
       .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
     [players, payoutPlaces]
+  );
+  const knockedOutPlayers = useMemo(
+    () => players
+      .filter((player) => player.placed != null)
+      .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
+    [players]
   );
   const knockoutLeader = useMemo(() => {
     const counts = new Map<string, { name: string; count: number }>();
@@ -593,6 +614,14 @@ export default function RunTournament({
                   </button>
                 </>
               ) : null}
+              <button
+                type="button"
+                className="btn-danger px-3 py-1.5 text-xs"
+                onClick={() => selectedPlayer && knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1) })}
+                disabled={!selectedPlayer || !selectedPlayer.checkedin || selectedPlayer.placed != null || knockMutation.isPending}
+              >
+                Knockout
+              </button>
             </div>
           ) : (
             <div />
@@ -619,20 +648,6 @@ export default function RunTournament({
                     Seat Chart
                   </button>
                 </div>
-              )}
-              {!tvMode && (
-                <button
-                  type="button"
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                    soundEnabled
-                      ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
-                      : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
-                  }`}
-                  onClick={() => void enableSound()}
-                >
-                  <Volume2 size={14} />
-                  {soundEnabled ? 'Sound On' : 'Enable Sound'}
-                </button>
               )}
               {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
                 <div className="relative">
@@ -1025,11 +1040,11 @@ export default function RunTournament({
                     {payoutSplits.map((split, index) => {
                       const finisher = paidFinishers.find((player) => player.placed === index + 1);
                       return (
-                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2 py-1 text-xs' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
+                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border ${finisher ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${tvMode ? 'px-2 py-1 text-xs' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
                             {finisher ? (
-                              <span className={`truncate font-medium text-pit-text ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
+                              <span className={`truncate font-semibold text-white ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
                                 {finisher.displayname ?? finisher.emailaddress}
                               </span>
                             ) : null}
@@ -1040,6 +1055,44 @@ export default function RunTournament({
                     })}
                   </div>
                 </div>
+                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Knocked Out</h3>
+                    <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} text-pit-muted`}>{knockedOutPlayers.length}</span>
+                  </div>
+                  {knockedOutPlayers.length === 0 ? (
+                    <p className={`${tvMode ? 'text-[11px]' : 'text-xs'} rounded-lg border border-pit-border bg-pit-surface/35 px-2.5 py-2 text-pit-muted`}>
+                      No knockouts yet.
+                    </p>
+                  ) : (
+                    <div className={`${tvMode ? 'max-h-44 space-y-1' : displayMode ? 'max-h-64 space-y-1.5' : 'max-h-52 space-y-1.5'} overflow-y-auto pr-1`}>
+                      {knockedOutPlayers.map((player) => {
+                        const paid = (player.placed ?? 999) <= payoutPlaces;
+                        return (
+                          <div
+                            key={`${player.userid}-${player.placed}`}
+                            className={`rounded-lg border ${paid ? 'border-pit-teal/35 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${tvMode ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}
+                          >
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
+                                <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} truncate font-medium text-pit-text`}>
+                                  {player.displayname ?? player.emailaddress}
+                                </span>
+                              </div>
+                              {paid && <span className="shrink-0 rounded-full bg-pit-teal/20 px-2 py-0.5 text-[10px] font-semibold text-pit-teal">Paid</span>}
+                            </div>
+                            {player.knockedoutbyname && (
+                              <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate text-pit-muted`}>
+                                Knocked out by {player.knockedoutbyname}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </section>
             </div>
             )}
@@ -1049,7 +1102,7 @@ export default function RunTournament({
         )}
 
         {displayMode && activeGreeting && tvGreetingDisplayEnabled && (
-          <div className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center overflow-hidden rounded-[inherit]">
+          <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center overflow-hidden px-6 py-8">
             <style>{`
               @keyframes tv-confetti-fall {
                 0% { transform: translate3d(0, -18px, 0) rotate(0deg); opacity: 0; }
@@ -1070,10 +1123,10 @@ export default function RunTournament({
                 }}
               />
             ))}
-            <div className="mt-10 rounded-2xl border border-white/15 bg-black/55 px-8 py-6 text-center shadow-2xl backdrop-blur-md">
-              <p className="text-lg font-semibold uppercase tracking-[0.28em] text-yellow-200 xl:text-xl">Welcome To The Tournament</p>
+            <div className="max-h-[calc(100vh-4rem)] w-full max-w-2xl rounded-2xl border border-white/15 bg-black/65 px-8 py-6 text-center shadow-2xl backdrop-blur-md">
+              <p className="text-base font-semibold uppercase tracking-[0.28em] text-yellow-200 xl:text-xl">Welcome To The Tournament</p>
               {activeGreeting.avatarImageUrl ? (
-                <div className="mx-auto mt-5 h-28 w-28 overflow-hidden rounded-full border-4 border-white/25 shadow-xl xl:h-32 xl:w-32">
+                <div className="mx-auto mt-5 h-24 w-24 overflow-hidden rounded-full border-4 border-white/25 shadow-xl xl:h-32 xl:w-32">
                   <img
                     src={activeGreeting.avatarImageUrl}
                     alt={activeGreeting.name}
@@ -1081,15 +1134,15 @@ export default function RunTournament({
                   />
                 </div>
               ) : (
-                <div className="mx-auto mt-5 flex h-28 w-28 items-center justify-center rounded-full border-4 border-white/20 bg-white/10 text-4xl font-semibold text-white shadow-xl xl:h-32 xl:w-32 xl:text-5xl">
+                <div className="mx-auto mt-5 flex h-24 w-24 items-center justify-center rounded-full border-4 border-white/20 bg-white/10 text-4xl font-semibold text-white shadow-xl xl:h-32 xl:w-32 xl:text-5xl">
                   {getInitials(activeGreeting.name)}
                 </div>
               )}
-              <h2 className="mt-4 text-7xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
+              <h2 className="mt-4 truncate text-5xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
                 {activeGreeting.name}
               </h2>
               {activeGreeting.tableNumber != null && activeGreeting.seat != null && (
-                <p className="mt-3 text-3xl font-semibold uppercase tracking-[0.18em] text-yellow-200 xl:text-4xl">
+                <p className="mt-3 text-2xl font-semibold uppercase tracking-[0.18em] text-yellow-200 xl:text-4xl">
                   Table {activeGreeting.tableNumber} Seat {activeGreeting.seat}
                 </p>
               )}
@@ -1283,6 +1336,19 @@ function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): nu
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getStateBlind(state: TimerState) {
+  return state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel)) ?? state.blinds[0];
+}
+
+function buildAnnouncementTokens(state: TimerState, blind?: BlindLevel) {
+  return {
+    BlindLevel: Number(state.currentlevel),
+    SB: Number(blind?.smallblind ?? 0),
+    BB: Number(blind?.bigblind ?? 0),
+    Ante: Number(blind?.ante ?? 0),
+  };
 }
 
 const DEFAULT_SPLITS: Record<number, number[]> = {

@@ -142,6 +142,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS tvseatingwelcomemessage STRING(180) DEFAULT 'Welcome! Please see host to check-in!'
     `);
     await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS speechfiveminutemessage STRING(240) DEFAULT 'There are 5 minutes remaining in the current blind.'
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS speechoneminutemessage STRING(240) DEFAULT 'One minute remaining in the current blind.'
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS speechlevelupmessage STRING(240) DEFAULT 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.'
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS groupblindstructures (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,

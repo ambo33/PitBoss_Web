@@ -108,8 +108,8 @@ export default function PreTournamentPage() {
       headerRight={<BrandLockup compact showSlogan={false} showWordmark={false} className="items-center gap-2" />}
       mainWidthClassName="max-w-[1800px]"
     >
-      <div className="relative z-10 mb-5 mt-2 border-b border-pit-border md:mt-3">
-        <div className="grid grid-cols-4 gap-1 md:flex md:gap-1">
+      <div className="relative z-10 mb-5 mt-2 hidden border-b border-pit-border md:block md:mt-3">
+        <div className="flex gap-1">
           {tabs.map((currentTab) => {
             const Icon = currentTab.Icon;
             return (
@@ -156,7 +156,44 @@ export default function PreTournamentPage() {
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
       {tab === 'run' && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
+      <div className="h-20 md:hidden" />
+      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} />
     </Layout>
+  );
+}
+
+function TournamentMobileNav({
+  tabs,
+  activeTab,
+  onTabChange,
+}: {
+  tabs: { id: Tab; label: string; mobileLabel: string; Icon: React.ElementType }[];
+  activeTab: Tab;
+  onTabChange: (tab: Tab) => void;
+}) {
+  return (
+    <nav className="fixed inset-x-0 bottom-[4.75rem] z-40 grid grid-cols-4 border-t border-pit-border bg-pit-surface/95 backdrop-blur-md md:hidden">
+      {tabs.map(({ id, mobileLabel, Icon }) => {
+        const active = activeTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onTabChange(id)}
+            className={`flex min-w-0 flex-col items-center gap-1 px-1 pt-2.5 pb-3 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
+              active ? 'text-teal-100' : 'text-pit-muted'
+            }`}
+          >
+            <div className={`flex h-7 w-11 items-center justify-center rounded-full transition-all duration-150 ${
+              active ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.22)]' : ''
+            }`}>
+              <Icon size={18} strokeWidth={active ? 2.5 : 1.75} />
+            </div>
+            <span className="max-w-full truncate">{mobileLabel}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 

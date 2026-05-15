@@ -5,6 +5,17 @@ let speechPrimed = false;
 let currentCheckinAudio: HTMLAudioElement | null = null;
 let audioUnlocked = false;
 
+export const DEFAULT_FIVE_MINUTE_ANNOUNCEMENT = 'There are 5 minutes remaining in the current blind.';
+export const DEFAULT_ONE_MINUTE_ANNOUNCEMENT = 'One minute remaining in the current blind.';
+export const DEFAULT_LEVEL_UP_ANNOUNCEMENT = 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.';
+
+export interface AnnouncementTokens {
+  BlindLevel: number;
+  SB: number;
+  BB: number;
+  Ante?: number;
+}
+
 function notifyAudioUnlocked(): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('pb-audio-unlocked'));
@@ -221,6 +232,18 @@ export function playLevelChangeTone(): void {
   ]);
 }
 
+function renderAnnouncementTemplate(template: string | null | undefined, tokens: AnnouncementTokens): string {
+  const values: Record<string, string> = {
+    BlindLevel: String(tokens.BlindLevel),
+    SB: String(tokens.SB),
+    BB: String(tokens.BB),
+    Ante: String(tokens.Ante ?? 0),
+  };
+  return String(template ?? '')
+    .replace(/\{(BlindLevel|SB|BB|Ante)\}/g, (_match, key: string) => values[key] ?? '')
+    .trim();
+}
+
 function speak(message: string, fallback?: () => void): void {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     fallback?.();
@@ -240,16 +263,24 @@ function speak(message: string, fallback?: () => void): void {
   }
 }
 
-export function announceFiveMinuteWarning(): void {
-  speak('There are 5 minutes remaining in the current blind.', playFiveMinuteWarning);
+export function announceFiveMinuteWarning(template?: string | null, tokens?: AnnouncementTokens): void {
+  const message = tokens ? renderAnnouncementTemplate(template, tokens) : '';
+  speak(message || DEFAULT_FIVE_MINUTE_ANNOUNCEMENT, playFiveMinuteWarning);
 }
 
-export function announceOneMinuteWarning(): void {
-  speak('One minute remaining in the current blind.', playOneMinuteWarning);
+export function announceOneMinuteWarning(template?: string | null, tokens?: AnnouncementTokens): void {
+  const message = tokens ? renderAnnouncementTemplate(template, tokens) : '';
+  speak(message || DEFAULT_ONE_MINUTE_ANNOUNCEMENT, playOneMinuteWarning);
 }
 
-export function announceLevel(level: number, smallBlind: number, bigBlind: number): void {
-  speak(`Level ${level}. Small blind ${smallBlind}. Big blind ${bigBlind}.`, playLevelChangeTone);
+export function announceLevel(level: number, smallBlind: number, bigBlind: number, template?: string | null, ante = 0): void {
+  const message = renderAnnouncementTemplate(template || DEFAULT_LEVEL_UP_ANNOUNCEMENT, {
+    BlindLevel: level,
+    SB: smallBlind,
+    BB: bigBlind,
+    Ante: ante,
+  });
+  speak(message || `Level ${level}. Small blind ${smallBlind}. Big blind ${bigBlind}.`, playLevelChangeTone);
 }
 
 export function announceTimerStarted(): void {

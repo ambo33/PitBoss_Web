@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
@@ -42,6 +42,7 @@ export default function Layout({
 }: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState<'issue' | 'idea' | 'question'>('issue');
   const [feedbackMessage, setFeedbackMessage] = useState('');
@@ -51,9 +52,18 @@ export default function Layout({
   const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
   const mainPaddingClass = compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
 
+  const { data: feedbackSummary } = useQuery({
+    queryKey: ['admin', 'feedback', 'summary'],
+    queryFn: api.getAdminFeedbackSummary,
+    enabled: Boolean(user?.issuperadmin),
+    refetchInterval: 60_000,
+  });
+  const feedbackNewCount = feedbackSummary?.newcount ?? 0;
+
   function handleLogout() {
+    queryClient.clear();
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   }
 
   function handleNavClick(nextTab: NavTab) {
@@ -74,6 +84,7 @@ export default function Layout({
     onSuccess: () => {
       setFeedbackMessage('');
       setFeedbackSent(true);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'feedback'] });
     },
   });
 
@@ -125,12 +136,22 @@ export default function Layout({
                   aria-label={label}
                   title={label}
                 >
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                  <span className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
                     active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : 'bg-transparent'
                   }`}>
                     <Icon size={17} strokeWidth={active ? 2.5 : 2} />
+                    {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
                   </span>
-                  {!compactSidebar && label}
+                  {!compactSidebar && (
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span>{label}</span>
+                      {isAdmin && feedbackNewCount > 0 && (
+                        <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                          {formatBadgeCount(feedbackNewCount)}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -208,6 +229,7 @@ export default function Layout({
                 active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : ''
               }`}>
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
+                {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
               </div>
               {label}
             </button>
@@ -289,4 +311,16 @@ export default function Layout({
       </Modal>
     </div>
   );
+}
+
+function NavBadge({ count }: { count: number }) {
+  return (
+    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-pit-surface">
+      {formatBadgeCount(count)}
+    </span>
+  );
+}
+
+function formatBadgeCount(count: number) {
+  return count > 99 ? '99+' : String(count);
 }

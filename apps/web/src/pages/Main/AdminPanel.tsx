@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Search, Shield, Trophy, Users } from 'lucide-react';
-import { api, AccountTier, AdminUserSummary, Tournament } from '../../api/client';
+import { CheckCircle2, ExternalLink, MessageSquare, Search, Shield, Trophy, Users } from 'lucide-react';
+import { api, AccountTier, AdminFeedback, AdminUserSummary, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 type TierFilter = 'all' | AccountTier;
@@ -19,6 +19,10 @@ export default function AdminPanel() {
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ['admin', 'users', emailSearch],
     queryFn: () => api.getAdminUsers(emailSearch || undefined),
+  });
+  const { data: feedbackData } = useQuery({
+    queryKey: ['admin', 'feedback'],
+    queryFn: api.getAdminFeedback,
   });
 
   const summary = useMemo(() => buildSummary(users), [users]);
@@ -50,6 +54,14 @@ export default function AdminPanel() {
       qc.invalidateQueries({ queryKey: ['me'] });
     },
   });
+  const feedbackMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'new' | 'looked_at' }) =>
+      api.updateAdminFeedback(id, { status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'feedback'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'feedback', 'summary'] });
+    },
+  });
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
@@ -64,16 +76,28 @@ export default function AdminPanel() {
 
   const upcoming = detail?.tournaments.filter((tournament) => classifyTournament(tournament) === 'Upcoming') ?? [];
   const history = detail?.tournaments.filter((tournament) => classifyTournament(tournament) !== 'Upcoming') ?? [];
+  const feedbackItems = feedbackData?.feedback ?? [];
+  const feedbackNewCount = feedbackData?.newcount ?? 0;
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <SummaryTile label="Users" value={summary.total} icon={Users} />
         <SummaryTile label="Host" value={summary.host} />
         <SummaryTile label="Club / Pro" value={`${summary.club} / ${summary.pro}`} />
         <SummaryTile label="Trials" value={summary.trials} />
         <SummaryTile label="Superadmins" value={summary.admins} icon={Shield} accent />
+        <SummaryTile label="New Feedback" value={feedbackNewCount} icon={MessageSquare} danger={feedbackNewCount > 0} />
       </section>
+
+      <FeedbackPanel
+        feedback={feedbackItems}
+        newCount={feedbackNewCount}
+        pendingId={feedbackMutation.variables?.id}
+        isPending={feedbackMutation.isPending}
+        error={feedbackMutation.error?.message}
+        onStatusChange={(id, status) => feedbackMutation.mutate({ id, status })}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
         <section className="card flex min-h-[620px] flex-col gap-3">
@@ -265,20 +289,126 @@ function SummaryTile({
   value,
   icon: Icon,
   accent = false,
+  danger = false,
 }: {
   label: string;
   value: string | number;
   icon?: React.ElementType;
   accent?: boolean;
+  danger?: boolean;
 }) {
+  const valueClass = danger ? 'text-red-300' : accent ? 'text-pit-teal' : 'text-white';
   return (
     <div className="rounded-lg border border-pit-border bg-pit-card px-3 py-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-wide text-pit-muted">{label}</p>
-        {Icon ? <Icon size={15} className={accent ? 'text-pit-teal' : 'text-pit-muted'} /> : null}
+        {Icon ? <Icon size={15} className={danger ? 'text-red-300' : accent ? 'text-pit-teal' : 'text-pit-muted'} /> : null}
       </div>
-      <p className={`mt-1 text-2xl font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-semibold ${valueClass}`}>{value}</p>
     </div>
+  );
+}
+
+function FeedbackPanel({
+  feedback,
+  newCount,
+  pendingId,
+  isPending,
+  error,
+  onStatusChange,
+}: {
+  feedback: AdminFeedback[];
+  newCount: number;
+  pendingId?: string;
+  isPending: boolean;
+  error?: string;
+  onStatusChange: (id: string, status: 'new' | 'looked_at') => void;
+}) {
+  return (
+    <section className="rounded-lg border border-pit-border bg-pit-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={17} className={newCount > 0 ? 'text-red-300' : 'text-pit-teal'} />
+          <h2 className="text-lg font-semibold text-white">Feedback</h2>
+          {newCount > 0 && (
+            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-300">
+              {newCount} new
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-pit-muted">Latest 100 reports</p>
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+
+      {feedback.length === 0 ? (
+        <div className="mt-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-8 text-center text-sm text-pit-text">
+          No feedback yet.
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2 xl:grid-cols-2">
+          {feedback.slice(0, 6).map((item) => {
+            const isNew = item.status === 'new';
+            const busy = isPending && pendingId === item.id;
+            return (
+              <article
+                key={item.id}
+                className={`rounded-lg border px-3 py-3 ${
+                  isNew ? 'border-red-400/30 bg-red-500/5' : 'border-pit-border bg-pit-bg/40'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${feedbackTypeClass(item.type)}`}>
+                        {item.type}
+                      </span>
+                      {isNew ? (
+                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                          New
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+                          <CheckCircle2 size={11} />
+                          Looked at
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-white">{item.message}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${
+                      isNew
+                        ? 'border-red-300/30 text-red-200 hover:bg-red-500/10'
+                        : 'border-pit-border text-pit-muted hover:border-pit-muted hover:text-white'
+                    }`}
+                    disabled={busy}
+                    onClick={() => onStatusChange(item.id, isNew ? 'looked_at' : 'new')}
+                  >
+                    {isNew ? 'Mark looked at' : 'Reopen'}
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-pit-muted">
+                  <span>{item.displayname || 'Unknown user'}</span>
+                  <span>{formatEmail(item.emailaddress)}</span>
+                  <span>{formatDateTime(item.createdat)}</span>
+                  {item.pageurl && (
+                    <a href={item.pageurl} target="_blank" rel="noreferrer" className="text-pit-teal hover:text-white">
+                      {compactUrl(item.pageurl)}
+                    </a>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -434,6 +564,32 @@ function numberValue(value: unknown) {
 
 function formatEmail(value: string | null | undefined) {
   return value || 'Email encrypted';
+}
+
+function feedbackTypeClass(type: string) {
+  if (type === 'idea') return 'bg-pit-teal/15 text-pit-teal';
+  if (type === 'question') return 'bg-yellow-300/15 text-yellow-200';
+  return 'bg-red-400/15 text-red-300';
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function compactUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return value;
+  }
 }
 
 function nowInAppTimezone() {

@@ -26,6 +26,9 @@ export interface Group {
   approvalneeded: boolean;
   defaulttrackingmode?: 'standard' | 'player';
   tvseatingwelcomemessage?: string | null;
+  speechfiveminutemessage?: string | null;
+  speechoneminutemessage?: string | null;
+  speechlevelupmessage?: string | null;
   active: boolean;
   createdat: string;
   membercount?: number;
@@ -71,6 +74,9 @@ export interface Tournament {
   tvdisplaymode?: 'timer' | 'seating';
   seatingmaxpertable?: number;
   tvseatingwelcomemessage?: string | null;
+  speechfiveminutemessage?: string | null;
+  speechoneminutemessage?: string | null;
+  speechlevelupmessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   playercount?: number;

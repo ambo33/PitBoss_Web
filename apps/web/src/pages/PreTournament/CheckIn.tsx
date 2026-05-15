@@ -302,6 +302,8 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onAddon={() => addonMutation.mutate(player.userid)}
             onRemoveRebuy={() => removeRebuyMutation.mutate(player.userid)}
             onRemoveAddon={() => removeAddonMutation.mutate(player.userid)}
+            onKnockout={() => knockMutation.mutate({ uid: player.userid, placed: Math.max(activePlayers, 1) })}
+            onRestore={() => knockMutation.mutate({ uid: player.userid, placed: null })}
             onSelect={() => setSelected(player)}
             tournament={tournament}
             canUseClubFeatures={canUseClubFeatures}
@@ -315,6 +317,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               || removeAddonMutation.isPending
               || removeGenericRebuyMutation.isPending
               || removeGenericAddonMutation.isPending
+              || knockMutation.isPending
             }
           />
         ))}
@@ -387,9 +390,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
       {selected && isOwner && (
         <PlayerModal
           player={selected}
-          activeCount={activePlayers}
-          onKnock={(knockPlaced) => knockMutation.mutate({ uid: selected.userid, placed: knockPlaced })}
-          onClearPlacement={() => knockMutation.mutate({ uid: selected.userid, placed: null })}
           onRemove={() => removeMutation.mutate(selected.userid)}
           onClose={() => setSelected(null)}
         />
@@ -398,7 +398,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onSelect, tournament, canUseClubFeatures, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onSelect, tournament, canUseClubFeatures, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
@@ -406,6 +406,8 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   onAddon: () => void;
   onRemoveRebuy: () => void;
   onRemoveAddon: () => void;
+  onKnockout: () => void;
+  onRestore: () => void;
   onSelect: () => void;
   tournament: Tournament;
   canUseClubFeatures: boolean;
@@ -451,7 +453,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
         </div>
       </div>
       {isOwner && (
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           {canUseClubFeatures && tournament.rebuyprice > 0 && player.checkedin && player.placed == null && (
             <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onRebuy} disabled={isBusy}>Rebuy</button>
           )}
@@ -464,8 +466,22 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             disabled={isBusy}
             className={`btn px-3 py-1 text-xs ${player.checkedin ? 'border border-pit-teal bg-pit-teal/20 text-pit-teal' : 'btn-ghost'}`}
           >
-            {player.checkedin ? 'In' : 'Check In'}
+              {player.checkedin ? 'In' : 'Check In'}
           </button>
+          {player.placed == null ? (
+            <button
+              type="button"
+              className="btn-danger px-2 py-1 text-xs"
+              onClick={onKnockout}
+              disabled={isBusy || !player.checkedin}
+            >
+              Knockout
+            </button>
+          ) : (
+            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onRestore} disabled={isBusy}>
+              Restore to field
+            </button>
+          )}
           <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onSelect}>...</button>
         </div>
       )}
@@ -473,32 +489,18 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   );
 }
 
-function PlayerModal({ player, activeCount, onKnock, onClearPlacement, onRemove, onClose }: {
+function PlayerModal({ player, onRemove, onClose }: {
   player: TournamentPlayer;
-  activeCount: number;
-  onKnock: (placed: number) => void;
-  onClearPlacement: () => void;
   onRemove: () => void;
   onClose: () => void;
 }) {
-  const [knockPlace, setKnockPlace] = useState(String(player.placed ?? Math.max(activeCount, 1)));
-
   return (
     <Modal title={player.displayname ?? player.emailaddress ?? 'Guest Player'} open onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className="mb-1 block text-xs text-pit-text">Finish place</label>
-            <input className="input" type="number" min="1" value={knockPlace} onChange={(e) => setKnockPlace(e.target.value)} />
-          </div>
-          <button className="btn-danger" onClick={() => onKnock(Number(knockPlace))}>
-            {player.placed == null ? 'Knock Out' : 'Update Place'}
-          </button>
-        </div>
         {player.placed != null && (
-          <button className="btn-ghost w-full" onClick={onClearPlacement}>
-            Restore To Field
-          </button>
+          <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+            Finished in {ordinal(player.placed)} place.
+          </p>
         )}
         <button className="btn-ghost w-full border-red-800 text-red-400" onClick={onRemove}>
           Remove from tournament
@@ -534,4 +536,9 @@ function toNumber(value: unknown): number {
 
 function formatMoney(value: number): string {
   return `$${toNumber(value).toFixed(2)}`;
+}
+
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+  return `${n}${suffix}`;
 }

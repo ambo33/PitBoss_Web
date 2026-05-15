@@ -30,6 +30,7 @@ const sections = [
     title: '4. Account and Content Rules',
     body: [
       'You agree to provide accurate account information and to keep your login credentials secure. You are responsible for activity that occurs under your account.',
+      'PokerPlanner protects account credentials and email addresses using secure hashing and encryption practices. Passwords are stored as salted password hashes and are not stored in plaintext. Email addresses are hashed for lookup and encrypted at rest for account display and email delivery, so account emails are not intentionally stored as open text in the primary account record.',
       'You may not upload, share, or create content that is unlawful, harassing, abusive, deceptive, infringing, obscene, or otherwise harmful. Uploaded avatars, audio clips, names, notes, and group content must be yours to use and appropriate for a poker group.',
     ],
   },

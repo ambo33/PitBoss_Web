@@ -7,6 +7,11 @@ import { api, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
+import {
+  DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
+  DEFAULT_LEVEL_UP_ANNOUNCEMENT,
+  DEFAULT_ONE_MINUTE_ANNOUNCEMENT,
+} from '../../utils/timerAudio';
 
 export default function GroupsPanel() {
   const qc = useQueryClient();
@@ -191,6 +196,39 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
   );
 }
 
+function AnnouncementField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wide text-pit-muted">{label}</span>
+      <textarea
+        className="input min-h-20 text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        maxLength={240}
+      />
+    </label>
+  );
+}
+
+function previewAnnouncement(template: string) {
+  return template
+    .replace(/\{BlindLevel\}/g, '4')
+    .replace(/\{SB\}/g, '200')
+    .replace(/\{BB\}/g, '400')
+    .replace(/\{Ante\}/g, '50');
+}
+
 type DetailTab = 'posts' | 'members' | 'tournaments' | 'structures';
 
 function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }) {
@@ -204,6 +242,9 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [inviteNote, setInviteNote] = useState('');
   const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
   const [tvSeatingMessage, setTvSeatingMessage] = useState(group.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
+  const [speechFiveMinuteMessage, setSpeechFiveMinuteMessage] = useState(group.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
+  const [speechOneMinuteMessage, setSpeechOneMinuteMessage] = useState(group.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
+  const [speechLevelUpMessage, setSpeechLevelUpMessage] = useState(group.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
   const [postType, setPostType] = useState<'message' | 'poll'>('message');
   const [postMessage, setPostMessage] = useState('');
   const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
@@ -254,7 +295,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'tournaments'] }),
   });
   const updateGroupMutation = useMutation({
-    mutationFn: (payload: { invitecode?: string; defaulttrackingmode?: 'standard' | 'player'; tvseatingwelcomemessage?: string }) => api.updateGroup(group.groupid, payload),
+    mutationFn: (payload: {
+      invitecode?: string;
+      defaulttrackingmode?: 'standard' | 'player';
+      tvseatingwelcomemessage?: string;
+      speechfiveminutemessage?: string;
+      speechoneminutemessage?: string;
+      speechlevelupmessage?: string;
+    }) => api.updateGroup(group.groupid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
@@ -312,7 +360,16 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
     setTvSeatingMessage(effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
-  }, [effectiveGroup.defaulttrackingmode, effectiveGroup.tvseatingwelcomemessage]);
+    setSpeechFiveMinuteMessage(effectiveGroup.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
+    setSpeechOneMinuteMessage(effectiveGroup.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
+    setSpeechLevelUpMessage(effectiveGroup.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
+  }, [
+    effectiveGroup.defaulttrackingmode,
+    effectiveGroup.tvseatingwelcomemessage,
+    effectiveGroup.speechfiveminutemessage,
+    effectiveGroup.speechoneminutemessage,
+    effectiveGroup.speechlevelupmessage,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -452,6 +509,48 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                   ? 'Shown on the TV seating view before seats are assigned.'
                   : 'Host accounts use the default TV seating message. Custom wording unlocks with Club or Pro.'}
               </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Speech announcements</p>
+                <p className="mt-1 text-xs leading-5 text-pit-muted">
+                  Use <code className="text-pit-teal">{'{BlindLevel}'}</code>, <code className="text-pit-teal">{'{SB}'}</code>, <code className="text-pit-teal">{'{BB}'}</code>, and <code className="text-pit-teal">{'{Ante}'}</code> for live blind values.
+                </p>
+              </div>
+              <AnnouncementField
+                label="5 minute warning"
+                value={speechFiveMinuteMessage}
+                onChange={setSpeechFiveMinuteMessage}
+                placeholder={DEFAULT_FIVE_MINUTE_ANNOUNCEMENT}
+              />
+              <AnnouncementField
+                label="1 minute warning"
+                value={speechOneMinuteMessage}
+                onChange={setSpeechOneMinuteMessage}
+                placeholder={DEFAULT_ONE_MINUTE_ANNOUNCEMENT}
+              />
+              <AnnouncementField
+                label="Level up"
+                value={speechLevelUpMessage}
+                onChange={setSpeechLevelUpMessage}
+                placeholder={DEFAULT_LEVEL_UP_ANNOUNCEMENT}
+              />
+              <div className="rounded-lg border border-pit-border bg-pit-surface/50 px-3 py-2 text-xs leading-5 text-pit-text">
+                Preview: {previewAnnouncement(speechLevelUpMessage || DEFAULT_LEVEL_UP_ANNOUNCEMENT)}
+              </div>
+              <button
+                className="btn-primary"
+                onClick={() => updateGroupMutation.mutate({
+                  speechfiveminutemessage: speechFiveMinuteMessage,
+                  speechoneminutemessage: speechOneMinuteMessage,
+                  speechlevelupmessage: speechLevelUpMessage,
+                })}
+                disabled={updateGroupMutation.isPending}
+              >
+                <Save size={14} />
+                {updateGroupMutation.isPending ? 'Saving...' : 'Save Announcements'}
+              </button>
             </div>
 
             <div className="space-y-3">

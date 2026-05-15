@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Volume2 } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
-import { announceFiveMinuteWarning, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -21,6 +21,19 @@ function guestStorageKey(tournamentId: string) {
   return `pb_guest_lobby_${tournamentId}`;
 }
 
+function getStateBlind(state: TimerState) {
+  return state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel)) ?? state.blinds[0];
+}
+
+function buildAnnouncementTokens(state: TimerState, blind?: BlindLevel) {
+  return {
+    BlindLevel: Number(state.currentlevel),
+    SB: Number(blind?.smallblind ?? 0),
+    BB: Number(blind?.bigblind ?? 0),
+    Ante: Number(blind?.ante ?? 0),
+  };
+}
+
 export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | 'checkin' }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -32,6 +45,11 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     level: null,
   });
   const lastRunningRef = useRef<boolean | null>(null);
+  const announcementTemplatesRef = useRef({
+    fiveMinute: undefined as string | null | undefined,
+    oneMinute: undefined as string | null | undefined,
+    levelUp: undefined as string | null | undefined,
+  });
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const [timer, setTimer] = useState<TimerState | null>(null);
@@ -54,6 +72,14 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const activePlayers = data?.activePlayers ?? [];
   const checkInMode = mode === 'checkin';
   const [knockedOutByUserId, setKnockedOutByUserId] = useState('');
+
+  useEffect(() => {
+    announcementTemplatesRef.current = {
+      fiveMinute: tournament?.speechfiveminutemessage,
+      oneMinute: tournament?.speechoneminutemessage,
+      levelUp: tournament?.speechlevelupmessage,
+    };
+  }, [tournament?.speechfiveminutemessage, tournament?.speechlevelupmessage, tournament?.speechoneminutemessage]);
 
   useEffect(() => {
     if (checkInMode && id && entry?.checkedin) {
@@ -176,6 +202,12 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     }
 
     if (warningState.level !== state.currentlevel) {
+      if (!initial && warningState.level != null) {
+        const blind = getStateBlind(state);
+        if (blind) {
+          announceLevel(state.currentlevel, blind.smallblind, blind.bigblind, announcementTemplatesRef.current.levelUp, blind.ante);
+        }
+      }
       warningState.level = state.currentlevel;
       warningState.fiveMin = false;
       warningState.oneMin = false;
@@ -191,11 +223,13 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
 
     if (state.remainingsecs <= 300 && state.remainingsecs > 60 && !warningState.fiveMin) {
       warningState.fiveMin = true;
-      announceFiveMinuteWarning();
+      const blind = getStateBlind(state);
+      announceFiveMinuteWarning(announcementTemplatesRef.current.fiveMinute, buildAnnouncementTokens(state, blind));
     }
     if (state.remainingsecs <= 60 && state.remainingsecs > 0 && !warningState.oneMin) {
       warningState.oneMin = true;
-      announceOneMinuteWarning();
+      const blind = getStateBlind(state);
+      announceOneMinuteWarning(announcementTemplatesRef.current.oneMinute, buildAnnouncementTokens(state, blind));
     }
   }
 

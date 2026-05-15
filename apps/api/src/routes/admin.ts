@@ -15,6 +15,74 @@ adminRouter.use(async (req: Request, res: Response, next) => {
   next();
 });
 
+adminRouter.get('/feedback', async (_req: Request, res: Response) => {
+  const rows = await query<{
+    id: string;
+    userid: string | null;
+    emailaddress: string | null;
+    emailencrypted: string | null;
+    displayname: string | null;
+    type: string;
+    message: string;
+    pageurl: string | null;
+    useragent: string | null;
+    status: string;
+    createdat: string;
+  }>(
+    `SELECT f.id, f.userid, u.emailaddress, u.emailencrypted,
+            COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
+            f.type, f.message, f.pageurl, f.useragent, f.status, f.createdat
+     FROM feedback f
+     LEFT JOIN users u ON u.guid = f.userid
+     LEFT JOIN usermetadata um ON um.userid = u.guid
+     ORDER BY CASE WHEN f.status = 'new' THEN 0 ELSE 1 END, f.createdat DESC
+     LIMIT 100`
+  );
+  const countRows = await query<{ newcount: string | number }>(
+    `SELECT count(*) AS newcount
+     FROM feedback
+     WHERE status = 'new'`
+  );
+
+  res.json({
+    newcount: Number(countRows[0]?.newcount ?? 0),
+    feedback: rows.map((row) => {
+      const emailaddress = publicEmail(row.emailencrypted, row.emailaddress);
+      return {
+        ...row,
+        emailaddress,
+        displayname: row.displayname === row.emailaddress ? emailaddress : row.displayname,
+      };
+    }),
+  });
+});
+
+adminRouter.get('/feedback/summary', async (_req: Request, res: Response) => {
+  const rows = await query<{ newcount: string | number }>(
+    `SELECT count(*) AS newcount
+     FROM feedback
+     WHERE status = 'new'`
+  );
+  res.json({ newcount: Number(rows[0]?.newcount ?? 0) });
+});
+
+adminRouter.put('/feedback/:id', async (req: Request, res: Response) => {
+  const { status } = req.body as { status?: string };
+  const nextStatus = status === 'new' ? 'new' : 'looked_at';
+  const rows = await query<{ id: string; status: string }>(
+    `UPDATE feedback
+     SET status = $2
+     WHERE id = $1
+     RETURNING id, status`,
+    [req.params.id, nextStatus]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: 'Feedback not found' });
+    return;
+  }
+  res.json({ success: true, id: rows[0].id, status: rows[0].status });
+});
+
 adminRouter.get('/users', async (req: Request, res: Response) => {
   const emailSearch = typeof req.query.email === 'string' ? normalizeEmail(req.query.email) : '';
   const emailHash = emailSearch ? hashEmail(emailSearch) : null;

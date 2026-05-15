@@ -240,8 +240,9 @@ function ProfilePanel() {
     ?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? '?';
 
   function handleLogout() {
+    queryClient.clear();
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   }
 
   async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {

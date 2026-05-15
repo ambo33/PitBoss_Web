@@ -58,7 +58,7 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string }) =>
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string }) =>
     put(`/groups/${id}`, data),
   getGroupBlindStructures: (groupId: string) =>
     get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
@@ -159,6 +159,10 @@ export const api = {
   getAdminUser: (id: string) => get<AdminUserDetail>(`/admin/users/${id}`),
   updateAdminUser: (id: string, data: { tierid?: number; issuperadmin?: boolean }) =>
     put<{ success: boolean; account: AuthProfile }>(`/admin/users/${id}`, data),
+  getAdminFeedback: () => get<AdminFeedbackResponse>('/admin/feedback'),
+  getAdminFeedbackSummary: () => get<{ newcount: number }>('/admin/feedback/summary'),
+  updateAdminFeedback: (id: string, data: { status: 'new' | 'looked_at' }) =>
+    put<{ success: boolean; id: string; status: string }>(`/admin/feedback/${id}`, data),
 };
 
 // Shared type re-exports so pages don't need separate imports
@@ -167,6 +171,9 @@ export interface Group {
   approvalneeded: boolean; active: boolean; createdat: string;
   defaulttrackingmode?: TrackingMode;
   tvseatingwelcomemessage?: string | null;
+  speechfiveminutemessage?: string | null;
+  speechoneminutemessage?: string | null;
+  speechlevelupmessage?: string | null;
   membercount?: number; isadmin?: boolean; approved?: boolean;
 }
 export type TrackingMode = 'standard' | 'player';
@@ -193,6 +200,9 @@ export interface Tournament {
   tvdisplaymode?: 'timer' | 'seating';
   seatingmaxpertable?: number;
   tvseatingwelcomemessage?: string | null;
+  speechfiveminutemessage?: string | null;
+  speechoneminutemessage?: string | null;
+  speechlevelupmessage?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   isowner?: boolean;
@@ -311,4 +321,22 @@ export interface AdminUserDetail {
   account: AuthProfile;
   groups: Group[];
   tournaments: Tournament[];
+}
+
+export interface AdminFeedback {
+  id: string;
+  userid: string | null;
+  emailaddress: string | null;
+  displayname?: string | null;
+  type: 'issue' | 'idea' | 'question' | string;
+  message: string;
+  pageurl: string | null;
+  useragent: string | null;
+  status: 'new' | 'looked_at' | string;
+  createdat: string;
+}
+
+export interface AdminFeedbackResponse {
+  newcount: number;
+  feedback: AdminFeedback[];
 }

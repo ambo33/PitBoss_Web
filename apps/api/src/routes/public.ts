@@ -40,6 +40,9 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
+            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -97,7 +100,10 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
-            t.createdate AS createdat, t.groupid, g.name AS groupname
+            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,

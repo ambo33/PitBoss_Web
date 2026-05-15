@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
@@ -121,6 +122,7 @@ function LoginForm({
   onSuccess: () => void;
 }) {
   const setAuth = useAuthStore((s) => s.setAuth);
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -133,6 +135,7 @@ function LoginForm({
     try {
       const { token } = await api.login({ email, password });
       localStorage.setItem('pb_token', token);
+      queryClient.clear();
       const user = await api.me();
       setAuth(token, user);
       onSuccess();
@@ -240,6 +243,7 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
 
 function VerifyForm({ email, inviteCode, onSuccess }: { email: string; inviteCode: string; onSuccess: () => void }) {
   const setAuth = useAuthStore((s) => s.setAuth);
+  const queryClient = useQueryClient();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -251,6 +255,7 @@ function VerifyForm({ email, inviteCode, onSuccess }: { email: string; inviteCod
     try {
       const { token } = await api.verifyEmail({ email, pin });
       localStorage.setItem('pb_token', token);
+      queryClient.clear();
       const user = await api.me();
       setAuth(token, user);
       onSuccess();

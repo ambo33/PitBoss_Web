@@ -34,6 +34,11 @@ function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
     .sort((a, b) => a.level - b.level);
 }
 
+function normalizeAnnouncementTemplate(value: string | null | undefined, fallback: string): string | null {
+  if (value == null) return null;
+  return value.trim().slice(0, 240) || fallback;
+}
+
 async function requireApprovedMember(groupId: string, userId: string): Promise<boolean> {
   return Boolean(await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE`,
@@ -63,6 +68,9 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
+            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             gm.admin AS isadmin, gm.approved,
             (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
      FROM groups g
@@ -137,6 +145,9 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
+            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             gm.admin AS isadmin, gm.approved FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2
      WHERE g.groupid = $1`,
@@ -160,12 +171,15 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response) => {
-  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage } = req.body as {
+  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage } = req.body as {
     name?: string;
     approvalneeded?: boolean;
     invitecode?: string;
     defaulttrackingmode?: 'standard' | 'player';
     tvseatingwelcomemessage?: string;
+    speechfiveminutemessage?: string;
+    speechoneminutemessage?: string;
+    speechlevelupmessage?: string;
   };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -190,6 +204,18 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   const normalizedTvMessage = tvseatingwelcomemessage == null
     ? null
     : tvseatingwelcomemessage.trim().slice(0, 180) || 'Welcome! Please see host to check-in!';
+  const normalizedFiveMinuteMessage = normalizeAnnouncementTemplate(
+    speechfiveminutemessage,
+    'There are 5 minutes remaining in the current blind.'
+  );
+  const normalizedOneMinuteMessage = normalizeAnnouncementTemplate(
+    speechoneminutemessage,
+    'One minute remaining in the current blind.'
+  );
+  const normalizedLevelUpMessage = normalizeAnnouncementTemplate(
+    speechlevelupmessage,
+    'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.'
+  );
 
   const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
   if (normalizedInviteCode != null) {
@@ -206,9 +232,22 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
            approvalneeded = COALESCE($2, approvalneeded),
            invitecode = COALESCE($3, invitecode),
            defaulttrackingmode = COALESCE($4, defaulttrackingmode),
-           tvseatingwelcomemessage = COALESCE($5, tvseatingwelcomemessage)
-       WHERE groupid = $6`,
-      [name ?? null, approvalneeded ?? null, normalizedInviteCode, normalizedTrackingMode, normalizedTvMessage, req.params.id]
+           tvseatingwelcomemessage = COALESCE($5, tvseatingwelcomemessage),
+           speechfiveminutemessage = COALESCE($6, speechfiveminutemessage),
+           speechoneminutemessage = COALESCE($7, speechoneminutemessage),
+           speechlevelupmessage = COALESCE($8, speechlevelupmessage)
+       WHERE groupid = $9`,
+      [
+        name ?? null,
+        approvalneeded ?? null,
+        normalizedInviteCode,
+        normalizedTrackingMode,
+        normalizedTvMessage,
+        normalizedFiveMinuteMessage,
+        normalizedOneMinuteMessage,
+        normalizedLevelUpMessage,
+        req.params.id,
+      ]
     );
     res.json({ success: true, invitecode: normalizedInviteCode ?? undefined });
   } catch (err) {
