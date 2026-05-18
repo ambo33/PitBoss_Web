@@ -154,6 +154,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS speechlevelupmessage STRING(240) DEFAULT 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.'
     `);
     await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS aiannouncerenabled BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS aiannouncerpreset STRING(30) DEFAULT 'professional'
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS aiannouncercustomprompt STRING(500)
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS groupblindstructures (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,

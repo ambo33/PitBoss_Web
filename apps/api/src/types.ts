@@ -29,6 +29,9 @@ export interface Group {
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
+  aiannouncerenabled?: boolean;
+  aiannouncerpreset?: 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+  aiannouncercustomprompt?: string | null;
   active: boolean;
   createdat: string;
   membercount?: number;
@@ -77,6 +80,9 @@ export interface Tournament {
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
+  aiannouncerenabled?: boolean;
+  aiannouncerpreset?: 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+  aiannouncercustomprompt?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   playercount?: number;

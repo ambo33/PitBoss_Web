@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playKachingSound, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 
 interface TimerTick {
   remainingsecs: number;
@@ -73,6 +73,7 @@ export default function RunTournament({
     level: null,
   });
   const lastRunningRef = useRef<boolean | null>(null);
+  const levelStartedAtRef = useRef<string | null>(null);
   const announcementTemplatesRef = useRef({
     fiveMinute: tournament.speechfiveminutemessage,
     oneMinute: tournament.speechoneminutemessage,
@@ -379,16 +380,11 @@ export default function RunTournament({
         const announcedBlind = state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel));
         if (announcedBlind) {
           playLevelChangeTone();
-          announceLevel(
-            state.currentlevel,
-            announcedBlind.smallblind,
-            announcedBlind.bigblind,
-            announcementTemplatesRef.current.levelUp,
-            announcedBlind.ante
-          );
+          announceAiOrTemplate('level_up', state, announcedBlind, warningState.level, levelStartedAtRef.current);
         }
       }
       warningState.level = state.currentlevel;
+      levelStartedAtRef.current = new Date().toISOString();
       warningState.fiveMin = false;
       warningState.oneMin = false;
     }
@@ -403,13 +399,64 @@ export default function RunTournament({
     if (state.remainingsecs <= 300 && state.remainingsecs > 60 && !warningState.fiveMin) {
       warningState.fiveMin = true;
       const blind = getStateBlind(state);
-      announceFiveMinuteWarning(announcementTemplatesRef.current.fiveMinute, buildAnnouncementTokens(state, blind));
+      announceAiOrTemplate('five_minute_warning', state, blind, warningState.level, levelStartedAtRef.current);
     }
     if (state.remainingsecs <= 60 && state.remainingsecs > 0 && !warningState.oneMin) {
       warningState.oneMin = true;
       const blind = getStateBlind(state);
-      announceOneMinuteWarning(announcementTemplatesRef.current.oneMinute, buildAnnouncementTokens(state, blind));
+      announceAiOrTemplate('one_minute_warning', state, blind, warningState.level, levelStartedAtRef.current);
     }
+  }
+
+  function announceAiOrTemplate(
+    eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning',
+    state: TimerState,
+    blind: BlindLevel | undefined,
+    previousLevel: number | null,
+    previousLevelStartedAt: string | null
+  ) {
+    const fallback = () => {
+      if (eventtype === 'level_up') {
+        announceLevel(
+          state.currentlevel,
+          Number(blind?.smallblind ?? 0),
+          Number(blind?.bigblind ?? 0),
+          announcementTemplatesRef.current.levelUp,
+          Number(blind?.ante ?? 0)
+        );
+      } else if (eventtype === 'five_minute_warning') {
+        announceFiveMinuteWarning(announcementTemplatesRef.current.fiveMinute, buildAnnouncementTokens(state, blind));
+      } else {
+        announceOneMinuteWarning(announcementTemplatesRef.current.oneMinute, buildAnnouncementTokens(state, blind));
+      }
+    };
+
+    if (!tournament.aiannouncerenabled || !showAdminControls) {
+      fallback();
+      return;
+    }
+
+    api.generateAnnouncerMoment(tournamentId, {
+      eventtype,
+      currentlevel: Number(state.currentlevel),
+      previouslevel: previousLevel,
+      previouslevelstartedat: previousLevelStartedAt,
+      smallblind: Number(blind?.smallblind ?? 0),
+      bigblind: Number(blind?.bigblind ?? 0),
+      ante: Number(blind?.ante ?? 0),
+    }).then((result) => {
+      if (result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+      } else if (result.text) {
+        if (eventtype === 'level_up') playLevelChangeTone();
+        window.setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(result.text);
+          window.speechSynthesis.speak(utterance);
+        }, 80);
+      } else {
+        fallback();
+      }
+    }).catch(() => fallback());
   }
 
   const effectiveBlinds = (timerState?.blinds ?? [])

@@ -28,15 +28,47 @@ function HomeRoute() {
   return token ? <MainPage /> : <LandingPage />;
 }
 
+function AppSubdomainRedirect({ mode }: { mode?: 'register' }) {
+  const location = useLocation();
+  const isPublicDomain = typeof window !== 'undefined'
+    && ['pokerplanner.bet', 'www.pokerplanner.bet'].includes(window.location.hostname);
+
+  if (isPublicDomain) {
+    const target = new URL('https://app.pokerplanner.bet');
+    if (location.pathname === '/app') {
+      target.pathname = '/';
+    } else if (mode === 'register') {
+      target.pathname = '/login';
+      target.search = '?mode=register';
+    } else {
+      target.pathname = location.pathname;
+      target.search = location.search;
+    }
+    target.hash = location.hash;
+    window.location.replace(target.toString());
+    return null;
+  }
+
+  if (mode === 'register') {
+    return <Navigate to="/login?mode=register" replace />;
+  }
+  if (location.pathname === '/app') {
+    return <Navigate to="/" replace />;
+  }
+  return <LoginPage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<AppSubdomainRedirect />} />
+        <Route path="/register" element={<AppSubdomainRedirect mode="register" />} />
+        <Route path="/app" element={<AppSubdomainRedirect />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />
-        <Route path="/reset-password" element={<LoginPage />} />
+        <Route path="/reset-password" element={<AppSubdomainRedirect />} />
         <Route path="/" element={<HomeRoute />} />
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />
         <Route path="/join/:inviteCode" element={<JoinGroupPage />} />

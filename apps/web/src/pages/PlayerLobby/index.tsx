@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Volume2 } from 'lucide-react';
+import { Brain, Volume2 } from 'lucide-react';
 import { api, BlindLevel } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
 import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
@@ -59,6 +59,8 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     return localStorage.getItem(guestStorageKey(id)) ?? '';
   });
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
+  const [handText, setHandText] = useState('');
+  const [handAnalysis, setHandAnalysis] = useState('');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['public-lobby', id, guestUserId, user?.guid],
@@ -147,6 +149,16 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
       setKnockedOutByUserId('');
     },
+  });
+  const handAnalysisMutation = useMutation({
+    mutationFn: () => api.analyzeHand(id!, {
+      hand: handText,
+      blindlevel: timer?.currentlevel,
+      smallblind: currentBlind?.smallblind,
+      bigblind: currentBlind?.bigblind,
+      ante: currentBlind?.ante,
+    }),
+    onSuccess: (result) => setHandAnalysis(result.analysis),
   });
 
   useEffect(() => {
@@ -423,6 +435,38 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
             ))}
           </div>
         </section>
+
+        {!checkInMode && (
+          <section className="card space-y-3 p-3">
+            <div className="flex items-center gap-2">
+              <Brain size={16} className="text-pit-teal" />
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Analyze Hand</h2>
+            </div>
+            <textarea
+              className="input min-h-28"
+              value={handText}
+              onChange={(event) => setHandText(event.target.value)}
+              placeholder="Describe the prior hand: positions, blinds, stacks, cards if known, bet sizes, action, and what decision felt close."
+            />
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={handAnalysisMutation.isPending || !handText.trim()}
+              onClick={() => handAnalysisMutation.mutate()}
+            >
+              <Brain size={14} />
+              {handAnalysisMutation.isPending ? 'Analyzing...' : 'Analyze Hand'}
+            </button>
+            {handAnalysisMutation.error && (
+              <p className="text-sm text-red-400">{handAnalysisMutation.error.message}</p>
+            )}
+            {handAnalysis && (
+              <div className="rounded-xl border border-pit-teal/20 bg-pit-teal/10 px-3 py-3 text-sm leading-6 text-pit-text">
+                {handAnalysis}
+              </div>
+            )}
+          </section>
+        )}
 
         {checkInMode && !entry ? (
           <div className="grid gap-4">

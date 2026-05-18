@@ -333,6 +333,17 @@ export function playCheckinGreetingClip(audioDataUrl: string, fallbackName?: str
   }
 }
 
+export function playGeneratedSpeech(audioBase64: string, mimeType = 'audio/mpeg', fallback?: () => void): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+    audio.volume = 0.95;
+    void audio.play().catch(() => fallback?.());
+  } catch {
+    fallback?.();
+  }
+}
+
 export function playKachingSound(): void {
   if (typeof window === 'undefined') return;
   try {

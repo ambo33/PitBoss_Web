@@ -39,6 +39,12 @@ function normalizeAnnouncementTemplate(value: string | null | undefined, fallbac
   return value.trim().slice(0, 240) || fallback;
 }
 
+function normalizeAnnouncerPreset(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  if (['professional', 'wwe', 'minimal', 'football', 'roaster', 'wsop'].includes(value)) return value;
+  return 'professional';
+}
+
 async function requireApprovedMember(groupId: string, userId: string): Promise<boolean> {
   return Boolean(await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE`,
@@ -71,6 +77,9 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
+            COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
+            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            g.aiannouncercustomprompt,
             gm.admin AS isadmin, gm.approved,
             (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
      FROM groups g
@@ -148,6 +157,9 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
+            COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
+            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            g.aiannouncercustomprompt,
             gm.admin AS isadmin, gm.approved FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2
      WHERE g.groupid = $1`,
@@ -171,7 +183,7 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response) => {
-  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage } = req.body as {
+  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt } = req.body as {
     name?: string;
     approvalneeded?: boolean;
     invitecode?: string;
@@ -180,6 +192,9 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     speechfiveminutemessage?: string;
     speechoneminutemessage?: string;
     speechlevelupmessage?: string;
+    aiannouncerenabled?: boolean;
+    aiannouncerpreset?: string;
+    aiannouncercustomprompt?: string;
   };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -216,6 +231,8 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     speechlevelupmessage,
     'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.'
   );
+  const normalizedAiPreset = normalizeAnnouncerPreset(aiannouncerpreset);
+  const normalizedAiPrompt = aiannouncercustomprompt == null ? null : aiannouncercustomprompt.trim().slice(0, 500);
 
   const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
   if (normalizedInviteCode != null) {
@@ -235,8 +252,11 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
            tvseatingwelcomemessage = COALESCE($5, tvseatingwelcomemessage),
            speechfiveminutemessage = COALESCE($6, speechfiveminutemessage),
            speechoneminutemessage = COALESCE($7, speechoneminutemessage),
-           speechlevelupmessage = COALESCE($8, speechlevelupmessage)
-       WHERE groupid = $9`,
+           speechlevelupmessage = COALESCE($8, speechlevelupmessage),
+           aiannouncerenabled = COALESCE($9, aiannouncerenabled),
+           aiannouncerpreset = COALESCE($10, aiannouncerpreset),
+           aiannouncercustomprompt = COALESCE($11, aiannouncercustomprompt)
+       WHERE groupid = $12`,
       [
         name ?? null,
         approvalneeded ?? null,
@@ -246,6 +266,9 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
         normalizedFiveMinuteMessage,
         normalizedOneMinuteMessage,
         normalizedLevelUpMessage,
+        aiannouncerenabled ?? null,
+        normalizedAiPreset,
+        normalizedAiPrompt,
         req.params.id,
       ]
     );

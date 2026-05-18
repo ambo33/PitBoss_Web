@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, Group, GroupMember, Tournament } from '../../api/client';
+import { api, AnnouncerPreset, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
@@ -229,6 +229,15 @@ function previewAnnouncement(template: string) {
     .replace(/\{Ante\}/g, '50');
 }
 
+const ANNOUNCER_PRESETS: Array<{ value: AnnouncerPreset; label: string }> = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'wwe', label: 'WWE Style' },
+  { value: 'minimal', label: 'Minimalistic' },
+  { value: 'football', label: 'Football Announcer' },
+  { value: 'roaster', label: 'Roaster' },
+  { value: 'wsop', label: 'WSOP Director' },
+];
+
 type DetailTab = 'posts' | 'members' | 'tournaments' | 'structures';
 
 function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }) {
@@ -245,6 +254,9 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [speechFiveMinuteMessage, setSpeechFiveMinuteMessage] = useState(group.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
   const [speechOneMinuteMessage, setSpeechOneMinuteMessage] = useState(group.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
   const [speechLevelUpMessage, setSpeechLevelUpMessage] = useState(group.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
+  const [aiAnnouncerEnabled, setAiAnnouncerEnabled] = useState(Boolean(group.aiannouncerenabled));
+  const [aiAnnouncerPreset, setAiAnnouncerPreset] = useState<AnnouncerPreset>(group.aiannouncerpreset ?? 'professional');
+  const [aiAnnouncerPrompt, setAiAnnouncerPrompt] = useState(group.aiannouncercustomprompt ?? '');
   const [postType, setPostType] = useState<'message' | 'poll'>('message');
   const [postMessage, setPostMessage] = useState('');
   const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
@@ -302,6 +314,9 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       speechfiveminutemessage?: string;
       speechoneminutemessage?: string;
       speechlevelupmessage?: string;
+      aiannouncerenabled?: boolean;
+      aiannouncerpreset?: AnnouncerPreset;
+      aiannouncercustomprompt?: string;
     }) => api.updateGroup(group.groupid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
@@ -363,12 +378,18 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     setSpeechFiveMinuteMessage(effectiveGroup.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
     setSpeechOneMinuteMessage(effectiveGroup.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
     setSpeechLevelUpMessage(effectiveGroup.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
+    setAiAnnouncerEnabled(Boolean(effectiveGroup.aiannouncerenabled));
+    setAiAnnouncerPreset(effectiveGroup.aiannouncerpreset ?? 'professional');
+    setAiAnnouncerPrompt(effectiveGroup.aiannouncercustomprompt ?? '');
   }, [
     effectiveGroup.defaulttrackingmode,
     effectiveGroup.tvseatingwelcomemessage,
     effectiveGroup.speechfiveminutemessage,
     effectiveGroup.speechoneminutemessage,
     effectiveGroup.speechlevelupmessage,
+    effectiveGroup.aiannouncerenabled,
+    effectiveGroup.aiannouncerpreset,
+    effectiveGroup.aiannouncercustomprompt,
   ]);
 
   return (
@@ -550,6 +571,64 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               >
                 <Save size={14} />
                 {updateGroupMutation.isPending ? 'Saving...' : 'Save Announcements'}
+              </button>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-pit-teal/20 bg-pit-teal/5 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">AI announcer lab</p>
+                  <p className="mt-1 text-xs leading-5 text-pit-muted">
+                    Experimental. With an API key, level changes can generate smart announcer audio using tournament context.
+                  </p>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
+                  <span>{aiAnnouncerEnabled ? 'Enabled' : 'Disabled'}</span>
+                  <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${aiAnnouncerEnabled ? 'bg-pit-teal' : 'bg-pit-border'}`}>
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={aiAnnouncerEnabled}
+                      onChange={(event) => setAiAnnouncerEnabled(event.target.checked)}
+                    />
+                    <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${aiAnnouncerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </span>
+                </label>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {ANNOUNCER_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    className={`rounded-lg border px-3 py-2 text-left text-xs font-semibold ${
+                      aiAnnouncerPreset === preset.value
+                        ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
+                        : 'border-pit-border bg-pit-bg/50 text-pit-text hover:border-pit-muted hover:text-white'
+                    }`}
+                    onClick={() => setAiAnnouncerPreset(preset.value)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className="input min-h-24"
+                value={aiAnnouncerPrompt}
+                onChange={(event) => setAiAnnouncerPrompt(event.target.value)}
+                maxLength={500}
+                placeholder="Optional group flavor. Example: Mention our group as the Thursday Night Crew. Keep it hype, but clean."
+              />
+              <button
+                className="btn-primary"
+                onClick={() => updateGroupMutation.mutate({
+                  aiannouncerenabled: aiAnnouncerEnabled,
+                  aiannouncerpreset: aiAnnouncerPreset,
+                  aiannouncercustomprompt: aiAnnouncerPrompt,
+                })}
+                disabled={updateGroupMutation.isPending}
+              >
+                <Save size={14} />
+                {updateGroupMutation.isPending ? 'Saving...' : 'Save AI Announcer'}
               </button>
             </div>
 

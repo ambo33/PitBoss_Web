@@ -58,7 +58,7 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string }) =>
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string }) =>
     put(`/groups/${id}`, data),
   getGroupBlindStructures: (groupId: string) =>
     get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
@@ -115,6 +115,12 @@ export const api = {
     get<PublicKnockoutResponse>(`/public/tournaments/${id}/knockout${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   publicSelfKnockout: (id: string, data: { guestUserId?: string; knockedOutByUserId?: string }) =>
     post<{ success: boolean; placed: number }>(`/public/tournaments/${id}/knockout/self`, data),
+
+  // AI experiments
+  generateAnnouncerMoment: (id: string, data: AnnouncerMomentRequest) =>
+    post<AnnouncerMomentResponse>(`/ai/tournaments/${id}/announcer`, data),
+  analyzeHand: (id: string, data: HandAnalysisRequest) =>
+    post<HandAnalysisResponse>(`/ai/tournaments/${id}/analyze-hand`, data),
 
   // Players
   getPlayers: (tid: string) => get<TournamentPlayer[]>(`/tournaments/${tid}/players`),
@@ -174,9 +180,13 @@ export interface Group {
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
+  aiannouncerenabled?: boolean;
+  aiannouncerpreset?: AnnouncerPreset;
+  aiannouncercustomprompt?: string | null;
   membercount?: number; isadmin?: boolean; approved?: boolean;
 }
 export type TrackingMode = 'standard' | 'player';
+export type AnnouncerPreset = 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
@@ -203,6 +213,9 @@ export interface Tournament {
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
+  aiannouncerenabled?: boolean;
+  aiannouncerpreset?: AnnouncerPreset;
+  aiannouncercustomprompt?: string | null;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   isowner?: boolean;
@@ -296,6 +309,36 @@ export interface PublicKnockoutResponse {
   tournament: Tournament;
   entry: LobbyEntry | null;
   activePlayers: KnockoutOption[];
+}
+
+export interface AnnouncerMomentRequest {
+  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning';
+  currentlevel: number;
+  previouslevel?: number | null;
+  previouslevelstartedat?: string | null;
+  smallblind?: number;
+  bigblind?: number;
+  ante?: number;
+}
+
+export interface AnnouncerMomentResponse {
+  text: string;
+  audioBase64?: string;
+  mimeType?: string;
+  aiEnabled: boolean;
+}
+
+export interface HandAnalysisRequest {
+  hand: string;
+  blindlevel?: number;
+  smallblind?: number;
+  bigblind?: number;
+  ante?: number;
+}
+
+export interface HandAnalysisResponse {
+  analysis: string;
+  aiEnabled: boolean;
 }
 
 export type AccountTier = 'host' | 'club' | 'pro';

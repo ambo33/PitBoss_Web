@@ -43,6 +43,9 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
+            COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
+            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            g.aiannouncercustomprompt,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -103,7 +106,10 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
             t.createdate AS createdat, t.groupid, g.name AS groupname,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
-            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage
+            COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
+            COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
+            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            g.aiannouncercustomprompt
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
