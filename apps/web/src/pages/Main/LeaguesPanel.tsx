@@ -16,8 +16,9 @@ export default function LeaguesPanel() {
 
   const createMutation = useMutation({
     mutationFn: api.createLeague,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['leagues'] });
+    onSuccess: async (created) => {
+      const freshLeagues = await qc.fetchQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
+      setSelected(freshLeagues.find((league) => league.leagueid === created.leagueid) ?? null);
       setShowCreate(false);
     },
   });
@@ -410,7 +411,7 @@ function CreateLeagueModal({
               bestfinishcount: Number(bestfinishcount) || 7,
             })}
           >
-            {loading ? 'Creating...' : 'Create'}
+            {loading ? 'Creating...' : 'Create League'}
           </button>
         </>
       )}
@@ -428,9 +429,9 @@ function CreateLeagueModal({
             <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value)} />
           </label>
         </div>
-        <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
-          Starts with your proven placement point table by default: {DEFAULT_POINTS_PREVIEW}. You can tune the table next.
-        </div>
+        <p className="text-sm leading-6 text-pit-text">
+          Placement point rules will be configured next. This first step creates the league, invite code, and season scoring basics.
+        </p>
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" checked={approvalneeded} onChange={(event) => setApprovalneeded(event.target.checked)} />
           <span className="text-sm text-pit-text">Require approval to join</span>
