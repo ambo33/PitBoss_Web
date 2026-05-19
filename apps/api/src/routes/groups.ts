@@ -61,7 +61,7 @@ function normalizeAnnouncerPreset(value: string | null | undefined): string | nu
   if (value === 'football' || value === 'wwe') return 'royal_rumble_riley';
   if (value === 'minimal') return 'sunny_stacks';
   if (value === 'roaster') return 'turbo_tony';
-  if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
+  if (value === 'series_director' || value === 'professional') return 'the_pit_boss';
   return 'all_in_alex';
 }
 

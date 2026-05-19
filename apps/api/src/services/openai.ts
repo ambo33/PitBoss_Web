@@ -99,7 +99,7 @@ function sanitizePreset(value: string | null | undefined): AnnouncerPreset {
   if (value === 'football' || value === 'wwe') return 'royal_rumble_riley';
   if (value === 'minimal') return 'sunny_stacks';
   if (value === 'roaster') return 'turbo_tony';
-  if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
+  if (value === 'series_director' || value === 'professional') return 'the_pit_boss';
   return 'all_in_alex';
 }
 
@@ -262,7 +262,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         'Write one short poker tournament announcer line.',
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
-        'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
         `Tournament: ${context.tournamentName}`,
         context.groupName ? `Group: ${context.groupName}` : '',
         `Event: ${context.eventType}`,

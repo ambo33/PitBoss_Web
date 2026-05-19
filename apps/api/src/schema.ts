@@ -463,6 +463,15 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS userid UUID REFERENCES users(guid)`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS name STRING(160) DEFAULT 'League'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS invitecode STRING(12)`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS approvalneeded BOOL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS showupbonuspoints INT DEFAULT 300`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS bestfinishcount INT DEFAULT 7`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pointslookup JSONB DEFAULT '[{"place":"DNF","points":0},{"place":1,"points":671},{"place":2,"points":448},{"place":3,"points":336}]'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leaguemembers (
         leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,

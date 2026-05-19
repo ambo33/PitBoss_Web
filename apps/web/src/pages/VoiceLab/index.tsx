@@ -19,7 +19,7 @@ const styles = [
     brief: 'A classy dealer announcement for starting blinds and a scheduled break.',
   },
   {
-    id: 'wsop_director',
+    id: 'series_director',
     label: 'Tournament Director',
     sample: 'Players, level two is now underway. Blinds are 50 and 100.',
     brief: 'A clean tournament director level-up announcement for a serious poker room.',

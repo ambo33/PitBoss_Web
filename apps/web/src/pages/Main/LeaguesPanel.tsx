@@ -101,7 +101,7 @@ function LeagueCard({ league, onClick }: { league: League; onClick: () => void }
           </div>
           <div>
             <p className="font-bold leading-tight text-white">{league.name}</p>
-            <p className="mt-1 text-xs text-pit-muted">{DEFAULT_POINTS_PREVIEW}</p>
+          <p className="mt-1 text-xs text-pit-muted">{DEFAULT_POINTS_PREVIEW}</p>
           </div>
         </div>
         {league.isadmin && (
@@ -386,7 +386,7 @@ function CreateLeagueModal({
   loading: boolean;
   error?: string;
 }) {
-  const [name, setName] = useState('Road to the WSOP');
+  const [name, setName] = useState('Season Championship League');
   const [approvalneeded, setApprovalneeded] = useState(false);
   const [showupbonuspoints, setShowupbonuspoints] = useState('300');
   const [bestfinishcount, setBestfinishcount] = useState('7');
@@ -429,7 +429,7 @@ function CreateLeagueModal({
           </label>
         </div>
         <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
-          Uses the WSOP league point table from your sheet by default: {DEFAULT_POINTS_PREVIEW}. You can tune the table next.
+          Starts with your proven placement point table by default: {DEFAULT_POINTS_PREVIEW}. You can tune the table next.
         </div>
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" checked={approvalneeded} onChange={(event) => setApprovalneeded(event.target.checked)} />
