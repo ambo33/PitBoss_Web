@@ -190,7 +190,7 @@ async function getLeagueForUser(leagueId: string, userId: string) {
             (SELECT count(*) FROM leagueevents WHERE leagueid = l.leagueid AND active = TRUE) AS eventcount
      FROM leagues l
      JOIN leaguemembers lm ON lm.leagueid = l.leagueid AND lm.userid = $2
-     WHERE l.leagueid = $1 AND l.active = TRUE`,
+     WHERE l.leagueid = $1 AND COALESCE(l.active, TRUE) = TRUE`,
     [leagueId, userId]
   );
 }
@@ -204,7 +204,7 @@ leaguesRouter.get('/', async (req: Request, res: Response) => {
             (SELECT count(*) FROM leagueevents WHERE leagueid = l.leagueid AND active = TRUE) AS eventcount
      FROM leagues l
      JOIN leaguemembers lm ON lm.leagueid = l.leagueid AND lm.userid = $1
-     WHERE l.active = TRUE
+     WHERE COALESCE(l.active, TRUE) = TRUE
      ORDER BY lm.admin DESC, lower(l.name) ASC`,
     [req.userId]
   );
@@ -228,8 +228,8 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
     try {
       await client.query('BEGIN');
       const leagueResult = await client.query<{ leagueid: string }>(
-        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, showupbonuspoints, bestfinishcount, pointslookup)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, showupbonuspoints, bestfinishcount, pointslookup, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
          RETURNING leagueid`,
         [req.userId, name, invitecode, Boolean(body.approvalneeded), showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
       );
@@ -259,7 +259,7 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
 leaguesRouter.post('/join', async (req: Request, res: Response) => {
   const invitecode = normalizeInviteCode((req.body as { invitecode?: string }).invitecode);
   const league = await queryOne<LeagueRow>(
-    `SELECT leagueid, approvalneeded FROM leagues WHERE invitecode = $1 AND active = TRUE`,
+    `SELECT leagueid, approvalneeded FROM leagues WHERE invitecode = $1 AND COALESCE(active, TRUE) = TRUE`,
     [invitecode]
   );
   if (!league) {

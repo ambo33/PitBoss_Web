@@ -472,6 +472,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pointslookup JSONB DEFAULT '[{"place":"DNF","points":0},{"place":1,"points":671},{"place":2,"points":448},{"place":3,"points":336}]'`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
+    await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
+    await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leaguemembers (
         leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
