@@ -450,6 +450,65 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON publicblindtimers (promounsubscribetoken)
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS leagues (
+        leagueid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        userid UUID NOT NULL REFERENCES users(guid),
+        name STRING(160) NOT NULL,
+        invitecode STRING(12) UNIQUE NOT NULL,
+        approvalneeded BOOL DEFAULT FALSE,
+        showupbonuspoints INT DEFAULT 300,
+        bestfinishcount INT DEFAULT 7,
+        pointslookup JSONB NOT NULL,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaguemembers (
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        admin BOOL DEFAULT FALSE,
+        approved BOOL DEFAULT TRUE,
+        joinedat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (leagueid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueevents (
+        eventid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        name STRING(160) NOT NULL,
+        eventdate DATE,
+        eventnumber INT,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueresults (
+        resultid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        placed INT,
+        dnf BOOL DEFAULT FALSE,
+        points INT DEFAULT 0,
+        showupbonuspoints INT DEFAULT 0,
+        loggedby UUID REFERENCES users(guid),
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (eventid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueevents_league
+      ON leagueevents (leagueid, eventnumber)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueresults_league
+      ON leagueresults (leagueid, userid)
+    `);
+    await client.query(`
       ALTER TABLE groupcoins
       ADD COLUMN IF NOT EXISTS imageurl STRING(240)
     `);

@@ -1,14 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send } from 'lucide-react';
+import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send, ListOrdered } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
 import Modal from './Modal';
 import PwaInstallPrompt from './PwaInstallPrompt';
 import { api } from '../api/client';
 
-export type NavTab = 'tournaments' | 'groups' | 'profile' | 'admin';
+export type NavTab = 'tournaments' | 'groups' | 'leagues' | 'profile' | 'admin';
 
 interface Props {
   children: React.ReactNode;
@@ -26,6 +26,7 @@ interface Props {
 const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
   { id: 'tournaments', label: 'Tournaments', Icon: Trophy },
   { id: 'groups', label: 'Groups', Icon: Users },
+  { id: 'leagues', label: 'Leagues', Icon: ListOrdered },
   { id: 'profile', label: 'Profile', Icon: User },
   { id: 'admin', label: 'Admin', Icon: Shield },
 ];

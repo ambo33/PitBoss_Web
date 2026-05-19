@@ -95,6 +95,20 @@ export const api = {
   awardGroupCoin: (groupId: string, coinId: string, data: { userid: string; note?: string }) =>
     post<{ award: GroupCoinAward }>(`/groups/${groupId}/coins/${coinId}/awards`, data),
 
+  // Leagues
+  getLeagues: () => get<League[]>('/leagues'),
+  createLeague: (data: { name: string; approvalneeded?: boolean; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
+    post<{ leagueid: string; invitecode: string }>('/leagues', data),
+  joinLeague: (invitecode: string) =>
+    post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
+  getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
+  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number }) =>
+    post<{ event: LeagueEvent }>(`/leagues/${id}/events`, data),
+  logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
+    put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
+  logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>
+    put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/self-result`, data),
+
   // Tournaments
   getTournaments: () => get<Tournament[]>('/tournaments'),
   getRegistered: () => get<Tournament[]>('/tournaments/registered'),
@@ -296,6 +310,75 @@ export interface GroupCoin {
 export interface GroupCoinAward {
   id: string; groupid: string; coinid: string; userid: string;
   displayname?: string; note?: string | null; createdat: string;
+}
+export interface LeaguePointRule {
+  place: number | 'DNF';
+  points: number;
+}
+export interface League {
+  leagueid: string;
+  ownerid: string;
+  name: string;
+  invitecode: string;
+  approvalneeded: boolean;
+  showupbonuspoints: number;
+  bestfinishcount: number;
+  pointslookup: LeaguePointRule[];
+  active: boolean;
+  createdat: string;
+  isadmin?: boolean;
+  approved?: boolean;
+  membercount?: number;
+  eventcount?: number;
+}
+export interface LeagueMember {
+  userid: string;
+  emailaddress?: string | null;
+  displayname?: string | null;
+  isadmin: boolean;
+  approved: boolean;
+}
+export interface LeagueEvent {
+  eventid: string;
+  leagueid: string;
+  name: string;
+  eventdate?: string | null;
+  eventnumber?: number | null;
+  resultcount?: number;
+  active: boolean;
+  createdat: string;
+}
+export interface LeagueResult {
+  resultid: string;
+  eventid: string;
+  leagueid: string;
+  userid: string;
+  displayname?: string | null;
+  placed?: number | null;
+  dnf: boolean;
+  points: number;
+  showupbonuspoints: number;
+  loggedby?: string | null;
+  createdat: string;
+  updatedat: string;
+}
+export interface LeagueStanding {
+  userid: string;
+  displayname?: string | null;
+  isadmin: boolean;
+  eventsplayed: number;
+  showupbonus: number;
+  scoredpoints: number;
+  totalpoints: number;
+  averagefinish?: number | null;
+  bestfinishes: number[];
+}
+export interface LeagueDetail {
+  league: League;
+  members: LeagueMember[];
+  events: LeagueEvent[];
+  results: LeagueResult[];
+  standings: LeagueStanding[];
 }
 export interface PlayerCoinBadge {
   coinid: string; name: string;
