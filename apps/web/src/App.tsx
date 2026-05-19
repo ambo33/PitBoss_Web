@@ -6,6 +6,8 @@ import LandingPage from './pages/Landing';
 import PricingPage from './pages/Pricing';
 import TermsPage from './pages/Terms';
 import VoiceLabPage from './pages/VoiceLab';
+import PublicBlindTimerPage from './pages/PublicBlindTimer';
+import UnsubscribePage from './pages/Unsubscribe';
 import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
@@ -70,6 +72,9 @@ export default function App() {
         <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/blind-timer" element={<PublicBlindTimerPage />} />
+        <Route path="/blind-timer/:code" element={<PublicBlindTimerPage />} />
+        <Route path="/unsubscribe/:token" element={<UnsubscribePage />} />
         <Route path="/reset-password" element={<AppSubdomainRedirect />} />
         <Route path="/" element={<HomeRoute />} />
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />

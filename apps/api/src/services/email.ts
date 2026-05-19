@@ -189,6 +189,27 @@ export async function sendPasswordResetEmail(email: string, resetGuid: string): 
   });
 }
 
+export async function sendPublicBlindTimerCodeEmail(email: string, code: string, timerName: string, unsubscribeToken?: string | null): Promise<void> {
+  const link = `${appUrl}/blind-timer/${encodeURIComponent(code)}`;
+  const unsubscribeLink = unsubscribeToken ? `${appUrl}/unsubscribe/${encodeURIComponent(unsubscribeToken)}` : '';
+  await sendMail({
+    to: email,
+    subject: `Your PokerPlanner blind timer code: ${code}`,
+    html: emailLayout({
+      eyebrow: 'Blind Timer Code',
+      title: timerName || 'Your blind timer is ready',
+      intro: 'Use this code any time to reopen your free PokerPlanner blind timer.',
+      body: `
+        <p style="margin:0 0 12px;">Timer code: <strong style="color:#ffffff;font-size:22px;letter-spacing:0.16em;">${escapeHtml(code)}</strong></p>
+        <p style="margin:0;">You can run the timer in your browser, tweak the blind structure, and keep the same code for later.</p>
+        ${unsubscribeLink ? `<p style="margin:18px 0 0;font-size:12px;color:#8d93a5;">You also opted in to occasional PokerPlanner updates. <a href="${unsubscribeLink}" style="color:#13adad;">Unsubscribe here</a>.</p>` : ''}
+      `,
+      ctaHref: link,
+      ctaLabel: 'Open Blind Timer',
+    }),
+  });
+}
+
 export async function sendGroupInviteEmail(
   email: string,
   groupName: string,

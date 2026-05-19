@@ -14,6 +14,7 @@ import { playersRouter } from './routes/players';
 import { blindsRouter } from './routes/blinds';
 import { seatingRouter } from './routes/seating';
 import { publicRouter } from './routes/public';
+import { blindTimersRouter } from './routes/blindTimers';
 import { adminRouter } from './routes/admin';
 import { jobsRouter } from './routes/jobs';
 import { feedbackRouter } from './routes/feedback';
@@ -63,6 +64,7 @@ app.get('/healthz', (_req, res) => {
 
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/public', publicRouter);
+app.use('/api/public', blindTimersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/ai', aiRouter);

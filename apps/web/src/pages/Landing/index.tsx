@@ -223,7 +223,10 @@ export default function LandingPage() {
           <header className="flex items-center justify-between gap-4">
             <BrandLockup compact />
             <nav className="flex items-center gap-2">
-              <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/pricing">Pricing</Link>
+              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/blind-timer">
+                <Clock3 size={15} />
+                Blind timer
+              </Link>
               <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/login">Sign in</Link>
               <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
             </nav>
@@ -234,8 +237,8 @@ export default function LandingPage() {
               <span className="font-semibold text-white">PokerPlanner.bet is live!</span>
               <span className="ml-1">Help us build and shape for all hosting needs!</span>
             </div>
-            <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/pricing">
-              See beta access
+            <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/login?mode=register">
+              Create your account
             </Link>
           </div>
 
@@ -252,11 +255,14 @@ export default function LandingPage() {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
+                <Link className="btn-ghost px-5 py-3" to="/blind-timer">
+                  <Clock3 size={16} />
+                  Free blind timer
+                </Link>
                 <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
                   <Volume2 size={16} />
                   Preview AI voice
                 </button>
-                <Link className="btn-ghost px-5 py-3" to="/pricing">Beta access</Link>
               </div>
               <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
                 {steps.map((step, index) => (
@@ -485,7 +491,6 @@ export default function LandingPage() {
           </div>
           <div className="mt-6 flex flex-wrap gap-3 lg:mt-0">
             <Link className="btn-primary px-5 py-3" to="/login?mode=register">Create account</Link>
-            <Link className="btn-ghost px-5 py-3" to="/pricing">Beta details</Link>
             <Link className="btn-ghost px-5 py-3" to="/login">Sign in</Link>
           </div>
         </div>

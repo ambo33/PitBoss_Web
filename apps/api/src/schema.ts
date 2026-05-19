@@ -413,6 +413,43 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS publicblindtimers (
+        code STRING(6) PRIMARY KEY,
+        name STRING(120) NOT NULL DEFAULT 'Poker Timer',
+        levels JSONB NOT NULL,
+        state JSONB,
+        soundannouncementsenabled BOOL DEFAULT FALSE,
+        emailhash STRING(64),
+        emailencrypted STRING,
+        promoconsentat TIMESTAMPTZ,
+        promounsubscribetoken STRING(64),
+        promooptoutat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        lastaccessedat TIMESTAMPTZ
+      )
+    `);
+    await client.query(`
+      ALTER TABLE publicblindtimers
+      ADD COLUMN IF NOT EXISTS state JSONB
+    `);
+    await client.query(`
+      ALTER TABLE publicblindtimers
+      ADD COLUMN IF NOT EXISTS soundannouncementsenabled BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE publicblindtimers
+      ADD COLUMN IF NOT EXISTS promounsubscribetoken STRING(64)
+    `);
+    await client.query(`
+      ALTER TABLE publicblindtimers
+      ADD COLUMN IF NOT EXISTS promooptoutat TIMESTAMPTZ
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_publicblindtimers_unsubscribe
+      ON publicblindtimers (promounsubscribetoken)
+    `);
+    await client.query(`
       ALTER TABLE groupcoins
       ADD COLUMN IF NOT EXISTS imageurl STRING(240)
     `);

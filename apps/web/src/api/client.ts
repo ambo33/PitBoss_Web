@@ -123,6 +123,18 @@ export const api = {
     get<PublicKnockoutResponse>(`/public/tournaments/${id}/knockout${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   publicSelfKnockout: (id: string, data: { guestUserId?: string; knockedOutByUserId?: string }) =>
     post<{ success: boolean; placed: number }>(`/public/tournaments/${id}/knockout/self`, data),
+  createPublicBlindTimer: (data: { name?: string; levels: Omit<BlindLevel, 'id'>[] }) =>
+    post<{ timer: PublicBlindTimer }>('/public/blind-timers', data),
+  getPublicBlindTimer: (code: string) =>
+    get<{ timer: PublicBlindTimer }>(`/public/blind-timers/${encodeURIComponent(code)}`),
+  updatePublicBlindTimer: (code: string, data: { name?: string; levels: Omit<BlindLevel, 'id'>[] }) =>
+    put<{ timer: PublicBlindTimer }>(`/public/blind-timers/${encodeURIComponent(code)}`, data),
+  emailPublicBlindTimerCode: (code: string, data: { email: string; enableSoundAnnouncements?: boolean; state?: PublicBlindTimerState }) =>
+    post<{ success: boolean; timer: PublicBlindTimer }>(`/public/blind-timers/${encodeURIComponent(code)}/email`, data),
+  updatePublicBlindTimerState: (code: string, state: PublicBlindTimerState) =>
+    put<{ timer: PublicBlindTimer }>(`/public/blind-timers/${encodeURIComponent(code)}/state`, { state }),
+  unsubscribePublicBlindTimer: (token: string) =>
+    post<{ success: boolean }>(`/public/blind-timers/unsubscribe/${encodeURIComponent(token)}`),
 
   // AI experiments
   generateAnnouncerMoment: (id: string, data: AnnouncerMomentRequest) =>
@@ -316,6 +328,22 @@ export interface BlindLevel {
   id: string; level: number; label: string;
   smallblind: number; bigblind: number; ante: number;
   minutes: number; islastlevel: boolean;
+}
+export interface PublicBlindTimer {
+  code: string;
+  name: string;
+  levels: Omit<BlindLevel, 'id'>[];
+  state?: PublicBlindTimerState | null;
+  soundannouncementsenabled?: boolean;
+  promoconsentactive?: boolean;
+  createdat?: string;
+  updatedat?: string;
+}
+export interface PublicBlindTimerState {
+  currentIndex: number;
+  remainingSecs: number;
+  running: boolean;
+  savedAt?: string;
 }
 export interface GroupBlindStructure {
   id: string; groupid: string; name: string;
