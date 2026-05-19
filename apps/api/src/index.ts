@@ -45,7 +45,14 @@ const apiLimiter = rateLimit({
 
 initSocket(httpServer);
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      mediaSrc: ["'self'", 'data:', 'blob:'],
+    },
+  },
+}));
 app.use(cors({ origin: getClientUrl(), credentials: true }));
 app.use(express.json({ limit: '8mb' }));
 app.use('/api', apiLimiter);

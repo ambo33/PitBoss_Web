@@ -243,15 +243,8 @@ export async function getUpcomingHostedTournamentCount(userId: string): Promise<
      FROM tournaments
      WHERE userid = $1
        AND date IS NOT NULL
-       AND concat(
-         CAST(date AS STRING),
-         'T',
-         CASE
-           WHEN time IS NULL THEN '23:59:59'
-           ELSE substring(CAST(time AS STRING), 1, 8)
-         END
-       ) >= $2`,
-    [userId, nowInAppTimezone()]
+       AND CAST(date AS STRING) >= $2`,
+    [userId, todayInAppTimezone()]
   );
   return Number(row?.count ?? 0);
 }
@@ -283,17 +276,13 @@ export async function ensureTierIdForUser(userId: string): Promise<void> {
   );
 }
 
-function nowInAppTimezone() {
+function todayInAppTimezone() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
   });
   const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }

@@ -624,33 +624,18 @@ function getDateKey(value: string | null | undefined): string | null {
 
 function isUpcomingTournament(tournament: Tournament): boolean {
   if (!tournament.tourneydate) return false;
-  return scheduleComparisonKey(tournament.tourneydate, tournament.tourneytime) >= nowInAppTimezone();
+  return String(tournament.tourneydate).slice(0, 10) >= todayInAppTimezone();
 }
 
-function scheduleComparisonKey(date: string, time: string | null | undefined) {
-  return `${date.slice(0, 10)}T${normalizeTimeForComparison(time)}`;
-}
-
-function normalizeTimeForComparison(value: string | null | undefined): string {
-  if (!value) return '23:59:59';
-  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) return '23:59:59';
-  return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}:${match[3] ?? '00'}`;
-}
-
-function nowInAppTimezone() {
+function todayInAppTimezone() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
   });
   const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function formatTime12Hour(value: string | null | undefined): string {

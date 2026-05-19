@@ -818,10 +818,7 @@ function normalizeEmailSearch(value: string) {
 
 function classifyTournament(tournament: Tournament) {
   if (!tournament.tourneydate) return 'Undated';
-  const comparisonTime = normalizeTimeForComparison(tournament.tourneytime);
-  const now = nowInAppTimezone();
-  const scheduled = `${String(tournament.tourneydate).slice(0, 10)}T${comparisonTime}`;
-  if (scheduled >= now) return 'Upcoming';
+  if (String(tournament.tourneydate).slice(0, 10) >= todayInAppTimezone()) return 'Upcoming';
   return 'History';
 }
 
@@ -920,29 +917,15 @@ function compactUrl(value: string) {
   }
 }
 
-function nowInAppTimezone() {
+function todayInAppTimezone() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
   });
   const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-function normalizeTimeForComparison(value: string | null | undefined): string {
-  if (!value) return '23:59:59';
-  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) return '23:59:59';
-  const hours = String(Number(match[1])).padStart(2, '0');
-  const minutes = match[2];
-  const seconds = match[3] ?? '00';
-  return `${hours}:${minutes}:${seconds}`;
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function normalizeTimeForDisplay(value: string | null | undefined): string {

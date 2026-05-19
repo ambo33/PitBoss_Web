@@ -292,16 +292,20 @@ function ProfilePanel() {
     }
 
     const durationSeconds = await getAudioDurationSeconds(file).catch(() => null);
-    if (durationSeconds != null && durationSeconds < 0.1) {
+    if (durationSeconds == null) {
+      setMediaError('That audio file could not be read by the browser. Please choose an MP3, WAV, M4A, or AAC clip that plays locally.');
+      return;
+    }
+    if (durationSeconds < 0.1) {
       setMediaError('That audio file looks empty. Please choose a clip with audible sound.');
       return;
     }
-    if (durationSeconds != null && durationSeconds > 5.05) {
+    if (durationSeconds > 5.05) {
       setMediaError('Check-in clips must be 5 seconds or shorter.');
       return;
     }
 
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await readAudioFileAsDataUrl(file);
     updateProfileMutation.mutate({
       checkinaudiodata: dataUrl,
       checkinaudiofilename: file.name,
@@ -503,28 +507,60 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+async function readAudioFileAsDataUrl(file: File): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const mimeType = audioMimeType(file);
+  return dataUrl.replace(/^data:[^;,]*;base64,/i, `data:${mimeType};base64,`);
+}
+
 function getAudioDurationSeconds(file: File): Promise<number | null> {
   return new Promise((resolve) => {
     const audio = document.createElement('audio');
     const url = URL.createObjectURL(file);
-    const timeout = window.setTimeout(() => {
+    let settled = false;
+    function finish(value: number | null) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
       URL.revokeObjectURL(url);
-      resolve(null);
-    }, 2500);
+      resolve(value);
+    }
+    const timeout = window.setTimeout(() => {
+      finish(null);
+    }, 5000);
     audio.preload = 'metadata';
     audio.onloadedmetadata = () => {
-      window.clearTimeout(timeout);
-      URL.revokeObjectURL(url);
       const duration = Number(audio.duration);
-      resolve(Number.isFinite(duration) ? duration : null);
+      if (Number.isFinite(duration) && duration > 0) {
+        finish(duration);
+        return;
+      }
+      audio.ondurationchange = () => {
+        const nextDuration = Number(audio.duration);
+        if (Number.isFinite(nextDuration) && nextDuration > 0) finish(nextDuration);
+      };
+      try {
+        audio.currentTime = Number.MAX_SAFE_INTEGER;
+      } catch {
+        finish(null);
+      }
     };
-    audio.onerror = () => {
-      window.clearTimeout(timeout);
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
+    audio.onerror = () => finish(null);
     audio.src = url;
   });
+}
+
+function audioMimeType(file: File): string {
+  const declared = file.type.toLowerCase();
+  if (declared === 'audio/mp3') return 'audio/mpeg';
+  if (declared === 'audio/wave') return 'audio/wav';
+  if (declared === 'audio/x-m4a') return 'audio/mp4';
+  if (declared && declared.startsWith('audio/')) return declared;
+  if (/\.mp3$/i.test(file.name)) return 'audio/mpeg';
+  if (/\.wav$/i.test(file.name)) return 'audio/wav';
+  if (/\.m4a$/i.test(file.name)) return 'audio/mp4';
+  if (/\.aac$/i.test(file.name)) return 'audio/aac';
+  return 'audio/mpeg';
 }
 
 function TierStat({
