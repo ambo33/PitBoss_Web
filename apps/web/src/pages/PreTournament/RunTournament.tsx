@@ -4,9 +4,12 @@ import { io, Socket } from 'socket.io-client';
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Menu, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
+import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
+import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 interface TimerTick {
   remainingsecs: number;
@@ -31,6 +34,7 @@ interface GreetingQueueItem {
   name: string;
   audioDataUrl?: string | null;
   avatarImageUrl?: string | null;
+  awardedCoins?: TournamentPlayer['awardedcoins'];
   tableNumber?: number | null;
   seat?: number | null;
 }
@@ -208,6 +212,7 @@ export default function RunTournament({
         name: player.displayname ?? player.emailaddress ?? 'Player',
         audioDataUrl: player.checkinaudiodata ?? null,
         avatarImageUrl: player.avatarimagedata ?? null,
+        awardedCoins: player.awardedcoins ?? [],
         tableNumber: player.tablenumber ?? null,
         seat: player.seat ?? null,
       }));
@@ -240,6 +245,8 @@ export default function RunTournament({
     if (tvGreetingAudioEnabled) {
       if (activeGreeting.audioDataUrl) {
         playCheckinGreetingClip(activeGreeting.audioDataUrl, activeGreeting.name);
+      } else if (tournament.aiannouncerenabled) {
+        announceCheckinWithAi(activeGreeting.name);
       } else {
         announceCheckinGreeting(activeGreeting.name);
       }
@@ -254,7 +261,7 @@ export default function RunTournament({
         window.clearTimeout(greetingTimeoutRef.current);
       }
     };
-  }, [activeGreeting, tvGreetingAudioEnabled, tvGreetingDisplayEnabled]);
+  }, [activeGreeting, tvGreetingAudioEnabled, tvGreetingDisplayEnabled, tournament.aiannouncerenabled]);
 
   useEffect(() => {
     if (!showAdminControls && !displayMode) return;
@@ -354,9 +361,9 @@ export default function RunTournament({
   );
 
   const selectedPlayer = actionablePlayers.find((player) => player.userid === selectedPlayerId) ?? actionablePlayers[0] ?? null;
-  const selectedPlayerLabel = selectedPlayer ? (selectedPlayer.displayname ?? selectedPlayer.emailaddress) : 'No active players';
+  const selectedPlayerLabel = selectedPlayer ? playerNameWithMedals(selectedPlayer) : 'No active players';
   const longestPlayerLabelLength = actionablePlayers.reduce((max, player) => {
-    const label = player.displayname ?? player.emailaddress;
+    const label = playerNameWithMedals(player);
     return Math.max(max, label.length);
   }, selectedPlayerLabel.length);
   const playerSelectWidth = clamp((longestPlayerLabelLength * 8) + 56, 190, 360);
@@ -462,6 +469,20 @@ export default function RunTournament({
     playStoredSpeech(`/sounds/announcer-static/${preset.replace(/_/g, '-')}-${action}.mp3`, fallback);
   }
 
+  function announceCheckinWithAi(playerName: string) {
+    api.generateAnnouncerMoment(tournamentId, {
+      eventtype: 'checkin',
+      currentlevel: Number(timerState?.currentlevel ?? effectiveLevel),
+      playername: playerName,
+    }).then((result) => {
+      if (result.aiEnabled && result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, () => announceCheckinGreeting(playerName));
+      } else {
+        announceCheckinGreeting(playerName);
+      }
+    }).catch(() => announceCheckinGreeting(playerName));
+  }
+
   function announceStaticWarning(
     eventtype: 'five_minute_warning' | 'one_minute_warning',
     state: TimerState,
@@ -532,7 +553,7 @@ export default function RunTournament({
       knockedoutbyname: player.knockedoutbyname ?? null,
       placement: player.placed ?? null,
       prizeamount: player.placed != null && player.placed <= payoutPlaces ? toNumber(payouts[player.placed - 1]) : null,
-      bountyamount: tournament.bountyenabled ? toNumber(player.bountyamount) : null,
+      bountyamount: tournament.bountyenabled && isBountyPlacementEligible(tournament, player.placed) ? toNumber(player.bountyamount) : null,
       bountyclaimedbyname: player.bountyclaimedbyname ?? player.knockedoutbyname ?? null,
     }).then((result) => {
       if (result.aiEnabled && result.audioBase64) {
@@ -600,7 +621,6 @@ export default function RunTournament({
     emit('timer-level', { level: Number(targetBlind.level) });
   }
 
-  const checkedIn = players.filter((player) => player.checkedin).length;
   const registeredCount = players.length;
   const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
@@ -609,14 +629,16 @@ export default function RunTournament({
   const fieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
   const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), fieldSize);
   const payoutSplits = buildDefaultSplits(payoutPlaces);
-  const grossPot = (toNumber(tournament.buyin) * checkedIn)
+  const grossPot = (toNumber(tournament.buyin) * fieldSize)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
-  const bountyTotal = tournament.bountyenabled ? players.reduce((sum, player) => sum + toNumber(player.bountyamount), 0) : 0;
+  const bountyTotal = getConfiguredBountyPool(tournament, grossPot, players);
   const bountyRemaining = tournament.bountyenabled
     ? players.filter((player) => player.placed == null).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
     : 0;
-  const bountyClaimed = Math.max(bountyTotal - bountyRemaining, 0);
+  const bountyClaimed = tournament.bountyenabled
+    ? players.filter((player) => Boolean(player.bountyclaimedat)).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    : 0;
   const totalPot = Math.max(grossPot - toNumber(tournament.rake) - bountyTotal, 0);
   const payouts = payoutSplits.map((pct) => (totalPot * pct) / 100);
   const paidFinishers = useMemo(
@@ -747,7 +769,7 @@ export default function RunTournament({
                 ) : (
                   actionablePlayers.map((player) => (
                     <option key={player.userid} value={player.userid}>
-                      {player.displayname ?? player.emailaddress}
+                      {playerNameWithMedals(player)}
                     </option>
                   ))
                 )}
@@ -1222,14 +1244,15 @@ export default function RunTournament({
 
                   <div className={`${tvMode ? 'max-h-[40rem] space-y-1' : displayMode ? 'max-h-[48rem] space-y-1.5' : 'max-h-[26rem] space-y-1.5'} overflow-y-auto pr-1`}>
                     {payoutSplits.map((split, index) => {
-                      const finisher = paidFinishers.find((player) => player.placed === index + 1);
+                      const place = index + 1;
+                      const finisher = paidFinishers.find((player) => Number(player.placed) === place);
                       return (
                         <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border ${finisher ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${tvMode ? 'px-2 py-1 text-xs' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="shrink-0 font-semibold text-white">{ordinal(index + 1)}</span>
+                            <span className="shrink-0 font-semibold text-white">{ordinal(place)}</span>
                             {finisher ? (
                               <span className={`truncate font-semibold text-white ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
-                                {finisher.displayname ?? finisher.emailaddress}
+                                {playerNameWithMedals(finisher)}
                               </span>
                             ) : null}
                           </div>
@@ -1261,7 +1284,7 @@ export default function RunTournament({
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
                                 <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} truncate font-medium text-pit-text`}>
-                                  {player.displayname ?? player.emailaddress}
+                                  {playerNameWithMedals(player)}
                                 </span>
                               </div>
                               {paid && <span className="shrink-0 rounded-full bg-pit-teal/20 px-2 py-0.5 text-[10px] font-semibold text-pit-teal">Paid</span>}
@@ -1271,7 +1294,7 @@ export default function RunTournament({
                                 Knocked out by {player.knockedoutbyname}
                               </p>
                             )}
-                            {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && (
+                            {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && isBountyPlacementEligible(tournament, player.placed) && (
                               <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate font-semibold text-amber-200`}>
                                 {formatMoney(toNumber(player.bountyamount))} bounty
                                 {player.bountyclaimedbyname ? ` to ${player.bountyclaimedbyname}` : ' revealed'}
@@ -1331,6 +1354,7 @@ export default function RunTournament({
               <h2 className="mt-4 truncate text-5xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
                 {activeGreeting.name}
               </h2>
+              <CoinBadgeStrip coins={activeGreeting.awardedCoins} size="lg" limit={8} className="mt-4 justify-center" />
               {activeGreeting.tableNumber != null && activeGreeting.seat != null && (
                 <p className="mt-3 text-2xl font-semibold uppercase tracking-[0.18em] text-yellow-200 xl:text-4xl">
                   Table {activeGreeting.tableNumber} Seat {activeGreeting.seat}
@@ -1461,7 +1485,8 @@ function TvSeatingBoard({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${fullWidth ? 'text-base xl:text-lg' : 'text-sm'}`}>{player.displayname ?? player.emailaddress}</p>
+                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${fullWidth ? 'text-base xl:text-lg' : 'text-sm'}`}>{playerNameWithMedals(player)}</p>
+                <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />
                 {hasAssignments ? (
                   <p className={`${fullWidth ? 'text-xs xl:text-sm' : 'text-xs'} font-medium ${checkedIn ? 'text-yellow-200' : 'text-pit-muted'}`}>
                     Table {player.tablenumber} Seat {player.seat}

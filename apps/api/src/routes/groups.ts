@@ -3,7 +3,7 @@ import { query, queryOne, pool } from '../db';
 import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { getAppUrl } from '../config';
-import { BlindLevel, Group, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
+import { BlindLevel, Group, GroupCoin, GroupCoinAward, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
 import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
 import { publicEmail } from '../privacy';
 
@@ -63,6 +63,24 @@ function normalizeAnnouncerPreset(value: string | null | undefined): string | nu
   if (value === 'roaster') return 'turbo_tony';
   if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
   return 'all_in_alex';
+}
+
+function normalizeCoinImage(value: unknown, filename: unknown): { data: string | null; filename: string | null; error?: string } {
+  const imageData = typeof value === 'string' ? value.trim() : '';
+  const imageFilename = typeof filename === 'string' ? filename.trim().slice(0, 160) : null;
+  if (!imageData) return { data: null, filename: imageFilename };
+  const allowed = /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(imageData);
+  if (!allowed) return { data: null, filename: imageFilename, error: 'Coin art must be a PNG, JPG, or WebP image.' };
+  const approxBytes = Math.ceil((imageData.split(',')[1] ?? '').length * 0.75);
+  if (approxBytes > 1024 * 1024) return { data: null, filename: imageFilename, error: 'Coin art must be 1 MB or smaller.' };
+  return { data: imageData, filename: imageFilename };
+}
+
+function normalizeCoinImageUrl(value: unknown): string | null {
+  const imageUrl = typeof value === 'string' ? value.trim() : '';
+  if (!imageUrl) return null;
+  if (!/^\/challenge-coins\/defaults\/[a-z0-9-]+\.svg$/i.test(imageUrl)) return null;
+  return imageUrl.slice(0, 240);
 }
 
 async function requireApprovedMember(groupId: string, userId: string): Promise<boolean> {
@@ -217,12 +235,29 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
   if (!group) { res.status(404).json({ error: 'Group not found or not a member' }); return; }
 
   const members = await query<GroupMember>(
-    `SELECT u.guid AS userid, u.emailaddress,
+    `WITH medal_counts AS (
+       SELECT tp.userid,
+              CAST(COALESCE(sum(CASE WHEN tp.placed = 1 THEN 1 ELSE 0 END), 0) AS INT) AS firstplacecount,
+              CAST(COALESCE(sum(CASE WHEN tp.placed = 2 THEN 1 ELSE 0 END), 0) AS INT) AS secondplacecount,
+              CAST(COALESCE(sum(CASE WHEN tp.placed = 3 THEN 1 ELSE 0 END), 0) AS INT) AS thirdplacecount
+       FROM tournamentplayers tp
+       JOIN tournaments t ON t.tournamentid = tp.tournamentid
+       LEFT JOIN usermetadata history_meta ON history_meta.userid = tp.userid
+       WHERE t.groupid = $1
+         AND tp.placed IN (1, 2, 3)
+         AND COALESCE(history_meta.isguestuser, FALSE) = FALSE
+       GROUP BY tp.userid
+     )
+     SELECT u.guid AS userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
-            gm.admin AS isadmin, gm.approved
+            gm.admin AS isadmin, gm.approved,
+            COALESCE(mc.firstplacecount, 0) AS firstplacecount,
+            COALESCE(mc.secondplacecount, 0) AS secondplacecount,
+            COALESCE(mc.thirdplacecount, 0) AS thirdplacecount
      FROM groupmembers gm
      JOIN users u ON u.guid = gm.userid
      LEFT JOIN usermetadata m ON m.userid = u.guid
+     LEFT JOIN medal_counts mc ON mc.userid = u.guid
      WHERE gm.groupid = $1
      ORDER BY gm.admin DESC, u.emailaddress`,
     [req.params.id]
@@ -666,6 +701,112 @@ groupsRouter.post('/:id/posts/:postId/comments', async (req: Request, res: Respo
     [req.params.postId, req.userId, message]
   );
   res.status(201).json({ success: true });
+});
+
+groupsRouter.get('/:id/coins', async (req: Request, res: Response) => {
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
+    return;
+  }
+
+  const coins = await query<GroupCoin>(
+    `SELECT gc.id, gc.groupid, gc.name, gc.description, gc.imagedata, gc.imageurl, gc.imagefilename, gc.createdat,
+            CAST(count(gca.id) AS INT) AS awardcount
+     FROM groupcoins gc
+     LEFT JOIN groupcoinawards gca ON gca.coinid = gc.id
+     WHERE gc.groupid = $1
+       AND COALESCE(gc.active, TRUE) = TRUE
+     GROUP BY gc.id, gc.groupid, gc.name, gc.description, gc.imagedata, gc.imageurl, gc.imagefilename, gc.createdat
+     ORDER BY gc.createdat DESC`,
+    [req.params.id]
+  );
+  const awards = await query<GroupCoinAward>(
+    `SELECT gca.id, gca.groupid, gca.coinid, gca.userid, gca.note, gca.createdat,
+            COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname
+     FROM groupcoinawards gca
+     JOIN users u ON u.guid = gca.userid
+     LEFT JOIN usermetadata um ON um.userid = gca.userid
+     WHERE gca.groupid = $1
+     ORDER BY gca.createdat DESC
+     LIMIT 200`,
+    [req.params.id]
+  );
+
+  res.json({ coins, awards });
+});
+
+groupsRouter.post('/:id/coins', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const { name, description, imagedata, imageurl, imagefilename } = req.body as {
+    name?: string;
+    description?: string;
+    imagedata?: string;
+    imageurl?: string;
+    imagefilename?: string;
+  };
+  const trimmedName = String(name ?? '').trim().slice(0, 80);
+  const trimmedDescription = String(description ?? '').trim().slice(0, 240);
+  if (!trimmedName) {
+    res.status(400).json({ error: 'Coin name required.' });
+    return;
+  }
+  const image = normalizeCoinImage(imagedata, imagefilename);
+  if (image.error) {
+    res.status(400).json({ error: image.error });
+    return;
+  }
+  const normalizedImageUrl = image.data ? null : normalizeCoinImageUrl(imageurl);
+  const coin = await queryOne<GroupCoin>(
+    `INSERT INTO groupcoins (groupid, name, description, imagedata, imageurl, imagefilename, createdby)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, groupid, name, description, imagedata, imageurl, imagefilename, createdat`,
+    [req.params.id, trimmedName, trimmedDescription || null, image.data, normalizedImageUrl, image.filename, req.userId]
+  );
+  res.status(201).json({ coin });
+});
+
+groupsRouter.post('/:id/coins/:coinId/awards', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const { userid, note } = req.body as { userid?: string; note?: string };
+  if (!userid) {
+    res.status(400).json({ error: 'Choose a member to award.' });
+    return;
+  }
+  const target = await queryOne(
+    `SELECT 1
+     FROM groupmembers gm
+     LEFT JOIN usermetadata um ON um.userid = gm.userid
+     WHERE gm.groupid = $1
+       AND gm.userid = $2
+       AND gm.approved = TRUE
+       AND COALESCE(um.isguestuser, FALSE) = FALSE`,
+    [req.params.id, userid]
+  );
+  if (!target) {
+    res.status(404).json({ error: 'Member not found.' });
+    return;
+  }
+  const coin = await queryOne(
+    `SELECT 1 FROM groupcoins WHERE groupid = $1 AND id = $2 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id, req.params.coinId]
+  );
+  if (!coin) {
+    res.status(404).json({ error: 'Coin not found.' });
+    return;
+  }
+  const award = await queryOne<GroupCoinAward>(
+    `INSERT INTO groupcoinawards (groupid, coinid, userid, awardedby, note)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, groupid, coinid, userid, note, createdat`,
+    [req.params.id, req.params.coinId, userid, req.userId, String(note ?? '').trim().slice(0, 240) || null]
+  );
+  res.status(201).json({ award });
 });
 
 groupsRouter.post('/join', async (req: Request, res: Response) => {

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Third place coin">
+  <defs>
+    <radialGradient id="coin" cx="36%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#ffe1a6"/>
+      <stop offset="0.46" stop-color="#c7772f"/>
+      <stop offset="1" stop-color="#6d3612"/>
+    </radialGradient>
+    <linearGradient id="crown" x1="0" x2="1">
+      <stop offset="0" stop-color="#ffc978"/>
+      <stop offset="1" stop-color="#a45420"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="70" r="46" fill="#101114" stroke="url(#coin)" stroke-width="9"/>
+  <circle cx="64" cy="70" r="34" fill="#17191d" stroke="#c7772f" stroke-width="4"/>
+  <path d="M27 45 39 20l19 21 8-28 13 28 19-21 8 25-8 18H35z" fill="url(#crown)" stroke="#6d3612" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M50 52h28" stroke="#ffddb2" stroke-width="4" stroke-linecap="round"/>
+  <text x="64" y="90" text-anchor="middle" font-family="Georgia, serif" font-size="54" font-weight="700" fill="#d79047" stroke="#5b2f13" stroke-width="2">3</text>
+</svg>

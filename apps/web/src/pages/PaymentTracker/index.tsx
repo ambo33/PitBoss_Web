@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 export default function PaymentTrackerPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,7 +76,7 @@ export default function PaymentTrackerPage() {
               {unpaid.map((player) => (
                 <div key={player.userid} className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-white">{player.displayname ?? player.emailaddress}</p>
+                    <p className="text-sm text-white">{playerNameWithMedals(player)}</p>
                     {(player.rebuys > 0 || player.addedon) && (
                       <p className="text-xs text-pit-text">
                         +{player.rebuys} rebuy - +{player.addedon ? '1' : '0'} add-on
@@ -101,7 +102,7 @@ export default function PaymentTrackerPage() {
             <div className="space-y-1">
               {paid.map((player) => (
                 <div key={player.userid} className="flex items-center justify-between gap-3">
-                  <p className="line-through text-sm text-pit-text">{player.displayname ?? player.emailaddress}</p>
+                  <p className="line-through text-sm text-pit-text">{playerNameWithMedals(player)}</p>
                   <button
                     className="text-xs text-pit-text hover:text-white"
                     onClick={() => toggleMutation.mutate(player.userid)}

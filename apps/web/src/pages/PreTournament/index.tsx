@@ -107,6 +107,7 @@ export default function PreTournamentPage() {
       back="/"
       compactSidebar
       hideSidebar={tab === 'run'}
+      hideMobileNav={canManage}
       headerRight={<BrandLockup compact showSlogan={false} showWordmark={false} className="items-center gap-2" />}
       mainWidthClassName="max-w-[1800px]"
     >
@@ -161,7 +162,7 @@ export default function PreTournamentPage() {
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
       {tab === 'run' && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
       <div className="h-20 md:hidden" />
-      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} />
+      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} dockToBottom={canManage} />
     </Layout>
   );
 }
@@ -170,13 +171,15 @@ function TournamentMobileNav({
   tabs,
   activeTab,
   onTabChange,
+  dockToBottom = false,
 }: {
   tabs: { id: Tab; label: string; mobileLabel: string; Icon: React.ElementType }[];
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
+  dockToBottom?: boolean;
 }) {
   return (
-    <nav className="fixed inset-x-0 bottom-[4.75rem] z-40 grid grid-cols-4 border-t border-pit-border bg-pit-surface/95 backdrop-blur-md md:hidden">
+    <nav className={`fixed inset-x-0 z-40 grid grid-cols-4 border-t border-pit-border bg-pit-surface/95 backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}>
       {tabs.map(({ id, mobileLabel, Icon }) => {
         const active = activeTab === id;
         return (
@@ -251,6 +254,8 @@ function TournamentDetailsCard({
     bountyprizepool: String(toNumber(tournament.bountyprizepool)),
     bountypooltype: tournament.bountypooltype ?? 'amount',
     bountyroundingdenomination: String(toNumber(tournament.bountyroundingdenomination) || 5),
+    bountystartplace: tournament.bountystartplace ? String(tournament.bountystartplace) : '',
+    bountyminpayout: String(toNumber(tournament.bountyminpayout)),
   }));
 
   function startEditing() {
@@ -269,11 +274,14 @@ function TournamentDetailsCard({
       bountyprizepool: String(toNumber(tournament.bountyprizepool)),
       bountypooltype: tournament.bountypooltype ?? 'amount',
       bountyroundingdenomination: String(toNumber(tournament.bountyroundingdenomination) || 5),
+      bountystartplace: tournament.bountystartplace ? String(tournament.bountystartplace) : '',
+      bountyminpayout: String(toNumber(tournament.bountyminpayout)),
     });
     setEditing(true);
   }
 
   function saveDetails() {
+    if (bountyMinimumError) return;
     onSave({
       name: form.name.trim(),
       tourneydate: form.tourneydate || undefined,
@@ -289,9 +297,30 @@ function TournamentDetailsCard({
       bountyprizepool: toNumber(form.bountyprizepool),
       bountypooltype: form.bountypooltype,
       bountyroundingdenomination: toNumber(form.bountyroundingdenomination) || 5,
+      bountystartplace: form.bountystartplace ? Number(form.bountystartplace) || null : null,
+      bountyminpayout: toNumber(form.bountyminpayout),
     });
     setEditing(false);
   }
+
+  const estimatedBountyField = Math.max(0, Number(form.maxplayers) || 0);
+  const estimatedBountyEligibleCount = form.bountystartplace
+    ? Math.min(Number(form.bountystartplace) || 0, estimatedBountyField)
+    : estimatedBountyField;
+  const estimatedBountyGross = (toNumber(form.buyin) * estimatedBountyField)
+    + (toNumber(form.rebuyprice) * totalRebuys)
+    + (toNumber(form.addonprice) * totalAddons);
+  const estimatedBountyPool = form.bountypooltype === 'percent'
+    ? (estimatedBountyGross * Math.min(100, Math.max(0, toNumber(form.bountyprizepool)))) / 100
+    : toNumber(form.bountyprizepool);
+  const bountyMinimumRequired = toNumber(form.bountyminpayout) * estimatedBountyEligibleCount;
+  const bountyMinimumError = form.bountyenabled
+    && form.bountymode === 'mystery'
+    && toNumber(form.bountyminpayout) > 0
+    && estimatedBountyEligibleCount > 0
+    && bountyMinimumRequired > estimatedBountyPool
+      ? `Minimum bounty payout is too high. ${estimatedBountyEligibleCount} eligible bounties at ${formatMoney(toNumber(form.bountyminpayout))} requires ${formatMoney(bountyMinimumRequired)}, but the bounty pool is ${formatMoney(estimatedBountyPool)}.`
+      : '';
 
   return (
     <section className="card overflow-hidden">
@@ -419,19 +448,61 @@ function TournamentDetailsCard({
                     </div>
                   </Field>
                   {form.bountymode === 'mystery' && (
-                    <Field label="Round bounties to">
-                      <div className="relative">
-                        <input
-                          className="input pl-7"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={form.bountyroundingdenomination}
-                          onChange={(e) => setForm((current) => ({ ...current, bountyroundingdenomination: e.target.value }))}
-                        />
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-pit-muted">$</span>
-                      </div>
+                    <>
+                      <Field label="Round bounties to">
+                        <div className="relative">
+                          <input
+                            className="input pl-7"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={form.bountyroundingdenomination}
+                            onChange={(e) => setForm((current) => ({ ...current, bountyroundingdenomination: e.target.value }))}
+                          />
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-pit-muted">$</span>
+                        </div>
+                      </Field>
+                      <Field label="Minimum bounty">
+                        <div className="relative">
+                          <input
+                            className="input pl-7"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={form.bountyminpayout}
+                            onChange={(e) => setForm((current) => ({ ...current, bountyminpayout: e.target.value }))}
+                          />
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-pit-muted">$</span>
+                        </div>
+                      </Field>
+                    </>
+                  )}
+                  <Field label="Bounties start">
+                    <select
+                      className="input"
+                      value={form.bountystartplace ? 'placement' : 'field'}
+                      onChange={(e) => setForm((current) => ({ ...current, bountystartplace: e.target.value === 'placement' ? (current.bountystartplace || '10') : '' }))}
+                    >
+                      <option value="field">Whole field</option>
+                      <option value="placement">At a specific knockout</option>
+                    </select>
+                  </Field>
+                  {form.bountystartplace && (
+                    <Field label="Start at placement">
+                      <input
+                        className="input"
+                        type="number"
+                        min="2"
+                        step="1"
+                        value={form.bountystartplace}
+                        onChange={(e) => setForm((current) => ({ ...current, bountystartplace: e.target.value }))}
+                      />
                     </Field>
+                  )}
+                  {bountyMinimumError && (
+                    <p className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300 sm:col-span-2">
+                      {bountyMinimumError}
+                    </p>
                   )}
                 </div>
               )}
@@ -439,7 +510,7 @@ function TournamentDetailsCard({
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving}>
+            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving || Boolean(bountyMinimumError)}>
               {saving ? 'Saving...' : 'Save Details'}
             </button>
           </div>
@@ -464,7 +535,7 @@ function TournamentDetailsCard({
           <Row
             label="Bounties"
             value={tournament.bountyenabled
-              ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Manual'} - ${formatBountyPool(tournament, bountyTotal)}`
+              ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Manual'} - ${formatBountyPool(tournament, bountyTotal)}${formatBountyStart(tournament)}${formatBountyMinimum(tournament)}`
               : 'Not enabled'}
           />
           {showTvBoard && (
@@ -589,6 +660,24 @@ function formatBountyPool(tournament: Awaited<ReturnType<typeof api.getTournamen
     ? `${configured.toFixed(2).replace(/\.00$/, '')}% of gross pot`
     : `${formatMoney(configured)} pool`;
   return `${pool}, rounded to ${formatMoney(toNumber(tournament.bountyroundingdenomination) || 5)}`;
+}
+
+function formatBountyStart(tournament: Awaited<ReturnType<typeof api.getTournament>>) {
+  const startPlace = Number(tournament.bountystartplace);
+  if (!Number.isFinite(startPlace) || startPlace <= 1) return '';
+  return `, starts at ${ordinal(Math.round(startPlace))}`;
+}
+
+function formatBountyMinimum(tournament: Awaited<ReturnType<typeof api.getTournament>>) {
+  const minPayout = toNumber(tournament.bountyminpayout);
+  if (tournament.bountymode !== 'mystery' || minPayout <= 0) return '';
+  return `, min ${formatMoney(minPayout)}`;
+}
+
+function ordinal(value: number) {
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const mod100 = value % 100;
+  return `${value}${suffixes[(mod100 - 20) % 10] || suffixes[mod100] || suffixes[0]}`;
 }
 
 function toNumber(value: unknown) {

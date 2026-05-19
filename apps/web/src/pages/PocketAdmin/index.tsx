@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, RefreshCw } from 'lucide-react';
-import { api, BlindLevel } from '../../api/client';
+import { api, BlindLevel, TournamentPlayer } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
 import { announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 interface TimerTick {
   remainingsecs: number;
@@ -97,6 +98,10 @@ export default function PocketAdminPage() {
     mutationFn: (userId: string) => api.removeAddon(id!, userId),
     onSuccess: () => refreshTournamentData(qc, id!),
   });
+  const knockMutation = useMutation({
+    mutationFn: ({ userId, placed }: { userId: string; placed: number | null }) => api.knockPlayer(id!, userId, placed),
+    onSuccess: () => refreshTournamentData(qc, id!),
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -185,6 +190,7 @@ export default function PocketAdminPage() {
     [timerState]
   );
   const currentBlind = effectiveBlinds.find((blind) => blind.level === Number(timerState?.currentlevel ?? 1)) ?? effectiveBlinds[0];
+  const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
   const secs = timerState?.remainingsecs ?? ((currentBlind?.minutes ?? 0) * 60);
   const minsStr = String(Math.floor(secs / 60)).padStart(2, '0');
   const secsStr = String(secs % 60).padStart(2, '0');
@@ -371,16 +377,24 @@ export default function PocketAdminPage() {
           >
             {sortedPlayers.map((player) => (
               <option key={player.userid} value={player.userid}>
-                {player.displayname ?? player.emailaddress}
+                {playerNameWithMedals(player)}{seatLabel(player) ? ` - ${seatLabel(player)}` : ''}
               </option>
             ))}
           </select>
 
           {selectedPlayer && (
             <div className="rounded-lg border border-pit-border bg-pit-bg/50 p-3">
-              <p className="font-medium text-white">{selectedPlayer.displayname ?? selectedPlayer.emailaddress}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 truncate font-medium text-white">{playerNameWithMedals(selectedPlayer)}</p>
+                {seatLabel(selectedPlayer) && (
+                  <span className="shrink-0 rounded-full border border-pit-teal/30 bg-pit-teal/10 px-2 py-0.5 text-[11px] font-semibold text-pit-teal">
+                    {seatLabel(selectedPlayer)}
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-xs text-pit-text">
                 {selectedPlayer.checkedin ? 'Checked in' : 'Not checked in'}
+                {selectedPlayer.placed != null ? ` - finished #${selectedPlayer.placed}` : ''}
                 {selectedPlayer.rebuys > 0 ? ` - ${selectedPlayer.rebuys} rebuy` : ''}
                 {selectedPlayer.addedon ? ' - add-on used' : ''}
               </p>
@@ -464,6 +478,25 @@ export default function PocketAdminPage() {
                     )}
                   </>
                 )}
+                {selectedPlayer.placed == null ? (
+                  <button
+                    type="button"
+                    className="btn-danger col-span-2 justify-center"
+                    onClick={() => knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1) })}
+                    disabled={!selectedPlayer.checkedin || knockMutation.isPending}
+                  >
+                    Knockout Player
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost col-span-2 justify-center"
+                    onClick={() => knockMutation.mutate({ userId: selectedPlayer.userid, placed: null })}
+                    disabled={knockMutation.isPending}
+                  >
+                    Restore to Field
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -481,7 +514,14 @@ export default function PocketAdminPage() {
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-white">{player.displayname ?? player.emailaddress}</p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-medium text-white">{playerNameWithMedals(player)}</p>
+                    {seatLabel(player) && (
+                      <span className="shrink-0 rounded-full border border-pit-border bg-pit-surface px-1.5 py-0.5 text-[10px] font-semibold text-pit-teal">
+                        {seatLabel(player)}
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-[11px] text-pit-text">
                     {player.checkedin ? 'Checked in' : 'Not checked in'}
                     {player.rebuys > 0 ? ` - ${player.rebuys} rebuy` : ''}
@@ -501,4 +541,9 @@ export default function PocketAdminPage() {
 function refreshTournamentData(qc: ReturnType<typeof useQueryClient>, tournamentId: string) {
   qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
   qc.invalidateQueries({ queryKey: ['players', tournamentId] });
+}
+
+function seatLabel(player: Pick<TournamentPlayer, 'tablenumber' | 'seat'>) {
+  if (player.tablenumber == null || player.seat == null) return '';
+  return `T${player.tablenumber} S${player.seat}`;
 }

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, Clock3, Mic2, Play, QrCode, Sparkles, Users, Volume2 } from 'lucide-react';
+import { Bot, CheckCircle2, Clock3, Mic2, Play, QrCode, Sparkles, Trophy, Users, Volume2 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
@@ -34,6 +34,24 @@ const steps = [
   'Create a group and schedule the game.',
   'Build blinds, payouts, seating, and player rules.',
   'Run the clock, display the board, and let the room follow along.',
+];
+
+const playerTrackingHighlights = [
+  {
+    title: 'Entries and finishes stay organized',
+    body: 'Track who entered, checked in, rebought, added on, busted, and placed without turning the host into a spreadsheet clerk.',
+    stat: '13 players',
+  },
+  {
+    title: 'Placement medals build history',
+    body: 'Registered players can carry first, second, and third-place counts with them, so regulars earn a little visible status over time.',
+    stat: '1st x2',
+  },
+  {
+    title: 'Challenge coins make it social',
+    body: 'Groups can award fun coins for table stories, running jokes, streaks, bounties, and custom achievements that make each room feel like its own club.',
+    stat: 'Coins',
+  },
 ];
 
 type VoiceClip = {
@@ -105,7 +123,6 @@ type VoiceManifestEntry = {
 };
 
 export default function LandingPage() {
-  const [activeVoice, setActiveVoice] = useState(0);
   const [voiceError, setVoiceError] = useState('');
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(cannedVoiceStyles);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -147,13 +164,11 @@ export default function LandingPage() {
               }
             : style;
         }));
-        setActiveVoice(0);
       })
       .catch(() => {});
   }, []);
 
   async function playVoicePreview(index: number) {
-    setActiveVoice(index);
     const clip = voiceClips[index];
     if (!clip) return;
     setVoiceError('');
@@ -169,6 +184,9 @@ export default function LandingPage() {
       setVoiceError(err instanceof Error ? err.message : 'Stored AI preview clip is not available yet.');
     }
   }
+
+  const allInAlexIndex = Math.max(voiceClips.findIndex((clip) => clip.style === 'all_in_alex'), 0);
+  const allInAlexClip = voiceClips[allInAlexIndex] ?? cannedVoiceStyles[0];
 
   return (
     <main className="min-h-screen bg-pit-bg text-white">
@@ -213,8 +231,8 @@ export default function LandingPage() {
 
           <div data-reveal className="mt-5 rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
             <div>
-              <span className="font-semibold text-white">PokerPlanner.bet is live for beta hosts.</span>
-              <span className="ml-1">Every current feature is free while we tune real poker nights.</span>
+              <span className="font-semibold text-white">PokerPlanner.bet is live!</span>
+              <span className="ml-1">Help us build and shape for all hosting needs!</span>
             </div>
             <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/pricing">
               See beta access
@@ -230,11 +248,11 @@ export default function LandingPage() {
                 Run Better Poker Nights
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-pit-text">
-                Plan the tournament, run the clock, display the room board, manage players, and give every group its own AI announcer personality.
+                Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
-                <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(0)}>
+                <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
                   <Volume2 size={16} />
                   Preview AI voice
                 </button>
@@ -256,6 +274,37 @@ export default function LandingPage() {
               <HeroBoard />
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
+        <div data-reveal className="mb-8">
+          <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
+          <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <ProductShot
+            title="Run Tournament"
+            eyebrow="Host command center"
+            caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
+          >
+            <RunTournamentMock />
+          </ProductShot>
+          <ProductShot
+            title="Player Lobby"
+            eyebrow="Phone friendly"
+            caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
+          >
+            <PlayerLobbyMock />
+          </ProductShot>
+          <ProductShot
+            title="Pocket Admin"
+            eyebrow="Mobile control"
+            caption="Hosts can control the timer and handle quick actions while walking the room."
+          >
+            <PocketAdminMock />
+          </ProductShot>
         </div>
       </section>
 
@@ -303,20 +352,20 @@ export default function LandingPage() {
             <p className="text-sm font-semibold uppercase text-pit-teal">AI voice director</p>
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
             <p className="mt-4 text-sm leading-6 text-pit-text">
-              Pick a voice style for each group, preview saved clips, and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.
+              Pick a voice style for each group and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.
             </p>
             <div className="mt-6 space-y-3">
               <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-pit-teal" />
-                  <h3 className="text-sm font-semibold text-white">Game-aware moments</h3>
+                  <h3 className="text-sm font-semibold text-white">Context when it matters</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-pit-text">
-                  The announcer is not just reading a static line. It can use the current tournament state, like level, blinds, remaining players, rebuys, add-ons, knockouts, bounties, and break timing, to make short announcements that feel live.
+                  Classic mode keeps announcements short and clean. When a group wants more color, level changes can include live tournament context like field movement, rebuys, add-ons, and bounty pressure.
                 </p>
               </div>
               <div className="grid gap-2 text-sm text-pit-text sm:grid-cols-2 lg:grid-cols-1">
-                {['Group-level voice presets', 'Custom prompt flavor', 'Level-up and warning scripts', 'Saved MP3 previews'].map((item) => (
+                {['Group-level voice preset', 'Custom prompt flavor', 'Concise clock, pause, knockout, rebuy, and add-on calls', 'Saved preview clips for the landing page'].map((item) => (
                   <div key={item} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
                     <CheckCircle2 size={15} className="text-pit-teal" />
                     <span>{item}</span>
@@ -329,8 +378,8 @@ export default function LandingPage() {
           <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase text-pit-muted">Voice presets</p>
-                <h3 className="mt-1 text-xl font-bold text-white">Pick a table personality</h3>
+                <p className="text-xs font-semibold uppercase text-pit-muted">Voice preview</p>
+                <h3 className="mt-1 text-xl font-bold text-white">Hear All-In Alex</h3>
               </div>
               <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10">
                 <span className="pp-ring absolute inset-1 rounded-full border border-pit-teal/40" style={{ animation: 'pp-pulse-ring 1.8s ease-in-out infinite' }} />
@@ -338,17 +387,17 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="mb-4 rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
+            <div className="rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-pit-teal">Now previewing</p>
-                  <h4 className="mt-1 text-2xl font-bold text-white">{voiceClips[activeVoice]?.label ?? 'AI Voice Director'}</h4>
-                  <p className="mt-2 text-sm leading-6 text-pit-text">{voiceClips[activeVoice]?.text}</p>
+                  <h4 className="mt-1 text-2xl font-bold text-white">{allInAlexClip.label}</h4>
+                  <p className="mt-2 text-sm leading-6 text-pit-text">{allInAlexClip.text}</p>
                 </div>
                 <button
                   type="button"
                   className="btn-primary shrink-0 px-4 py-2 text-sm"
-                  onClick={() => playVoicePreview(activeVoice)}
+                  onClick={() => playVoicePreview(allInAlexIndex)}
                 >
                   <Play size={15} />
                   Play clip
@@ -357,31 +406,11 @@ export default function LandingPage() {
               <div className="mt-4 rounded-lg border border-pit-border bg-pit-bg/70 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Sample line</p>
                 <p className="mt-1 text-sm leading-6 text-white">
-                  {voiceClips[activeVoice]?.sampleText ?? (voiceClips[activeVoice]?.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
+                  {allInAlexClip.sampleText ?? (allInAlexClip.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              {voiceClips.map((clip, index) => (
-                <button
-                  key={clip.label}
-                  type="button"
-                  onClick={() => playVoicePreview(index)}
-                  className={`rounded-lg border px-3 py-3 text-left transition ${
-                    activeVoice === index
-                      ? 'border-pit-teal bg-pit-teal/15 shadow-[0_0_24px_rgba(20,184,166,0.12)]'
-                      : 'border-pit-border bg-pit-bg/60 hover:border-pit-muted'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-sm font-semibold text-white">{clip.label}</span>
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${clip.src ? 'bg-pit-teal' : 'bg-pit-muted'}`} />
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-pit-text">{clip.text}</p>
-                </button>
-              ))}
-            </div>
             {voiceError && (
               <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
                 {voiceError}
@@ -391,15 +420,14 @@ export default function LandingPage() {
             <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/70 p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Sparkles size={16} className="text-pit-teal" />
-                <p className="text-sm font-semibold text-white">Example live context</p>
+                <p className="text-sm font-semibold text-white">What groups can customize</p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <VoiceMetric label="Level" value="3" />
-                <VoiceMetric label="Field change" value="3 knocked out" />
-                <VoiceMetric label="Bounties left" value="$140" />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <VoiceMetric label="Preset" value="All-In Alex" />
+                <VoiceMetric label="Mode" value="Classic or contextual" />
               </div>
               <p className="mt-3 text-sm leading-6 text-pit-text">
-                Example: "Level 3 is live. Blinds are 100 and 200. Three players fell last level, and the bounty pool is still dangerous."
+                The full app lets groups choose from more announcer styles, but the landing page keeps the pitch focused: one strong sample, then get people into the product.
               </p>
             </div>
           </div>
@@ -407,33 +435,43 @@ export default function LandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div data-reveal className="mb-8">
-          <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
-          <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
-        </div>
+        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+          <div data-reveal>
+            <p className="text-sm font-semibold uppercase text-pit-teal">Player tracking</p>
+            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Track the game without losing the night.</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-pit-text">
+              PokerPlanner keeps the useful history: entries, check-ins, knockouts, payouts, placement medals, and group challenge coins. The point is not to make poker night feel like work. It is to let the app quietly handle the record keeping while the group focuses on the table talk, rivalries, and stories people actually remember.
+            </p>
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
+              {playerTrackingHighlights.map((item, index) => (
+                <article
+                  key={item.title}
+                  data-reveal
+                  style={{ transitionDelay: `${index * 80}ms` }}
+                  className="rounded-xl border border-pit-border bg-pit-card p-4"
+                >
+                  <div className="mb-3 inline-flex rounded-lg border border-pit-teal/25 bg-pit-teal/10 px-2 py-1 font-mono text-xs font-semibold text-pit-teal">
+                    {item.stat}
+                  </div>
+                  <h3 className="text-base font-semibold text-white">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-pit-text">{item.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
 
-        <div className="grid gap-5 lg:grid-cols-3">
-          <ProductShot
-            title="Run Tournament"
-            eyebrow="Host command center"
-            caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
-          >
-            <RunTournamentMock />
-          </ProductShot>
-          <ProductShot
-            title="Player Lobby"
-            eyebrow="Phone friendly"
-            caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
-          >
-            <PlayerLobbyMock />
-          </ProductShot>
-          <ProductShot
-            title="Pocket Admin"
-            eyebrow="Mobile control"
-            caption="Hosts can control the timer and handle quick actions while walking the room."
-          >
-            <PocketAdminMock />
-          </ProductShot>
+          <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-pit-muted">Group pride</p>
+                <h3 className="mt-1 text-xl font-bold text-white">Coins, medals, and bragging rights</h3>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-yellow-200/25 bg-yellow-200/10 text-yellow-200">
+                <Trophy size={22} />
+              </div>
+            </div>
+            <PlayerTrackingMock />
+          </div>
         </div>
       </section>
 
@@ -523,6 +561,57 @@ function MiniPayout() {
       {['1st $430', '2nd $258', '3rd $172'].map((row) => (
         <div key={row} className="mt-2 rounded-md border border-pit-border bg-pit-bg/70 px-2 py-1 text-xs text-white">
           {row}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlayerTrackingMock() {
+  const rows = [
+    {
+      name: 'Ambo',
+      detail: 'Checked in - Table 2 Seat 4',
+      medals: '1st x2  2nd x1',
+      coins: ['/challenge-coins/defaults/big-stack.svg', '/challenge-coins/defaults/royal-highness.svg', '/challenge-coins/defaults/table-talker.svg'],
+    },
+    {
+      name: 'Steve',
+      detail: 'Finished 2nd - Paid',
+      medals: '2nd x3  3rd x1',
+      coins: ['/challenge-coins/defaults/lockdown.svg', '/challenge-coins/defaults/lucky-dog.svg'],
+    },
+    {
+      name: 'Rob',
+      detail: 'Bounty claimed',
+      medals: '3rd x2',
+      coins: ['/challenge-coins/defaults/bounty-hunter.svg', '/challenge-coins/defaults/hot-streak.svg'],
+    },
+  ];
+
+  return (
+    <div className="space-y-3 rounded-xl border border-pit-border bg-pit-bg/70 p-3">
+      {rows.map((row) => (
+        <div key={row.name} className="rounded-lg border border-pit-border bg-pit-card/80 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{row.name}</p>
+              <p className="mt-1 text-xs text-pit-muted">{row.detail}</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-yellow-200/30 bg-yellow-200/10 px-2 py-0.5 text-[10px] font-semibold text-yellow-200">
+              {row.medals}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            {row.coins.map((coin) => (
+              <img
+                key={coin}
+                src={coin}
+                alt=""
+                className="h-9 w-9 rounded-full border border-white/10 bg-pit-bg object-cover shadow"
+              />
+            ))}
+          </div>
         </div>
       ))}
     </div>

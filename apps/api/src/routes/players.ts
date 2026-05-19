@@ -6,6 +6,8 @@ import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
+import { redistributeMysteryBountiesForTournament } from '../services/bounties';
+import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 
 export const playersRouter = Router();
@@ -55,9 +57,33 @@ function parsePlaced(value: unknown): number | null {
 }
 
 playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
+  const tournament = await queryOne<{ groupid: string | null }>(
+    `SELECT groupid FROM tournaments WHERE tournamentid = $1`,
+    [req.params.tid]
+  );
   const rows = await query<TournamentPlayer>(
-    `SELECT tp.userid, u.emailaddress,
+    `WITH current_tournament AS (
+       SELECT groupid FROM tournaments WHERE tournamentid = $1
+     ),
+     medal_counts AS (
+       SELECT hp.userid,
+              CAST(COALESCE(sum(CASE WHEN hp.placed = 1 THEN 1 ELSE 0 END), 0) AS INT) AS firstplacecount,
+              CAST(COALESCE(sum(CASE WHEN hp.placed = 2 THEN 1 ELSE 0 END), 0) AS INT) AS secondplacecount,
+              CAST(COALESCE(sum(CASE WHEN hp.placed = 3 THEN 1 ELSE 0 END), 0) AS INT) AS thirdplacecount
+       FROM tournamentplayers hp
+       JOIN tournaments ht ON ht.tournamentid = hp.tournamentid
+       LEFT JOIN usermetadata hm ON hm.userid = hp.userid
+       CROSS JOIN current_tournament ct
+       WHERE hp.placed IN (1, 2, 3)
+         AND COALESCE(hm.isguestuser, FALSE) = FALSE
+         AND (ct.groupid IS NULL OR ht.groupid = ct.groupid)
+       GROUP BY hp.userid
+     )
+     SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            COALESCE(mc.firstplacecount, 0) AS firstplacecount,
+            COALESCE(mc.secondplacecount, 0) AS secondplacecount,
+            COALESCE(mc.thirdplacecount, 0) AS thirdplacecount,
             m.checkinaudiodata,
             m.avatarimagedata,
             COALESCE(tp.checkedin, FALSE) AS checkedin,
@@ -81,11 +107,13 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
      LEFT JOIN users bu ON bu.guid = tp.bountyclaimedbyuserid
      LEFT JOIN usermetadata bm ON bm.userid = tp.bountyclaimedbyuserid
      LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
+     LEFT JOIN medal_counts mc ON mc.userid = tp.userid
      WHERE tp.tournamentid = $1
      ORDER BY tp.createdate`,
     [req.params.tid]
   );
-  res.json(rows);
+  const rowsWithCoins = await attachPlayerCoinBadges(rows, tournament?.groupid);
+  res.json(rowsWithCoins);
 });
 
 // Admin registers an existing user or creates a guest player by name
@@ -256,6 +284,7 @@ playersRouter.put('/:tid/players/:uid/checkin', async (req: Request, res: Respon
   } else {
     await clearSeatForPlayer(req.params.tid, req.params.uid);
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'checkin' });
   res.json({ success: true, checkedin: updated.checkedin });
 });
@@ -278,6 +307,7 @@ playersRouter.post('/:tid/players/:uid/rebuy', async (req: Request, res: Respons
     res.status(404).json({ error: 'Player not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'rebuy' });
   res.json({ success: true, rebuys: updated.rebuys });
 });
@@ -300,6 +330,7 @@ playersRouter.delete('/:tid/players/:uid/rebuy', async (req: Request, res: Respo
     res.status(404).json({ error: 'Player not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'rebuy-undo' });
   res.json({ success: true, rebuys: updated.rebuys });
 });
@@ -322,6 +353,7 @@ playersRouter.post('/:tid/players/:uid/addon', async (req: Request, res: Respons
     res.status(404).json({ error: 'Player not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon' });
   res.json({ success: true, addedon: updated.addedon });
 });
@@ -344,6 +376,7 @@ playersRouter.delete('/:tid/players/:uid/addon', async (req: Request, res: Respo
     res.status(404).json({ error: 'Player not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'addon-undo' });
   res.json({ success: true, addedon: updated.addedon });
 });
@@ -363,6 +396,7 @@ playersRouter.post('/:tid/rebuys', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tournament not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-rebuy' });
   res.json({ success: true, genericrebuys: updated.genericrebuys });
 });
@@ -382,6 +416,7 @@ playersRouter.delete('/:tid/rebuys', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tournament not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-rebuy-undo' });
   res.json({ success: true, genericrebuys: updated.genericrebuys });
 });
@@ -401,6 +436,7 @@ playersRouter.post('/:tid/addons', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tournament not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-addon' });
   res.json({ success: true, genericaddons: updated.genericaddons });
 });
@@ -420,6 +456,7 @@ playersRouter.delete('/:tid/addons', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tournament not found' });
     return;
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { tournament: true, players: true, source: 'generic-addon-undo' });
   res.json({ success: true, genericaddons: updated.genericaddons });
 });
@@ -432,6 +469,7 @@ playersRouter.delete('/:tid/players/:uid', async (req: Request, res: Response) =
     `DELETE FROM tournamentplayers WHERE tournamentid = $1 AND userid = $2`,
     [req.params.tid, req.params.uid]
   );
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'remove-player' });
   res.json({ success: true });
 });
@@ -488,6 +526,15 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     }
 
     const currentPlaced = current.placed == null ? null : Number(current.placed);
+    const bountySettings = await client.query<{ bountystartplace: number | null }>(
+      `SELECT CAST(bountystartplace AS INT) AS bountystartplace
+       FROM tournaments
+       WHERE tournamentid = $1`,
+      [req.params.tid]
+    );
+    const bountyStartPlace = bountySettings.rows[0]?.bountystartplace == null
+      ? null
+      : Number(bountySettings.rows[0].bountystartplace);
     if (nextPlaced != null && currentPlaced == null) {
       const activeResult = await client.query<{ activecount: number }>(
         `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
@@ -548,13 +595,13 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
       await client.query(
         `UPDATE tournamentplayers
          SET placed = $3,
-             checkedin = FALSE,
+             checkedin = TRUE,
              knockedoutbyuserid = $4,
              knockedoutat = now(),
-             bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 THEN $4 ELSE NULL END,
-             bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL THEN now() ELSE NULL END
+             bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
+             bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
          WHERE tournamentid = $1 AND userid = $2`,
-        [req.params.tid, req.params.uid, nextPlaced, knockedoutbyuserid ?? null]
+        [req.params.tid, req.params.uid, nextPlaced, knockedoutbyuserid ?? null, bountyStartPlace]
       );
     }
 
@@ -565,6 +612,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   } finally {
     client.release();
   }
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
   res.json({ success: true });
 });

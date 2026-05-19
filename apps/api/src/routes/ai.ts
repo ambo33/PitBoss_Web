@@ -39,7 +39,7 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
   }
 
   const body = req.body as {
-    eventtype?: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon';
+    eventtype?: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
     currentlevel?: number;
     previouslevel?: number | null;
     previouslevelstartedat?: string | null;

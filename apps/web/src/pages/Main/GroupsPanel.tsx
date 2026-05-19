@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Vote } from 'lucide-react';
+import { ArrowLeft, Award, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Upload, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, AnnouncerPreset, Group, GroupMember, Tournament } from '../../api/client';
+import { api, AnnouncerPreset, Group, GroupCoin, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
+import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
+import { playerMedalSuffix, playerNameWithMedals } from '../../utils/playerAchievements';
 import {
   DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
   DEFAULT_LEVEL_UP_ANNOUNCEMENT,
@@ -233,6 +235,7 @@ function groupTabLabel(tab: DetailTab, memberCount: number) {
   if (tab === 'info') return 'Info';
   if (tab === 'members') return `Members (${memberCount})`;
   if (tab === 'posts') return 'Posts';
+  if (tab === 'coins') return 'Coins';
   if (tab === 'voice') return 'Voice Configuration';
   if (tab === 'structures') return 'Blind Structures';
   return 'Tournament History';
@@ -242,6 +245,7 @@ function groupTabIcon(tab: DetailTab) {
   if (tab === 'info') return Info;
   if (tab === 'members') return Users;
   if (tab === 'posts') return MessageSquare;
+  if (tab === 'coins') return Award;
   if (tab === 'voice') return Mic2;
   if (tab === 'structures') return Layers3;
   return FileText;
@@ -260,7 +264,7 @@ const ANNOUNCER_PRESETS: Array<{ value: AnnouncerPreset; label: string; descript
   { value: 'sunny_stacks', label: 'Sunny Stacks', description: 'Friendly upbeat female host' },
 ];
 
-type DetailTab = 'info' | 'members' | 'posts' | 'voice' | 'structures' | 'history';
+type DetailTab = 'info' | 'members' | 'posts' | 'coins' | 'voice' | 'structures' | 'history';
 
 function normalizeAnnouncerPreset(value: string | null | undefined): AnnouncerPreset {
   if (ANNOUNCER_PRESETS.some((preset) => preset.value === value)) return value as AnnouncerPreset;
@@ -303,6 +307,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [smsStatus, setSmsStatus] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
+  const [coinName, setCoinName] = useState('');
+  const [coinDescription, setCoinDescription] = useState('');
+  const [coinImageData, setCoinImageData] = useState<string | null>(null);
+  const [coinImageFilename, setCoinImageFilename] = useState<string | null>(null);
+  const [coinFileError, setCoinFileError] = useState('');
+  const [awardCoinId, setAwardCoinId] = useState('');
+  const [awardUserId, setAwardUserId] = useState('');
+  const [awardNote, setAwardNote] = useState('');
 
   const { data } = useQuery({
     queryKey: ['group', group.groupid],
@@ -329,6 +341,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     queryKey: ['group', group.groupid, 'posts'],
     queryFn: () => api.getGroupPosts(group.groupid),
     enabled: detailTab === 'posts',
+  });
+  const { data: coinsData, isLoading: loadingCoins } = useQuery({
+    queryKey: ['group', group.groupid, 'coins'],
+    queryFn: () => api.getGroupCoins(group.groupid),
+    enabled: detailTab === 'coins',
   });
 
   const approveMutation = useMutation({
@@ -439,6 +456,41 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] });
     },
   });
+  const createCoinMutation = useMutation({
+    mutationFn: () => api.createGroupCoin(group.groupid, {
+      name: coinName,
+      description: coinDescription,
+      imagedata: coinImageData,
+      imageurl: null,
+      imagefilename: coinImageFilename,
+    }),
+    onSuccess: () => {
+      setCoinName('');
+      setCoinDescription('');
+      setCoinImageData(null);
+      setCoinImageFilename(null);
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'coins'] });
+    },
+  });
+  const awardCoinMutation = useMutation({
+    mutationFn: () => api.awardGroupCoin(group.groupid, awardCoinId, { userid: awardUserId, note: awardNote }),
+    onSuccess: () => {
+      setAwardNote('');
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'coins'] });
+    },
+  });
+  const addDefaultCoinMutation = useMutation({
+    mutationFn: (presetKey: string) => {
+      const preset = DEFAULT_COIN_PRESETS.find((item) => item.key === presetKey);
+      if (!preset) throw new Error('Default coin not found.');
+      return api.createGroupCoin(group.groupid, {
+        name: preset.name,
+        description: preset.description,
+        imageurl: preset.imageurl,
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'coins'] }),
+  });
 
   const members: GroupMember[] = data?.members ?? [];
   const pending = members.filter(m => !m.approved);
@@ -449,8 +501,8 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const announcerControlsEnabled = canUseClubFeatures && aiAnnouncerEnabled;
   const postsEnabled = postsData?.enabled ?? canUseClubFeatures;
   const detailTabs: DetailTab[] = group.isadmin
-    ? ['info', 'members', 'posts', 'voice', 'structures', 'history']
-    : ['info', 'members', 'posts', 'structures', 'history'];
+    ? ['info', 'members', 'posts', 'coins', 'voice', 'structures', 'history']
+    : ['info', 'members', 'posts', 'coins', 'structures', 'history'];
 
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
@@ -513,6 +565,25 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       setPreviewingAnnouncer(false);
       setAnnouncerPreviewError(err instanceof Error ? err.message : 'Could not play this announcer preview.');
     }
+  }
+
+  async function handleCoinFile(file: File | null) {
+    setCoinFileError('');
+    setCoinImageData(null);
+    setCoinImageFilename(null);
+    if (!file) return;
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setCoinFileError('Use a PNG, JPG, or WebP image.');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setCoinFileError('Keep coin art at 1 MB or smaller.');
+      return;
+    }
+    const data = await readFileAsDataUrl(file);
+    setCoinImageData(data);
+    setCoinImageFilename(file.name);
   }
 
   return (
@@ -1082,11 +1153,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                       {(m.displayname ?? m.emailaddress).slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <span className="text-sm text-white">{m.displayname ?? m.emailaddress}</span>
+                      <span className="text-sm text-white">{playerNameWithMedals(m)}</span>
                       {m.isadmin && (
                         <span className="ml-2 badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold text-[10px]">
                           <Crown size={8} className="mr-0.5" /> Admin
                         </span>
+                      )}
+                      {playerMedalSuffix(m) && (
+                        <p className="mt-0.5 text-[11px] text-pit-muted">Registered player history</p>
                       )}
                     </div>
                   </div>
@@ -1097,6 +1171,164 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {detailTab === 'coins' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Placement medals</p>
+                  <p className="mt-1 text-xs leading-5 text-pit-muted">
+                    Registered users automatically collect first, second, and third place counts from this group's tournament results. Guests are ignored.
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <img src="/challenge-coins/placement-gold.svg" alt="First place" className="h-10 w-10" />
+                  <img src="/challenge-coins/placement-silver.svg" alt="Second place" className="h-10 w-10" />
+                  <img src="/challenge-coins/placement-bronze.svg" alt="Third place" className="h-10 w-10" />
+                </div>
+              </div>
+            </div>
+
+            {group.isadmin && (
+              <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                  <p className="text-sm font-semibold text-white">Create challenge coin</p>
+                  <p className="mt-1 text-xs leading-5 text-pit-muted">
+                    Upload square art, ideally 512x512 PNG/WebP/JPG. Max 1 MB. Keep text large enough to read at icon size.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[96px_1fr]">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-pit-border bg-pit-surface">
+                      {coinImageData ? (
+                        <img src={coinImageData} alt="Coin preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <Award size={28} className="text-pit-muted" />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <input className="input" placeholder="Coin name, e.g. Always Late" value={coinName} onChange={(event) => setCoinName(event.target.value)} />
+                      <input className="input" placeholder="Short description" value={coinDescription} onChange={(event) => setCoinDescription(event.target.value)} />
+                      <label className="btn-ghost inline-flex cursor-pointer items-center gap-2 text-xs">
+                        <Upload size={13} />
+                        Upload art
+                        <input
+                          className="hidden"
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={(event) => void handleCoinFile(event.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {coinImageFilename && <p className="truncate text-xs text-pit-muted">{coinImageFilename}</p>}
+                    </div>
+                  </div>
+                  {coinFileError && <p className="mt-2 text-sm text-red-400">{coinFileError}</p>}
+                  {createCoinMutation.error && <p className="mt-2 text-sm text-red-400">{createCoinMutation.error.message}</p>}
+                  <button
+                    className="btn-primary mt-3"
+                    disabled={createCoinMutation.isPending || !coinName.trim()}
+                    onClick={() => createCoinMutation.mutate()}
+                  >
+                    {createCoinMutation.isPending ? 'Creating...' : 'Create Coin'}
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                  <p className="text-sm font-semibold text-white">Award coin</p>
+                  <div className="mt-3 space-y-2">
+                    <select className="input" value={awardCoinId} onChange={(event) => setAwardCoinId(event.target.value)}>
+                      <option value="">Choose a coin</option>
+                      {(coinsData?.coins ?? []).map((coin) => (
+                        <option key={coin.id} value={coin.id}>{coin.name}</option>
+                      ))}
+                    </select>
+                    <select className="input" value={awardUserId} onChange={(event) => setAwardUserId(event.target.value)}>
+                      <option value="">Choose a member</option>
+                      {approved.map((member) => (
+                        <option key={member.userid} value={member.userid}>{playerNameWithMedals(member)}</option>
+                      ))}
+                    </select>
+                    <input className="input" placeholder="Optional note" value={awardNote} onChange={(event) => setAwardNote(event.target.value)} />
+                    {awardCoinMutation.error && <p className="text-sm text-red-400">{awardCoinMutation.error.message}</p>}
+                    <button
+                      className="btn-primary"
+                      disabled={awardCoinMutation.isPending || !awardCoinId || !awardUserId}
+                      onClick={() => awardCoinMutation.mutate()}
+                    >
+                      {awardCoinMutation.isPending ? 'Awarding...' : 'Award Coin'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {group.isadmin && (
+              <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Default coin presets</p>
+                    <p className="mt-1 text-xs text-pit-muted">Add any preset to this group, then award it like a custom coin.</p>
+                  </div>
+                  {addDefaultCoinMutation.error && <p className="text-sm text-red-400">{addDefaultCoinMutation.error.message}</p>}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {DEFAULT_COIN_PRESETS.map((preset) => {
+                    const alreadyAdded = (coinsData?.coins ?? []).some((coin) => coin.name === preset.name);
+                    return (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        className="flex items-center gap-3 rounded-xl border border-pit-border bg-pit-surface/40 p-2 text-left transition hover:border-pit-teal/50 hover:bg-pit-teal/10 disabled:cursor-default disabled:opacity-60"
+                        disabled={addDefaultCoinMutation.isPending || alreadyAdded}
+                        onClick={() => addDefaultCoinMutation.mutate(preset.key)}
+                      >
+                        <img src={preset.imageurl} alt="" className="h-12 w-12 shrink-0 rounded-lg" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-white">{preset.name}</span>
+                          <span className="block truncate text-xs text-pit-muted">{alreadyAdded ? 'Added' : preset.description}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {loadingCoins ? (
+              <LoadingSpinner className="py-8" />
+            ) : (coinsData?.coins ?? []).length === 0 ? (
+              <div className="rounded-xl border border-pit-border bg-pit-bg px-4 py-10 text-center text-sm text-pit-text">
+                No challenge coins yet.
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(coinsData?.coins ?? []).map((coin) => {
+                  const awards = (coinsData?.awards ?? []).filter((award) => award.coinid === coin.id);
+                  return (
+                    <article key={coin.id} className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                      <div className="flex gap-3">
+                        <CoinImage coin={coin} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">{coin.name}</p>
+                          {coin.description && <p className="mt-1 text-xs leading-5 text-pit-text">{coin.description}</p>}
+                          <p className="mt-1 text-xs text-pit-muted">{coin.awardcount ?? awards.length} awarded</p>
+                        </div>
+                      </div>
+                      {awards.length > 0 && (
+                        <div className="mt-3 space-y-1 border-t border-pit-border pt-3">
+                          {awards.slice(0, 6).map((award) => (
+                            <p key={award.id} className="truncate text-xs text-pit-text">
+                              {award.displayname ?? 'Member'}{award.note ? ` - ${award.note}` : ''}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1186,4 +1418,25 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       </div>
     </div>
   );
+}
+
+function CoinImage({ coin }: { coin: GroupCoin }) {
+  return (
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-pit-border bg-pit-surface">
+      {coin.imagedata || coin.imageurl ? (
+        <img src={coin.imagedata ?? coin.imageurl ?? ''} alt={coin.name} className="h-full w-full object-cover" />
+      ) : (
+        <Award size={22} className="text-pit-muted" />
+      )}
+    </div>
+  );
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file.'));
+    reader.readAsDataURL(file);
+  });
 }

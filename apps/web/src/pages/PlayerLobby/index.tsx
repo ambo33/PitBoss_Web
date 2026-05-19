@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Brain, Volume2 } from 'lucide-react';
-import { api, BlindLevel } from '../../api/client';
+import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
+import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
 import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { getConfiguredBountyPoolFromAssigned } from '../../utils/bountyMath';
 
 interface TimerTick {
   remainingsecs: number;
@@ -32,6 +34,44 @@ function buildAnnouncementTokens(state: TimerState, blind?: BlindLevel) {
     BB: Number(blind?.bigblind ?? 0),
     Ante: Number(blind?.ante ?? 0),
   };
+}
+
+type CoachingSection = { label: string; body: string };
+
+const HAND_REVIEW_PROMPTS = [
+  'Positions and stack sizes',
+  'Hole cards and board',
+  'Pot size and bet sequence',
+  'Reads or payout pressure',
+];
+
+function appendHandReviewPrompt(current: string, prompt: string) {
+  const line = `${prompt}: `;
+  if (current.includes(line)) return current;
+  return `${current.trim()}${current.trim() ? '\n' : ''}${line}`;
+}
+
+function parseCoachingAnalysis(text: string): CoachingSection[] {
+  const labels = ['Verdict', 'Key Factors', 'Recommended Line', 'Questions', 'Coaching Takeaway'];
+  const sections: CoachingSection[] = [];
+  for (const label of labels) {
+    const start = text.search(new RegExp(`(^|\\n)${label}:`, 'i'));
+    if (start === -1) continue;
+    const contentStart = text.indexOf(':', start) + 1;
+    const nextStarts = labels
+      .filter((nextLabel) => nextLabel !== label)
+      .map((nextLabel) => text.slice(contentStart).search(new RegExp(`\\n${nextLabel}:`, 'i')))
+      .filter((index) => index >= 0);
+    const end = nextStarts.length ? contentStart + Math.min(...nextStarts) : text.length;
+    const body = text.slice(contentStart, end).trim();
+    if (body) sections.push({ label, body });
+  }
+  return sections.length ? sections : [{ label: 'Coaching Review', body: text.trim() }];
+}
+
+function coinOptionSuffix(coins?: PlayerCoinBadge[] | null) {
+  const total = coins?.reduce((sum, coin) => sum + Number(coin.count ?? 0), 0) ?? 0;
+  return total > 0 ? ` - ${total} coin${total === 1 ? '' : 's'}` : '';
 }
 
 export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | 'checkin' }) {
@@ -294,7 +334,12 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     );
   }
 
-  const bountyTotal = tournament.bountyenabled ? Number(field.bountytotal ?? 0) : 0;
+  const bountyTotal = getConfiguredBountyPoolFromAssigned(
+    tournament,
+    Number(field.grosspot ?? 0),
+    Number(field.bountytotal ?? 0),
+    Number(field.knockedoutcount ?? 0) > 0 || Number(field.bountyclaimed ?? 0) > 0
+  );
   const bountyRemaining = tournament.bountyenabled ? Number(field.bountyremaining ?? 0) : 0;
   const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0) - bountyTotal, 0);
   const stats = [
@@ -314,12 +359,14 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const displayIdentity = entry?.displayname ?? entry?.emailaddress ?? user?.displayname ?? user?.emailaddress ?? (guestUserId ? 'Guest Player' : null);
   const registeredStatus = entry ? 'Registered' : 'Not registered';
   const checkInStatus = entry?.checkedin ? 'Checked in' : entry ? 'Not checked in' : 'Check-in required';
+  const coachingSections = parseCoachingAnalysis(handAnalysis);
 
   return (
     <div className="min-h-screen bg-pit-bg p-3 text-white">
       <header className="mb-4 text-center">
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
         {displayIdentity && <p className="mt-1 text-sm text-pit-text">PokerPlanner.bet - {displayIdentity}</p>}
+        <CoinBadgeStrip coins={entry?.awardedcoins} size="lg" limit={8} className="mt-3 justify-center" />
         {entry && <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>}
         <button
           type="button"
@@ -443,13 +490,25 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           <section className="card space-y-3 p-3">
             <div className="flex items-center gap-2">
               <Brain size={16} className="text-pit-teal" />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Analyze Hand</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Hand Review</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {HAND_REVIEW_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className="rounded-lg border border-pit-border bg-pit-bg/60 px-2 py-2 text-left text-xs font-medium text-pit-text transition-colors hover:border-pit-teal/50 hover:text-white"
+                  onClick={() => setHandText((current) => appendHandReviewPrompt(current, prompt))}
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
             <textarea
               className="input min-h-28"
               value={handText}
               onChange={(event) => setHandText(event.target.value)}
-              placeholder="Describe the prior hand: positions, blinds, stacks, cards if known, bet sizes, action, and what decision felt close."
+              placeholder="Describe the prior hand. Include the decision point, positions, stacks, pot size, board, bet sizes, and what felt close."
             />
             <button
               type="button"
@@ -458,14 +517,19 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
               onClick={() => handAnalysisMutation.mutate()}
             >
               <Brain size={14} />
-              {handAnalysisMutation.isPending ? 'Analyzing...' : 'Analyze Hand'}
+              {handAnalysisMutation.isPending ? 'Reviewing...' : 'Run Coaching Review'}
             </button>
             {handAnalysisMutation.error && (
               <p className="text-sm text-red-400">{handAnalysisMutation.error.message}</p>
             )}
             {handAnalysis && (
-              <div className="rounded-xl border border-pit-teal/20 bg-pit-teal/10 px-3 py-3 text-sm leading-6 text-pit-text">
-                {handAnalysis}
+              <div className="space-y-2 rounded-xl border border-pit-teal/25 bg-pit-bg/70 p-3">
+                {coachingSections.map((section) => (
+                  <div key={section.label} className="rounded-lg border border-pit-border/80 bg-pit-surface/60 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pit-teal">{section.label}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-pit-text">{section.body}</p>
+                  </div>
+                ))}
               </div>
             )}
           </section>
@@ -607,6 +671,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
         ) : !checkInMode && !entry?.checkedin ? (
           <section className="card p-3">
             <h2 className="text-base font-semibold text-white">{entry?.displayname ?? entry?.emailaddress ?? 'Player'}</h2>
+            <CoinBadgeStrip coins={entry?.awardedcoins} size="md" limit={8} className="mt-2" />
             <p className="mt-2 text-sm text-pit-text">
               You are registered, but not checked in yet. Please see the host to pay and scan the check-in QR.
             </p>
@@ -615,6 +680,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           <section className="card space-y-3 p-3">
             <div>
               <h2 className="text-base font-semibold text-white">{entry?.displayname ?? entry?.emailaddress ?? 'Player'}</h2>
+              <CoinBadgeStrip coins={entry?.awardedcoins} size="md" limit={8} className="mt-2" />
               <p className="mt-1 text-sm text-pit-text">Still playing. Use this when you are knocked out.</p>
             </div>
             <label className="space-y-2">
@@ -627,7 +693,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
                 <option value="">No selection</option>
                 {activePlayers.map((player) => (
                   <option key={player.userid} value={player.userid}>
-                    {player.displayname ?? player.emailaddress}
+                    {player.displayname ?? player.emailaddress}{coinOptionSuffix(player.awardedcoins)}
                   </option>
                 ))}
               </select>

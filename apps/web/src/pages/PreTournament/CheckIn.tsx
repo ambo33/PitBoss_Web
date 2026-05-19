@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, GroupMember, Tournament, TournamentPlayer } from '../../api/client';
+import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
 import { useAuthStore } from '../../store/auth';
+import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 interface Props {
   tournamentId: string;
@@ -151,10 +153,11 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   }).sort((a, b) => playerName(a).localeCompare(playerName(b), undefined, { sensitivity: 'base' }));
 
   const checkedIn = players.filter((player) => player.checkedin).length;
+  const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
-  const grossPot = (toNumber(tournament.buyin) * checkedIn)
+  const grossPot = (toNumber(tournament.buyin) * enteredFieldCount)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
   const bountyRemaining = tournament.bountyenabled
@@ -373,7 +376,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
                 </option>
                 {availableGroupMembers.map((member) => (
                   <option key={member.userid} value={member.userid}>
-                    {member.displayname ?? member.emailaddress}
+                    {playerNameWithMedals(member)}
                   </option>
                 ))}
               </select>
@@ -448,7 +451,8 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   return (
     <div className={`card flex items-center justify-between gap-3 py-3 ${player.placed != null ? 'opacity-50' : ''}`}>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-white">{player.displayname ?? player.emailaddress ?? 'Guest Player'}</p>
+        <p className="truncate text-sm font-medium text-white">{playerName(player)}</p>
+        <CoinBadgeStrip coins={player.awardedcoins} size="sm" limit={4} className="mt-1" />
         <div className="mt-1 flex gap-2">
           {player.rebuys > 0 && (
             isOwner && canUseClubFeatures ? (
@@ -548,7 +552,7 @@ function PlayerModal({ player, onRemove, onClose }: {
   onClose: () => void;
 }) {
   return (
-    <Modal title={player.displayname ?? player.emailaddress ?? 'Guest Player'} open onClose={onClose}>
+    <Modal title={playerName(player)} open onClose={onClose}>
       <div className="space-y-4">
         {player.placed != null && (
           <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
@@ -588,7 +592,7 @@ function toNumber(value: unknown): number {
 }
 
 function playerName(player: TournamentPlayer): string {
-  return player.displayname ?? player.emailaddress ?? 'Guest Player';
+  return playerNameWithMedals(player);
 }
 
 function formatMoney(value: number): string {

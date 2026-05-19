@@ -18,7 +18,7 @@ interface AnnouncerContext {
   classicMode?: boolean | null;
   tournamentName: string;
   groupName?: string | null;
-  eventType: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon';
+  eventType: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentLevel: number;
   previousLevel?: number | null;
   smallBlind?: number;
@@ -228,6 +228,7 @@ export function normalizeAnnouncerPreset(value: string | null | undefined): Anno
 export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean; preset?: AnnouncerPreset; voice?: string }> {
   const preset = sanitizePreset(context.preset);
   const isKnockout = context.eventType === 'knockout';
+  const isCheckin = context.eventType === 'checkin';
   if (context.classicMode) {
     const text = buildClassicAnnouncerScript(context);
     if (!process.env.OPENAI_API_KEY) {
@@ -249,6 +250,14 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         context.bountyAmount ? `Bounty claimed: $${context.bountyAmount}` : '',
         context.bountyClaimedByName ? `Bounty claimed by: ${context.bountyClaimedByName}` : '',
       ].filter(Boolean).join('\n')
+    : isCheckin
+      ? [
+          'Write one very short poker player check-in greeting.',
+          `Style preset: ${presetInstructions[preset]}`,
+          context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+          'Rules: keep it under 14 words. Welcome the player by name and wish them luck. Do not mention blinds, levels, tournament context, illegal gambling, copyrighted catchphrases, or real organizations.',
+          context.playerName ? `Player: ${context.playerName}` : 'Player: Player',
+        ].filter(Boolean).join('\n')
     : [
         'Write one short poker tournament announcer line.',
         `Style preset: ${presetInstructions[preset]}`,
@@ -262,7 +271,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Small blind: ${context.smallBlind ?? 0}`,
         `Big blind: ${context.bigBlind ?? 0}`,
         `Ante: ${context.ante ?? 0}`,
-        (context.eventType === 'rebuy' || context.eventType === 'addon') && context.playerName ? `Player: ${context.playerName}` : '',
+        (context.eventType === 'rebuy' || context.eventType === 'addon' || context.eventType === 'checkin') && context.playerName ? `Player: ${context.playerName}` : '',
         `Remaining players: ${context.remainingPlayers} of ${context.checkedInPlayers}`,
         `Players knocked out during prior level: ${context.knockedOutDuringPriorLevel}`,
         `Total rebuys so far: ${context.totalRebuys}`,
@@ -290,6 +299,7 @@ function buildClassicAnnouncerScript(context: AnnouncerContext): string {
   }
   if (context.eventType === 'five_minute_warning') return 'Five minutes remaining in this level.';
   if (context.eventType === 'one_minute_warning') return 'One minute remaining in this level.';
+  if (context.eventType === 'checkin') return `Welcome, ${context.playerName || 'player'}. Good luck.`;
   if (context.eventType === 'rebuy') return `${context.playerName || 'Player'} has taken a rebuy.`;
   if (context.eventType === 'addon') return `${context.playerName || 'Player'} has taken an add-on.`;
   return buildFallbackAnnouncerScript(context);
@@ -315,6 +325,7 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   if (context.eventType === 'one_minute_warning') {
     return `One minute left in level ${context.currentLevel}. ${blinds}. Finish the hand and get ready for the next level.`;
   }
+  if (context.eventType === 'checkin') return `Welcome, ${context.playerName || 'player'}. Good luck.`;
   const priorLosses = Number(context.knockedOutDuringPriorLevel ?? 0);
   const action = priorLosses > 0
     ? `Last level claimed ${priorLosses} player${priorLosses === 1 ? '' : 's'}`
@@ -331,10 +342,13 @@ function ordinal(value: number): string {
 export async function analyzePokerHand(context: HandAnalysisContext): Promise<{ analysis: string; aiEnabled: boolean }> {
   const preset = sanitizePreset(context.preset);
   const prompt = [
-    'You are a poker hand coach. Analyze the described prior hand for a home poker tournament player.',
-    'Give practical coaching, not gambling encouragement. Mention missing information when relevant.',
-    'Keep the answer concise: best move, why, and one takeaway.',
-    `Tone: ${presetInstructions[preset]}`,
+    'You are a professional tournament poker coaching analyst. Review the described prior hand like a serious training product, not casual table chat.',
+    'Focus on decision quality, ranges, pot odds, stack depth, ICM or payout pressure when relevant, and practical tournament adjustments.',
+    'Do not encourage gambling. Do not use slang-heavy hype. Be crisp, objective, and coach-like.',
+    'If one or two details would materially change the advice, ask those questions in the Questions section. If the hand is clear enough, say "None" there.',
+    'Return plain text with exactly these section labels: Verdict, Key Factors, Recommended Line, Questions, Coaching Takeaway.',
+    'Keep the total answer under 220 words.',
+    `Voice style context for phrasing only: ${presetInstructions[preset]}`,
     `Tournament: ${context.tournamentName}`,
     context.blindLevel ? `Level: ${context.blindLevel}` : '',
     context.smallBlind && context.bigBlind ? `Blinds: ${context.smallBlind}/${context.bigBlind}, ante ${context.ante ?? 0}` : '',

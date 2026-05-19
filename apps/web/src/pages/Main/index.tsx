@@ -248,7 +248,7 @@ function ProfilePanel() {
   function handleLogout() {
     queryClient.clear();
     logout();
-    navigate('/login', { replace: true });
+    navigate('/landing', { replace: true });
   }
 
   async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Tournament } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
+import { getConfiguredBountyPool } from '../../utils/bountyMath';
 
 interface Props { tournamentId: string; tournament: Tournament; }
 type PayoutMode = 'count' | 'percent';
@@ -68,19 +69,17 @@ export default function Payouts({ tournamentId, tournament }: Props) {
     },
   });
 
-  const checkedIn = players.filter((player) => player.checkedin).length;
+  const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const registeredCount = players.length;
-  const payoutFieldSize = checkedIn > 0 ? checkedIn : registeredCount;
-  const payoutFieldLabel = checkedIn > 0 ? 'checked in' : 'registered';
+  const payoutFieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
+  const payoutFieldLabel = enteredFieldCount > 0 ? 'entered' : 'registered';
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
-  const grossPot = (toNumber(tournament.buyin) * checkedIn)
+  const grossPot = (toNumber(tournament.buyin) * enteredFieldCount)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
   const rake = toNumber(tournament.rake);
-  const bountyTotal = tournament.bountyenabled
-    ? players.reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
-    : 0;
+  const bountyTotal = getConfiguredBountyPool(tournament, grossPot, players);
 
   const totalPot = useMemo(() => {
     return Math.max(grossPot - rake - bountyTotal, 0);

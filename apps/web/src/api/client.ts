@@ -88,6 +88,12 @@ export const api = {
     post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/vote`, { optionid: optionId }),
   commentOnGroupPost: (groupId: string, postId: string, message: string) =>
     post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/comments`, { message }),
+  getGroupCoins: (groupId: string) =>
+    get<{ coins: GroupCoin[]; awards: GroupCoinAward[] }>(`/groups/${groupId}/coins`),
+  createGroupCoin: (groupId: string, data: { name: string; description?: string; imagedata?: string | null; imageurl?: string | null; imagefilename?: string | null }) =>
+    post<{ coin: GroupCoin }>(`/groups/${groupId}/coins`, data),
+  awardGroupCoin: (groupId: string, coinId: string, data: { userid: string; note?: string }) =>
+    post<{ award: GroupCoinAward }>(`/groups/${groupId}/coins/${coinId}/awards`, data),
 
   // Tournaments
   getTournaments: () => get<Tournament[]>('/tournaments'),
@@ -216,6 +222,7 @@ export type AnnouncerPreset =
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
+  firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
 }
 export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
@@ -240,6 +247,8 @@ export interface Tournament {
   bountyprizepool?: number;
   bountypooltype?: 'amount' | 'percent';
   bountyroundingdenomination?: number;
+  bountystartplace?: number | null;
+  bountyminpayout?: number;
   tvseatingwelcomemessage?: string | null;
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
@@ -256,12 +265,30 @@ export interface Tournament {
 }
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
+  firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
+  awardedcoins?: PlayerCoinBadge[];
   checkinaudiodata?: string | null;
   avatarimagedata?: string | null;
   checkedin: boolean; rebuys: number; addedon: boolean;
   placed: number | null; knockedoutbyuserid?: string | null; knockedoutbyname?: string | null; paid: boolean; registeredat: string;
   bountyamount?: number; bountyclaimedbyuserid?: string | null; bountyclaimedbyname?: string | null; bountyclaimedat?: string | null;
   tablenumber?: number | null; seat?: number | null;
+}
+
+export interface GroupCoin {
+  id: string; groupid: string; name: string;
+  description?: string | null; imagedata?: string | null; imageurl?: string | null; imagefilename?: string | null;
+  awardcount?: number; createdat: string;
+}
+
+export interface GroupCoinAward {
+  id: string; groupid: string; coinid: string; userid: string;
+  displayname?: string; note?: string | null; createdat: string;
+}
+export interface PlayerCoinBadge {
+  coinid: string; name: string;
+  description?: string | null; imagedata?: string | null; imageurl?: string | null;
+  count: number;
 }
 export interface AuthProfile {
   guid: string;
@@ -322,6 +349,7 @@ export interface LobbyFieldStats {
 }
 export interface LobbyEntry {
   userid: string; emailaddress: string; displayname?: string;
+  awardedcoins?: PlayerCoinBadge[];
   checkedin: boolean; addedon?: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
   bountyamount?: number; bountyclaimedbyuserid?: string | null; bountyclaimedbyname?: string | null; bountyclaimedat?: string | null;
 }
@@ -342,6 +370,7 @@ export interface PublicLobbyResponse {
 }
 export interface KnockoutOption {
   userid: string; emailaddress: string; displayname?: string;
+  awardedcoins?: PlayerCoinBadge[];
 }
 export interface PublicKnockoutResponse {
   tournament: Tournament;
@@ -350,7 +379,7 @@ export interface PublicKnockoutResponse {
 }
 
 export interface AnnouncerMomentRequest {
-  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon';
+  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentlevel: number;
   previouslevel?: number | null;
   previouslevelstartedat?: string | null;

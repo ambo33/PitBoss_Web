@@ -5,9 +5,11 @@ import { getAccountProfile } from '../account';
 import { isFeatureEnabled } from '../features';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { isTvBoardAvailable } from '../schedule';
-import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
+import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament, TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
+import { redistributeMysteryBountiesForTournament } from '../services/bounties';
+import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { generateVoicePreview } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 
@@ -60,6 +62,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
             COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
             COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
+            CAST(t.bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(t.bountyminpayout AS DECIMAL), 0) AS bountyminpayout,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
@@ -90,7 +94,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
     return;
   }
 
-  const players = await query(
+  const players = await query<TournamentPlayer>(
     `SELECT tp.userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             m.checkinaudiodata,
@@ -122,7 +126,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
     [tournament.tournamentid]
   );
 
-  res.json({ tournament, players });
+  const playersWithCoins = await attachPlayerCoinBadges(players, tournament.groupid);
+  res.json({ tournament, players: playersWithCoins });
 });
 
 publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, res: Response) => {
@@ -137,6 +142,8 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
             COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
             COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
             COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
+            CAST(t.bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(t.bountyminpayout AS DECIMAL), 0) AS bountyminpayout,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
@@ -159,22 +166,18 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
         CAST(count(*) AS INT) AS registeredcount,
         CAST(COALESCE(sum(CASE WHEN checkedin = TRUE THEN 1 ELSE 0 END), 0) AS INT) AS checkedincount,
         CAST(COALESCE(sum(CASE WHEN placed IS NOT NULL THEN 1 ELSE 0 END), 0) AS INT) AS knockedoutcount,
-        CAST(GREATEST(
-          COALESCE(sum(CASE WHEN checkedin = TRUE THEN 1 ELSE 0 END), 0) -
-          COALESCE(sum(CASE WHEN placed IS NOT NULL THEN 1 ELSE 0 END), 0),
-          0
-        ) AS INT) AS activecount,
+        CAST(COALESCE(sum(CASE WHEN checkedin = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount,
         CAST(COALESCE(sum(COALESCE(rebuys, 0)), 0) + COALESCE($5::INT, 0) AS INT) AS totalrebuys,
         CAST(COALESCE(sum(CASE WHEN ${truthySql('addedon')} THEN 1 ELSE 0 END), 0) + COALESCE($6::INT, 0) AS INT) AS totaladdons,
         CAST(
-          COALESCE(sum(CASE WHEN checkedin = TRUE THEN COALESCE($2::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL) +
+          COALESCE(sum(CASE WHEN checkedin = TRUE OR placed IS NOT NULL THEN COALESCE($2::DECIMAL, 0::DECIMAL) ELSE 0::DECIMAL END), 0::DECIMAL) +
           COALESCE((sum(COALESCE(rebuys, 0)) + COALESCE($5::INT, 0)) * COALESCE($3::DECIMAL, 0::DECIMAL), 0::DECIMAL) +
           COALESCE((sum(CASE WHEN ${truthySql('addedon')} THEN 1 ELSE 0 END) + COALESCE($6::INT, 0)) * COALESCE($4::DECIMAL, 0::DECIMAL), 0::DECIMAL)
           AS DECIMAL
         ) AS grosspot,
         CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS bountytotal,
         CAST(COALESCE(sum(CASE WHEN placed IS NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS bountyremaining,
-        CAST(COALESCE(sum(CASE WHEN placed IS NOT NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS bountyclaimed
+        CAST(COALESCE(sum(CASE WHEN bountyclaimedat IS NOT NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS bountyclaimed
      FROM tournamentplayers
      WHERE tournamentid = $1`,
     [
@@ -224,6 +227,9 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
        WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.id, entryUserId]
     );
+    if (entry) {
+      [entry] = await attachPlayerCoinBadges([entry], tournament.groupid);
+    }
   }
 
   const activePlayers = await query<KnockoutOption>(
@@ -239,6 +245,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
      ORDER BY COALESCE(m.nickname, u.emailaddress)`,
     [req.params.id, entryUserId]
   );
+  const activePlayersWithCoins = await attachPlayerCoinBadges(activePlayers, tournament.groupid);
 
   res.json({
     tournament,
@@ -256,7 +263,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     },
     seating,
     entry,
-    activePlayers,
+    activePlayers: activePlayersWithCoins,
   });
 });
 
@@ -322,6 +329,7 @@ publicRouter.post('/tournaments/:id/checkin/self', requireAuth, async (req: Requ
   }
 
   await assignSeatIfSeatingStarted(req.params.id, req.userId!);
+  await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-checkin' });
   res.json({ success: true });
 });
@@ -348,6 +356,7 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
         [req.params.id, guestUserId]
       );
       await assignSeatIfSeatingStarted(req.params.id, guestUserId);
+      await redistributeMysteryBountiesForTournament(req.params.id);
       broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-recheckin' });
       res.json({ success: true, guestUserId });
       return;
@@ -399,6 +408,7 @@ publicRouter.post('/tournaments/:id/checkin/guest', async (req: Request, res: Re
 
     await client.query('COMMIT');
     await assignSeatIfSeatingStarted(req.params.id, createdUser.guid);
+    await redistributeMysteryBountiesForTournament(req.params.id);
     broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-checkin' });
     res.status(201).json({ success: true, guestUserId: createdUser.guid });
   } catch (err) {
@@ -539,7 +549,9 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
             COALESCE(t.bountymode, 'manual') AS bountymode,
             COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
             COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
-            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
+            CAST(t.bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(t.bountyminpayout AS DECIMAL), 0) AS bountyminpayout
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
@@ -572,6 +584,9 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
        WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.id, entryUserId]
     );
+    if (entry) {
+      [entry] = await attachPlayerCoinBadges([entry], tournament.groupid);
+    }
   }
 
   const activePlayers = await query<KnockoutOption>(
@@ -587,8 +602,9 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
      ORDER BY COALESCE(m.nickname, u.emailaddress)`,
     [req.params.id, entryUserId]
   );
+  const activePlayersWithCoins = await attachPlayerCoinBadges(activePlayers, tournament.groupid);
 
-  res.json({ tournament, entry, activePlayers });
+  res.json({ tournament, entry, activePlayers: activePlayersWithCoins });
 });
 
 publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, res: Response) => {
@@ -602,7 +618,9 @@ publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, re
             COALESCE(t.bountymode, 'manual') AS bountymode,
             COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
             COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
-            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
+            CAST(t.bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(t.bountyminpayout AS DECIMAL), 0) AS bountyminpayout
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
@@ -630,6 +648,9 @@ publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, re
        WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.id, entryUserId]
     );
+    if (entry) {
+      [entry] = await attachPlayerCoinBadges([entry], tournament.groupid);
+    }
   }
 
   res.json({ tournament, entry });
@@ -698,6 +719,7 @@ publicRouter.post('/tournaments/:id/addon/self', optionalAuth, async (req: Reque
     [req.params.id, playerUserId]
   );
 
+  await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'public-addon' });
   res.json({ success: true, addedon: true });
 });
@@ -752,26 +774,30 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     }
   }
 
-  const activeField = await queryOne<{ activecount: number }>(
-    `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
-     FROM tournamentplayers
-     WHERE tournamentid = $1`,
+  const activeField = await queryOne<{ activecount: number; bountystartplace: number | null }>(
+    `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(tp.checkedin, FALSE) = TRUE AND tp.placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
+            , CAST(MAX(t.bountystartplace) AS INT) AS bountystartplace
+     FROM tournamentplayers tp
+     JOIN tournaments t ON t.tournamentid = tp.tournamentid
+     WHERE tp.tournamentid = $1`,
     [req.params.id]
   );
   const placed = Math.max(Number(activeField?.activecount ?? 0), 1);
+  const bountyStartPlace = activeField?.bountystartplace == null ? null : Number(activeField.bountystartplace);
 
   await query(
     `UPDATE tournamentplayers
      SET placed = $3,
-         checkedin = FALSE,
+         checkedin = TRUE,
          knockedoutbyuserid = $4,
          knockedoutat = now(),
-         bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 THEN $4 ELSE NULL END,
-         bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL THEN now() ELSE NULL END
+         bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
+         bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
      WHERE tournamentid = $1 AND userid = $2`,
-    [req.params.id, playerUserId, placed, knockedoutByUserId]
+    [req.params.id, playerUserId, placed, knockedoutByUserId, bountyStartPlace]
   );
 
+  await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });
   res.json({ success: true, placed });
 });

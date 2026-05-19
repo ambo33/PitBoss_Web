@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="First place coin">
+  <defs>
+    <radialGradient id="coin" cx="36%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#fff3a3"/>
+      <stop offset="0.45" stop-color="#f4b733"/>
+      <stop offset="1" stop-color="#8a5208"/>
+    </radialGradient>
+    <linearGradient id="crown" x1="0" x2="1">
+      <stop offset="0" stop-color="#ffef87"/>
+      <stop offset="1" stop-color="#c27909"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="70" r="46" fill="#101114" stroke="url(#coin)" stroke-width="9"/>
+  <circle cx="64" cy="70" r="34" fill="#17191d" stroke="#f0b334" stroke-width="4"/>
+  <path d="M27 45 39 20l19 21 8-28 13 28 19-21 8 25-8 18H35z" fill="url(#crown)" stroke="#7c4705" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M50 52h28" stroke="#fff1a7" stroke-width="4" stroke-linecap="round"/>
+  <text x="64" y="90" text-anchor="middle" font-family="Georgia, serif" font-size="54" font-weight="700" fill="#ffd766" stroke="#6e4309" stroke-width="2">1</text>
+</svg>

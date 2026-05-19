@@ -49,6 +49,40 @@ export interface GroupMember {
   displayname?: string;
   isadmin: boolean;
   approved: boolean;
+  firstplacecount?: number;
+  secondplacecount?: number;
+  thirdplacecount?: number;
+}
+
+export interface GroupCoin {
+  id: string;
+  groupid: string;
+  name: string;
+  description?: string | null;
+  imagedata?: string | null;
+  imageurl?: string | null;
+  imagefilename?: string | null;
+  awardcount?: number;
+  createdat: string;
+}
+
+export interface GroupCoinAward {
+  id: string;
+  groupid: string;
+  coinid: string;
+  userid: string;
+  displayname?: string;
+  note?: string | null;
+  createdat: string;
+}
+
+export interface PlayerCoinBadge {
+  coinid: string;
+  name: string;
+  description?: string | null;
+  imagedata?: string | null;
+  imageurl?: string | null;
+  count: number;
 }
 
 export interface Tournament {
@@ -85,6 +119,8 @@ export interface Tournament {
   bountyprizepool?: number;
   bountypooltype?: 'amount' | 'percent';
   bountyroundingdenomination?: number;
+  bountystartplace?: number | null;
+  bountyminpayout?: number;
   tvseatingwelcomemessage?: string | null;
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
@@ -106,6 +142,10 @@ export interface TournamentPlayer {
   userid: string;
   emailaddress: string;
   displayname?: string;
+  firstplacecount?: number;
+  secondplacecount?: number;
+  thirdplacecount?: number;
+  awardedcoins?: PlayerCoinBadge[];
   checkinaudiodata?: string | null;
   avatarimagedata?: string | null;
   checkedin: boolean;
@@ -184,6 +224,7 @@ export interface LobbyEntry {
   userid: string;
   emailaddress: string;
   displayname?: string;
+  awardedcoins?: PlayerCoinBadge[];
   checkedin: boolean;
   addedon?: boolean;
   placed?: number | null;
@@ -199,6 +240,7 @@ export interface KnockoutOption {
   userid: string;
   emailaddress: string;
   displayname?: string;
+  awardedcoins?: PlayerCoinBadge[];
 }
 
 export interface GroupPollOption {

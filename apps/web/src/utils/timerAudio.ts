@@ -231,6 +231,15 @@ function stopActiveEventAudio(): void {
     }
     currentEventAudio = null;
   }
+  if (currentCheckinAudio) {
+    try {
+      currentCheckinAudio.pause();
+      currentCheckinAudio.currentTime = 0;
+    } catch {
+      // ignore
+    }
+    currentCheckinAudio = null;
+  }
   for (const oscillator of activeOscillators) {
     try {
       oscillator.stop();
@@ -350,7 +359,7 @@ export function announceCheckinGreeting(playerName: string): void {
 export function playCheckinGreetingClip(audioDataUrl: string, fallbackName?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    currentCheckinAudio?.pause();
+    stopActiveEventAudio();
     currentCheckinAudio = new Audio(audioDataUrl);
     currentCheckinAudio.currentTime = 0;
     void currentCheckinAudio.play().catch(() => {

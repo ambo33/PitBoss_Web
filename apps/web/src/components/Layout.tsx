@@ -18,6 +18,7 @@ interface Props {
   onTabChange?: (tab: NavTab) => void;
   compactSidebar?: boolean;
   hideSidebar?: boolean;
+  hideMobileNav?: boolean;
   headerRight?: React.ReactNode;
   mainWidthClassName?: string;
 }
@@ -37,6 +38,7 @@ export default function Layout({
   onTabChange,
   compactSidebar = false,
   hideSidebar = false,
+  hideMobileNav = false,
   headerRight,
   mainWidthClassName = 'max-w-5xl',
 }: Props) {
@@ -63,7 +65,7 @@ export default function Layout({
   function handleLogout() {
     queryClient.clear();
     logout();
-    navigate('/login', { replace: true });
+    navigate('/landing', { replace: true });
   }
 
   function handleNavClick(nextTab: NavTab) {
@@ -213,29 +215,31 @@ export default function Layout({
         </div>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
-        {navItems.map(({ id, label, Icon }) => {
-          const active = tab === id;
-          const isAdmin = id === 'admin';
-          return (
-            <button
-              key={id}
-              onClick={() => handleNavClick(id)}
-              className={`flex-1 flex flex-col items-center gap-1 pt-3 pb-4 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-                active && isAdmin ? 'text-red-300' : active ? 'text-pit-teal' : isAdmin ? 'text-red-300/80' : 'text-pit-muted'
-              }`}
-            >
-              <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${
-                active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : ''
-              }`}>
-                <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
-                {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
-              </div>
-              {label}
-            </button>
-          );
-        })}
-      </nav>
+      {!hideMobileNav && (
+        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
+          {navItems.map(({ id, label, Icon }) => {
+            const active = tab === id;
+            const isAdmin = id === 'admin';
+            return (
+              <button
+                key={id}
+                onClick={() => handleNavClick(id)}
+                className={`flex-1 flex flex-col items-center gap-1 pt-3 pb-4 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
+                  active && isAdmin ? 'text-red-300' : active ? 'text-pit-teal' : isAdmin ? 'text-red-300/80' : 'text-pit-muted'
+                }`}
+              >
+                <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+                  active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : ''
+                }`}>
+                  <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
+                  {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
+                </div>
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {user && (
         <button

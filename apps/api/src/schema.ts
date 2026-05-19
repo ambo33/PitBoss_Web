@@ -118,6 +118,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS bountyroundingdenomination DECIMAL(10,2) DEFAULT 5
     `);
     await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountystartplace INT
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountyminpayout DECIMAL(10,2) DEFAULT 0
+    `);
+    await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
     `);
@@ -390,7 +398,36 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS reminderemailsentat TIMESTAMPTZ
     `);
-    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, knockout tracking, and tournament bounties are available.');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groupcoins (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,
+        name STRING(80) NOT NULL,
+        description STRING(240),
+        imagedata STRING,
+        imageurl STRING(240),
+        imagefilename STRING(160),
+        createdby UUID REFERENCES users(guid),
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      ALTER TABLE groupcoins
+      ADD COLUMN IF NOT EXISTS imageurl STRING(240)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS groupcoinawards (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,
+        coinid UUID NOT NULL REFERENCES groupcoins(id) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        awardedby UUID REFERENCES users(guid),
+        note STRING(240),
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, knockout tracking, tournament bounties, and group coins are available.');
   } finally {
     client.release();
     if (options.closePool) {
