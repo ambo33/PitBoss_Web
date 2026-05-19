@@ -85,9 +85,11 @@ export default function PreTournamentPage() {
   if (!tournament) return <Layout back="/"><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const canManage = tournament.canmanage ?? tournament.ownerid === user?.guid;
-  const scheduleLocked = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
+  const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
+  const scheduleLocked = eventStarted && !user?.issuperadmin;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
+  const bountyTotal = players.reduce((sum, player) => sum + toNumber(player.bountyamount), 0);
   const pocketAdminUrl = `${window.location.origin}/pocket-admin/${id}`;
   const showPocketAdmin = canManage;
   const showTvBoard = featureFlags.tvBoard;
@@ -137,7 +139,9 @@ export default function PreTournamentPage() {
             tournament={tournament}
             totalRebuys={totalRebuys}
             totalAddons={totalAddons}
+            bountyTotal={bountyTotal}
             canManage={canManage}
+            eventStarted={eventStarted}
             scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
             deleting={deleteTournamentMutation.isPending}
@@ -201,7 +205,9 @@ function TournamentDetailsCard({
   tournament,
   totalRebuys,
   totalAddons,
+  bountyTotal,
   canManage,
+  eventStarted,
   scheduleLocked,
   saving,
   deleting,
@@ -215,7 +221,9 @@ function TournamentDetailsCard({
   tournament: Awaited<ReturnType<typeof api.getTournament>>;
   totalRebuys: number;
   totalAddons: number;
+  bountyTotal: number;
   canManage: boolean;
+  eventStarted: boolean;
   scheduleLocked: boolean;
   saving: boolean;
   deleting: boolean;
@@ -238,6 +246,11 @@ function TournamentDetailsCard({
     rebuychips: String(toNumber(tournament.rebuychips)),
     addonprice: String(toNumber(tournament.addonprice)),
     addonchips: String(toNumber(tournament.addonchips)),
+    bountyenabled: Boolean(tournament.bountyenabled),
+    bountymode: tournament.bountymode ?? 'manual',
+    bountyprizepool: String(toNumber(tournament.bountyprizepool)),
+    bountypooltype: tournament.bountypooltype ?? 'amount',
+    bountyroundingdenomination: String(toNumber(tournament.bountyroundingdenomination) || 5),
   }));
 
   function startEditing() {
@@ -251,6 +264,11 @@ function TournamentDetailsCard({
       rebuychips: String(toNumber(tournament.rebuychips)),
       addonprice: String(toNumber(tournament.addonprice)),
       addonchips: String(toNumber(tournament.addonchips)),
+      bountyenabled: Boolean(tournament.bountyenabled),
+      bountymode: tournament.bountymode ?? 'manual',
+      bountyprizepool: String(toNumber(tournament.bountyprizepool)),
+      bountypooltype: tournament.bountypooltype ?? 'amount',
+      bountyroundingdenomination: String(toNumber(tournament.bountyroundingdenomination) || 5),
     });
     setEditing(true);
   }
@@ -266,6 +284,11 @@ function TournamentDetailsCard({
       rebuychips: Number(form.rebuychips) || 0,
       addonprice: toNumber(form.addonprice),
       addonchips: Number(form.addonchips) || 0,
+      bountyenabled: form.bountyenabled,
+      bountymode: form.bountymode,
+      bountyprizepool: toNumber(form.bountyprizepool),
+      bountypooltype: form.bountypooltype,
+      bountyroundingdenomination: toNumber(form.bountyroundingdenomination) || 5,
     });
     setEditing(false);
   }
@@ -297,7 +320,7 @@ function TournamentDetailsCard({
               <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
                 {editing ? 'Cancel' : 'Edit Details'}
               </button>
-              {scheduleLocked && (
+              {eventStarted && (
                 <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
                   Delete Tournament
                 </button>
@@ -352,6 +375,67 @@ function TournamentDetailsCard({
             <Field label="Add-on chips">
               <input className="input" type="number" min="0" value={form.addonchips} onChange={(e) => setForm((current) => ({ ...current, addonchips: e.target.value }))} />
             </Field>
+            <div className="space-y-3 rounded-xl border border-pit-border bg-pit-bg/50 p-3 sm:col-span-2">
+              <label className="flex items-start gap-3">
+                <input
+                  className="mt-1 h-4 w-4 accent-pit-teal"
+                  type="checkbox"
+                  checked={form.bountyenabled}
+                  onChange={(e) => setForm((current) => ({ ...current, bountyenabled: e.target.checked }))}
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-white">Enable bounties</span>
+                  <span className="block text-xs text-pit-muted">Future Club feature, free during beta.</span>
+                </span>
+              </label>
+              {form.bountyenabled && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Bounty mode">
+                    <select className="input" value={form.bountymode} onChange={(e) => setForm((current) => ({ ...current, bountymode: e.target.value as 'manual' | 'mystery' }))}>
+                      <option value="manual">Manual player bounties</option>
+                      <option value="mystery">Mystery bounty pool</option>
+                    </select>
+                  </Field>
+                  <Field label="Pool basis">
+                    <select className="input" value={form.bountypooltype} onChange={(e) => setForm((current) => ({ ...current, bountypooltype: e.target.value as 'amount' | 'percent' }))}>
+                      <option value="amount">Fixed dollar amount</option>
+                      <option value="percent">% of gross pot</option>
+                    </select>
+                  </Field>
+                  <Field label={form.bountypooltype === 'percent' ? 'Bounty pool percent' : form.bountymode === 'mystery' ? 'Mystery bounty pool' : 'Bounty pool'}>
+                    <div className="relative">
+                      <input
+                        className={`input ${form.bountypooltype === 'percent' ? 'pr-8' : 'pl-7'}`}
+                        type="number"
+                        min="0"
+                        max={form.bountypooltype === 'percent' ? '100' : undefined}
+                        step="0.01"
+                        value={form.bountyprizepool}
+                        onChange={(e) => setForm((current) => ({ ...current, bountyprizepool: e.target.value }))}
+                      />
+                      <span className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-sm text-pit-muted ${form.bountypooltype === 'percent' ? 'right-3' : 'left-3'}`}>
+                        {form.bountypooltype === 'percent' ? '%' : '$'}
+                      </span>
+                    </div>
+                  </Field>
+                  {form.bountymode === 'mystery' && (
+                    <Field label="Round bounties to">
+                      <div className="relative">
+                        <input
+                          className="input pl-7"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={form.bountyroundingdenomination}
+                          onChange={(e) => setForm((current) => ({ ...current, bountyroundingdenomination: e.target.value }))}
+                        />
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-pit-muted">$</span>
+                      </div>
+                    </Field>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
@@ -377,6 +461,12 @@ function TournamentDetailsCard({
           />
           <Row label="Rebuys taken" value={totalRebuys} />
           <Row label="Add-ons taken" value={totalAddons} />
+          <Row
+            label="Bounties"
+            value={tournament.bountyenabled
+              ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Manual'} - ${formatBountyPool(tournament, bountyTotal)}`
+              : 'Not enabled'}
+          />
           {showTvBoard && (
             <Row
               label="TV board"
@@ -483,11 +573,22 @@ function nowInAppTimezone() {
 function hasTournamentStarted(tourneydate: string | null | undefined, tourneytime: string | null | undefined) {
   if (!tourneydate) return false;
   const effectiveTime = (tourneytime?.slice(0, 8) ?? '00:00:00').padEnd(8, ':00').slice(0, 8);
-  return nowInAppTimezone() >= `${tourneydate}T${effectiveTime}`;
+  return nowInAppTimezone() >= `${String(tourneydate).slice(0, 10)}T${effectiveTime}`;
 }
 
 function formatMoney(value: number) {
   return `$${toNumber(value).toFixed(2)}`;
+}
+
+function formatBountyPool(tournament: Awaited<ReturnType<typeof api.getTournament>>, bountyTotal: number) {
+  if (tournament.bountymode === 'manual') {
+    return `${formatMoney(bountyTotal)} assigned`;
+  }
+  const configured = toNumber(tournament.bountyprizepool);
+  const pool = tournament.bountypooltype === 'percent'
+    ? `${configured.toFixed(2).replace(/\.00$/, '')}% of gross pot`
+    : `${formatMoney(configured)} pool`;
+  return `${pool}, rounded to ${formatMoney(toNumber(tournament.bountyroundingdenomination) || 5)}`;
 }
 
 function toNumber(value: unknown) {

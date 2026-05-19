@@ -1,0 +1,92 @@
+[
+  {
+    "style": "all_in_alex",
+    "label": "All-In Alex",
+    "filename": "all-in-alex.mp3",
+    "url": "/sounds/ai-demo/custom/all-in-alex.mp3",
+    "bytes": 104064,
+    "text": "Welcome to Johnny's Saturday Night Game. Cards are in the air and the room is live.",
+    "updatedAt": "2026-05-18T18:27:04.521Z"
+  },
+  {
+    "style": "british_high_roller",
+    "label": "British High Roller",
+    "filename": "british-high-roller.mp3",
+    "url": "/sounds/ai-demo/custom/british-high-roller.mp3",
+    "bytes": 110592,
+    "text": "The high roller clock is running. Blinds are 500 and 1,000, with pressure building quickly.",
+    "updatedAt": "2026-05-18T18:29:46.014Z"
+  },
+  {
+    "style": "chipstorm",
+    "label": "Chipstorm",
+    "filename": "chipstorm.mp3",
+    "url": "/sounds/ai-demo/custom/chipstorm.mp3",
+    "bytes": 102528,
+    "text": "Five minutes remain, stacks are moving, and this turbo level is about to explode.",
+    "updatedAt": "2026-05-18T18:28:48.879Z"
+  },
+  {
+    "style": "midnight_mayhem",
+    "label": "Midnight Mayhem",
+    "filename": "midnight-mayhem.mp3",
+    "url": "/sounds/ai-demo/custom/midnight-mayhem.mp3",
+    "bytes": 109824,
+    "text": "The final table begins now. Every chip matters, and every decision echoes.",
+    "updatedAt": "2026-05-18T18:30:17.440Z"
+  },
+  {
+    "style": "queen_of_spades",
+    "label": "Queen of Spades",
+    "filename": "queen-of-spades.mp3",
+    "url": "/sounds/ai-demo/custom/queen-of-spades.mp3",
+    "bytes": 98688,
+    "text": "Level four is live. Blinds are 200 and 400, and the payout race is heating up.",
+    "updatedAt": "2026-05-18T18:29:32.325Z"
+  },
+  {
+    "style": "royal_rumble_riley",
+    "label": "Royal Rumble Riley",
+    "filename": "royal-rumble-riley.mp3",
+    "url": "/sounds/ai-demo/custom/royal-rumble-riley.mp3",
+    "bytes": 123264,
+    "text": "Another player hits the rail and this final table just got louder! It's down to heads-up with Tim and Joanne!",
+    "updatedAt": "2026-05-18T18:28:16.920Z"
+  },
+  {
+    "style": "sunny_stacks",
+    "label": "Sunny Stacks",
+    "filename": "sunny-stacks.mp3",
+    "url": "/sounds/ai-demo/custom/sunny-stacks.mp3",
+    "bytes": 92160,
+    "text": "Welcome everyone. The clock is live, the blinds are friendly, and the fun starts now.",
+    "updatedAt": "2026-05-18T18:30:30.094Z"
+  },
+  {
+    "style": "the_pit_boss",
+    "label": "The Pit Boss",
+    "filename": "the-pit-boss.mp3",
+    "url": "/sounds/ai-demo/custom/the-pit-boss.mp3",
+    "bytes": 81792,
+    "text": "Rebuys close in one minute. Get your chips right and keep the game moving.",
+    "updatedAt": "2026-05-18T18:29:35.650Z"
+  },
+  {
+    "style": "turbo_tony",
+    "label": "Turbo Tony",
+    "filename": "turbo-tony.mp3",
+    "url": "/sounds/ai-demo/custom/turbo-tony.mp3",
+    "bytes": 89856,
+    "text": "Move it, players. Level five is here and those short stacks are officially sweating.",
+    "updatedAt": "2026-05-18T18:30:06.414Z"
+  },
+  {
+    "style": "velvet_dealer",
+    "label": "Velvet Dealer",
+    "filename": "velvet-dealer.mp3",
+    "url": "/sounds/ai-demo/custom/velvet-dealer.mp3",
+    "bytes": 106368,
+    "text": "Welcome players. Blinds begin at 25 and 50, and your first break arrives in 90 minutes.",
+    "updatedAt": "2026-05-18T18:28:34.197Z"
+  }
+]

@@ -10,6 +10,8 @@ export interface User {
   trialhostedremaining?: number;
   trialactive?: boolean;
   canuseclubfeatures?: boolean;
+  aicreditsremaining?: number;
+  defaultaicredits?: number;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;
@@ -30,8 +32,10 @@ export interface Group {
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
   aiannouncerenabled?: boolean;
-  aiannouncerpreset?: 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+  aiannouncerpreset?: 'all_in_alex' | 'royal_rumble_riley' | 'velvet_dealer' | 'chipstorm' | 'queen_of_spades' | 'the_pit_boss' | 'british_high_roller' | 'turbo_tony' | 'midnight_mayhem' | 'sunny_stacks';
   aiannouncercustomprompt?: string | null;
+  aiannouncerclassicmode?: boolean;
+  postapprovalrequired?: boolean;
   active: boolean;
   createdat: string;
   membercount?: number;
@@ -76,13 +80,19 @@ export interface Tournament {
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
   seatingmaxpertable?: number;
+  bountyenabled?: boolean;
+  bountymode?: 'manual' | 'mystery';
+  bountyprizepool?: number;
+  bountypooltype?: 'amount' | 'percent';
+  bountyroundingdenomination?: number;
   tvseatingwelcomemessage?: string | null;
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
   speechlevelupmessage?: string | null;
   aiannouncerenabled?: boolean;
-  aiannouncerpreset?: 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+  aiannouncerpreset?: 'all_in_alex' | 'royal_rumble_riley' | 'velvet_dealer' | 'chipstorm' | 'queen_of_spades' | 'the_pit_boss' | 'british_high_roller' | 'turbo_tony' | 'midnight_mayhem' | 'sunny_stacks';
   aiannouncercustomprompt?: string | null;
+  aiannouncerclassicmode?: boolean;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   playercount?: number;
@@ -104,6 +114,10 @@ export interface TournamentPlayer {
   placed: number | null;
   knockedoutbyuserid?: string | null;
   knockedoutbyname?: string | null;
+  bountyamount?: number;
+  bountyclaimedbyuserid?: string | null;
+  bountyclaimedbyname?: string | null;
+  bountyclaimedat?: string | null;
   paid: boolean;
   registeredat: string;
   tablenumber?: number | null;
@@ -161,6 +175,9 @@ export interface LobbyFieldStats {
   totalrebuys: number;
   totaladdons: number;
   grosspot: number;
+  bountytotal?: number;
+  bountyremaining?: number;
+  bountyclaimed?: number;
 }
 
 export interface LobbyEntry {
@@ -170,6 +187,10 @@ export interface LobbyEntry {
   checkedin: boolean;
   addedon?: boolean;
   placed?: number | null;
+  bountyamount?: number;
+  bountyclaimedbyuserid?: string | null;
+  bountyclaimedbyname?: string | null;
+  bountyclaimedat?: string | null;
   tablenumber?: number | null;
   seat?: number | null;
 }
@@ -203,6 +224,7 @@ export interface GroupPost {
   displayname?: string;
   posttype: 'message' | 'poll';
   message: string;
+  status?: 'pending' | 'approved' | 'rejected';
   createdat: string;
   options?: GroupPollOption[];
   comments?: GroupComment[];

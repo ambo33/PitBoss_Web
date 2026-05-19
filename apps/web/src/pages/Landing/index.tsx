@@ -1,38 +1,204 @@
 import { Link } from 'react-router-dom';
-import type { ReactNode } from 'react';
-import { Clock3, QrCode, Users } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Bot, CheckCircle2, Clock3, Mic2, Play, QrCode, Sparkles, Users, Volume2 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
   {
-    title: 'Run the room',
-    body: 'A clean tournament command center for blinds, payouts, field counts, QR flows, and player actions.',
+    title: 'Tournament clock',
+    body: 'Run levels, breaks, blind changes, warnings, and TV-friendly timer views from one clean control surface.',
     icon: Clock3,
+    stat: '25/50',
   },
   {
-    title: 'Move players faster',
-    body: 'Hosts can check players in, handle guests, add rebuys, assign seats, and keep the table moving.',
+    title: 'Player flow',
+    body: 'Players can register, check in, see seats, use the lobby, and report knockouts without crowding the host.',
     icon: Users,
+    stat: '18 in',
   },
   {
-    title: 'Put it on any screen',
-    body: 'Use a TV board, player lobby, and Pocket Admin so the tournament state is visible where it matters.',
+    title: 'Room display',
+    body: 'Put the timer, QR codes, payouts, field stats, and table assignments on a big screen for the whole room.',
     icon: QrCode,
+    stat: 'TV',
+  },
+  {
+    title: 'AI voice director',
+    body: 'Set a group voice style and let level changes announce the action with game-aware context and personality.',
+    icon: Mic2,
+    stat: 'AI',
   },
 ];
 
 const steps = [
-  'Create a group and schedule a tournament.',
-  'Build the blind structure and payout plan.',
-  'Display the board, scan players in, and run the night.',
+  'Create a group and schedule the game.',
+  'Build blinds, payouts, seating, and player rules.',
+  'Run the clock, display the board, and let the room follow along.',
 ];
 
+type VoiceClip = {
+  style: string;
+  label: string;
+  src?: string;
+  text: string;
+  sampleText?: string;
+};
+
+const cannedVoiceStyles: VoiceClip[] = [
+  {
+    style: 'all_in_alex',
+    label: 'All-In Alex',
+    text: 'Fast Vegas poker announcer for intros, level increases, and final table moments.',
+  },
+  {
+    style: 'royal_rumble_riley',
+    label: 'Royal Rumble Riley',
+    text: 'Sports arena energy for knockouts, champion reveals, and shuffle-up moments.',
+  },
+  {
+    style: 'velvet_dealer',
+    label: 'Velvet Dealer',
+    text: 'Cool female casino host for upscale intros and player welcomes.',
+  },
+  {
+    style: 'chipstorm',
+    label: 'Chipstorm',
+    text: 'Hyper esports caster for turbo tournaments and fast blind warnings.',
+  },
+  {
+    style: 'queen_of_spades',
+    label: 'Queen of Spades',
+    text: 'Fast confident female announcer for premium modern poker rooms.',
+  },
+  {
+    style: 'the_pit_boss',
+    label: 'The Pit Boss',
+    text: 'Gruff casino-floor authority for level-ups, warnings, and rebuy deadlines.',
+  },
+  {
+    style: 'british_high_roller',
+    label: 'British High Roller',
+    text: 'Fast luxury British host for premium high roller themes.',
+  },
+  {
+    style: 'turbo_tony',
+    label: 'Turbo Tony',
+    text: 'Fast-talking New York poker room chaos for rowdy home games.',
+  },
+  {
+    style: 'midnight_mayhem',
+    label: 'Midnight Mayhem',
+    text: 'Dark cinematic narrator for bounty events and final tables.',
+  },
+  {
+    style: 'sunny_stacks',
+    label: 'Sunny Stacks',
+    text: 'Friendly upbeat host for casual clubs and beginner nights.',
+  },
+];
+
+type VoiceManifestEntry = {
+  style?: string;
+  label?: string;
+  text?: string;
+  url?: string;
+};
+
 export default function LandingPage() {
+  const [activeVoice, setActiveVoice] = useState(0);
+  const [voiceError, setVoiceError] = useState('');
+  const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(cannedVoiceStyles);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) entry.target.classList.add('is-visible');
+        });
+      },
+      { threshold: 0.22 }
+    );
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    fetch('/sounds/ai-demo/custom/manifest.json')
+      .then((response) => {
+        if (!response.ok) throw new Error('No saved voice manifest.');
+        return response.json() as Promise<VoiceManifestEntry[]>;
+      })
+      .then((manifest) => {
+        const savedByStyle = new Map(
+          manifest
+            .filter((entry) => entry.style && entry.label && entry.text && entry.url)
+            .map((entry) => [entry.style!, entry])
+        );
+        setVoiceClips(cannedVoiceStyles.map((style) => {
+          const saved = savedByStyle.get(style.style);
+          return saved
+            ? {
+                ...style,
+                label: saved.label ?? style.label,
+                sampleText: saved.text,
+                src: saved.url!,
+              }
+            : style;
+        }));
+        setActiveVoice(0);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function playVoicePreview(index: number) {
+    setActiveVoice(index);
+    const clip = voiceClips[index];
+    if (!clip) return;
+    setVoiceError('');
+    audioRef.current?.pause();
+    if (!clip.src) {
+      setVoiceError(`${clip.label} does not have a saved MP3 preview yet.`);
+      return;
+    }
+    try {
+      audioRef.current = new Audio(clip.src);
+      await audioRef.current.play();
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Stored AI preview clip is not available yet.');
+    }
+  }
+
   return (
     <main className="min-h-screen bg-pit-bg text-white">
+      <style>{`
+        @keyframes pp-meter {
+          0% { transform: translateX(-55%); }
+          100% { transform: translateX(155%); }
+        }
+        @keyframes pp-pulse-ring {
+          0%, 100% { opacity: 0.35; transform: scale(0.92); }
+          50% { opacity: 0.9; transform: scale(1.04); }
+        }
+        [data-reveal] {
+          opacity: 0;
+          transform: translateY(24px);
+          transition: opacity 680ms ease, transform 680ms ease, border-color 680ms ease;
+        }
+        [data-reveal].is-visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-reveal] { opacity: 1; transform: none; transition: none; }
+          .pp-meter-bar, .pp-ring { animation: none !important; }
+        }
+      `}</style>
+
       <section className="relative overflow-hidden border-b border-pit-border bg-[#111113]">
         <div className="absolute inset-0 opacity-70">
-          <div className="h-full w-full bg-[radial-gradient(circle_at_28%_12%,rgba(14,165,165,0.20),transparent_30%),radial-gradient(circle_at_78%_8%,rgba(240,165,0,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_58%)]" />
+          <div className="h-full w-full bg-[radial-gradient(circle_at_30%_12%,rgba(14,165,165,0.20),transparent_30%),radial-gradient(circle_at_78%_8%,rgba(240,165,0,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_58%)]" />
         </div>
 
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
@@ -45,10 +211,10 @@ export default function LandingPage() {
             </nav>
           </header>
 
-          <div className="mt-5 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
+          <div data-reveal className="mt-5 rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
             <div>
-              <span className="font-semibold text-white">PokerPlanner.bet is getting ready for launch.</span>
-              <span className="ml-1">Beta is live with every feature free for testers.</span>
+              <span className="font-semibold text-white">PokerPlanner.bet is live for beta hosts.</span>
+              <span className="ml-1">Every current feature is free while we tune real poker nights.</span>
             </div>
             <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/pricing">
               See beta access
@@ -56,7 +222,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:py-16">
-            <div className="max-w-2xl">
+            <div data-reveal className="max-w-2xl">
               <p className="mb-4 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal">
                 Poker nights, organized
               </p>
@@ -64,12 +230,15 @@ export default function LandingPage() {
                 Run Better Poker Nights
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-pit-text">
-                PokerPlanner.bet gives home-game hosts the tools to plan tournaments, check players in, run the clock, show the TV board, and keep everyone on the same page.
+                Plan the tournament, run the clock, display the room board, manage players, and give every group its own AI announcer personality.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
+                <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(0)}>
+                  <Volume2 size={16} />
+                  Preview AI voice
+                </button>
                 <Link className="btn-ghost px-5 py-3" to="/pricing">Beta access</Link>
-                <Link className="btn-ghost px-5 py-3" to="/login">I already have an account</Link>
               </div>
               <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
                 {steps.map((step, index) => (
@@ -83,29 +252,42 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <HeroBoard />
+            <div data-reveal>
+              <HeroBoard />
+            </div>
           </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div data-reveal className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-semibold uppercase text-pit-teal">Built for live games</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Everything the host touches, fewer things to explain.</h2>
+            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">A better rhythm for every part of tournament night.</h2>
           </div>
           <p className="max-w-xl text-sm leading-6 text-pit-text">
-            The app is designed around tournament night: quick decisions, visible information, and player-facing QR flows that keep people from crowding the host.
+            PokerPlanner keeps the host focused on decisions instead of explanations: clear state, fast actions, and screens that make sense from across the room.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          {features.map((feature) => {
+        <div className="grid gap-4 md:grid-cols-4">
+          {features.map((feature, index) => {
             const Icon = feature.icon;
             return (
-              <article key={feature.title} className="rounded-xl border border-pit-border bg-pit-card p-5">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
-                  <Icon size={22} />
+              <article
+                key={feature.title}
+                data-reveal
+                style={{ transitionDelay: `${index * 80}ms` }}
+                className="group relative overflow-hidden rounded-xl border border-pit-border bg-pit-card p-5 transition-colors hover:border-pit-teal/45"
+              >
+                <div className="absolute inset-x-0 top-0 h-px overflow-hidden bg-pit-border">
+                  <span className="pp-meter-bar block h-px w-1/2 bg-pit-teal" style={{ animation: 'pp-meter 2.8s linear infinite' }} />
+                </div>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
+                    <Icon size={22} />
+                  </div>
+                  <span className="rounded-lg border border-pit-border bg-pit-bg px-2 py-1 font-mono text-xs text-pit-text">{feature.stat}</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-pit-text">{feature.body}</p>
@@ -116,40 +298,147 @@ export default function LandingPage() {
       </section>
 
       <section className="border-y border-pit-border bg-pit-surface/30">
-        <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-          <div className="mb-8">
-            <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
+          <div data-reveal className="lg:sticky lg:top-8 lg:self-start">
+            <p className="text-sm font-semibold uppercase text-pit-teal">AI voice director</p>
+            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
+            <p className="mt-4 text-sm leading-6 text-pit-text">
+              Pick a voice style for each group, preview saved clips, and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.
+            </p>
+            <div className="mt-6 space-y-3">
+              <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-pit-teal" />
+                  <h3 className="text-sm font-semibold text-white">Game-aware moments</h3>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-pit-text">
+                  The announcer is not just reading a static line. It can use the current tournament state, like level, blinds, remaining players, rebuys, add-ons, knockouts, bounties, and break timing, to make short announcements that feel live.
+                </p>
+              </div>
+              <div className="grid gap-2 text-sm text-pit-text sm:grid-cols-2 lg:grid-cols-1">
+                {['Group-level voice presets', 'Custom prompt flavor', 'Level-up and warning scripts', 'Saved MP3 previews'].map((item) => (
+                  <div key={item} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
+                    <CheckCircle2 size={15} className="text-pit-teal" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-3">
-            <ProductShot
-              title="Run Tournament"
-              eyebrow="Host command center"
-              caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
-            >
-              <RunTournamentMock />
-            </ProductShot>
-            <ProductShot
-              title="Player Lobby"
-              eyebrow="Phone friendly"
-              caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
-            >
-              <PlayerLobbyMock />
-            </ProductShot>
-            <ProductShot
-              title="Pocket Admin"
-              eyebrow="Mobile control"
-              caption="Hosts can control the timer and handle quick actions while walking the room."
-            >
-              <PocketAdminMock />
-            </ProductShot>
+          <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-pit-muted">Voice presets</p>
+                <h3 className="mt-1 text-xl font-bold text-white">Pick a table personality</h3>
+              </div>
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10">
+                <span className="pp-ring absolute inset-1 rounded-full border border-pit-teal/40" style={{ animation: 'pp-pulse-ring 1.8s ease-in-out infinite' }} />
+                <Bot size={22} className="relative text-pit-teal" />
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-pit-teal">Now previewing</p>
+                  <h4 className="mt-1 text-2xl font-bold text-white">{voiceClips[activeVoice]?.label ?? 'AI Voice Director'}</h4>
+                  <p className="mt-2 text-sm leading-6 text-pit-text">{voiceClips[activeVoice]?.text}</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary shrink-0 px-4 py-2 text-sm"
+                  onClick={() => playVoicePreview(activeVoice)}
+                >
+                  <Play size={15} />
+                  Play clip
+                </button>
+              </div>
+              <div className="mt-4 rounded-lg border border-pit-border bg-pit-bg/70 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Sample line</p>
+                <p className="mt-1 text-sm leading-6 text-white">
+                  {voiceClips[activeVoice]?.sampleText ?? (voiceClips[activeVoice]?.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {voiceClips.map((clip, index) => (
+                <button
+                  key={clip.label}
+                  type="button"
+                  onClick={() => playVoicePreview(index)}
+                  className={`rounded-lg border px-3 py-3 text-left transition ${
+                    activeVoice === index
+                      ? 'border-pit-teal bg-pit-teal/15 shadow-[0_0_24px_rgba(20,184,166,0.12)]'
+                      : 'border-pit-border bg-pit-bg/60 hover:border-pit-muted'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-semibold text-white">{clip.label}</span>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${clip.src ? 'bg-pit-teal' : 'bg-pit-muted'}`} />
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-pit-text">{clip.text}</p>
+                </button>
+              ))}
+            </div>
+            {voiceError && (
+              <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+                {voiceError}
+              </p>
+            )}
+
+            <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/70 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Sparkles size={16} className="text-pit-teal" />
+                <p className="text-sm font-semibold text-white">Example live context</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <VoiceMetric label="Level" value="3" />
+                <VoiceMetric label="Field change" value="3 knocked out" />
+                <VoiceMetric label="Bounties left" value="$140" />
+              </div>
+              <p className="mt-3 text-sm leading-6 text-pit-text">
+                Example: "Level 3 is live. Blinds are 100 and 200. Three players fell last level, and the bounty pool is still dangerous."
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div className="rounded-2xl border border-pit-border bg-pit-card p-6 sm:p-8 lg:flex lg:items-center lg:justify-between">
+        <div data-reveal className="mb-8">
+          <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
+          <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <ProductShot
+            title="Run Tournament"
+            eyebrow="Host command center"
+            caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
+          >
+            <RunTournamentMock />
+          </ProductShot>
+          <ProductShot
+            title="Player Lobby"
+            eyebrow="Phone friendly"
+            caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
+          >
+            <PlayerLobbyMock />
+          </ProductShot>
+          <ProductShot
+            title="Pocket Admin"
+            eyebrow="Mobile control"
+            caption="Hosts can control the timer and handle quick actions while walking the room."
+          >
+            <PocketAdminMock />
+          </ProductShot>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
+        <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-6 sm:p-8 lg:flex lg:items-center lg:justify-between">
           <div>
             <h2 className="text-3xl font-bold text-white">Ready for the next poker night?</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-pit-text">
@@ -170,8 +459,8 @@ export default function LandingPage() {
 function HeroBoard() {
   return (
     <div className="relative mx-auto w-full max-w-3xl">
-      <div className="rounded-2xl border border-white/10 bg-pit-card p-3 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
-        <div className="rounded-xl border border-pit-border bg-[#151519] p-3">
+      <div className="rounded-xl border border-white/10 bg-pit-card p-3 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
+        <div className="rounded-lg border border-pit-border bg-[#151519] p-3">
           <div className="mb-3 flex items-center justify-between border-b border-pit-border pb-3">
             <div>
               <p className="text-[10px] font-semibold uppercase text-pit-muted">Tournament Display</p>
@@ -240,6 +529,15 @@ function MiniPayout() {
   );
 }
 
+function VoiceMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-pit-border bg-pit-card p-3">
+      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
+      <p className="mt-1 text-sm font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
 function ProductShot({
   title,
   eyebrow,
@@ -252,7 +550,7 @@ function ProductShot({
   children: ReactNode;
 }) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
+    <article data-reveal className="overflow-hidden rounded-xl border border-pit-border bg-pit-card">
       <div className="border-b border-pit-border p-4">
         <p className="text-xs font-semibold uppercase text-pit-teal">{eyebrow}</p>
         <h3 className="mt-1 text-xl font-bold text-white">{title}</h3>

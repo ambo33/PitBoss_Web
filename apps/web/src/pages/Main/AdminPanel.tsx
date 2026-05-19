@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ExternalLink, MessageSquare, Search, Shield, Trophy, Users } from 'lucide-react';
-import { api, AccountTier, AdminFeedback, AdminUserSummary, Tournament } from '../../api/client';
+import { CheckCircle2, ExternalLink, MessageSquare, Mic2, Search, Shield, Trophy, Users } from 'lucide-react';
+import { api, AccountTier, AdminFeedback, AdminFeedbackStatus, AdminUserSummary, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 type TierFilter = 'all' | AccountTier;
+type FeedbackTypeFilter = 'all' | 'issue' | 'idea' | 'question';
+type FeedbackSort = 'newest' | 'oldest' | 'unread';
+type FeedbackView = 'active' | 'closed';
 
 export default function AdminPanel() {
   const qc = useQueryClient();
@@ -14,6 +17,8 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState<TierFilter>('all');
   const [flagFilter, setFlagFilter] = useState<'all' | 'admins' | 'trial'>('all');
+  const [defaultAiCreditsInput, setDefaultAiCreditsInput] = useState('');
+  const [userAiCreditsInput, setUserAiCreditsInput] = useState('');
   const emailSearch = normalizeEmailSearch(search);
 
   const { data: users = [], isLoading, error } = useQuery({
@@ -24,17 +29,21 @@ export default function AdminPanel() {
     queryKey: ['admin', 'feedback'],
     queryFn: api.getAdminFeedback,
   });
+  const { data: aiCreditSettings } = useQuery({
+    queryKey: ['admin', 'settings', 'ai-credits'],
+    queryFn: api.getAdminAiCreditSettings,
+  });
 
   const summary = useMemo(() => buildSummary(users), [users]);
   const filteredUsers = useMemo(
-    () => filterUsers(users, emailSearch ? '' : search, tierFilter, flagFilter),
+    () => filterUsers(users, emailSearch ? '' : search, tierFilter, flagFilter, !emailSearch),
     [users, emailSearch, search, tierFilter, flagFilter]
   );
   const selectedUser = useMemo(
     () => filteredUsers.find((user) => user.userid === selectedUserId)
-      ?? users.find((user) => user.userid === selectedUserId)
+      ?? (emailSearch ? users.find((user) => user.userid === selectedUserId) : null)
       ?? filteredUsers[0]
-      ?? users[0]
+      ?? (emailSearch ? users[0] : null)
       ?? null,
     [filteredUsers, selectedUserId, users]
   );
@@ -46,22 +55,45 @@ export default function AdminPanel() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ userId, tierid, issuperadmin }: { userId: string; tierid?: number; issuperadmin?: boolean }) =>
-      api.updateAdminUser(userId, { tierid, issuperadmin }),
+    mutationFn: ({ userId, tierid, issuperadmin, aicreditsremaining }: { userId: string; tierid?: number; issuperadmin?: boolean; aicreditsremaining?: number }) =>
+      api.updateAdminUser(userId, { tierid, issuperadmin, aicreditsremaining }),
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
       qc.invalidateQueries({ queryKey: ['admin', 'user', variables.userId] });
       qc.invalidateQueries({ queryKey: ['me'] });
     },
   });
+  const defaultAiCreditsMutation = useMutation({
+    mutationFn: (defaultaicredits: number) => api.updateAdminAiCreditSettings({ defaultaicredits }),
+    onSuccess: (result) => {
+      qc.setQueryData(['admin', 'settings', 'ai-credits'], result);
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'user'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
+  });
   const feedbackMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'new' | 'looked_at' }) =>
+    mutationFn: ({ id, status }: { id: string; status: AdminFeedbackStatus }) =>
       api.updateAdminFeedback(id, { status }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'feedback'] });
       qc.invalidateQueries({ queryKey: ['admin', 'feedback', 'summary'] });
     },
   });
+
+  const upcoming = detail?.tournaments.filter((tournament) => classifyTournament(tournament) === 'Upcoming') ?? [];
+  const history = detail?.tournaments.filter((tournament) => classifyTournament(tournament) !== 'Upcoming') ?? [];
+  const feedbackItems = feedbackData?.feedback ?? [];
+  const feedbackNewCount = feedbackData?.newcount ?? 0;
+  const defaultAiCredits = aiCreditSettings?.defaultaicredits ?? detail?.account.defaultaicredits ?? 0;
+
+  useEffect(() => {
+    if (aiCreditSettings) setDefaultAiCreditsInput(String(aiCreditSettings.defaultaicredits));
+  }, [aiCreditSettings]);
+
+  useEffect(() => {
+    setUserAiCreditsInput(selectedUser ? String(detail?.account.aicreditsremaining ?? '') : '');
+  }, [selectedUser?.userid, detail?.account.aicreditsremaining]);
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
@@ -74,13 +106,20 @@ export default function AdminPanel() {
     );
   }
 
-  const upcoming = detail?.tournaments.filter((tournament) => classifyTournament(tournament) === 'Upcoming') ?? [];
-  const history = detail?.tournaments.filter((tournament) => classifyTournament(tournament) !== 'Upcoming') ?? [];
-  const feedbackItems = feedbackData?.feedback ?? [];
-  const feedbackNewCount = feedbackData?.newcount ?? 0;
-
   return (
     <div className="space-y-4">
+      <section className="flex flex-col justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase text-red-200">Superadmin tools</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">AI voice clip lab</h2>
+          <p className="mt-1 text-sm text-pit-text">Generate reusable landing-page MP3 examples without charging visitors per click.</p>
+        </div>
+        <Link className="btn-primary px-4 py-2" to="/admin/voice-lab">
+          <Mic2 size={16} />
+          Open Voice Lab
+        </Link>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <SummaryTile label="Users" value={summary.total} icon={Users} />
         <SummaryTile label="Host" value={summary.host} />
@@ -88,6 +127,35 @@ export default function AdminPanel() {
         <SummaryTile label="Trials" value={summary.trials} />
         <SummaryTile label="Superadmins" value={summary.admins} icon={Shield} accent />
         <SummaryTile label="New Feedback" value={feedbackNewCount} icon={MessageSquare} danger={feedbackNewCount > 0} />
+      </section>
+
+      <section className="rounded-xl border border-pit-border bg-pit-card p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">AI Credits</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">Default allotment</h2>
+            <p className="mt-1 text-sm text-pit-text">Used when a user has no manual credit override yet.</p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-64 sm:flex-row">
+            <input
+              className="input"
+              type="number"
+              min="0"
+              value={defaultAiCreditsInput}
+              onChange={(event) => setDefaultAiCreditsInput(event.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-primary shrink-0"
+              disabled={defaultAiCreditsMutation.isPending}
+              onClick={() => defaultAiCreditsMutation.mutate(toWholeNumber(defaultAiCreditsInput))}
+            >
+              Save Default
+            </button>
+          </div>
+        </div>
+        {defaultAiCreditsMutation.error && <p className="mt-2 text-sm text-red-300">{defaultAiCreditsMutation.error.message}</p>}
+        <p className="mt-2 text-xs text-pit-muted">Current default: {defaultAiCredits}</p>
       </section>
 
       <FeedbackPanel
@@ -162,11 +230,7 @@ export default function AdminPanel() {
                 key={user.userid}
                 type="button"
                 onClick={() => setSelectedUserId(user.userid)}
-                className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                  selectedUser?.userid === user.userid
-                    ? 'border-pit-teal bg-pit-teal/10'
-                    : 'border-pit-border bg-pit-bg/40 hover:border-pit-muted'
-                }`}
+                className={userRowClass(user, selectedUser?.userid === user.userid)}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -247,8 +311,42 @@ export default function AdminPanel() {
                   <Stat label="Tier" value={formatTier(detail.account.accounttier)} />
                   <Stat label="Hosted Total" value={detail.account.hostedtournamentcount ?? 0} />
                   <Stat label="Trial Remaining" value={detail.account.trialhostedremaining ?? 0} />
+                  <Stat label="AI Credits" value={detail.account.aicreditsremaining ?? 0} accent={(detail.account.aicreditsremaining ?? 0) > 0} />
                   <Stat label="Club Features" value={detail.account.canuseclubfeatures ? 'Enabled' : 'Locked'} accent={detail.account.canuseclubfeatures} />
                   <Stat label="Email" value={formatEmail(detail.account.emailaddress)} mono />
+                </div>
+                <div className="mt-3 flex flex-col gap-2 rounded-lg border border-pit-border bg-pit-card/60 p-3 sm:flex-row sm:items-end">
+                  <label className="min-w-0 flex-1">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-pit-muted">Adjust AI credits</span>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      value={userAiCreditsInput}
+                      onChange={(event) => setUserAiCreditsInput(event.target.value)}
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-primary shrink-0"
+                      disabled={updateMutation.isPending || !selectedUser}
+                      onClick={() => updateMutation.mutate({ userId: selectedUser.userid, aicreditsremaining: toWholeNumber(userAiCreditsInput) })}
+                    >
+                      Save Credits
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0"
+                      disabled={updateMutation.isPending || !selectedUser}
+                      onClick={() => {
+                        setUserAiCreditsInput(String(defaultAiCredits));
+                        updateMutation.mutate({ userId: selectedUser.userid, aicreditsremaining: defaultAiCredits });
+                      }}
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
                 </div>
               </section>
 
@@ -322,8 +420,30 @@ function FeedbackPanel({
   pendingId?: string;
   isPending: boolean;
   error?: string;
-  onStatusChange: (id: string, status: 'new' | 'looked_at') => void;
+  onStatusChange: (id: string, status: AdminFeedbackStatus) => void;
 }) {
+  const [typeFilter, setTypeFilter] = useState<FeedbackTypeFilter>('all');
+  const [view, setView] = useState<FeedbackView>('active');
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [sort, setSort] = useState<FeedbackSort>('unread');
+  const activeFeedback = useMemo(() => feedback.filter((item) => item.status !== 'closed'), [feedback]);
+  const closedFeedback = useMemo(() => feedback.filter((item) => item.status === 'closed'), [feedback]);
+  const scopedFeedback = view === 'closed' ? closedFeedback : activeFeedback;
+  const counts = useMemo(() => buildFeedbackCounts(scopedFeedback), [scopedFeedback]);
+  const visibleFeedback = useMemo(
+    () => sortFeedback(
+      scopedFeedback.filter((item) => {
+        const matchesType = typeFilter === 'all' || item.type === typeFilter;
+        const matchesStatus = !unreadOnly || item.status === 'new';
+        return matchesType && matchesStatus;
+      }),
+      sort
+    ),
+    [scopedFeedback, sort, typeFilter, unreadOnly]
+  );
+  const grouped = useMemo(() => groupFeedbackByType(visibleFeedback), [visibleFeedback]);
+  const showingLabel = unreadOnly ? `${visibleFeedback.length} unread shown` : `${visibleFeedback.length} shown`;
+
   return (
     <section className="rounded-lg border border-pit-border bg-pit-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -336,7 +456,75 @@ function FeedbackPanel({
             </span>
           )}
         </div>
-        <p className="text-xs text-pit-muted">Latest 100 reports</p>
+        <p className="text-xs text-pit-muted">{showingLabel} - {activeFeedback.length} active / {closedFeedback.length} closed</p>
+      </div>
+
+      <div className="mt-3 grid gap-2 xl:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-pit-border bg-pit-bg/60 p-1">
+          {([
+            ['active', `Active ${activeFeedback.length}`],
+            ['closed', `Closed ${closedFeedback.length}`],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setView(value);
+                if (value === 'closed') setUnreadOnly(false);
+              }}
+              className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+                view === value ? 'bg-pit-teal text-white' : 'text-pit-muted hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-4 gap-1 rounded-lg border border-pit-border bg-pit-bg/60 p-1">
+          {([
+            ['all', `All ${scopedFeedback.length}`],
+            ['issue', `Issues ${counts.issue}`],
+            ['idea', `Ideas ${counts.idea}`],
+            ['question', `Questions ${counts.question}`],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTypeFilter(value)}
+              className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+                typeFilter === value ? 'bg-pit-teal text-white' : 'text-pit-muted hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setUnreadOnly((value) => !value)}
+          disabled={view === 'closed'}
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+            unreadOnly
+              ? 'border-red-300/30 bg-red-500/10 text-red-200'
+              : view === 'closed'
+                ? 'cursor-not-allowed border-pit-border bg-pit-bg/40 text-pit-muted/60'
+                : 'border-pit-border bg-pit-bg/60 text-pit-text hover:border-pit-muted hover:text-white'
+          }`}
+        >
+          Unread only {newCount > 0 ? `(${newCount})` : ''}
+        </button>
+
+        <select
+          className="input h-full min-h-10 text-xs"
+          value={sort}
+          onChange={(event) => setSort(event.target.value as FeedbackSort)}
+        >
+          <option value="unread">Unread first</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
       </div>
 
       {error && (
@@ -349,66 +537,120 @@ function FeedbackPanel({
         <div className="mt-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-8 text-center text-sm text-pit-text">
           No feedback yet.
         </div>
+      ) : visibleFeedback.length === 0 ? (
+        <div className="mt-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-8 text-center text-sm text-pit-text">
+          No feedback matches those filters.
+        </div>
       ) : (
-        <div className="mt-3 grid gap-2 xl:grid-cols-2">
-          {feedback.slice(0, 6).map((item) => {
-            const isNew = item.status === 'new';
-            const busy = isPending && pendingId === item.id;
-            return (
-              <article
-                key={item.id}
-                className={`rounded-lg border px-3 py-3 ${
-                  isNew ? 'border-red-400/30 bg-red-500/5' : 'border-pit-border bg-pit-bg/40'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${feedbackTypeClass(item.type)}`}>
-                        {item.type}
-                      </span>
-                      {isNew ? (
-                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
-                          New
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
-                          <CheckCircle2 size={11} />
-                          Looked at
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-white">{item.message}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${
-                      isNew
-                        ? 'border-red-300/30 text-red-200 hover:bg-red-500/10'
-                        : 'border-pit-border text-pit-muted hover:border-pit-muted hover:text-white'
-                    }`}
-                    disabled={busy}
-                    onClick={() => onStatusChange(item.id, isNew ? 'looked_at' : 'new')}
-                  >
-                    {isNew ? 'Mark looked at' : 'Reopen'}
-                  </button>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-pit-muted">
-                  <span>{item.displayname || 'Unknown user'}</span>
-                  <span>{formatEmail(item.emailaddress)}</span>
-                  <span>{formatDateTime(item.createdat)}</span>
-                  {item.pageurl && (
-                    <a href={item.pageurl} target="_blank" rel="noreferrer" className="text-pit-teal hover:text-white">
-                      {compactUrl(item.pageurl)}
-                    </a>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+        <div className="mt-3 space-y-3">
+          {grouped.map((group) => (
+            <section key={group.type} className="rounded-lg border border-pit-border bg-pit-bg/30 p-2">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                  {feedbackTypeLabel(group.type)}
+                </h3>
+                <span className="text-xs text-pit-muted">
+                  {group.items.filter((item) => item.status === 'new').length} unread / {group.items.length} total
+                </span>
+              </div>
+              <div className="grid gap-2 xl:grid-cols-2">
+                {group.items.map((item) => (
+                  <FeedbackCard
+                    key={item.id}
+                    item={item}
+                    busy={isPending && pendingId === item.id}
+                    onStatusChange={onStatusChange}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </section>
+  );
+}
+
+function FeedbackCard({
+  item,
+  busy,
+  onStatusChange,
+}: {
+  item: AdminFeedback;
+  busy: boolean;
+  onStatusChange: (id: string, status: AdminFeedbackStatus) => void;
+}) {
+  const isNew = item.status === 'new';
+  const isClosed = item.status === 'closed';
+  return (
+    <article
+      className={`rounded-lg border px-3 py-3 ${
+        isNew ? 'border-red-400/30 bg-red-500/5' : isClosed ? 'border-pit-border bg-pit-bg/25 opacity-80' : 'border-pit-border bg-pit-bg/40'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${feedbackTypeClass(item.type)}`}>
+              {item.type}
+            </span>
+            {isNew ? (
+              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                New
+              </span>
+            ) : isClosed ? (
+              <span className="rounded-full bg-pit-border/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-pit-muted">
+                Closed
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+                <CheckCircle2 size={11} />
+                Looked at
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-sm leading-6 text-white">{item.message}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          {!isClosed && (
+            <button
+              type="button"
+              className={`rounded-md border px-2 py-1 text-xs font-semibold ${
+                isNew
+                  ? 'border-red-300/30 text-red-200 hover:bg-red-500/10'
+                  : 'border-pit-border text-pit-muted hover:border-pit-muted hover:text-white'
+              }`}
+              disabled={busy}
+              onClick={() => onStatusChange(item.id, isNew ? 'looked_at' : 'new')}
+            >
+              {isNew ? 'Mark looked at' : 'Mark new'}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`rounded-md border px-2 py-1 text-xs font-semibold ${
+              isClosed
+                ? 'border-pit-border text-pit-muted hover:border-pit-muted hover:text-white'
+                : 'border-pit-border text-pit-muted hover:border-red-300/30 hover:text-red-200'
+            }`}
+            disabled={busy}
+            onClick={() => onStatusChange(item.id, isClosed ? 'looked_at' : 'closed')}
+          >
+            {isClosed ? 'Reopen' : 'Close'}
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-pit-muted">
+        <span>{item.displayname || 'Unknown user'}</span>
+        <span>{formatEmail(item.emailaddress)}</span>
+        <span>{formatDateTime(item.createdat)}</span>
+        {item.pageurl && (
+          <a href={item.pageurl} target="_blank" rel="noreferrer" className="text-pit-teal hover:text-white">
+            {compactUrl(item.pageurl)}
+          </a>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -445,11 +687,27 @@ function TierButton({
 function TierBadge({ tier }: { tier: AccountTier }) {
   return (
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-      tier === 'host' ? 'bg-pit-border/40 text-pit-text' : 'bg-pit-teal/15 text-pit-teal'
+      tier === 'pro'
+        ? 'bg-purple-400/15 text-purple-200'
+        : tier === 'club'
+          ? 'bg-pit-teal/15 text-pit-teal'
+          : 'bg-pit-border/40 text-pit-text'
     }`}>
       {formatTier(tier)}
     </span>
   );
+}
+
+function userRowClass(user: AdminUserSummary, active: boolean) {
+  const base = 'w-full rounded-lg border px-3 py-2.5 text-left transition-colors';
+  if (active) {
+    if (user.accounttier === 'pro') return `${base} border-purple-300/60 bg-purple-500/15 shadow-[0_0_0_1px_rgba(216,180,254,0.16)]`;
+    if (user.accounttier === 'club') return `${base} border-pit-teal bg-pit-teal/12 shadow-[0_0_0_1px_rgba(20,184,166,0.16)]`;
+    return `${base} border-pit-teal bg-pit-teal/10`;
+  }
+  if (user.accounttier === 'pro') return `${base} border-purple-300/25 bg-purple-500/8 hover:border-purple-300/50`;
+  if (user.accounttier === 'club') return `${base} border-pit-teal/25 bg-pit-teal/7 hover:border-pit-teal/50`;
+  return `${base} border-pit-border bg-pit-bg/40 hover:border-pit-muted`;
 }
 
 function Stat({ label, value, accent = false, mono = false }: { label: string; value: string | number; accent?: boolean; mono?: boolean }) {
@@ -517,18 +775,40 @@ function buildSummary(users: AdminUserSummary[]) {
   );
 }
 
-function filterUsers(users: AdminUserSummary[], search: string, tierFilter: TierFilter, flagFilter: 'all' | 'admins' | 'trial') {
+function filterUsers(users: AdminUserSummary[], search: string, tierFilter: TierFilter, flagFilter: 'all' | 'admins' | 'trial', hideUnnamed: boolean) {
   const needle = search.trim().toLowerCase();
-  return users.filter((user) => {
-    const matchesSearch = !needle
-      || (user.displayname ?? '').toLowerCase().includes(needle)
-      || (user.emailaddress ?? '').toLowerCase().includes(needle);
-    const matchesTier = tierFilter === 'all' || user.accounttier === tierFilter;
-    const matchesFlag = flagFilter === 'all'
-      || (flagFilter === 'admins' && user.issuperadmin)
-      || (flagFilter === 'trial' && user.trialactive);
-    return matchesSearch && matchesTier && matchesFlag;
-  });
+  return users
+    .filter((user) => {
+      if (hideUnnamed && !hasUsableDisplayName(user)) return false;
+      const matchesSearch = !needle
+        || (user.displayname ?? '').toLowerCase().includes(needle)
+        || (user.emailaddress ?? '').toLowerCase().includes(needle);
+      const matchesTier = tierFilter === 'all' || user.accounttier === tierFilter;
+      const matchesFlag = flagFilter === 'all'
+        || (flagFilter === 'admins' && user.issuperadmin)
+        || (flagFilter === 'trial' && user.trialactive);
+      return matchesSearch && matchesTier && matchesFlag;
+    })
+    .sort((a, b) => {
+      const tierDiff = tierRank(b.accounttier) - tierRank(a.accounttier);
+      if (tierDiff !== 0) return tierDiff;
+      if (a.issuperadmin !== b.issuperadmin) return a.issuperadmin ? -1 : 1;
+      return String(a.displayname ?? a.emailaddress ?? '').localeCompare(String(b.displayname ?? b.emailaddress ?? ''));
+    });
+}
+
+function hasUsableDisplayName(user: AdminUserSummary) {
+  const name = String(user.displayname ?? '').trim();
+  if (!name) return false;
+  if (name === user.emailaddress) return false;
+  if (name.toLowerCase() === 'email encrypted') return false;
+  return true;
+}
+
+function tierRank(tier: AccountTier | undefined) {
+  if (tier === 'pro') return 3;
+  if (tier === 'club') return 2;
+  return 1;
 }
 
 function normalizeEmailSearch(value: string) {
@@ -537,11 +817,12 @@ function normalizeEmailSearch(value: string) {
 }
 
 function classifyTournament(tournament: Tournament) {
-  if (tournament.completed) return 'History';
   if (!tournament.tourneydate) return 'Undated';
   const comparisonTime = normalizeTimeForComparison(tournament.tourneytime);
   const now = nowInAppTimezone();
-  return `${String(tournament.tourneydate).slice(0, 10)}T${comparisonTime}` >= now ? 'Upcoming' : 'History';
+  const scheduled = `${String(tournament.tourneydate).slice(0, 10)}T${comparisonTime}`;
+  if (scheduled >= now) return 'Upcoming';
+  return 'History';
 }
 
 function formatSchedule(tournament: Tournament) {
@@ -562,8 +843,55 @@ function numberValue(value: unknown) {
   return Number(value ?? 0);
 }
 
+function toWholeNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
 function formatEmail(value: string | null | undefined) {
   return value || 'Email encrypted';
+}
+
+function buildFeedbackCounts(feedback: AdminFeedback[]) {
+  return feedback.reduce(
+    (counts, item) => {
+      if (item.type === 'idea' || item.type === 'question' || item.type === 'issue') {
+        counts[item.type] += 1;
+      }
+      return counts;
+    },
+    { issue: 0, idea: 0, question: 0 }
+  );
+}
+
+function sortFeedback(feedback: AdminFeedback[], sort: FeedbackSort) {
+  const copy = [...feedback];
+  copy.sort((a, b) => {
+    if (sort === 'unread' && a.status !== b.status) {
+      return a.status === 'new' ? -1 : 1;
+    }
+    const aTime = new Date(a.createdat).getTime();
+    const bTime = new Date(b.createdat).getTime();
+    if (sort === 'oldest') return aTime - bTime;
+    return bTime - aTime;
+  });
+  return copy;
+}
+
+function groupFeedbackByType(feedback: AdminFeedback[]) {
+  const order = ['issue', 'question', 'idea'] as const;
+  return order
+    .map((type) => ({
+      type,
+      items: feedback.filter((item) => item.type === type),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+function feedbackTypeLabel(type: string) {
+  if (type === 'idea') return 'Ideas';
+  if (type === 'question') return 'Questions';
+  return 'Issues';
 }
 
 function feedbackTypeClass(type: string) {

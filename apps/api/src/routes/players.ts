@@ -66,6 +66,10 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
             CAST(tp.placed AS INT) AS placed,
             tp.knockedoutbyuserid,
             COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
+            COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+            tp.bountyclaimedbyuserid,
+            COALESCE(bm.nickname, NULLIF(trim(concat(coalesce(bm.firstname, ''), ' ', coalesce(bm.lastname, ''))), ''), bu.emailaddress) AS bountyclaimedbyname,
+            tp.bountyclaimedat,
             COALESCE(tp.paid, FALSE) AS paid,
             tp.createdate AS registeredat,
             CAST(ts."Table" AS INT) AS tablenumber, ts.seat
@@ -74,6 +78,8 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
      LEFT JOIN usermetadata m ON m.userid = tp.userid
      LEFT JOIN users ku ON ku.guid = tp.knockedoutbyuserid
      LEFT JOIN usermetadata km ON km.userid = tp.knockedoutbyuserid
+     LEFT JOIN users bu ON bu.guid = tp.bountyclaimedbyuserid
+     LEFT JOIN usermetadata bm ON bm.userid = tp.bountyclaimedbyuserid
      LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
      WHERE tp.tournamentid = $1
      ORDER BY tp.createdate`,
@@ -430,12 +436,39 @@ playersRouter.delete('/:tid/players/:uid', async (req: Request, res: Response) =
   res.json({ success: true });
 });
 
+playersRouter.put('/:tid/players/:uid/bounty', async (req: Request, res: Response) => {
+  if (!await canManagePlayers(req.params.tid, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const parsed = Number((req.body as { amount?: number }).amount ?? 0);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    res.status(400).json({ error: 'Bounty amount must be zero or higher.' });
+    return;
+  }
+  const amount = Math.round(parsed * 100) / 100;
+  const updated = await queryOne<{ bountyamount: number }>(
+    `UPDATE tournamentplayers
+     SET bountyamount = $3,
+         bountyclaimedbyuserid = CASE WHEN $3::DECIMAL > 0 AND placed IS NOT NULL THEN bountyclaimedbyuserid ELSE NULL END,
+         bountyclaimedat = CASE WHEN $3::DECIMAL > 0 AND placed IS NOT NULL THEN bountyclaimedat ELSE NULL END
+     WHERE tournamentid = $1 AND userid = $2
+     RETURNING COALESCE(CAST(bountyamount AS DECIMAL), 0) AS bountyamount`,
+    [req.params.tid, req.params.uid, amount]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
+  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'bounty-update' });
+  res.json({ success: true, bountyamount: updated.bountyamount });
+});
+
 playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response) => {
   if (!await canManagePlayers(req.params.tid, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
   const { placed, knockedoutbyuserid } = req.body as { placed?: number | null; knockedoutbyuserid?: string | null };
-  const nextPlaced = parsePlaced(placed);
+  let nextPlaced = parsePlaced(placed);
 
   const client = await pool.connect();
   try {
@@ -455,15 +488,25 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     }
 
     const currentPlaced = current.placed == null ? null : Number(current.placed);
+    if (nextPlaced != null && currentPlaced == null) {
+      const activeResult = await client.query<{ activecount: number }>(
+        `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
+         FROM tournamentplayers
+         WHERE tournamentid = $1`,
+        [req.params.tid]
+      );
+      nextPlaced = Math.max(Number(activeResult.rows[0]?.activecount ?? nextPlaced), 1);
+    }
 
     if (nextPlaced == null) {
       if (currentPlaced != null) {
         await client.query(
           `UPDATE tournamentplayers
-           SET placed = placed - 1
+           SET placed = placed + 1
            WHERE tournamentid = $1
              AND userid != $2
-             AND placed > $3`,
+             AND placed IS NOT NULL
+             AND placed < $3`,
           [req.params.tid, req.params.uid, currentPlaced]
         );
       }
@@ -473,21 +516,14 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
              checkedin = TRUE,
              knockedoutbyuserid = NULL,
              knockedoutat = NULL,
+             bountyclaimedbyuserid = NULL,
+             bountyclaimedat = NULL,
              paid = FALSE
          WHERE tournamentid = $1 AND userid = $2`,
         [req.params.tid, req.params.uid]
       );
     } else {
-      if (currentPlaced == null) {
-        await client.query(
-          `UPDATE tournamentplayers
-           SET placed = placed + 1
-           WHERE tournamentid = $1
-             AND userid != $2
-             AND placed >= $3`,
-          [req.params.tid, req.params.uid, nextPlaced]
-        );
-      } else if (nextPlaced < currentPlaced) {
+      if (currentPlaced != null && nextPlaced < currentPlaced) {
         await client.query(
           `UPDATE tournamentplayers
            SET placed = placed + 1
@@ -497,7 +533,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
              AND placed < $4`,
           [req.params.tid, req.params.uid, nextPlaced, currentPlaced]
         );
-      } else if (nextPlaced > currentPlaced) {
+      } else if (currentPlaced != null && nextPlaced > currentPlaced) {
         await client.query(
           `UPDATE tournamentplayers
            SET placed = placed - 1
@@ -514,7 +550,9 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
          SET placed = $3,
              checkedin = FALSE,
              knockedoutbyuserid = $4,
-             knockedoutat = now()
+             knockedoutat = now(),
+             bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 THEN $4 ELSE NULL END,
+             bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL THEN now() ELSE NULL END
          WHERE tournamentid = $1 AND userid = $2`,
         [req.params.tid, req.params.uid, nextPlaced, knockedoutbyuserid ?? null]
       );

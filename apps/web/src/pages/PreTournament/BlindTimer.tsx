@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Save, Wand2 } from 'lucide-react';
+import { Calculator, GripVertical, Save, Wand2 } from 'lucide-react';
 import { api, BlindLevel, Tournament } from '../../api/client';
 
 interface BlindTimerProps {
@@ -14,6 +14,7 @@ type DraftLevel = Omit<BlindLevel, 'id'>;
 
 interface EditableBlindLevel {
   level: number;
+  label: string;
   smallblind: string;
   bigblind: string;
   ante: string;
@@ -29,6 +30,8 @@ interface CalculatorSettings {
   startingBigBlind: string;
   chipIncrement: string;
   finishBigBlinds: string;
+  breakCount: string;
+  breakMinutes: string;
   anteStartLevel: string;
   antePercent: string;
   expectedRebuys: string;
@@ -43,6 +46,8 @@ interface ParsedCalculatorSettings {
   startingBigBlind: number;
   chipIncrement: number;
   finishBigBlinds: number;
+  breakCount: number;
+  breakMinutes: number;
   anteStartLevel: number;
   antePercent: number;
   expectedRebuys: number;
@@ -176,6 +181,8 @@ function BlindCalculator({
     startingBigBlind: '50',
     chipIncrement: '25',
     finishBigBlinds: '10',
+    breakCount: '0',
+    breakMinutes: '10',
     anteStartLevel: '0',
     antePercent: '10',
     expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(playerCount * 0.4), 0)) : '0',
@@ -220,6 +227,8 @@ function BlindCalculator({
             <NumberField label="Starting stack" value={settings.startingStack} min={100} step={100} onChange={(value) => update('startingStack', value)} />
             <NumberField label="Target hours" value={settings.targetHours} min={0.5} step={0.5} onChange={(value) => update('targetHours', value)} />
             <NumberField label="Level minutes" value={settings.levelMinutes} min={1} onChange={(value) => update('levelMinutes', value)} />
+            <NumberField label="Breaks" value={settings.breakCount} min={0} onChange={(value) => update('breakCount', value)} />
+            <NumberField label="Break minutes" value={settings.breakMinutes} min={1} onChange={(value) => update('breakMinutes', value)} />
             <NumberField label="Starting BB" value={settings.startingBigBlind} min={1} onChange={(value) => update('startingBigBlind', value)} />
             <NumberField label="Chip increment" value={settings.chipIncrement} min={1} onChange={(value) => update('chipIncrement', value)} />
             <NumberField label="Finish BBs in play" value={settings.finishBigBlinds} min={4} onChange={(value) => update('finishBigBlinds', value)} />
@@ -256,6 +265,11 @@ function BlindCalculator({
             {(rebuysEnabled || addonsEnabled) && (
               <p className="mb-3 text-xs text-pit-muted">
                 Includes {parsedSettings.expectedRebuys.toLocaleString()} expected rebuys and {parsedSettings.expectedAddons.toLocaleString()} expected add-ons in the chip pool.
+              </p>
+            )}
+            {parsedSettings.breakCount > 0 && (
+              <p className="mb-3 text-xs text-pit-muted">
+                Includes {parsedSettings.breakCount} break{parsedSettings.breakCount === 1 ? '' : 's'} at {parsedSettings.breakMinutes} minutes each inside the target time.
               </p>
             )}
             <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
@@ -309,18 +323,27 @@ function BlindTable({ blinds, currentLevel }: { blinds: BlindLevel[]; currentLev
           </tr>
         </thead>
         <tbody>
-          {blinds.map((blind) => (
-            <tr key={blind.id} className={`border-b border-pit-border/40 ${blind.level === currentLevel ? 'bg-pit-teal/10' : ''}`}>
-              <td className="py-1.5">
-                {`Level ${blind.level}`}
-                {blind.islastlevel && <span className="ml-1 text-xs text-pit-muted">(last)</span>}
-              </td>
-              <td className="text-right">{blind.smallblind.toLocaleString()}</td>
-              <td className="text-right">{blind.bigblind.toLocaleString()}</td>
-              <td className="text-right">{blind.ante > 0 ? blind.ante.toLocaleString() : '-'}</td>
-              <td className="text-right">{blind.minutes}</td>
-            </tr>
-          ))}
+          {blinds.map((blind) => {
+            const breakRow = isBreakLevel(blind);
+            return (
+              <tr key={blind.id} className={`border-b border-pit-border/40 ${blind.level === currentLevel ? 'bg-pit-teal/10' : ''} ${breakRow ? 'bg-yellow-300/5 text-yellow-100' : ''}`}>
+                <td className="py-1.5">
+                  {breakRow ? `Break ${blind.label?.replace(/^Break\s*/i, '') || blind.level}` : `Level ${blind.level}`}
+                  {blind.islastlevel && <span className="ml-1 text-xs text-pit-muted">(last)</span>}
+                </td>
+                {breakRow ? (
+                  <td colSpan={3} className="text-right text-xs uppercase tracking-wide text-yellow-100/80">Break</td>
+                ) : (
+                  <>
+                    <td className="text-right">{blind.smallblind.toLocaleString()}</td>
+                    <td className="text-right">{blind.bigblind.toLocaleString()}</td>
+                    <td className="text-right">{blind.ante > 0 ? blind.ante.toLocaleString() : '-'}</td>
+                  </>
+                )}
+                <td className="text-right">{blind.minutes}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -342,14 +365,16 @@ function BlindEditor({
     initial.length > 0
       ? initial.map(({ id: _id, smallblind, bigblind, ante, minutes, ...rest }) => ({
         level: rest.level,
+        label: rest.label ?? `Level ${rest.level}`,
         smallblind: String(smallblind),
         bigblind: String(bigblind),
         ante: String(ante),
         minutes: String(minutes),
         islastlevel: Boolean(rest.islastlevel),
       }))
-      : [{ level: 1, smallblind: '25', bigblind: '50', ante: '0', minutes: '20', islastlevel: false }]
+      : [{ level: 1, label: 'Level 1', smallblind: '25', bigblind: '50', ante: '0', minutes: '20', islastlevel: false }]
   );
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   function update(index: number, field: keyof EditableBlindLevel, value: string | number | boolean) {
     setLevels((current) => current.map((level, levelIndex) => levelIndex === index ? { ...level, [field]: value } : level));
@@ -360,10 +385,23 @@ function BlindEditor({
     const lastBigBlind = parseSetting(last?.bigblind ?? '', 50);
     setLevels((current) => [...current, {
       level: current.length + 1,
+      label: `Level ${current.length + 1}`,
       smallblind: String(lastBigBlind),
       bigblind: String(lastBigBlind * 2),
       ante: last?.ante ?? '0',
       minutes: last?.minutes ?? '20',
+      islastlevel: false,
+    }]);
+  }
+
+  function addBreak() {
+    setLevels((current) => [...current, {
+      level: current.length + 1,
+      label: `Break ${current.filter((level) => isBreakEditableLevel(level)).length + 1}`,
+      smallblind: '0',
+      bigblind: '0',
+      ante: '0',
+      minutes: '10',
       islastlevel: false,
     }]);
   }
@@ -374,10 +412,21 @@ function BlindEditor({
       .map((level, levelIndex) => ({ ...level, level: levelIndex + 1 })));
   }
 
+  function moveLevel(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setLevels((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      if (!moved) return current;
+      next.splice(toIndex, 0, moved);
+      return next.map((level, levelIndex) => ({ ...level, level: levelIndex + 1 }));
+    });
+  }
+
   function save() {
     onSave(levels.map((level, index) => ({
       ...level,
-      label: `Level ${index + 1}`,
+      label: isBreakEditableLevel(level) ? level.label || `Break ${index + 1}` : `Level ${index + 1}`,
       smallblind: parseSetting(level.smallblind, 0),
       bigblind: parseSetting(level.bigblind, 0),
       ante: parseSetting(level.ante, 0),
@@ -390,7 +439,8 @@ function BlindEditor({
     <div className="space-y-3">
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="overflow-x-auto">
-        <div className="grid min-w-[34rem] grid-cols-[88px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
+        <div className="grid min-w-[37rem] grid-cols-[36px_96px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
+          <span className="sr-only">Move</span>
           <span>Level</span>
           <span>SB</span>
           <span>BB</span>
@@ -400,19 +450,37 @@ function BlindEditor({
         </div>
       </div>
       <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-        {levels.map((level, index) => (
-          <div key={index} className="grid min-w-[34rem] grid-cols-[88px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 text-sm">
-            <div className="px-2 text-xs font-medium text-pit-text">Level {index + 1}</div>
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} onChange={(event) => update(index, 'smallblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} onChange={(event) => update(index, 'bigblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} onChange={(event) => update(index, 'ante', event.target.value)} />
+        {levels.map((level, index) => {
+          const breakRow = isBreakEditableLevel(level);
+          return (
+          <div
+            key={index}
+            draggable
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (dragIndex != null) moveLevel(dragIndex, index);
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
+            className={`grid min-w-[37rem] grid-cols-[36px_96px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 rounded-lg text-sm ${dragIndex === index ? 'bg-pit-teal/10' : ''}`}
+          >
+            <div className="flex h-full cursor-grab items-center justify-center text-pit-muted active:cursor-grabbing">
+              <GripVertical size={15} />
+            </div>
+            <div className="px-2 text-xs font-medium text-pit-text">{breakRow ? level.label || `Break ${index + 1}` : `Level ${index + 1}`}</div>
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} disabled={breakRow} onChange={(event) => update(index, 'smallblind', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} disabled={breakRow} onChange={(event) => update(index, 'bigblind', event.target.value)} />
+            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} disabled={breakRow} onChange={(event) => update(index, 'ante', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" aria-label={`Level ${index + 1} minutes`} value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
             <button type="button" onClick={() => removeLevel(index)} className="text-lg leading-none text-red-400 hover:text-red-300">x</button>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="flex gap-2 pt-2">
         <button type="button" className="btn-ghost text-sm" onClick={addLevel}>Add Level</button>
+        <button type="button" className="btn-ghost text-sm" onClick={addBreak}>Add Break</button>
         <button type="button" className="btn-primary text-sm" onClick={save} disabled={loading}>
           {loading ? 'Saving...' : 'Save Structure'}
         </button>
@@ -430,6 +498,8 @@ function parseCalculatorSettings(settings: CalculatorSettings, tournament: Tourn
     startingBigBlind: parseSetting(settings.startingBigBlind, 1),
     chipIncrement: parseSetting(settings.chipIncrement, 1),
     finishBigBlinds: parseSetting(settings.finishBigBlinds, 4),
+    breakCount: Math.max(0, Math.floor(parseSetting(settings.breakCount, 0))),
+    breakMinutes: parseSetting(settings.breakMinutes, 1),
     anteStartLevel: parseSetting(settings.anteStartLevel, 0),
     antePercent: parseSetting(settings.antePercent, 0),
     expectedRebuys: parseSetting(settings.expectedRebuys, 0),
@@ -450,6 +520,9 @@ function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[
   const safeStack = Math.max(settings.startingStack || 0, 100);
   const safeMinutes = Math.max(settings.levelMinutes || 0, 1);
   const safeHours = Math.max(settings.targetHours || 0, 0.5);
+  const safeBreakCount = clamp(Math.floor(settings.breakCount || 0), 0, 10);
+  const safeBreakMinutes = Math.max(settings.breakMinutes || 0, 1);
+  const playMinutes = Math.max((safeHours * 60) - (safeBreakCount * safeBreakMinutes), safeMinutes * 4);
   const increment = Math.max(settings.chipIncrement || 0, 1);
   const startBigBlind = roundTo(Math.max(settings.startingBigBlind || 0, increment), increment);
   const totalChips = (
@@ -458,11 +531,11 @@ function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[
     + Math.max(settings.expectedAddons || 0, 0) * Math.max(settings.addonChips || 0, 0)
   );
   const targetBigBlind = roundTo(Math.max(startBigBlind, totalChips / Math.max(settings.finishBigBlinds || 0, 4)), increment);
-  const levelCount = clamp(Math.round((safeHours * 60) / safeMinutes), 4, 30);
+  const levelCount = clamp(Math.round(playMinutes / safeMinutes), 4, 30);
   const growthFactor = levelCount <= 1 ? 1 : Math.pow(targetBigBlind / startBigBlind, 1 / (levelCount - 1));
 
   let previousBigBlind = 0;
-  return Array.from({ length: levelCount }, (_unused, index) => {
+  const blindLevels = Array.from({ length: levelCount }, (_unused, index) => {
     const level = index + 1;
     const rawBigBlind = startBigBlind * Math.pow(growthFactor, index);
     let bigblind = roundTo(rawBigBlind, increment);
@@ -484,6 +557,37 @@ function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[
       islastlevel: level === levelCount,
     };
   });
+
+  if (safeBreakCount === 0) return blindLevels;
+
+  const levelsWithBreaks: DraftLevel[] = [];
+  const spacing = Math.max(1, Math.floor(levelCount / (safeBreakCount + 1)));
+  let breaksAdded = 0;
+  blindLevels.forEach((blind, index) => {
+    levelsWithBreaks.push(blind);
+    const shouldAddBreak = breaksAdded < safeBreakCount
+      && index < blindLevels.length - 1
+      && (index + 1) >= spacing * (breaksAdded + 1);
+    if (shouldAddBreak) {
+      levelsWithBreaks.push({
+        level: levelsWithBreaks.length + 1,
+        label: `Break ${breaksAdded + 1}`,
+        smallblind: 0,
+        bigblind: 0,
+        ante: 0,
+        minutes: safeBreakMinutes,
+        islastlevel: false,
+      });
+      breaksAdded += 1;
+    }
+  });
+
+  return levelsWithBreaks.map((level, index) => ({
+    ...level,
+    level: index + 1,
+    label: isBreakLevel(level) ? level.label : `Level ${index + 1}`,
+    islastlevel: index === levelsWithBreaks.length - 1,
+  }));
 }
 
 function roundTo(value: number, increment: number) {
@@ -497,4 +601,12 @@ function clamp(value: number, min: number, max: number) {
 function toNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isBreakLevel(level: Pick<BlindLevel, 'label' | 'smallblind' | 'bigblind'>): boolean {
+  return /^break\b/i.test(String(level.label ?? '')) || (Number(level.smallblind) === 0 && Number(level.bigblind) === 0);
+}
+
+function isBreakEditableLevel(level: EditableBlindLevel): boolean {
+  return /^break\b/i.test(String(level.label ?? '')) || (parseSetting(level.smallblind, 0) === 0 && parseSetting(level.bigblind, 0) === 0);
 }

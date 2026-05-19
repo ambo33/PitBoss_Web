@@ -1,5 +1,5 @@
-import 'dotenv/config';
 import './express-async';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -22,6 +22,9 @@ import { getClientUrl } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
+
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../../.env'), override: false });
 
 const app = express();
 app.set('trust proxy', 1);

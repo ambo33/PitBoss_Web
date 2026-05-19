@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 import https from 'https';
-import { getClientUrl } from '../config';
+import { getAppUrl } from '../config';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const from = process.env.EMAIL_FROM ?? 'PokerPlanner.bet <noreply@pokerplanner.bet>';
-const clientUrl = getClientUrl();
+const appUrl = getAppUrl();
 
 type EmailPayload = {
   to: string;
@@ -174,7 +174,7 @@ export async function sendVerificationEmail(email: string, pin: string): Promise
 }
 
 export async function sendPasswordResetEmail(email: string, resetGuid: string): Promise<void> {
-  const link = `${clientUrl}/reset-password?token=${resetGuid}`;
+  const link = `${appUrl}/reset-password?token=${resetGuid}`;
   await sendMail({
     to: email,
     subject: 'Reset your PokerPlanner.bet password',
@@ -195,7 +195,7 @@ export async function sendGroupInviteEmail(
   inviteCode: string,
   note?: string
 ): Promise<void> {
-  const joinLink = `${clientUrl}/join/${encodeURIComponent(inviteCode)}`;
+  const joinLink = `${appUrl}/join/${encodeURIComponent(inviteCode)}`;
   await sendMail({
     to: email,
     subject: `You're invited to join ${groupName} on PokerPlanner.bet`,
@@ -214,6 +214,30 @@ export async function sendGroupInviteEmail(
   });
 }
 
+export async function sendGroupPostApprovalEmail(
+  email: string,
+  groupName: string,
+  authorName: string,
+  message: string
+): Promise<void> {
+  const preview = message.length > 220 ? `${message.slice(0, 220)}...` : message;
+  await sendMail({
+    to: email,
+    subject: `New ${groupName} post needs approval`,
+    html: emailLayout({
+      eyebrow: 'Post Approval',
+      title: `${groupName} has a post waiting`,
+      intro: `${authorName} submitted a post for group admin review.`,
+      body: `
+        <p style="margin:0 0 12px;border-left:3px solid #13adad;padding-left:12px;">${escapeHtml(preview)}</p>
+        <p style="margin:0;">Open the group Posts tab to approve or reject it.</p>
+      `,
+      ctaHref: appUrl,
+      ctaLabel: 'Open PokerPlanner.bet',
+    }),
+  });
+}
+
 export async function sendTournamentPostedEmail(
   email: string,
   tournamentId: string,
@@ -222,7 +246,7 @@ export async function sendTournamentPostedEmail(
   tournamentDate?: string | null,
   tournamentTime?: string | null
 ): Promise<void> {
-  const link = `${clientUrl}/lobby/${encodeURIComponent(tournamentId)}`;
+  const link = `${appUrl}/lobby/${encodeURIComponent(tournamentId)}`;
   const when = formatTournamentWhen(tournamentDate, tournamentTime);
   await sendMail({
     to: email,
@@ -248,7 +272,7 @@ export async function sendTournamentReminderEmail(
   tournamentDate?: string | null,
   tournamentTime?: string | null
 ): Promise<void> {
-  const link = `${clientUrl}/lobby/${encodeURIComponent(tournamentId)}`;
+  const link = `${appUrl}/lobby/${encodeURIComponent(tournamentId)}`;
   const when = formatTournamentWhen(tournamentDate, tournamentTime);
   await sendMail({
     to: email,
@@ -279,7 +303,7 @@ export async function sendTournamentCancelledEmail(
       title: `${tournamentName} has been cancelled`,
       intro: when ? `Scheduled time: ${when}` : undefined,
       body: '<p style="margin:0;">Please check PokerPlanner.bet for updated tournament plans.</p>',
-      ctaHref: clientUrl,
+      ctaHref: appUrl,
       ctaLabel: 'Open PokerPlanner.bet',
     }),
   });

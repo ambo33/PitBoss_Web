@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImageIcon, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
+import { Bot, ImageIcon, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
@@ -64,6 +64,8 @@ export default function MainPage() {
       trialhostedremaining: currentProfile.trialhostedremaining,
       trialactive: currentProfile.trialactive,
       canuseclubfeatures: currentProfile.canuseclubfeatures,
+      aicreditsremaining: currentProfile.aicreditsremaining,
+      defaultaicredits: currentProfile.defaultaicredits,
       avatarimagedata: currentProfile.avatarimagedata ?? null,
       hasavatarimage: currentProfile.hasavatarimage ?? false,
       onboardingcomplete: currentProfile.onboardingcomplete,
@@ -209,6 +211,8 @@ function ProfilePanel() {
       emailaddress: profile.emailaddress,
       avatarimagedata: profile.avatarimagedata ?? null,
       hasavatarimage: profile.hasavatarimage ?? false,
+      aicreditsremaining: profile.aicreditsremaining,
+      defaultaicredits: profile.defaultaicredits,
       onboardingcomplete: profile.onboardingcomplete,
     });
   }, [profile, updateUser]);
@@ -222,6 +226,8 @@ function ProfilePanel() {
         emailaddress: updated.emailaddress,
         avatarimagedata: updated.avatarimagedata ?? null,
         hasavatarimage: updated.hasavatarimage ?? false,
+        aicreditsremaining: updated.aicreditsremaining,
+        defaultaicredits: updated.defaultaicredits,
       });
       if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
         setMediaSuccess(variables.clearcheckinaudio ? 'Check-in clip removed.' : 'Check-in clip saved.');
@@ -362,6 +368,20 @@ function ProfilePanel() {
         </div>
         <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
           Beta users have full access while we test the product. If paid tiers launch later, beta testers will receive discounted rates.
+        </div>
+      </section>
+
+      <section className="card space-y-3">
+        <div className="flex items-center gap-3">
+          <Bot size={18} className="text-pit-teal" />
+          <div>
+            <h3 className="font-semibold text-white">AI Credits</h3>
+            <p className="text-sm text-pit-muted">Used for AI announcer clips and hand analysis.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TierStat label="Credits remaining" value={profile?.aicreditsremaining ?? 0} accent={(profile?.aicreditsremaining ?? 0) > 0} />
+          <TierStat label="Default allotment" value={profile?.defaultaicredits ?? 0} />
         </div>
       </section>
 

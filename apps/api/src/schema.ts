@@ -14,6 +14,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS appsettings (
+        key STRING PRIMARY KEY,
+        value STRING NOT NULL,
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      INSERT INTO appsettings (key, value)
+      VALUES ('default_ai_credits', COALESCE($1, '25'))
+      ON CONFLICT (key) DO NOTHING
+    `, [process.env.DEFAULT_AI_CREDITS ?? '25']);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS accounttiers (
         tierid INT PRIMARY KEY,
         tierkey STRING(20) NOT NULL UNIQUE,
@@ -86,6 +98,26 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS seatingmaxpertable INT DEFAULT 9
     `);
     await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountyenabled BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountymode STRING(20) DEFAULT 'manual'
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountyprizepool DECIMAL(10,2) DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountypooltype STRING(20) DEFAULT 'amount'
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS bountyroundingdenomination DECIMAL(10,2) DEFAULT 5
+    `);
+    await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
     `);
@@ -100,6 +132,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS hostedtournamentcount INT DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS aicreditsremaining INT
     `);
     await client.query(`
       ALTER TABLE usermetadata
@@ -159,11 +195,19 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE groups
-      ADD COLUMN IF NOT EXISTS aiannouncerpreset STRING(30) DEFAULT 'professional'
+      ADD COLUMN IF NOT EXISTS aiannouncerpreset STRING(30) DEFAULT 'all_in_alex'
     `);
     await client.query(`
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS aiannouncercustomprompt STRING(500)
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS aiannouncerclassicmode BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS postapprovalrequired BOOL DEFAULT TRUE
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS groupblindstructures (
@@ -183,8 +227,29 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         posttype STRING(20) NOT NULL DEFAULT 'message',
         message STRING(1200) NOT NULL,
         createdat TIMESTAMPTZ DEFAULT now(),
-        active BOOL DEFAULT TRUE
+        active BOOL DEFAULT TRUE,
+        status STRING(30) NOT NULL DEFAULT 'approved',
+        approvedat TIMESTAMPTZ,
+        approvedby UUID REFERENCES users(guid) ON DELETE SET NULL
       )
+    `);
+    await client.query(`
+      ALTER TABLE groupposts
+      ADD COLUMN IF NOT EXISTS status STRING(30) NOT NULL DEFAULT 'approved'
+    `);
+    await client.query(`
+      ALTER TABLE groupposts
+      ADD COLUMN IF NOT EXISTS approvedat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE groupposts
+      ADD COLUMN IF NOT EXISTS approvedby UUID REFERENCES users(guid) ON DELETE SET NULL
+    `);
+    await client.query(`
+      UPDATE groupposts
+      SET status = 'approved',
+          approvedat = COALESCE(approvedat, createdat)
+      WHERE status IS NULL OR status = ''
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS grouppolloptions (
@@ -311,9 +376,21 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS bountyamount DECIMAL(10,2) DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS bountyclaimedbyuserid UUID
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS bountyclaimedat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS reminderemailsentat TIMESTAMPTZ
     `);
-    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, and knockout tracking are available.');
+    console.log('Schema ready: tier tables, admin flags, hosted tournament counts, tournament group defaults, saved blind structures, rake, payout structure, rebuy/add-on chip fields, invite code uniqueness, TV display codes, TV greeting settings, profile media, chip sets, knockout tracking, and tournament bounties are available.');
   } finally {
     client.release();
     if (options.closePool) {

@@ -12,6 +12,8 @@ interface AuthUser {
   trialhostedremaining?: number;
   trialactive?: boolean;
   canuseclubfeatures?: boolean;
+  aicreditsremaining?: number;
+  defaultaicredits?: number;
   avatarimagedata?: string | null;
   hasavatarimage?: boolean;
   onboardingcomplete?: boolean;

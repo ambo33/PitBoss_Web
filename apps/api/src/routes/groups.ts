@@ -2,9 +2,10 @@ import { Router, Request, Response } from 'express';
 import { query, queryOne, pool } from '../db';
 import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
-import { getClientUrl } from '../config';
+import { getAppUrl } from '../config';
 import { BlindLevel, Group, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
-import { sendGroupInviteEmail } from '../services/email';
+import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
+import { publicEmail } from '../privacy';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -30,8 +31,12 @@ function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
       minutes: Number((level as Partial<BlindLevel>).minutes) || 0,
       islastlevel: Boolean((level as Partial<BlindLevel>).islastlevel),
     }))
-    .filter((level) => level.level > 0 && level.smallblind >= 0 && level.bigblind > 0 && level.minutes > 0)
-    .sort((a, b) => a.level - b.level);
+    .filter((level) => {
+      const isBreak = /^break\b/i.test(level.label) || (level.smallblind === 0 && level.bigblind === 0);
+      return level.level > 0 && level.smallblind >= 0 && (isBreak || level.bigblind > 0) && level.minutes > 0;
+    })
+    .sort((a, b) => a.level - b.level)
+    .map((level, index, all) => ({ ...level, level: index + 1, islastlevel: index === all.length - 1 }));
 }
 
 function normalizeAnnouncementTemplate(value: string | null | undefined, fallback: string): string | null {
@@ -41,8 +46,23 @@ function normalizeAnnouncementTemplate(value: string | null | undefined, fallbac
 
 function normalizeAnnouncerPreset(value: string | null | undefined): string | null {
   if (value == null) return null;
-  if (['professional', 'wwe', 'minimal', 'football', 'roaster', 'wsop'].includes(value)) return value;
-  return 'professional';
+  if ([
+    'all_in_alex',
+    'royal_rumble_riley',
+    'velvet_dealer',
+    'chipstorm',
+    'queen_of_spades',
+    'the_pit_boss',
+    'british_high_roller',
+    'turbo_tony',
+    'midnight_mayhem',
+    'sunny_stacks',
+  ].includes(value)) return value;
+  if (value === 'football' || value === 'wwe') return 'royal_rumble_riley';
+  if (value === 'minimal') return 'sunny_stacks';
+  if (value === 'roaster') return 'turbo_tony';
+  if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
+  return 'all_in_alex';
 }
 
 async function requireApprovedMember(groupId: string, userId: string): Promise<boolean> {
@@ -57,6 +77,31 @@ async function requireGroupAdmin(groupId: string, userId: string): Promise<boole
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE AND admin = TRUE`,
     [groupId, userId]
   ));
+}
+
+async function notifyGroupAdminsForPost(groupId: string, postId: string, authorName: string, message: string): Promise<void> {
+  const group = await queryOne<{ name: string }>(
+    `SELECT name FROM groups WHERE groupid = $1`,
+    [groupId]
+  );
+  if (!group) return;
+
+  const admins = await query<{ emailaddress: string | null; emailencrypted: string | null }>(
+    `SELECT u.emailaddress, u.emailencrypted
+     FROM groupmembers gm
+     JOIN users u ON u.guid = gm.userid
+     WHERE gm.groupid = $1
+       AND gm.admin = TRUE
+       AND gm.approved = TRUE`,
+    [groupId]
+  );
+  await Promise.allSettled(
+    admins
+      .map((admin) => publicEmail(admin.emailencrypted, admin.emailaddress))
+      .filter(Boolean)
+      .map((email) => sendGroupPostApprovalEmail(email, group.name, authorName, message))
+  );
+  await query(`UPDATE groupposts SET active = TRUE WHERE id = $1`, [postId]);
 }
 
 async function getGroupConversationAccess(groupId: string): Promise<{ exists: boolean; enabled: boolean }> {
@@ -78,8 +123,10 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
             g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
+            COALESCE(g.postapprovalrequired, TRUE) AS postapprovalrequired,
             gm.admin AS isadmin, gm.approved,
             (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
      FROM groups g
@@ -158,8 +205,10 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
             g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
+            COALESCE(g.postapprovalrequired, TRUE) AS postapprovalrequired,
             gm.admin AS isadmin, gm.approved FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2
      WHERE g.groupid = $1`,
@@ -183,7 +232,7 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response) => {
-  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt } = req.body as {
+  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt, aiannouncerclassicmode, postapprovalrequired } = req.body as {
     name?: string;
     approvalneeded?: boolean;
     invitecode?: string;
@@ -195,6 +244,8 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     aiannouncerenabled?: boolean;
     aiannouncerpreset?: string;
     aiannouncercustomprompt?: string;
+    aiannouncerclassicmode?: boolean;
+    postapprovalrequired?: boolean;
   };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -213,6 +264,10 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   }
   if (tvseatingwelcomemessage != null && !profile.canuseclubfeatures) {
     res.status(403).json({ error: 'Custom TV seating messages are available on Club and Pro tiers.' });
+    return;
+  }
+  if (aiannouncerenabled === true && !profile.issuperadmin && !profile.canuseclubfeatures) {
+    res.status(403).json({ error: 'AI voice director is available on Club and Pro tiers.' });
     return;
   }
   const normalizedTrackingMode = defaulttrackingmode === 'player' ? 'player' : defaulttrackingmode === 'standard' ? 'standard' : null;
@@ -243,7 +298,20 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   }
 
   try {
-    await query(
+    const updated = await queryOne<{
+      groupid: string;
+      invitecode: string;
+      defaulttrackingmode: 'standard' | 'player';
+      tvseatingwelcomemessage: string | null;
+      speechfiveminutemessage: string | null;
+      speechoneminutemessage: string | null;
+      speechlevelupmessage: string | null;
+      aiannouncerenabled: boolean;
+      aiannouncerpreset: string;
+      aiannouncercustomprompt: string | null;
+      aiannouncerclassicmode: boolean;
+      postapprovalrequired: boolean;
+    }>(
       `UPDATE groups
        SET name = COALESCE($1, name),
            approvalneeded = COALESCE($2, approvalneeded),
@@ -253,10 +321,24 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
            speechfiveminutemessage = COALESCE($6, speechfiveminutemessage),
            speechoneminutemessage = COALESCE($7, speechoneminutemessage),
            speechlevelupmessage = COALESCE($8, speechlevelupmessage),
-           aiannouncerenabled = COALESCE($9, aiannouncerenabled),
+           aiannouncerenabled = CASE WHEN $9::BOOL IS NULL THEN aiannouncerenabled ELSE $9::BOOL END,
            aiannouncerpreset = COALESCE($10, aiannouncerpreset),
-           aiannouncercustomprompt = COALESCE($11, aiannouncercustomprompt)
-       WHERE groupid = $12`,
+           aiannouncercustomprompt = COALESCE($11, aiannouncercustomprompt),
+           aiannouncerclassicmode = CASE WHEN $12::BOOL IS NULL THEN aiannouncerclassicmode ELSE $12::BOOL END,
+           postapprovalrequired = COALESCE($13, postapprovalrequired)
+       WHERE groupid = $14
+       RETURNING groupid,
+                 invitecode,
+                 defaulttrackingmode,
+                 tvseatingwelcomemessage,
+                 speechfiveminutemessage,
+                 speechoneminutemessage,
+                 speechlevelupmessage,
+                 COALESCE(aiannouncerenabled, FALSE) AS aiannouncerenabled,
+                 COALESCE(aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
+                 aiannouncercustomprompt,
+                 COALESCE(aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
+                 COALESCE(postapprovalrequired, TRUE) AS postapprovalrequired`,
       [
         name ?? null,
         approvalneeded ?? null,
@@ -269,10 +351,16 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
         aiannouncerenabled ?? null,
         normalizedAiPreset,
         normalizedAiPrompt,
+        aiannouncerclassicmode ?? null,
+        postapprovalrequired ?? null,
         req.params.id,
       ]
     );
-    res.json({ success: true, invitecode: normalizedInviteCode ?? undefined });
+    if (!updated) {
+      res.status(404).json({ error: 'Group not found' });
+      return;
+    }
+    res.json({ success: true, ...updated });
   } catch (err) {
     const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
     if (code === '23505') {
@@ -356,6 +444,7 @@ groupsRouter.get('/:id/posts', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Not a group member' });
     return;
   }
+  const isAdmin = await requireGroupAdmin(req.params.id, req.userId!);
 
   const access = await getGroupConversationAccess(req.params.id);
   if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
@@ -365,15 +454,17 @@ groupsRouter.get('/:id/posts', async (req: Request, res: Response) => {
   }
 
   const posts = await query<GroupPost>(
-    `SELECT gp.id, gp.groupid, gp.createdby, gp.posttype, gp.message, gp.createdat,
+    `SELECT gp.id, gp.groupid, gp.createdby, gp.posttype, gp.message, COALESCE(gp.status, 'approved') AS status, gp.createdat,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname
      FROM groupposts gp
      JOIN users u ON u.guid = gp.createdby
      LEFT JOIN usermetadata um ON um.userid = gp.createdby
-     WHERE gp.groupid = $1 AND COALESCE(gp.active, TRUE) = TRUE
+     WHERE gp.groupid = $1
+       AND COALESCE(gp.active, TRUE) = TRUE
+       AND (COALESCE(gp.status, 'approved') = 'approved' OR $2 = TRUE)
      ORDER BY gp.createdat DESC
      LIMIT 25`,
-    [req.params.id]
+    [req.params.id, isAdmin]
   );
   const postIds = posts.map((post) => post.id);
   if (postIds.length === 0) {
@@ -417,10 +508,11 @@ groupsRouter.get('/:id/posts', async (req: Request, res: Response) => {
 });
 
 groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
-  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
-    res.status(403).json({ error: 'Not a group admin' });
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
     return;
   }
+  const isAdmin = await requireGroupAdmin(req.params.id, req.userId!);
   const access = await getGroupConversationAccess(req.params.id);
   if (!access.exists) { res.status(404).json({ error: 'Group not found' }); return; }
   if (!access.enabled) {
@@ -442,15 +534,25 @@ groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Polls need at least 2 options.' });
     return;
   }
+  const groupSettings = await queryOne<{ postapprovalrequired: boolean; authorname: string }>(
+    `SELECT COALESCE(g.postapprovalrequired, TRUE) AS postapprovalrequired,
+            COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS authorname
+     FROM groups g
+     JOIN users u ON u.guid = $2
+     LEFT JOIN usermetadata um ON um.userid = u.guid
+     WHERE g.groupid = $1`,
+    [req.params.id, req.userId]
+  );
+  const status = groupSettings?.postapprovalrequired && !isAdmin ? 'pending' : 'approved';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const postResult = await client.query<{ id: string }>(
-      `INSERT INTO groupposts (groupid, createdby, posttype, message)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO groupposts (groupid, createdby, posttype, message, status, approvedat, approvedby)
+       VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'approved' THEN now() ELSE NULL END, CASE WHEN $5 = 'approved' THEN $2 ELSE NULL END)
        RETURNING id`,
-      [req.params.id, req.userId, normalizedType, trimmedMessage]
+      [req.params.id, req.userId, normalizedType, trimmedMessage, status]
     );
     const post = postResult.rows[0];
     if (!post) {
@@ -468,13 +570,39 @@ groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
       }
     }
     await client.query('COMMIT');
-    res.status(201).json({ id: post.id, success: true });
+    if (status === 'pending') {
+      void notifyGroupAdminsForPost(req.params.id, post.id, groupSettings?.authorname ?? 'A member', trimmedMessage);
+    }
+    res.status(201).json({ id: post.id, success: true, status });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+});
+
+groupsRouter.put('/:id/posts/:postId/moderate', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const status = (req.body as { status?: string }).status === 'approved' ? 'approved' : 'rejected';
+  const row = await queryOne<{ id: string }>(
+    `UPDATE groupposts
+     SET status = $3,
+         active = CASE WHEN $3 = 'rejected' THEN FALSE ELSE TRUE END,
+         approvedat = CASE WHEN $3 = 'approved' THEN now() ELSE approvedat END,
+         approvedby = CASE WHEN $3 = 'approved' THEN $2 ELSE approvedby END
+     WHERE groupid = $1 AND id = $4
+     RETURNING id`,
+    [req.params.id, req.userId, status, req.params.postId]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Post not found' });
+    return;
+  }
+  res.json({ success: true, id: row.id, status });
 });
 
 groupsRouter.post('/:id/posts/:postId/vote', async (req: Request, res: Response) => {
@@ -493,7 +621,7 @@ groupsRouter.post('/:id/posts/:postId/vote', async (req: Request, res: Response)
     `SELECT 1
      FROM grouppolloptions po
      JOIN groupposts gp ON gp.id = po.postid
-     WHERE gp.groupid = $1 AND gp.id = $2 AND po.id = $3`,
+     WHERE gp.groupid = $1 AND gp.id = $2 AND po.id = $3 AND COALESCE(gp.status, 'approved') = 'approved'`,
     [req.params.id, req.params.postId, optionid]
   );
   if (!option) {
@@ -521,7 +649,7 @@ groupsRouter.post('/:id/posts/:postId/comments', async (req: Request, res: Respo
     return;
   }
   const post = await queryOne(
-    `SELECT 1 FROM groupposts WHERE groupid = $1 AND id = $2 AND COALESCE(active, TRUE) = TRUE`,
+    `SELECT 1 FROM groupposts WHERE groupid = $1 AND id = $2 AND COALESCE(active, TRUE) = TRUE AND COALESCE(status, 'approved') = 'approved'`,
     [req.params.id, req.params.postId]
   );
   if (!post) {
@@ -606,7 +734,7 @@ groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
   );
   if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
 
-  const joinLink = `${getClientUrl()}/join/${encodeURIComponent(group.invitecode)}`;
+  const joinLink = `${getAppUrl()}/join/${encodeURIComponent(group.invitecode)}`;
   if (normalizedEmail) {
     await sendGroupInviteEmail(normalizedEmail, group.name, group.invitecode, trimmedNote);
   }

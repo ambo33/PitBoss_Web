@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { query, queryOne } from '../db';
 import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTournamentCount, requireSuperAdmin } from '../account';
 import { requireAuth } from '../middleware/auth';
@@ -80,6 +81,89 @@ function validateHostPayoutStructure(payoutstructure: string | null | undefined)
   }
 }
 
+function normalizeBountyMode(value: unknown): 'manual' | 'mystery' {
+  return value === 'mystery' ? 'mystery' : 'manual';
+}
+
+function normalizeBountyPoolType(value: unknown): 'amount' | 'percent' {
+  return value === 'percent' ? 'percent' : 'amount';
+}
+
+function normalizeMoney(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 100) / 100) : 0;
+}
+
+function normalizeBountyDenomination(value: unknown): number {
+  const parsed = normalizeMoney(value);
+  return parsed > 0 ? parsed : 5;
+}
+
+function normalizePercent(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(100, Math.max(0, Math.round(parsed * 100) / 100));
+}
+
+async function resolveBountyPrizepool(tournamentId: string, value: number, poolType: 'amount' | 'percent'): Promise<number> {
+  if (poolType === 'amount') return normalizeMoney(value);
+  const grossPot = await getGrossPot(tournamentId);
+  return normalizeMoney((grossPot * normalizePercent(value)) / 100);
+}
+
+async function assignMysteryBounties(tournamentId: string, prizepool: number, denominationValue: number = 5): Promise<{ assigned: number; total: number; denomination: number }> {
+  const players = await query<{ userid: string }>(
+    `SELECT userid
+     FROM tournamentplayers
+     WHERE tournamentid = $1
+     ORDER BY createdate, userid`,
+    [tournamentId]
+  );
+  const denominationCents = Math.max(1, Math.round(normalizeBountyDenomination(denominationValue) * 100));
+  const totalUnits = Math.max(0, Math.round(normalizeMoney(prizepool) * 100 / denominationCents));
+  if (players.length === 0 || totalUnits <= 0) {
+    await query(
+      `UPDATE tournamentplayers
+       SET bountyamount = 0,
+           bountyclaimedbyuserid = NULL,
+           bountyclaimedat = NULL
+       WHERE tournamentid = $1`,
+      [tournamentId]
+    );
+    return { assigned: players.length, total: 0, denomination: denominationCents / 100 };
+  }
+
+  const amounts = new Array(players.length).fill(0);
+  let remainingUnits = totalUnits;
+
+  if (totalUnits >= players.length) {
+    amounts.fill(1);
+    remainingUnits -= players.length;
+  }
+
+  const weights = players.map((_, index) => crypto.randomInt(25, 300) + ((index % 5) * 15));
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const weightedUnits = weights.map((weight) => Math.floor((remainingUnits * weight) / weightTotal));
+  weightedUnits.forEach((units, index) => { amounts[index] += units; });
+  let remainder = remainingUnits - weightedUnits.reduce((sum, units) => sum + units, 0);
+  while (remainder > 0) {
+    amounts[crypto.randomInt(0, amounts.length)] += 1;
+    remainder -= 1;
+  }
+
+  const totalCents = totalUnits * denominationCents;
+  await Promise.all(players.map((player, index) => query(
+    `UPDATE tournamentplayers
+     SET bountyamount = $3,
+         bountyclaimedbyuserid = CASE WHEN placed IS NULL THEN NULL ELSE bountyclaimedbyuserid END,
+         bountyclaimedat = CASE WHEN placed IS NULL THEN NULL ELSE bountyclaimedat END
+     WHERE tournamentid = $1 AND userid = $2`,
+    [tournamentId, player.userid, (amounts[index] * denominationCents) / 100]
+  )));
+
+  return { assigned: players.length, total: totalCents / 100, denomination: denominationCents / 100 };
+}
+
 async function getGrossPot(tournamentId: string, overrides: Partial<Tournament> = {}): Promise<number> {
   const tournament = await queryOne<{
     buyin: number;
@@ -136,13 +220,19 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
             g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
@@ -182,6 +272,11 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
        (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount
@@ -195,12 +290,14 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
 
 tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
-          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid, notifygroup } = req.body as {
+          addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid, notifygroup,
+          bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
     buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
           genericrebuys?: number; addonprice?: number; addonchips?: number; genericaddons?: number; maxplayers?: number;
           playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null; notifygroup?: boolean;
           savedstructureid?: string | null;
+          bountyenabled?: boolean; bountymode?: 'manual' | 'mystery'; bountyprizepool?: number; bountypooltype?: 'amount' | 'percent'; bountyroundingdenomination?: number;
           tvgreetingdisplayenabled?: boolean; tvgreetingaudioenabled?: boolean; tvshowknockoutqrenabled?: boolean;
   };
   if (!name) { res.status(400).json({ error: 'Name required' }); return; }
@@ -225,6 +322,10 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Host tier payouts are limited to paying 1, 2, or 3 places.' });
     return;
   }
+  const normalizedBountyMode = normalizeBountyMode(bountymode);
+  const normalizedBountyPoolType = normalizeBountyPoolType(bountypooltype);
+  const normalizedBountyPrizepool = normalizedBountyPoolType === 'percent' ? normalizePercent(bountyprizepool) : normalizeMoney(bountyprizepool);
+  const normalizedBountyDenomination = normalizeBountyDenomination(bountyroundingdenomination);
 
   let trackingEnabled = Boolean(playerselftracking);
   if (groupid && playerselftracking == null) {
@@ -258,13 +359,13 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
       `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
         rebuychips, genericrebuys, addoncost, addonchips, genericaddons, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
-        tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING tournamentid`,
+        tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
      rebuychips ?? 0, genericrebuys ?? 0, addonprice ?? 0, addonchips ?? 0, genericaddons ?? 0, maxplayers ?? 0,
      trackingEnabled, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
-     true, true, true]
+     true, true, true, Boolean(bountyenabled), normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination]
   );
   if (!row) { res.status(500).json({ error: 'Failed to create tournament' }); return; }
 
@@ -348,13 +449,19 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
             g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
@@ -394,13 +501,25 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'User account not found' });
     return;
   }
+  const isSuperAdmin = await requireSuperAdmin(req.userId!);
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
-          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, seatingmaxpertable } = req.body as Partial<Tournament>;
+          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, seatingmaxpertable,
+          bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination } = req.body as Partial<Tournament>;
   const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
-  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null }>(
-    `SELECT date AS tourneydate, time AS tourneytime
+  const normalizedBountyMode = bountymode == null ? null : normalizeBountyMode(bountymode);
+  const normalizedBountyPoolType = bountypooltype == null ? null : normalizeBountyPoolType(bountypooltype);
+  const effectiveBountyPoolType = normalizedBountyPoolType ?? null;
+  const normalizedBountyPrizepool = bountyprizepool == null
+    ? null
+    : (effectiveBountyPoolType === 'percent' ? normalizePercent(bountyprizepool) : normalizeMoney(bountyprizepool));
+  const normalizedBountyDenomination = bountyroundingdenomination == null ? null : normalizeBountyDenomination(bountyroundingdenomination);
+  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null; bountymode: string | null; bountypooltype: string | null; bountyprizepool: number; bountyroundingdenomination: number }>(
+    `SELECT date AS tourneydate, time AS tourneytime, COALESCE(bountymode, 'manual') AS bountymode,
+            COALESCE(bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(CAST(bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
      FROM tournaments
      WHERE tournamentid = $1`,
     [req.params.id]
@@ -413,7 +532,8 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   const requestedDate = tourneydate ?? undefined;
   const requestedTime = tourneytime ?? undefined;
   if (
-    scheduleLocked
+    !isSuperAdmin
+    && scheduleLocked
     && (
       (requestedDate !== undefined && requestedDate !== currentTournament.tourneydate)
       || (requestedTime !== undefined && requestedTime !== currentTournament.tourneytime)
@@ -458,17 +578,81 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        tvgreetingaudioenabled = COALESCE($18, tvgreetingaudioenabled),
        tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled),
        tvdisplaymode = COALESCE($20, tvdisplaymode),
-       seatingmaxpertable = COALESCE($21, seatingmaxpertable)
+       seatingmaxpertable = COALESCE($21, seatingmaxpertable),
+       bountyenabled = COALESCE($22, bountyenabled),
+       bountymode = COALESCE($23, bountymode),
+       bountyprizepool = COALESCE($24, bountyprizepool),
+       bountypooltype = COALESCE($25, bountypooltype),
+       bountyroundingdenomination = COALESCE($26, bountyroundingdenomination)
      WHERE tournamentid = $14`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
      rebuychips ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
      tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode,
-     seatingmaxpertable ?? null]
+     seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination]
   );
+  if (bountyenabled === false) {
+    await query(
+      `UPDATE tournamentplayers
+       SET bountyclaimedbyuserid = NULL,
+           bountyclaimedat = NULL
+       WHERE tournamentid = $1`,
+      [req.params.id]
+    );
+  } else if ((bountyenabled == null || bountyenabled === true) && (normalizedBountyMode === 'mystery' || (bountymode == null && currentTournament.bountymode === 'mystery' && (normalizedBountyPrizepool != null || normalizedBountyPoolType != null || normalizedBountyDenomination != null)))) {
+    const configuredValue = normalizedBountyPrizepool ?? Number(currentTournament.bountyprizepool ?? 0);
+    const poolType = normalizedBountyPoolType ?? normalizeBountyPoolType(currentTournament.bountypooltype);
+    const denomination = normalizedBountyDenomination ?? normalizeBountyDenomination(currentTournament.bountyroundingdenomination);
+    await assignMysteryBounties(req.params.id, await resolveBountyPrizepool(req.params.id, configuredValue, poolType), denomination);
+  }
   broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
   res.json({ success: true });
+});
+
+tournamentsRouter.post('/:id/bounties/mystery-assign', async (req: Request, res: Response) => {
+  if (!await canManageTournament(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const tournament = await queryOne<{ bountyprizepool: number; bountyenabled: boolean; bountypooltype: string | null; bountyroundingdenomination: number }>(
+    `SELECT COALESCE(CAST(bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  if (!tournament.bountyenabled) {
+    res.status(400).json({ error: 'Enable bounties before assigning mystery bounties.' });
+    return;
+  }
+
+  const { prizepool, denomination } = req.body as { prizepool?: number; denomination?: number };
+  const poolType = normalizeBountyPoolType(tournament.bountypooltype);
+  const configuredValue = poolType === 'percent'
+    ? normalizePercent(prizepool ?? tournament.bountyprizepool)
+    : normalizeMoney(prizepool ?? tournament.bountyprizepool);
+  const configuredDenomination = normalizeBountyDenomination(denomination ?? tournament.bountyroundingdenomination);
+  const total = await resolveBountyPrizepool(req.params.id, configuredValue, poolType);
+  await query(
+    `UPDATE tournaments
+     SET bountymode = 'mystery',
+         bountyprizepool = $2,
+         bountypooltype = $3,
+         bountyroundingdenomination = $4
+     WHERE tournamentid = $1`,
+    [req.params.id, configuredValue, poolType, configuredDenomination]
+  );
+  const result = await assignMysteryBounties(req.params.id, total, configuredDenomination);
+  broadcastTournamentUpdate(req.params.id, { tournament: true, players: true, source: 'mystery-bounties' });
+  res.json({ success: true, ...result });
 });
 
 tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {

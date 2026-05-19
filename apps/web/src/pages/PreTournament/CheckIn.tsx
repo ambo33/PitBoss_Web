@@ -112,6 +112,14 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
       setSelected(null);
     },
   });
+  const bountyMutation = useMutation({
+    mutationFn: ({ uid, amount }: { uid: string; amount: number }) => api.updatePlayerBounty(tournamentId, uid, amount),
+    onSuccess: () => refreshTournamentData(),
+  });
+  const mysteryBountyMutation = useMutation({
+    mutationFn: () => api.assignMysteryBounties(tournamentId),
+    onSuccess: () => refreshTournamentData(),
+  });
   const removeMutation = useMutation({
     mutationFn: (uid: string) => api.removePlayer(tournamentId, uid),
     onSuccess: () => {
@@ -130,24 +138,28 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     ?? removeGenericRebuyMutation.error
     ?? removeGenericAddonMutation.error
     ?? knockMutation.error
+    ?? bountyMutation.error
+    ?? mysteryBountyMutation.error
     ?? removeMutation.error;
 
-  const filtered = players.filter((player) => {
+  const filtered = [...players].filter((player) => {
     const matchSearch = !search
       || (player.emailaddress?.toLowerCase().includes(search.toLowerCase()) ?? false)
       || (player.displayname?.toLowerCase().includes(search.toLowerCase()) ?? false);
     const matchFilter = filter === 'all' || (filter === 'in' ? player.checkedin : !player.checkedin);
     return matchSearch && matchFilter;
-  });
+  }).sort((a, b) => playerName(a).localeCompare(playerName(b), undefined, { sensitivity: 'base' }));
 
   const checkedIn = players.filter((player) => player.checkedin).length;
-  const placed = players.filter((player) => player.placed != null).length;
-  const activePlayers = Math.max(checkedIn - placed, 0);
+  const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const grossPot = (toNumber(tournament.buyin) * checkedIn)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
+  const bountyRemaining = tournament.bountyenabled
+    ? players.filter((player) => player.placed == null).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    : 0;
 
   const registeredIds = new Set(players.map((player) => player.userid));
   const availableGroupMembers = (groupData?.members ?? []).filter(
@@ -160,8 +172,9 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     { label: 'Still Playing', value: activePlayers },
     { label: 'Total Rebuys', value: totalRebuys },
     { label: 'Add-Ons', value: totalAddons },
+    ...(tournament.bountyenabled ? [{ label: 'Bounties Left', value: formatMoney(bountyRemaining), accent: true }] : []),
     { label: 'Gross Pot', value: formatMoney(grossPot), accent: true },
-  ]), [activePlayers, checkedIn, grossPot, players.length, totalAddons, totalRebuys]);
+  ]), [activePlayers, bountyRemaining, checkedIn, grossPot, players.length, totalAddons, totalRebuys, tournament.bountyenabled]);
 
   if (isLoading) return <LoadingSpinner className="mt-12" />;
 
@@ -210,6 +223,16 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             <div className="flex h-full flex-col rounded-xl border border-pit-border bg-pit-bg/50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-white">Field Status</h3>
+                {tournament.bountyenabled && tournament.bountymode === 'mystery' && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-1.5 text-xs"
+                    onClick={() => mysteryBountyMutation.mutate()}
+                    disabled={mysteryBountyMutation.isPending || players.length === 0}
+                  >
+                    {mysteryBountyMutation.isPending ? 'Assigning...' : 'Assign Mystery Bounties'}
+                  </button>
+                )}
               </div>
               <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {stats.map((stat) => (
@@ -304,6 +327,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onRemoveAddon={() => removeAddonMutation.mutate(player.userid)}
             onKnockout={() => knockMutation.mutate({ uid: player.userid, placed: Math.max(activePlayers, 1) })}
             onRestore={() => knockMutation.mutate({ uid: player.userid, placed: null })}
+            onBountyChange={(amount) => bountyMutation.mutate({ uid: player.userid, amount })}
             onSelect={() => setSelected(player)}
             tournament={tournament}
             canUseClubFeatures={canUseClubFeatures}
@@ -318,6 +342,8 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               || removeGenericRebuyMutation.isPending
               || removeGenericAddonMutation.isPending
               || knockMutation.isPending
+              || bountyMutation.isPending
+              || mysteryBountyMutation.isPending
             }
           />
         ))}
@@ -398,7 +424,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onSelect, tournament, canUseClubFeatures, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onBountyChange, onSelect, tournament, canUseClubFeatures, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
@@ -408,11 +434,17 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   onRemoveAddon: () => void;
   onKnockout: () => void;
   onRestore: () => void;
+  onBountyChange: (amount: number) => void;
   onSelect: () => void;
   tournament: Tournament;
   canUseClubFeatures: boolean;
   isBusy: boolean;
 }) {
+  const [bountyInput, setBountyInput] = useState(String(toNumber(player.bountyamount)));
+  useEffect(() => {
+    setBountyInput(String(toNumber(player.bountyamount)));
+  }, [player.bountyamount]);
+
   return (
     <div className={`card flex items-center justify-between gap-3 py-3 ${player.placed != null ? 'opacity-50' : ''}`}>
       <div className="min-w-0">
@@ -449,6 +481,11 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             )
           )}
           {player.placed != null && <span className="badge bg-red-900/50 text-xs text-red-300">#{player.placed}</span>}
+          {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && (
+            <span className="badge bg-amber-400/15 text-xs text-amber-200">
+              Bounty {formatMoney(toNumber(player.bountyamount))}
+            </span>
+          )}
           {player.seat != null && <span className="badge bg-pit-teal/20 text-xs text-pit-teal">T{player.tablenumber}.S{player.seat}</span>}
         </div>
       </div>
@@ -459,6 +496,22 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
           )}
           {canUseClubFeatures && tournament.addonprice > 0 && !player.addedon && (
             <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onAddon} disabled={isBusy}>Add-on</button>
+          )}
+          {tournament.bountyenabled && tournament.bountymode !== 'mystery' && (
+            <label className="flex items-center gap-1 rounded-lg border border-pit-border bg-pit-bg/60 px-2 py-1 text-xs text-pit-muted">
+              <span>$</span>
+              <input
+                className="w-16 bg-transparent text-right text-white outline-none"
+                type="number"
+                min="0"
+                step="0.01"
+                value={bountyInput}
+                onChange={(event) => setBountyInput(event.target.value)}
+                onBlur={() => onBountyChange(toNumber(bountyInput))}
+                disabled={isBusy}
+                aria-label={`Bounty amount for ${player.displayname ?? player.emailaddress ?? 'player'}`}
+              />
+            </label>
           )}
           <button
             type="button"
@@ -532,6 +585,10 @@ function StatCard({
 function toNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function playerName(player: TournamentPlayer): string {
+  return player.displayname ?? player.emailaddress ?? 'Guest Player';
 }
 
 function formatMoney(value: number): string {

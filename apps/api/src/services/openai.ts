@@ -1,18 +1,36 @@
 import { Buffer } from 'buffer';
 
-export type AnnouncerPreset = 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+export type AnnouncerPreset =
+  | 'all_in_alex'
+  | 'royal_rumble_riley'
+  | 'velvet_dealer'
+  | 'chipstorm'
+  | 'queen_of_spades'
+  | 'the_pit_boss'
+  | 'british_high_roller'
+  | 'turbo_tony'
+  | 'midnight_mayhem'
+  | 'sunny_stacks';
 
 interface AnnouncerContext {
   preset: AnnouncerPreset;
   customPrompt?: string | null;
+  classicMode?: boolean | null;
   tournamentName: string;
   groupName?: string | null;
-  eventType: 'level_up' | 'five_minute_warning' | 'one_minute_warning';
+  eventType: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon';
   currentLevel: number;
   previousLevel?: number | null;
   smallBlind?: number;
   bigBlind?: number;
   ante?: number;
+  knockedOutPlayerName?: string | null;
+  knockedOutByName?: string | null;
+  placement?: number | null;
+  prizeAmount?: number | null;
+  bountyAmount?: number | null;
+  bountyClaimedByName?: string | null;
+  playerName?: string | null;
   remainingPlayers: number;
   checkedInPlayers: number;
   knockedOutDuringPriorLevel: number;
@@ -32,12 +50,29 @@ interface HandAnalysisContext {
 }
 
 const presetInstructions: Record<AnnouncerPreset, string> = {
-  professional: 'Crisp, polished tournament host. Energetic but never silly.',
-  wwe: 'Big arena energy, dramatic hype, punchy phrasing. Do not mention copyrighted wrestler names or catchphrases.',
-  minimal: 'Minimal, calm, short. One sentence whenever possible.',
-  football: 'American football broadcast cadence with scoreboard-style clarity. No team names or copyrighted catchphrases.',
-  roaster: 'Playful roast-comedy tone, light jabs only. Never insult protected traits, identity, appearance, or anything cruel.',
-  wsop: 'Serious poker tournament director voice. Authoritative, clear, and casino-floor professional. Do not imply official WSOP affiliation.',
+  all_in_alex: 'Male voice. Energetic Las Vegas tournament announcer with rapid pacing, confident rhythm, punchy delivery, and slightly gritty texture.',
+  royal_rumble_riley: 'Male sports arena announcer with powerful projection, fast cadence, explosive delivery, and theatrical but natural hype. Do not mention real leagues, teams, fighters, or copyrighted catchphrases.',
+  velvet_dealer: 'Female smooth casino-host energy. Fast but elegant cadence, confident and playful Vegas lounge tone, polished and natural.',
+  chipstorm: 'Male esports-style caster with very high energy, accelerated pacing, sharp articulation, constant momentum, and expressive live-commentary hype.',
+  queen_of_spades: 'Female tournament announcer with fast cadence, confident authority, modern sports-broadcast energy, and polished emphasis on tournament details.',
+  the_pit_boss: 'Deep male voice with rough casino-floor authority, rapid delivery, experienced command, and fun intimidation.',
+  british_high_roller: 'British female voice with refined luxury-casino energy, quicker-than-normal pacing, crisp emphasis, and elegant but lively delivery.',
+  turbo_tony: 'Fast-talking New York poker room announcer with strong personality, nonstop momentum, streetwise playfulness, and rapid pacing.',
+  midnight_mayhem: 'Male cinematic narrator with deep dramatic intensity, suspenseful tension, immersive tone, and forward-moving pacing.',
+  sunny_stacks: 'Female upbeat friendly poker-host energy with quick conversational cadence, warmth, enthusiasm, and welcoming casino-event charm.',
+};
+
+const presetVoices: Record<AnnouncerPreset, string> = {
+  all_in_alex: 'echo',
+  royal_rumble_riley: 'onyx',
+  velvet_dealer: 'shimmer',
+  chipstorm: 'ash',
+  queen_of_spades: 'nova',
+  the_pit_boss: 'onyx',
+  british_high_roller: 'fable',
+  turbo_tony: 'echo',
+  midnight_mayhem: 'onyx',
+  sunny_stacks: 'coral',
 };
 
 function getApiKey(): string {
@@ -49,8 +84,23 @@ function getApiKey(): string {
 }
 
 function sanitizePreset(value: string | null | undefined): AnnouncerPreset {
-  if (value === 'wwe' || value === 'minimal' || value === 'football' || value === 'roaster' || value === 'wsop') return value;
-  return 'professional';
+  if (
+    value === 'all_in_alex'
+    || value === 'royal_rumble_riley'
+    || value === 'velvet_dealer'
+    || value === 'chipstorm'
+    || value === 'queen_of_spades'
+    || value === 'the_pit_boss'
+    || value === 'british_high_roller'
+    || value === 'turbo_tony'
+    || value === 'midnight_mayhem'
+    || value === 'sunny_stacks'
+  ) return value;
+  if (value === 'football' || value === 'wwe') return 'royal_rumble_riley';
+  if (value === 'minimal') return 'sunny_stacks';
+  if (value === 'roaster') return 'turbo_tony';
+  if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
+  return 'all_in_alex';
 }
 
 async function createText(prompt: string): Promise<string> {
@@ -80,9 +130,13 @@ async function createText(prompt: string): Promise<string> {
   return text.trim();
 }
 
-async function createSpeech(input: string, preset: AnnouncerPreset): Promise<{ audioBase64: string; mimeType: string }> {
+async function createSpeech(
+  input: string,
+  preset: AnnouncerPreset,
+  options: { voice?: string; instructions?: string } = {}
+): Promise<{ audioBase64: string; mimeType: string }> {
   const model = process.env.OPENAI_TTS_MODEL ?? 'gpt-4o-mini-tts';
-  const voice = process.env.OPENAI_TTS_VOICE ?? 'coral';
+  const voice = options.voice ?? presetVoices[preset] ?? process.env.OPENAI_TTS_VOICE ?? 'coral';
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
@@ -93,7 +147,7 @@ async function createSpeech(input: string, preset: AnnouncerPreset): Promise<{ a
       model,
       voice,
       input,
-      instructions: `Voice direction: ${presetInstructions[preset]} Make it sound like an AI-generated tournament announcer.`,
+      instructions: options.instructions ?? `Voice direction: ${presetInstructions[preset]} Make it sound like an AI-generated tournament announcer.`,
       response_format: 'mp3',
     }),
   });
@@ -107,36 +161,171 @@ async function createSpeech(input: string, preset: AnnouncerPreset): Promise<{ a
   };
 }
 
+export async function generateVoicePreview(
+  style: 'football' | 'british_dealer'
+): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean }> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { text: 'AI voice preview is not configured on this server.', aiEnabled: false };
+  }
+  const config = style === 'british_dealer'
+    ? {
+        preset: 'british_high_roller' as AnnouncerPreset,
+        voice: 'shimmer',
+        text: 'The blinds will start at 25/50 and our next break will be in 90 minutes. Good luck players!',
+        instructions: 'Professional British woman poker dealer style. Calm, crisp, elegant, confident, and natural. Clear casino-floor diction without sounding robotic.',
+      }
+    : {
+        preset: 'royal_rumble_riley' as AnnouncerPreset,
+        voice: 'echo',
+        text: "Welcome to Johnny's Saturday Night Game!",
+        instructions: 'High-energy American football broadcast announcer style, stadium excitement, punchy and celebratory. Do not mention any real league, team, network, or copyrighted catchphrase.',
+      };
+  const speech = await createSpeech(config.text, config.preset, {
+    voice: config.voice,
+    instructions: config.instructions,
+  });
+  return { text: config.text, ...speech, aiEnabled: true };
+}
+
+export async function generateVoiceLabScript(styleName: string, styleDirection: string, brief: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+  const prompt = [
+    'Write one short PokerPlanner landing page voice demo script.',
+    `Style: ${styleName}`,
+    `Voice direction: ${styleDirection}`,
+    `Creative brief: ${brief}`,
+    'Keep the announcement under 15 seconds when spoken aloud.',
+    'Rules: 8 to 24 words. No profanity. No illegal gambling encouragement. No copyrighted catchphrases, league names, team names, wrestler names, casino brand names, or official affiliation claims.',
+    'Return only the script text.',
+  ].join('\n');
+  return createText(prompt);
+}
+
+export async function generateVoiceLabClip(config: {
+  text: string;
+  voice: string;
+  instructions: string;
+}): Promise<{ audioBuffer: Buffer; mimeType: string }> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+  const speech = await createSpeech(config.text, 'all_in_alex', {
+    voice: config.voice,
+    instructions: config.instructions,
+  });
+  return {
+    audioBuffer: Buffer.from(speech.audioBase64, 'base64'),
+    mimeType: speech.mimeType,
+  };
+}
+
 export function normalizeAnnouncerPreset(value: string | null | undefined): AnnouncerPreset {
   return sanitizePreset(value);
 }
 
-export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean }> {
+export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean; preset?: AnnouncerPreset; voice?: string }> {
   const preset = sanitizePreset(context.preset);
-  const prompt = [
-    'Write one short poker tournament announcer line.',
-    `Style preset: ${presetInstructions[preset]}`,
-    context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
-    'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization.',
-    `Tournament: ${context.tournamentName}`,
-    context.groupName ? `Group: ${context.groupName}` : '',
-    `Event: ${context.eventType}`,
-    `Current level: ${context.currentLevel}`,
-    context.previousLevel ? `Previous level: ${context.previousLevel}` : '',
-    `Blinds: ${context.smallBlind ?? 0}/${context.bigBlind ?? 0}, ante ${context.ante ?? 0}`,
-    `Remaining players: ${context.remainingPlayers} of ${context.checkedInPlayers}`,
-    `Players knocked out during prior level: ${context.knockedOutDuringPriorLevel}`,
-    `Total rebuys so far: ${context.totalRebuys}`,
-    `Add-ons so far: ${context.totalAddons} (${context.addOnPercent}% of checked-in field)`,
-  ].filter(Boolean).join('\n');
+  const isKnockout = context.eventType === 'knockout';
+  if (context.classicMode) {
+    const text = buildClassicAnnouncerScript(context);
+    if (!process.env.OPENAI_API_KEY) {
+      return { text: 'AI announcer is not configured on this server.', aiEnabled: false, preset, voice: presetVoices[preset] };
+    }
+    const speech = await createSpeech(text, preset);
+    return { text, ...speech, aiEnabled: true, preset, voice: presetVoices[preset] };
+  }
+  const prompt = isKnockout
+    ? [
+        'Write one very short poker knockout announcement.',
+        `Style preset: ${presetInstructions[preset]}`,
+        context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+        'Rules: keep it under 24 words. Use only the provided knockout facts. Do not say the tournament name, group name, level, blinds, ante, remaining players, rebuys, or add-ons. No extra hype, jokes, filler, profanity, illegal gambling encouragement, copyrighted catchphrases, or affiliation claims.',
+        context.knockedOutPlayerName ? `Knocked out player: ${context.knockedOutPlayerName}` : '',
+        context.knockedOutByName ? `Knocked out by: ${context.knockedOutByName}` : '',
+        context.placement ? `Placement: ${context.placement}` : '',
+        context.prizeAmount ? `Prize won: $${context.prizeAmount}` : '',
+        context.bountyAmount ? `Bounty claimed: $${context.bountyAmount}` : '',
+        context.bountyClaimedByName ? `Bounty claimed by: ${context.bountyClaimedByName}` : '',
+      ].filter(Boolean).join('\n')
+    : [
+        'Write one short poker tournament announcer line.',
+        `Style preset: ${presetInstructions[preset]}`,
+        context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+        'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        `Tournament: ${context.tournamentName}`,
+        context.groupName ? `Group: ${context.groupName}` : '',
+        `Event: ${context.eventType}`,
+        `Current level: ${context.currentLevel}`,
+        context.previousLevel ? `Previous level: ${context.previousLevel}` : '',
+        `Small blind: ${context.smallBlind ?? 0}`,
+        `Big blind: ${context.bigBlind ?? 0}`,
+        `Ante: ${context.ante ?? 0}`,
+        (context.eventType === 'rebuy' || context.eventType === 'addon') && context.playerName ? `Player: ${context.playerName}` : '',
+        `Remaining players: ${context.remainingPlayers} of ${context.checkedInPlayers}`,
+        `Players knocked out during prior level: ${context.knockedOutDuringPriorLevel}`,
+        `Total rebuys so far: ${context.totalRebuys}`,
+        `Add-ons so far: ${context.totalAddons} (${context.addOnPercent}% of checked-in field)`,
+      ].filter(Boolean).join('\n');
 
-  const fallback = `Level ${context.currentLevel}. Blinds are ${context.smallBlind ?? 0} and ${context.bigBlind ?? 0}.`;
-  const text = process.env.OPENAI_API_KEY ? await createText(prompt) : fallback;
   if (!process.env.OPENAI_API_KEY) {
-    return { text, aiEnabled: false };
+    return { text: 'AI announcer is not configured on this server.', aiEnabled: false };
+  }
+  let text: string;
+  try {
+    text = await createText(prompt);
+  } catch {
+    text = buildFallbackAnnouncerScript(context);
   }
   const speech = await createSpeech(text, preset);
-  return { text, ...speech, aiEnabled: true };
+  return { text, ...speech, aiEnabled: true, preset, voice: presetVoices[preset] };
+}
+
+function buildClassicAnnouncerScript(context: AnnouncerContext): string {
+  const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
+  const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
+  if (context.eventType === 'level_up') {
+    return `Level ${context.currentLevel}. Small blind is ${smallBlind}, big blind is ${bigBlind}.`;
+  }
+  if (context.eventType === 'five_minute_warning') return 'Five minutes remaining in this level.';
+  if (context.eventType === 'one_minute_warning') return 'One minute remaining in this level.';
+  if (context.eventType === 'rebuy') return `${context.playerName || 'Player'} has taken a rebuy.`;
+  if (context.eventType === 'addon') return `${context.playerName || 'Player'} has taken an add-on.`;
+  return buildFallbackAnnouncerScript(context);
+}
+
+function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
+  const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
+  const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
+  const blinds = `small blind is ${smallBlind}, big blind is ${bigBlind}`;
+  if (context.eventType === 'knockout') {
+    const player = context.knockedOutPlayerName || 'A player';
+    const placement = context.placement ? ` in ${ordinal(context.placement)} place` : '';
+    const by = context.knockedOutByName ? `, knocked out by ${context.knockedOutByName}` : '';
+    const prize = Number(context.prizeAmount ?? 0) > 0 ? ` They win $${Number(context.prizeAmount).toFixed(0)}.` : '';
+    const bounty = Number(context.bountyAmount ?? 0) > 0
+      ? ` ${context.bountyClaimedByName || context.knockedOutByName || 'Someone'} claims a $${Number(context.bountyAmount).toFixed(0)} bounty.`
+      : '';
+    return `${player} has been eliminated${placement}${by}.${prize}${bounty}`;
+  }
+  if (context.eventType === 'five_minute_warning') {
+    return `Five minutes remain in level ${context.currentLevel}. ${blinds}, with ${context.remainingPlayers} players still in the hunt.`;
+  }
+  if (context.eventType === 'one_minute_warning') {
+    return `One minute left in level ${context.currentLevel}. ${blinds}. Finish the hand and get ready for the next level.`;
+  }
+  const priorLosses = Number(context.knockedOutDuringPriorLevel ?? 0);
+  const action = priorLosses > 0
+    ? `Last level claimed ${priorLosses} player${priorLosses === 1 ? '' : 's'}`
+    : 'The field is still battling';
+  return `Level ${context.currentLevel} is live. ${blinds}. ${action}, with ${context.remainingPlayers} players remaining.`;
+}
+
+function ordinal(value: number): string {
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const mod100 = value % 100;
+  return `${value}${suffixes[(mod100 - 20) % 10] || suffixes[mod100] || suffixes[0]}`;
 }
 
 export async function analyzePokerHand(context: HandAnalysisContext): Promise<{ analysis: string; aiEnabled: boolean }> {

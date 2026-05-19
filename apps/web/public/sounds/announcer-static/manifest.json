@@ -1,0 +1,362 @@
+[
+  {
+    "style": "all_in_alex",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "all-in-alex-pause.mp3",
+    "url": "/sounds/announcer-static/all-in-alex-pause.mp3",
+    "bytes": 56832,
+    "updatedAt": "2026-05-18T21:23:13.430Z"
+  },
+  {
+    "style": "all_in_alex",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "all-in-alex-resume.mp3",
+    "url": "/sounds/announcer-static/all-in-alex-resume.mp3",
+    "bytes": 48000,
+    "updatedAt": "2026-05-18T21:23:14.368Z"
+  },
+  {
+    "style": "all_in_alex",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "all-in-alex-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/all-in-alex-five-minute-warning.mp3",
+    "bytes": 44160,
+    "updatedAt": "2026-05-18T21:23:15.348Z"
+  },
+  {
+    "style": "all_in_alex",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "all-in-alex-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/all-in-alex-one-minute-warning.mp3",
+    "bytes": 43392,
+    "updatedAt": "2026-05-18T21:23:16.278Z"
+  },
+  {
+    "style": "royal_rumble_riley",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "royal-rumble-riley-pause.mp3",
+    "url": "/sounds/announcer-static/royal-rumble-riley-pause.mp3",
+    "bytes": 63360,
+    "updatedAt": "2026-05-18T21:23:17.273Z"
+  },
+  {
+    "style": "royal_rumble_riley",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "royal-rumble-riley-resume.mp3",
+    "url": "/sounds/announcer-static/royal-rumble-riley-resume.mp3",
+    "bytes": 56832,
+    "updatedAt": "2026-05-18T21:23:18.229Z"
+  },
+  {
+    "style": "royal_rumble_riley",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "royal-rumble-riley-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/royal-rumble-riley-five-minute-warning.mp3",
+    "bytes": 39168,
+    "updatedAt": "2026-05-18T21:23:19.017Z"
+  },
+  {
+    "style": "royal_rumble_riley",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "royal-rumble-riley-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/royal-rumble-riley-one-minute-warning.mp3",
+    "bytes": 46464,
+    "updatedAt": "2026-05-18T21:23:19.891Z"
+  },
+  {
+    "style": "velvet_dealer",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "velvet-dealer-pause.mp3",
+    "url": "/sounds/announcer-static/velvet-dealer-pause.mp3",
+    "bytes": 55296,
+    "updatedAt": "2026-05-18T21:23:20.808Z"
+  },
+  {
+    "style": "velvet_dealer",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "velvet-dealer-resume.mp3",
+    "url": "/sounds/announcer-static/velvet-dealer-resume.mp3",
+    "bytes": 45696,
+    "updatedAt": "2026-05-18T21:23:21.758Z"
+  },
+  {
+    "style": "velvet_dealer",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "velvet-dealer-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/velvet-dealer-five-minute-warning.mp3",
+    "bytes": 37632,
+    "updatedAt": "2026-05-18T21:23:22.539Z"
+  },
+  {
+    "style": "velvet_dealer",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "velvet-dealer-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/velvet-dealer-one-minute-warning.mp3",
+    "bytes": 40320,
+    "updatedAt": "2026-05-18T21:23:23.413Z"
+  },
+  {
+    "style": "chipstorm",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "chipstorm-pause.mp3",
+    "url": "/sounds/announcer-static/chipstorm-pause.mp3",
+    "bytes": 70656,
+    "updatedAt": "2026-05-18T21:23:24.357Z"
+  },
+  {
+    "style": "chipstorm",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "chipstorm-resume.mp3",
+    "url": "/sounds/announcer-static/chipstorm-resume.mp3",
+    "bytes": 61056,
+    "updatedAt": "2026-05-18T21:23:25.337Z"
+  },
+  {
+    "style": "chipstorm",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "chipstorm-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/chipstorm-five-minute-warning.mp3",
+    "bytes": 46464,
+    "updatedAt": "2026-05-18T21:23:26.118Z"
+  },
+  {
+    "style": "chipstorm",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "chipstorm-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/chipstorm-one-minute-warning.mp3",
+    "bytes": 59520,
+    "updatedAt": "2026-05-18T21:23:27.118Z"
+  },
+  {
+    "style": "queen_of_spades",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "queen-of-spades-pause.mp3",
+    "url": "/sounds/announcer-static/queen-of-spades-pause.mp3",
+    "bytes": 52224,
+    "updatedAt": "2026-05-18T21:23:28.015Z"
+  },
+  {
+    "style": "queen_of_spades",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "queen-of-spades-resume.mp3",
+    "url": "/sounds/announcer-static/queen-of-spades-resume.mp3",
+    "bytes": 45696,
+    "updatedAt": "2026-05-18T21:23:28.961Z"
+  },
+  {
+    "style": "queen_of_spades",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "queen-of-spades-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/queen-of-spades-five-minute-warning.mp3",
+    "bytes": 33792,
+    "updatedAt": "2026-05-18T21:23:29.765Z"
+  },
+  {
+    "style": "queen_of_spades",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "queen-of-spades-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/queen-of-spades-one-minute-warning.mp3",
+    "bytes": 29568,
+    "updatedAt": "2026-05-18T21:23:30.391Z"
+  },
+  {
+    "style": "the_pit_boss",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "the-pit-boss-pause.mp3",
+    "url": "/sounds/announcer-static/the-pit-boss-pause.mp3",
+    "bytes": 48768,
+    "updatedAt": "2026-05-18T21:23:31.492Z"
+  },
+  {
+    "style": "the_pit_boss",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "the-pit-boss-resume.mp3",
+    "url": "/sounds/announcer-static/the-pit-boss-resume.mp3",
+    "bytes": 52992,
+    "updatedAt": "2026-05-18T21:23:32.317Z"
+  },
+  {
+    "style": "the_pit_boss",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "the-pit-boss-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/the-pit-boss-five-minute-warning.mp3",
+    "bytes": 41856,
+    "updatedAt": "2026-05-18T21:23:32.933Z"
+  },
+  {
+    "style": "the_pit_boss",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "the-pit-boss-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/the-pit-boss-one-minute-warning.mp3",
+    "bytes": 38400,
+    "updatedAt": "2026-05-18T21:23:33.655Z"
+  },
+  {
+    "style": "british_high_roller",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "british-high-roller-pause.mp3",
+    "url": "/sounds/announcer-static/british-high-roller-pause.mp3",
+    "bytes": 61056,
+    "updatedAt": "2026-05-18T21:23:34.596Z"
+  },
+  {
+    "style": "british_high_roller",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "british-high-roller-resume.mp3",
+    "url": "/sounds/announcer-static/british-high-roller-resume.mp3",
+    "bytes": 57600,
+    "updatedAt": "2026-05-18T21:23:35.742Z"
+  },
+  {
+    "style": "british_high_roller",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "british-high-roller-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/british-high-roller-five-minute-warning.mp3",
+    "bytes": 66432,
+    "updatedAt": "2026-05-18T21:23:36.828Z"
+  },
+  {
+    "style": "british_high_roller",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "british-high-roller-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/british-high-roller-one-minute-warning.mp3",
+    "bytes": 46464,
+    "updatedAt": "2026-05-18T21:23:38.052Z"
+  },
+  {
+    "style": "turbo_tony",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "turbo-tony-pause.mp3",
+    "url": "/sounds/announcer-static/turbo-tony-pause.mp3",
+    "bytes": 52224,
+    "updatedAt": "2026-05-18T21:23:39.123Z"
+  },
+  {
+    "style": "turbo_tony",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "turbo-tony-resume.mp3",
+    "url": "/sounds/announcer-static/turbo-tony-resume.mp3",
+    "bytes": 54528,
+    "updatedAt": "2026-05-18T21:23:40.129Z"
+  },
+  {
+    "style": "turbo_tony",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "turbo-tony-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/turbo-tony-five-minute-warning.mp3",
+    "bytes": 58368,
+    "updatedAt": "2026-05-18T21:23:41.006Z"
+  },
+  {
+    "style": "turbo_tony",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "turbo-tony-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/turbo-tony-one-minute-warning.mp3",
+    "bytes": 48768,
+    "updatedAt": "2026-05-18T21:23:42.025Z"
+  },
+  {
+    "style": "midnight_mayhem",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "midnight-mayhem-pause.mp3",
+    "url": "/sounds/announcer-static/midnight-mayhem-pause.mp3",
+    "bytes": 67968,
+    "updatedAt": "2026-05-18T21:23:42.965Z"
+  },
+  {
+    "style": "midnight_mayhem",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "midnight-mayhem-resume.mp3",
+    "url": "/sounds/announcer-static/midnight-mayhem-resume.mp3",
+    "bytes": 50688,
+    "updatedAt": "2026-05-18T21:23:43.813Z"
+  },
+  {
+    "style": "midnight_mayhem",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "midnight-mayhem-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/midnight-mayhem-five-minute-warning.mp3",
+    "bytes": 55296,
+    "updatedAt": "2026-05-18T21:23:44.601Z"
+  },
+  {
+    "style": "midnight_mayhem",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "midnight-mayhem-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/midnight-mayhem-one-minute-warning.mp3",
+    "bytes": 46464,
+    "updatedAt": "2026-05-18T21:23:45.479Z"
+  },
+  {
+    "style": "sunny_stacks",
+    "event": "pause",
+    "text": "Clock paused. Players, hold your action.",
+    "filename": "sunny-stacks-pause.mp3",
+    "url": "/sounds/announcer-static/sunny-stacks-pause.mp3",
+    "bytes": 56064,
+    "updatedAt": "2026-05-18T21:23:46.679Z"
+  },
+  {
+    "style": "sunny_stacks",
+    "event": "resume",
+    "text": "Clock is live. Cards are back in the air.",
+    "filename": "sunny-stacks-resume.mp3",
+    "url": "/sounds/announcer-static/sunny-stacks-resume.mp3",
+    "bytes": 60288,
+    "updatedAt": "2026-05-18T21:23:48.087Z"
+  },
+  {
+    "style": "sunny_stacks",
+    "event": "five_minute_warning",
+    "text": "Five minutes remaining in this level.",
+    "filename": "sunny-stacks-five-minute-warning.mp3",
+    "url": "/sounds/announcer-static/sunny-stacks-five-minute-warning.mp3",
+    "bytes": 59520,
+    "updatedAt": "2026-05-18T21:23:49.941Z"
+  },
+  {
+    "style": "sunny_stacks",
+    "event": "one_minute_warning",
+    "text": "One minute remaining in this level.",
+    "filename": "sunny-stacks-one-minute-warning.mp3",
+    "url": "/sounds/announcer-static/sunny-stacks-one-minute-warning.mp3",
+    "bytes": 36096,
+    "updatedAt": "2026-05-18T21:23:51.106Z"
+  }
+]

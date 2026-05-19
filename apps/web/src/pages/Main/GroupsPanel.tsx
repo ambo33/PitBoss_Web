@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Save, Trash2, Vote } from 'lucide-react';
+import { ArrowLeft, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, AnnouncerPreset, Group, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -229,22 +229,58 @@ function previewAnnouncement(template: string) {
     .replace(/\{Ante\}/g, '50');
 }
 
-const ANNOUNCER_PRESETS: Array<{ value: AnnouncerPreset; label: string }> = [
-  { value: 'professional', label: 'Professional' },
-  { value: 'wwe', label: 'WWE Style' },
-  { value: 'minimal', label: 'Minimalistic' },
-  { value: 'football', label: 'Football Announcer' },
-  { value: 'roaster', label: 'Roaster' },
-  { value: 'wsop', label: 'WSOP Director' },
+function groupTabLabel(tab: DetailTab, memberCount: number) {
+  if (tab === 'info') return 'Info';
+  if (tab === 'members') return `Members (${memberCount})`;
+  if (tab === 'posts') return 'Posts';
+  if (tab === 'voice') return 'Voice Configuration';
+  if (tab === 'structures') return 'Blind Structures';
+  return 'Tournament History';
+}
+
+function groupTabIcon(tab: DetailTab) {
+  if (tab === 'info') return Info;
+  if (tab === 'members') return Users;
+  if (tab === 'posts') return MessageSquare;
+  if (tab === 'voice') return Mic2;
+  if (tab === 'structures') return Layers3;
+  return FileText;
+}
+
+const ANNOUNCER_PRESETS: Array<{ value: AnnouncerPreset; label: string; description: string }> = [
+  { value: 'all_in_alex', label: 'All-In Alex', description: 'Fast Vegas poker announcer' },
+  { value: 'royal_rumble_riley', label: 'Royal Rumble Riley', description: 'Sports arena announcer' },
+  { value: 'velvet_dealer', label: 'Velvet Dealer', description: 'Cool female casino host' },
+  { value: 'chipstorm', label: 'Chipstorm', description: 'Hyper esports caster' },
+  { value: 'queen_of_spades', label: 'Queen of Spades', description: 'Fast confident female announcer' },
+  { value: 'the_pit_boss', label: 'The Pit Boss', description: 'Gruff casino floor manager' },
+  { value: 'british_high_roller', label: 'British High Roller', description: 'Fast luxury British host' },
+  { value: 'turbo_tony', label: 'Turbo Tony', description: 'NY poker room chaos energy' },
+  { value: 'midnight_mayhem', label: 'Midnight Mayhem', description: 'Dark cinematic narrator' },
+  { value: 'sunny_stacks', label: 'Sunny Stacks', description: 'Friendly upbeat female host' },
 ];
 
-type DetailTab = 'posts' | 'members' | 'tournaments' | 'structures';
+type DetailTab = 'info' | 'members' | 'posts' | 'voice' | 'structures' | 'history';
+
+function normalizeAnnouncerPreset(value: string | null | undefined): AnnouncerPreset {
+  if (ANNOUNCER_PRESETS.some((preset) => preset.value === value)) return value as AnnouncerPreset;
+  if (value === 'football') return 'royal_rumble_riley';
+  if (value === 'minimal') return 'sunny_stacks';
+  if (value === 'roaster') return 'turbo_tony';
+  if (value === 'wsop' || value === 'professional') return 'the_pit_boss';
+  if (value === 'wwe') return 'royal_rumble_riley';
+  return 'all_in_alex';
+}
+
+function announcerPreviewUrl(preset: AnnouncerPreset): string {
+  return `/sounds/ai-demo/custom/${preset.replace(/_/g, '-')}.mp3`;
+}
 
 function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [detailTab, setDetailTab] = useState<DetailTab>('posts');
+  const [detailTab, setDetailTab] = useState<DetailTab>('info');
   const [inviteCode, setInviteCode] = useState(group.invitecode);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
@@ -255,8 +291,12 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [speechOneMinuteMessage, setSpeechOneMinuteMessage] = useState(group.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
   const [speechLevelUpMessage, setSpeechLevelUpMessage] = useState(group.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
   const [aiAnnouncerEnabled, setAiAnnouncerEnabled] = useState(Boolean(group.aiannouncerenabled));
-  const [aiAnnouncerPreset, setAiAnnouncerPreset] = useState<AnnouncerPreset>(group.aiannouncerpreset ?? 'professional');
+  const [aiAnnouncerPreset, setAiAnnouncerPreset] = useState<AnnouncerPreset>(normalizeAnnouncerPreset(group.aiannouncerpreset));
   const [aiAnnouncerPrompt, setAiAnnouncerPrompt] = useState(group.aiannouncercustomprompt ?? '');
+  const [aiAnnouncerClassicMode, setAiAnnouncerClassicMode] = useState(Boolean(group.aiannouncerclassicmode));
+  const [announcerPreviewError, setAnnouncerPreviewError] = useState('');
+  const [previewingAnnouncer, setPreviewingAnnouncer] = useState(false);
+  const announcerPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [postType, setPostType] = useState<'message' | 'poll'>('message');
   const [postMessage, setPostMessage] = useState('');
   const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
@@ -268,13 +308,17 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     queryKey: ['group', group.groupid],
     queryFn: () => api.getGroup(group.groupid),
   });
+  const { data: profile } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+  });
 
   const effectiveGroup = data ?? group;
 
   const { data: groupTournaments = [], isLoading: loadingTourneys } = useQuery({
     queryKey: ['group', group.groupid, 'tournaments'],
     queryFn: () => api.getGroupTournaments(group.groupid),
-    enabled: detailTab === 'tournaments',
+    enabled: detailTab === 'history',
   });
   const { data: savedStructures = [], isLoading: loadingStructures } = useQuery({
     queryKey: ['group', group.groupid, 'blind-structures'],
@@ -296,6 +340,8 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
+      qc.invalidateQueries({ queryKey: ['tournament'] });
     },
   });
   const leaveMutation = useMutation({
@@ -317,11 +363,35 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       aiannouncerenabled?: boolean;
       aiannouncerpreset?: AnnouncerPreset;
       aiannouncercustomprompt?: string;
+      aiannouncerclassicmode?: boolean;
+      postapprovalrequired?: boolean;
     }) => api.updateGroup(group.groupid, payload),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      qc.setQueryData<Group & { members: GroupMember[] }>(
+        ['group', group.groupid],
+        (current) => current ? { ...current, ...result } : current
+      );
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
     },
+  });
+
+  const toggleAnnouncerMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateGroup(group.groupid, {
+      aiannouncerenabled: enabled,
+      aiannouncerpreset: aiAnnouncerPreset,
+      aiannouncercustomprompt: aiAnnouncerPrompt,
+      aiannouncerclassicmode: aiAnnouncerClassicMode,
+    }),
+    onSuccess: (result) => {
+      qc.setQueryData<Group & { members: GroupMember[] }>(
+        ['group', group.groupid],
+        (current) => current ? { ...current, ...result } : current
+      );
+      qc.invalidateQueries({ queryKey: ['group', group.groupid] });
+      qc.invalidateQueries({ queryKey: ['groups'] });
+    },
+    onError: () => setAiAnnouncerEnabled(Boolean(effectiveGroup.aiannouncerenabled)),
   });
   const deleteStructureMutation = useMutation({
     mutationFn: (structureId: string) => api.deleteGroupBlindStructure(group.groupid, structureId),
@@ -353,6 +423,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] });
     },
   });
+  const moderatePostMutation = useMutation({
+    mutationFn: ({ postId, status }: { postId: string; status: 'approved' | 'rejected' }) =>
+      api.moderateGroupPost(group.groupid, postId, status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] }),
+  });
   const voteMutation = useMutation({
     mutationFn: ({ postId, optionId }: { postId: string; optionId: string }) => api.voteGroupPoll(group.groupid, postId, optionId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] }),
@@ -369,8 +444,13 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const pending = members.filter(m => !m.approved);
   const approved = members.filter(m => m.approved);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
-  const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures || user?.tierid === 2 || user?.tierid === 3);
+  const account = profile ?? user;
+  const canUseClubFeatures = Boolean(account?.issuperadmin || account?.canuseclubfeatures || account?.tierid === 2 || account?.tierid === 3);
+  const announcerControlsEnabled = canUseClubFeatures && aiAnnouncerEnabled;
   const postsEnabled = postsData?.enabled ?? canUseClubFeatures;
+  const detailTabs: DetailTab[] = group.isadmin
+    ? ['info', 'members', 'posts', 'voice', 'structures', 'history']
+    : ['info', 'members', 'posts', 'structures', 'history'];
 
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
@@ -379,8 +459,9 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     setSpeechOneMinuteMessage(effectiveGroup.speechoneminutemessage ?? DEFAULT_ONE_MINUTE_ANNOUNCEMENT);
     setSpeechLevelUpMessage(effectiveGroup.speechlevelupmessage ?? DEFAULT_LEVEL_UP_ANNOUNCEMENT);
     setAiAnnouncerEnabled(Boolean(effectiveGroup.aiannouncerenabled));
-    setAiAnnouncerPreset(effectiveGroup.aiannouncerpreset ?? 'professional');
+    setAiAnnouncerPreset(normalizeAnnouncerPreset(effectiveGroup.aiannouncerpreset));
     setAiAnnouncerPrompt(effectiveGroup.aiannouncercustomprompt ?? '');
+    setAiAnnouncerClassicMode(Boolean(effectiveGroup.aiannouncerclassicmode));
   }, [
     effectiveGroup.defaulttrackingmode,
     effectiveGroup.tvseatingwelcomemessage,
@@ -390,7 +471,49 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     effectiveGroup.aiannouncerenabled,
     effectiveGroup.aiannouncerpreset,
     effectiveGroup.aiannouncercustomprompt,
+    effectiveGroup.aiannouncerclassicmode,
   ]);
+
+  useEffect(() => () => {
+    announcerPreviewRef.current?.pause();
+  }, []);
+
+  function handleAnnouncerToggle(enabled: boolean) {
+    setAnnouncerPreviewError('');
+    setAiAnnouncerEnabled(enabled);
+    toggleAnnouncerMutation.mutate(enabled);
+  }
+
+  function handleClassicModeToggle(enabled: boolean) {
+    setAnnouncerPreviewError('');
+    setAiAnnouncerClassicMode(enabled);
+    updateGroupMutation.mutate({
+      aiannouncerenabled: aiAnnouncerEnabled,
+      aiannouncerpreset: aiAnnouncerPreset,
+      aiannouncercustomprompt: aiAnnouncerPrompt,
+      aiannouncerclassicmode: enabled,
+    });
+  }
+
+  async function handleAnnouncerPreview() {
+    setAnnouncerPreviewError('');
+    setPreviewingAnnouncer(true);
+    announcerPreviewRef.current?.pause();
+    const url = announcerPreviewUrl(aiAnnouncerPreset);
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      if (!response.ok) {
+        throw new Error('No saved MP3 preview exists for this announcer yet.');
+      }
+      const audio = new Audio(url);
+      announcerPreviewRef.current = audio;
+      audio.onended = () => setPreviewingAnnouncer(false);
+      await audio.play();
+    } catch (err) {
+      setPreviewingAnnouncer(false);
+      setAnnouncerPreviewError(err instanceof Error ? err.message : 'Could not play this announcer preview.');
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -426,6 +549,30 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       </div>
 
       <div className="space-y-4">
+        <div className="-mx-4 overflow-x-auto border-b border-pit-border px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max">
+            {detailTabs.map((t) => {
+              const Icon = groupTabIcon(t);
+              return (
+                <button
+                  key={t}
+                  onClick={() => setDetailTab(t)}
+                  className={`flex items-center gap-1.5 border-b-2 -mb-px px-4 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                    detailTab === t
+                      ? 'border-pit-teal text-white'
+                      : 'border-transparent text-pit-muted hover:text-pit-text'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {groupTabLabel(t, approved.length)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {detailTab === 'info' && (
+          <div className="space-y-4">
         {/* Invite code */}
         <div className="flex flex-col gap-1 rounded-xl bg-pit-bg border border-pit-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs text-pit-muted">Invite code</span>
@@ -533,106 +680,6 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
             </div>
 
             <div className="space-y-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Speech announcements</p>
-                <p className="mt-1 text-xs leading-5 text-pit-muted">
-                  Use <code className="text-pit-teal">{'{BlindLevel}'}</code>, <code className="text-pit-teal">{'{SB}'}</code>, <code className="text-pit-teal">{'{BB}'}</code>, and <code className="text-pit-teal">{'{Ante}'}</code> for live blind values.
-                </p>
-              </div>
-              <AnnouncementField
-                label="5 minute warning"
-                value={speechFiveMinuteMessage}
-                onChange={setSpeechFiveMinuteMessage}
-                placeholder={DEFAULT_FIVE_MINUTE_ANNOUNCEMENT}
-              />
-              <AnnouncementField
-                label="1 minute warning"
-                value={speechOneMinuteMessage}
-                onChange={setSpeechOneMinuteMessage}
-                placeholder={DEFAULT_ONE_MINUTE_ANNOUNCEMENT}
-              />
-              <AnnouncementField
-                label="Level up"
-                value={speechLevelUpMessage}
-                onChange={setSpeechLevelUpMessage}
-                placeholder={DEFAULT_LEVEL_UP_ANNOUNCEMENT}
-              />
-              <div className="rounded-lg border border-pit-border bg-pit-surface/50 px-3 py-2 text-xs leading-5 text-pit-text">
-                Preview: {previewAnnouncement(speechLevelUpMessage || DEFAULT_LEVEL_UP_ANNOUNCEMENT)}
-              </div>
-              <button
-                className="btn-primary"
-                onClick={() => updateGroupMutation.mutate({
-                  speechfiveminutemessage: speechFiveMinuteMessage,
-                  speechoneminutemessage: speechOneMinuteMessage,
-                  speechlevelupmessage: speechLevelUpMessage,
-                })}
-                disabled={updateGroupMutation.isPending}
-              >
-                <Save size={14} />
-                {updateGroupMutation.isPending ? 'Saving...' : 'Save Announcements'}
-              </button>
-            </div>
-
-            <div className="space-y-3 rounded-xl border border-pit-teal/20 bg-pit-teal/5 p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">AI announcer lab</p>
-                  <p className="mt-1 text-xs leading-5 text-pit-muted">
-                    Experimental. With an API key, level changes can generate smart announcer audio using tournament context.
-                  </p>
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
-                  <span>{aiAnnouncerEnabled ? 'Enabled' : 'Disabled'}</span>
-                  <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${aiAnnouncerEnabled ? 'bg-pit-teal' : 'bg-pit-border'}`}>
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={aiAnnouncerEnabled}
-                      onChange={(event) => setAiAnnouncerEnabled(event.target.checked)}
-                    />
-                    <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${aiAnnouncerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </span>
-                </label>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {ANNOUNCER_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    className={`rounded-lg border px-3 py-2 text-left text-xs font-semibold ${
-                      aiAnnouncerPreset === preset.value
-                        ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
-                        : 'border-pit-border bg-pit-bg/50 text-pit-text hover:border-pit-muted hover:text-white'
-                    }`}
-                    onClick={() => setAiAnnouncerPreset(preset.value)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <textarea
-                className="input min-h-24"
-                value={aiAnnouncerPrompt}
-                onChange={(event) => setAiAnnouncerPrompt(event.target.value)}
-                maxLength={500}
-                placeholder="Optional group flavor. Example: Mention our group as the Thursday Night Crew. Keep it hype, but clean."
-              />
-              <button
-                className="btn-primary"
-                onClick={() => updateGroupMutation.mutate({
-                  aiannouncerenabled: aiAnnouncerEnabled,
-                  aiannouncerpreset: aiAnnouncerPreset,
-                  aiannouncercustomprompt: aiAnnouncerPrompt,
-                })}
-                disabled={updateGroupMutation.isPending}
-              >
-                <Save size={14} />
-                {updateGroupMutation.isPending ? 'Saving...' : 'Save AI Announcer'}
-              </button>
-            </div>
-
-            <div className="space-y-3">
               <p className="text-sm font-semibold text-white">Invite people</p>
               <input
                 className="input"
@@ -681,31 +728,214 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
             </div>
           </div>
         )}
-
-        {/* Sub-tabs */}
-        <div className="-mx-4 overflow-x-auto border-b border-pit-border px-4 sm:mx-0 sm:px-0">
-          <div className="flex min-w-max">
-          {(['posts', 'members', 'tournaments', 'structures'] as DetailTab[]).map(t => (
-            <button key={t} onClick={() => setDetailTab(t)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px capitalize transition-colors duration-150 ${
-                detailTab === t
-                  ? 'border-pit-teal text-white'
-                  : 'border-transparent text-pit-muted hover:text-pit-text'
-              }`}>
-              {t === 'members' ? <Users size={13} /> : t === 'posts' ? <MessageSquare size={13} /> : <Trophy size={13} />}
-              {t === 'posts' ? 'Posts' : t === 'members' ? `Members (${approved.length})` : t === 'tournaments' ? 'Tournaments' : 'Structures'}
-            </button>
-          ))}
           </div>
-        </div>
+        )}
+
+        {detailTab === 'voice' && group.isadmin && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-pit-teal/20 bg-pit-teal/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Announcer</p>
+                  <p className="mt-1 text-xs leading-5 text-pit-muted">
+                    Level changes can generate smart announcer audio using the tournament field, rebuys, add-ons, and this group's style.
+                  </p>
+                </div>
+                {!canUseClubFeatures && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Club</span>}
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
+                  <span>{aiAnnouncerEnabled ? 'Enabled' : 'Disabled'}</span>
+                  <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${aiAnnouncerEnabled ? 'bg-pit-teal' : 'bg-pit-border'}`}>
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={aiAnnouncerEnabled}
+                      disabled={!canUseClubFeatures}
+                      onChange={(event) => handleAnnouncerToggle(event.target.checked)}
+                    />
+                    <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${aiAnnouncerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </span>
+                </label>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {ANNOUNCER_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      aiAnnouncerPreset === preset.value
+                        ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
+                        : 'border-pit-border bg-pit-bg/50 text-pit-text hover:border-pit-muted hover:text-white'
+                    }`}
+                    onClick={() => setAiAnnouncerPreset(preset.value)}
+                    disabled={!announcerControlsEnabled}
+                  >
+                    <span className="block text-xs font-semibold">{preset.label}</span>
+                    <span className="mt-1 block text-[11px] font-normal leading-4 text-pit-muted">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className="input mt-3 min-h-24"
+                value={aiAnnouncerPrompt}
+                onChange={(event) => setAiAnnouncerPrompt(event.target.value)}
+                disabled={!announcerControlsEnabled || aiAnnouncerClassicMode}
+                maxLength={500}
+                placeholder={aiAnnouncerClassicMode ? 'Classic mode ignores custom context and keeps announcements concise.' : 'Optional group flavor. Example: Mention our group as the Thursday Night Crew. Keep it hype, but clean.'}
+              />
+              <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
+                <div>
+                  <span className="block text-sm font-semibold text-white">Classic mode</span>
+                  <span className="block text-xs leading-5 text-pit-muted">Turns tournament context off. Starts, pauses, level changes, warnings, knockouts, rebuys, and add-ons stay clear and concise.</span>
+                </div>
+                <span className={`flex h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors ${aiAnnouncerClassicMode ? 'bg-pit-teal' : 'bg-pit-border'}`}>
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={aiAnnouncerClassicMode}
+                    disabled={!announcerControlsEnabled || updateGroupMutation.isPending}
+                    onChange={(event) => handleClassicModeToggle(event.target.checked)}
+                  />
+                  <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${aiAnnouncerClassicMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                </span>
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="btn-primary"
+                  onClick={() => updateGroupMutation.mutate({
+                    aiannouncerenabled: aiAnnouncerEnabled,
+                    aiannouncerpreset: aiAnnouncerPreset,
+                    aiannouncercustomprompt: aiAnnouncerPrompt,
+                    aiannouncerclassicmode: aiAnnouncerClassicMode,
+                  })}
+                  disabled={updateGroupMutation.isPending || toggleAnnouncerMutation.isPending || !announcerControlsEnabled}
+                >
+                  <Save size={14} />
+                  {updateGroupMutation.isPending ? 'Saving...' : 'Save Voice'}
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => void handleAnnouncerPreview()}
+                  disabled={!announcerControlsEnabled || previewingAnnouncer}
+                >
+                  <Play size={14} />
+                  {previewingAnnouncer ? 'Playing...' : 'Preview'}
+                </button>
+              </div>
+              {toggleAnnouncerMutation.isPending && <p className="mt-2 text-sm text-pit-muted">Saving Announcer setting...</p>}
+              {updateGroupMutation.error && <p className="mt-2 text-sm text-red-400">{updateGroupMutation.error.message}</p>}
+              {toggleAnnouncerMutation.error && <p className="mt-2 text-sm text-red-400">{toggleAnnouncerMutation.error.message}</p>}
+              {announcerPreviewError && <p className="mt-2 text-sm text-red-400">{announcerPreviewError}</p>}
+            </div>
+            <div className="space-y-3 rounded-xl border border-pit-border bg-pit-bg p-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Speech announcements</p>
+                <p className="mt-1 text-xs leading-5 text-pit-muted">
+                  Use <code className="text-pit-teal">{'{BlindLevel}'}</code>, <code className="text-pit-teal">{'{SB}'}</code>, <code className="text-pit-teal">{'{BB}'}</code>, and <code className="text-pit-teal">{'{Ante}'}</code> for live blind values.
+                </p>
+              </div>
+              <AnnouncementField
+                label="5 minute warning"
+                value={speechFiveMinuteMessage}
+                onChange={setSpeechFiveMinuteMessage}
+                placeholder={DEFAULT_FIVE_MINUTE_ANNOUNCEMENT}
+              />
+              <AnnouncementField
+                label="1 minute warning"
+                value={speechOneMinuteMessage}
+                onChange={setSpeechOneMinuteMessage}
+                placeholder={DEFAULT_ONE_MINUTE_ANNOUNCEMENT}
+              />
+              <AnnouncementField
+                label="Level up"
+                value={speechLevelUpMessage}
+                onChange={setSpeechLevelUpMessage}
+                placeholder={DEFAULT_LEVEL_UP_ANNOUNCEMENT}
+              />
+              <div className="rounded-lg border border-pit-border bg-pit-surface/50 px-3 py-2 text-xs leading-5 text-pit-text">
+                Preview: {previewAnnouncement(speechLevelUpMessage || DEFAULT_LEVEL_UP_ANNOUNCEMENT)}
+              </div>
+              <button
+                className="btn-primary"
+                onClick={() => updateGroupMutation.mutate({
+                  speechfiveminutemessage: speechFiveMinuteMessage,
+                  speechoneminutemessage: speechOneMinuteMessage,
+                  speechlevelupmessage: speechLevelUpMessage,
+                })}
+                disabled={updateGroupMutation.isPending}
+              >
+                <Save size={14} />
+                {updateGroupMutation.isPending ? 'Saving...' : 'Save Announcements'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {detailTab === 'posts' && (
           <div className="space-y-4">
             {group.isadmin && (
+              <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Post approval</p>
+                    <p className="mt-1 text-xs text-pit-muted">When enabled, member posts wait for an admin before going live.</p>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
+                    <span>{effectiveGroup.postapprovalrequired === false ? 'Off' : 'On'}</span>
+                    <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${effectiveGroup.postapprovalrequired === false ? 'bg-pit-border' : 'bg-pit-teal'}`}>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={effectiveGroup.postapprovalrequired !== false}
+                        onChange={(event) => updateGroupMutation.mutate({ postapprovalrequired: event.target.checked })}
+                      />
+                      <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${effectiveGroup.postapprovalrequired === false ? 'translate-x-0' : 'translate-x-5'}`} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {group.isadmin && (postsData?.posts ?? []).some((post) => post.status === 'pending') && (
+              <div className="rounded-xl border border-yellow-300/25 bg-yellow-300/10 p-3">
+                <p className="mb-3 text-sm font-semibold text-yellow-100">Needs approval</p>
+                <div className="space-y-2">
+                  {(postsData?.posts ?? []).filter((post) => post.status === 'pending').map((post) => (
+                    <article key={post.id} className="rounded-lg border border-yellow-300/20 bg-pit-bg/70 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{post.displayname ?? 'Member'}</p>
+                          <p className="text-xs text-pit-muted">{new Date(post.createdat).toLocaleString()}</p>
+                        </div>
+                        <span className="badge border-yellow-300/30 bg-yellow-300/10 text-yellow-100">Pending</span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-pit-text">{post.message}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          className="btn-primary px-3 py-1.5 text-xs"
+                          disabled={moderatePostMutation.isPending}
+                          onClick={() => moderatePostMutation.mutate({ postId: post.id, status: 'approved' })}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn-ghost px-3 py-1.5 text-xs text-red-300"
+                          disabled={moderatePostMutation.isPending}
+                          onClick={() => moderatePostMutation.mutate({ postId: post.id, status: 'rejected' })}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {postsEnabled && (
               <div className={`rounded-xl border p-3 ${postsEnabled ? 'border-pit-border bg-pit-bg' : 'border-yellow-300/25 bg-yellow-300/10'}`}>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-white">Post to group</p>
-                  {!postsEnabled && <span className="badge border border-yellow-300/25 bg-yellow-300/10 text-yellow-200">Club</span>}
+                  {effectiveGroup.postapprovalrequired !== false && !group.isadmin && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Approval required</span>}
                 </div>
                 <textarea
                   className="input min-h-20"
@@ -741,11 +971,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                     placeholder="One option per line"
                   />
                 )}
-                {!postsEnabled && (
-                  <p className="mt-2 text-xs text-yellow-200">
-                    Polls and group conversations are available during the 2-tournament trial, then unlock with Club or Pro.
-                  </p>
-                )}
+                {createPostMutation.data?.status === 'pending' && <p className="mt-2 text-xs text-yellow-100">Submitted for admin approval.</p>}
                 {createPostMutation.error && <p className="mt-2 text-sm text-red-400">{createPostMutation.error.message}</p>}
               </div>
             )}
@@ -764,7 +990,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </div>
             ) : (
               <div className="space-y-3">
-                {(postsData?.posts ?? []).map((post) => {
+                {(postsData?.posts ?? []).filter((post) => post.status !== 'pending').map((post) => {
                   const totalVotes = (post.options ?? []).reduce((sum, option) => sum + Number(option.votecount ?? 0), 0);
                   return (
                     <article key={post.id} className="rounded-xl border border-pit-border bg-pit-bg p-3">
@@ -874,8 +1100,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
           </div>
         )}
 
-        {/* Tournaments tab */}
-        {detailTab === 'tournaments' && (
+        {detailTab === 'history' && (
           <div>
             {loadingTourneys
               ? <LoadingSpinner className="py-8" />
@@ -883,7 +1108,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 ? (
                   <div className="flex flex-col items-center py-10 gap-3 text-center">
                     <Trophy size={28} className="text-pit-muted" />
-                    <p className="text-pit-muted text-sm">No tournaments for this group yet.</p>
+                    <p className="text-pit-muted text-sm">No tournament history for this group yet.</p>
                   </div>
                 )
                 : (

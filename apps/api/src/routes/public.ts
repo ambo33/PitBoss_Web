@@ -8,6 +8,7 @@ import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
+import { generateVoicePreview } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 
 export const publicRouter = Router();
@@ -19,6 +20,21 @@ function createGuestEmail() {
 function truthySql(column: string) {
   return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
 }
+
+publicRouter.post('/ai-voice-preview', async (req: Request, res: Response) => {
+  const style = (req.body as { style?: string }).style === 'british_dealer' ? 'british_dealer' : 'football';
+  try {
+    const result = await generateVoicePreview(style);
+    if (!result.aiEnabled || !result.audioBase64) {
+      res.status(503).json({ error: 'AI voice preview is unavailable right now.' });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('AI voice preview failed', err instanceof Error ? err.message : err);
+    res.status(503).json({ error: 'AI voice preview is unavailable right now.' });
+  }
+});
 
 publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
   const normalizedCode = String(req.params.code ?? '').trim();
@@ -39,13 +55,19 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
             g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -79,6 +101,10 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             CAST(tp.placed AS INT) AS placed,
             COALESCE(km.nickname, NULLIF(trim(concat(coalesce(km.firstname, ''), ' ', coalesce(km.lastname, ''))), ''), ku.emailaddress) AS knockedoutbyname,
             tp.knockedoutbyuserid,
+            COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+            tp.bountyclaimedbyuserid,
+            COALESCE(bm.nickname, NULLIF(trim(concat(coalesce(bm.firstname, ''), ' ', coalesce(bm.lastname, ''))), ''), bu.emailaddress) AS bountyclaimedbyname,
+            tp.bountyclaimedat,
             COALESCE(tp.paid, FALSE) AS paid,
             tp.createdate AS registeredat,
             CAST(ts."Table" AS INT) AS tablenumber,
@@ -88,6 +114,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
      LEFT JOIN usermetadata m ON m.userid = tp.userid
      LEFT JOIN users ku ON ku.guid = tp.knockedoutbyuserid
      LEFT JOIN usermetadata km ON km.userid = ku.guid
+     LEFT JOIN users bu ON bu.guid = tp.bountyclaimedbyuserid
+     LEFT JOIN usermetadata bm ON bm.userid = bu.guid
      LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
      WHERE tp.tournamentid = $1
      ORDER BY tp.createdate`,
@@ -104,12 +132,18 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
             COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
             COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
-            COALESCE(g.aiannouncerpreset, 'professional') AS aiannouncerpreset,
-            g.aiannouncercustomprompt
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
+            g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
@@ -137,7 +171,10 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
           COALESCE((sum(COALESCE(rebuys, 0)) + COALESCE($5::INT, 0)) * COALESCE($3::DECIMAL, 0::DECIMAL), 0::DECIMAL) +
           COALESCE((sum(CASE WHEN ${truthySql('addedon')} THEN 1 ELSE 0 END) + COALESCE($6::INT, 0)) * COALESCE($4::DECIMAL, 0::DECIMAL), 0::DECIMAL)
           AS DECIMAL
-        ) AS grosspot
+        ) AS grosspot,
+        CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS bountytotal,
+        CAST(COALESCE(sum(CASE WHEN placed IS NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS bountyremaining,
+        CAST(COALESCE(sum(CASE WHEN placed IS NOT NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS bountyclaimed
      FROM tournamentplayers
      WHERE tournamentid = $1`,
     [
@@ -172,11 +209,17 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
               COALESCE(tp.checkedin, FALSE) AS checkedin,
               CASE WHEN ${truthySql('tp.addedon')} THEN TRUE ELSE FALSE END AS addedon,
               CAST(tp.placed AS INT) AS placed,
+              COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+              tp.bountyclaimedbyuserid,
+              COALESCE(bm.nickname, NULLIF(trim(concat(coalesce(bm.firstname, ''), ' ', coalesce(bm.lastname, ''))), ''), bu.emailaddress) AS bountyclaimedbyname,
+              tp.bountyclaimedat,
               CAST(ts."Table" AS INT) AS tablenumber,
               ts.seat
        FROM tournamentplayers tp
        JOIN users u ON u.guid = tp.userid
        LEFT JOIN usermetadata m ON m.userid = tp.userid
+       LEFT JOIN users bu ON bu.guid = tp.bountyclaimedbyuserid
+       LEFT JOIN usermetadata bm ON bm.userid = tp.bountyclaimedbyuserid
        LEFT JOIN tournamentseating ts ON ts.tournamentid = tp.tournamentid AND ts.userid = tp.userid
        WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.id, entryUserId]
@@ -207,6 +250,9 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
       totalrebuys: 0,
       totaladdons: 0,
       grosspot: 0,
+      bountytotal: 0,
+      bountyremaining: 0,
+      bountyclaimed: 0,
     },
     seating,
     entry,
@@ -488,7 +534,12 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
-            t.createdate AS createdat, t.groupid, g.name AS groupname
+            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
@@ -508,10 +559,16 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
       `SELECT tp.userid, u.emailaddress,
               COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
               COALESCE(tp.checkedin, FALSE) AS checkedin,
-              CAST(tp.placed AS INT) AS placed
+              CAST(tp.placed AS INT) AS placed,
+              COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+              tp.bountyclaimedbyuserid,
+              COALESCE(bm.nickname, NULLIF(trim(concat(coalesce(bm.firstname, ''), ' ', coalesce(bm.lastname, ''))), ''), bu.emailaddress) AS bountyclaimedbyname,
+              tp.bountyclaimedat
        FROM tournamentplayers tp
        JOIN users u ON u.guid = tp.userid
        LEFT JOIN usermetadata m ON m.userid = tp.userid
+       LEFT JOIN users bu ON bu.guid = tp.bountyclaimedbyuserid
+       LEFT JOIN usermetadata bm ON bm.userid = tp.bountyclaimedbyuserid
        WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.id, entryUserId]
     );
@@ -540,7 +597,12 @@ publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, re
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
-            t.createdate AS createdat, t.groupid, g.name AS groupname
+            t.createdate AS createdat, t.groupid, g.name AS groupname,
+            COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(t.bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(t.bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(t.bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
      WHERE t.tournamentid = $1`,
@@ -691,11 +753,7 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   }
 
   const activeField = await queryOne<{ activecount: number }>(
-    `SELECT CAST(GREATEST(
-        COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE THEN 1 ELSE 0 END), 0) -
-        COALESCE(sum(CASE WHEN placed IS NOT NULL THEN 1 ELSE 0 END), 0),
-        0
-      ) AS INT) AS activecount
+    `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
      FROM tournamentplayers
      WHERE tournamentid = $1`,
     [req.params.id]
@@ -707,7 +765,9 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
      SET placed = $3,
          checkedin = FALSE,
          knockedoutbyuserid = $4,
-         knockedoutat = now()
+         knockedoutat = now(),
+         bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 THEN $4 ELSE NULL END,
+         bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL THEN now() ELSE NULL END
      WHERE tournamentid = $1 AND userid = $2`,
     [req.params.id, playerUserId, placed, knockedoutByUserId]
   );

@@ -3,6 +3,8 @@ let unlockAttached = false;
 let preferredVoice: SpeechSynthesisVoice | null = null;
 let speechPrimed = false;
 let currentCheckinAudio: HTMLAudioElement | null = null;
+let currentEventAudio: HTMLAudioElement | null = null;
+const activeOscillators = new Set<OscillatorNode>();
 let audioUnlocked = false;
 
 export const DEFAULT_FIVE_MINUTE_ANNOUNCEMENT = 'There are 5 minutes remaining in the current blind.';
@@ -187,6 +189,7 @@ async function playSequence(steps: Array<{ frequency: number; duration: number; 
   await resumeAudio();
   if (ctx.state !== 'running') return;
 
+  stopActiveEventAudio();
   const now = ctx.currentTime;
 
   for (const step of steps) {
@@ -204,9 +207,38 @@ async function playSequence(steps: Array<{ frequency: number; duration: number; 
 
     oscillator.connect(gainNode);
     gainNode.connect(ctx.destination);
+    activeOscillators.add(oscillator);
+    oscillator.onended = () => activeOscillators.delete(oscillator);
     oscillator.start(startAt);
     oscillator.stop(startAt + step.duration + 0.02);
   }
+}
+
+function stopActiveEventAudio(): void {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+  }
+  if (currentEventAudio) {
+    try {
+      currentEventAudio.pause();
+      currentEventAudio.currentTime = 0;
+    } catch {
+      // ignore
+    }
+    currentEventAudio = null;
+  }
+  for (const oscillator of activeOscillators) {
+    try {
+      oscillator.stop();
+    } catch {
+      // already stopped
+    }
+  }
+  activeOscillators.clear();
 }
 
 export function playFiveMinuteWarning(): void {
@@ -250,7 +282,7 @@ function speak(message: string, fallback?: () => void): void {
     return;
   }
   try {
-    window.speechSynthesis.cancel();
+    stopActiveEventAudio();
     window.speechSynthesis.resume();
     const utterance = new SpeechSynthesisUtterance(message);
     utterance.voice = getPreferredVoice();
@@ -336,8 +368,29 @@ export function playCheckinGreetingClip(audioDataUrl: string, fallbackName?: str
 export function playGeneratedSpeech(audioBase64: string, mimeType = 'audio/mpeg', fallback?: () => void): void {
   if (typeof window === 'undefined') return;
   try {
+    stopActiveEventAudio();
     const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+    currentEventAudio = audio;
     audio.volume = 0.95;
+    audio.onended = () => {
+      if (currentEventAudio === audio) currentEventAudio = null;
+    };
+    void audio.play().catch(() => fallback?.());
+  } catch {
+    fallback?.();
+  }
+}
+
+export function playStoredSpeech(src: string, fallback?: () => void): void {
+  if (typeof window === 'undefined') return;
+  try {
+    stopActiveEventAudio();
+    const audio = new Audio(src);
+    currentEventAudio = audio;
+    audio.volume = 0.95;
+    audio.onended = () => {
+      if (currentEventAudio === audio) currentEventAudio = null;
+    };
     void audio.play().catch(() => fallback?.());
   } catch {
     fallback?.();

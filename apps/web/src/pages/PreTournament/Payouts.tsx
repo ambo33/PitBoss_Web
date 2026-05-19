@@ -78,10 +78,13 @@ export default function Payouts({ tournamentId, tournament }: Props) {
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
   const rake = toNumber(tournament.rake);
+  const bountyTotal = tournament.bountyenabled
+    ? players.reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    : 0;
 
   const totalPot = useMemo(() => {
-    return Math.max(grossPot - rake, 0);
-  }, [grossPot, rake]);
+    return Math.max(grossPot - rake - bountyTotal, 0);
+  }, [grossPot, rake, bountyTotal]);
   const rakeTooHigh = toNumber(rakeInput) > grossPot;
 
   const places = useMemo(
@@ -250,6 +253,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
 
         <div className="flex flex-wrap gap-2 text-xs text-pit-text">
           <span className="chip">Gross pot ${grossPot.toFixed(2)}</span>
+          {tournament.bountyenabled && <span className="chip">Bounties ${bountyTotal.toFixed(2)}</span>}
           <span className="chip">Net pot ${totalPot.toFixed(2)}</span>
         </div>
 

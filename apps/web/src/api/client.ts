@@ -58,8 +58,8 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string }) =>
-    put(`/groups/${id}`, data),
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string; aiannouncerclassicmode?: boolean; postapprovalrequired?: boolean }) =>
+    put<{ success: boolean } & Partial<Group>>(`/groups/${id}`, data),
   getGroupBlindStructures: (groupId: string) =>
     get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
   createGroupBlindStructure: (groupId: string, data: { name: string; levels: Omit<BlindLevel, 'id'>[] }) =>
@@ -81,7 +81,9 @@ export const api = {
   getGroupPosts: (groupId: string) =>
     get<{ enabled: boolean; posts: GroupPost[] }>(`/groups/${groupId}/posts`),
   createGroupPost: (groupId: string, data: { posttype: 'message' | 'poll'; message: string; options?: string[] }) =>
-    post<{ id: string; success: boolean }>(`/groups/${groupId}/posts`, data),
+    post<{ id: string; success: boolean; status?: 'pending' | 'approved' }>(`/groups/${groupId}/posts`, data),
+  moderateGroupPost: (groupId: string, postId: string, status: 'approved' | 'rejected') =>
+    put<{ success: boolean; id: string; status: string }>(`/groups/${groupId}/posts/${postId}/moderate`, { status }),
   voteGroupPoll: (groupId: string, postId: string, optionId: string) =>
     post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/vote`, { optionid: optionId }),
   commentOnGroupPost: (groupId: string, postId: string, message: string) =>
@@ -142,6 +144,10 @@ export const api = {
   removeGenericAddon: (tid: string) => del(`/tournaments/${tid}/addons`),
   knockPlayer: (tid: string, uid: string, placed: number | null) =>
     put(`/tournaments/${tid}/players/${uid}/knock`, { placed }),
+  updatePlayerBounty: (tid: string, uid: string, amount: number) =>
+    put(`/tournaments/${tid}/players/${uid}/bounty`, { amount }),
+  assignMysteryBounties: (tid: string, prizepool?: number, denomination?: number) =>
+    post<{ success: boolean; assigned: number; total: number; denomination: number }>(`/tournaments/${tid}/bounties/mystery-assign`, { prizepool, denomination }),
   togglePaid: (tid: string, uid: string) =>
     put(`/tournaments/${tid}/players/${uid}/paid`),
 
@@ -163,12 +169,20 @@ export const api = {
   // Admin
   getAdminUsers: (email?: string) => get<AdminUserSummary[]>(`/admin/users${email ? `?email=${encodeURIComponent(email)}` : ''}`),
   getAdminUser: (id: string) => get<AdminUserDetail>(`/admin/users/${id}`),
-  updateAdminUser: (id: string, data: { tierid?: number; issuperadmin?: boolean }) =>
+  updateAdminUser: (id: string, data: { tierid?: number; issuperadmin?: boolean; aicreditsremaining?: number }) =>
     put<{ success: boolean; account: AuthProfile }>(`/admin/users/${id}`, data),
+  getAdminAiCreditSettings: () => get<{ defaultaicredits: number }>('/admin/settings/ai-credits'),
+  updateAdminAiCreditSettings: (data: { defaultaicredits: number }) =>
+    put<{ defaultaicredits: number }>('/admin/settings/ai-credits', data),
   getAdminFeedback: () => get<AdminFeedbackResponse>('/admin/feedback'),
   getAdminFeedbackSummary: () => get<{ newcount: number }>('/admin/feedback/summary'),
-  updateAdminFeedback: (id: string, data: { status: 'new' | 'looked_at' }) =>
+  updateAdminFeedback: (id: string, data: { status: AdminFeedbackStatus }) =>
     put<{ success: boolean; id: string; status: string }>(`/admin/feedback/${id}`, data),
+  getAdminVoiceLabStyles: () => get<{ styles: AdminVoiceLabStyle[] }>('/admin/voice-lab/styles'),
+  generateAdminVoiceLabScript: (data: { style: string; brief: string }) =>
+    post<{ script: string }>('/admin/voice-lab/script', data),
+  generateAdminVoiceLabClip: (data: { style: string; text: string; filename?: string; overwrite?: boolean }) =>
+    post<AdminVoiceLabClip>('/admin/voice-lab/clips', data),
 };
 
 // Shared type re-exports so pages don't need separate imports
@@ -183,10 +197,22 @@ export interface Group {
   aiannouncerenabled?: boolean;
   aiannouncerpreset?: AnnouncerPreset;
   aiannouncercustomprompt?: string | null;
+  aiannouncerclassicmode?: boolean;
+  postapprovalrequired?: boolean;
   membercount?: number; isadmin?: boolean; approved?: boolean;
 }
 export type TrackingMode = 'standard' | 'player';
-export type AnnouncerPreset = 'professional' | 'wwe' | 'minimal' | 'football' | 'roaster' | 'wsop';
+export type AnnouncerPreset =
+  | 'all_in_alex'
+  | 'royal_rumble_riley'
+  | 'velvet_dealer'
+  | 'chipstorm'
+  | 'queen_of_spades'
+  | 'the_pit_boss'
+  | 'british_high_roller'
+  | 'turbo_tony'
+  | 'midnight_mayhem'
+  | 'sunny_stacks';
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
@@ -209,6 +235,11 @@ export interface Tournament {
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
   seatingmaxpertable?: number;
+  bountyenabled?: boolean;
+  bountymode?: 'manual' | 'mystery';
+  bountyprizepool?: number;
+  bountypooltype?: 'amount' | 'percent';
+  bountyroundingdenomination?: number;
   tvseatingwelcomemessage?: string | null;
   speechfiveminutemessage?: string | null;
   speechoneminutemessage?: string | null;
@@ -216,6 +247,7 @@ export interface Tournament {
   aiannouncerenabled?: boolean;
   aiannouncerpreset?: AnnouncerPreset;
   aiannouncercustomprompt?: string | null;
+  aiannouncerclassicmode?: boolean;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   isowner?: boolean;
@@ -228,6 +260,7 @@ export interface TournamentPlayer {
   avatarimagedata?: string | null;
   checkedin: boolean; rebuys: number; addedon: boolean;
   placed: number | null; knockedoutbyuserid?: string | null; knockedoutbyname?: string | null; paid: boolean; registeredat: string;
+  bountyamount?: number; bountyclaimedbyuserid?: string | null; bountyclaimedbyname?: string | null; bountyclaimedat?: string | null;
   tablenumber?: number | null; seat?: number | null;
 }
 export interface AuthProfile {
@@ -241,6 +274,8 @@ export interface AuthProfile {
   trialhostedremaining?: number;
   trialactive?: boolean;
   canuseclubfeatures?: boolean;
+  aicreditsremaining?: number;
+  defaultaicredits?: number;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;
@@ -269,6 +304,7 @@ export interface GroupComment {
 export interface GroupPost {
   id: string; groupid: string; createdby: string; displayname?: string;
   posttype: 'message' | 'poll'; message: string; createdat: string;
+  status?: 'pending' | 'approved' | 'rejected' | string;
   options?: GroupPollOption[]; comments?: GroupComment[];
 }
 export interface TournamentChip {
@@ -282,10 +318,12 @@ export interface SeatingAssignment {
 export interface LobbyFieldStats {
   registeredcount: number; checkedincount: number; knockedoutcount: number;
   activecount: number; totalrebuys: number; totaladdons: number; grosspot: number;
+  bountytotal?: number; bountyremaining?: number; bountyclaimed?: number;
 }
 export interface LobbyEntry {
   userid: string; emailaddress: string; displayname?: string;
   checkedin: boolean; addedon?: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
+  bountyamount?: number; bountyclaimedbyuserid?: string | null; bountyclaimedbyname?: string | null; bountyclaimedat?: string | null;
 }
 export interface PublicAddonResponse {
   tournament: Tournament;
@@ -312,13 +350,20 @@ export interface PublicKnockoutResponse {
 }
 
 export interface AnnouncerMomentRequest {
-  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning';
+  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon';
   currentlevel: number;
   previouslevel?: number | null;
   previouslevelstartedat?: string | null;
   smallblind?: number;
   bigblind?: number;
   ante?: number;
+  knockedoutplayername?: string;
+  knockedoutbyname?: string | null;
+  placement?: number | null;
+  prizeamount?: number | null;
+  bountyamount?: number | null;
+  bountyclaimedbyname?: string | null;
+  playername?: string | null;
 }
 
 export interface AnnouncerMomentResponse {
@@ -326,6 +371,8 @@ export interface AnnouncerMomentResponse {
   audioBase64?: string;
   mimeType?: string;
   aiEnabled: boolean;
+  preset?: AnnouncerPreset;
+  voice?: string;
 }
 
 export interface HandAnalysisRequest {
@@ -354,6 +401,8 @@ export interface AdminUserSummary {
   trialhostedremaining: number;
   trialactive: boolean;
   canuseclubfeatures: boolean;
+  aicreditsremaining?: number;
+  defaultaicredits?: number;
   groupcount: number;
   hostedgroupcount: number;
   upcominghostedcount: number;
@@ -375,11 +424,33 @@ export interface AdminFeedback {
   message: string;
   pageurl: string | null;
   useragent: string | null;
-  status: 'new' | 'looked_at' | string;
+  status: AdminFeedbackStatus | string;
   createdat: string;
 }
+
+export type AdminFeedbackStatus = 'new' | 'looked_at' | 'closed';
 
 export interface AdminFeedbackResponse {
   newcount: number;
   feedback: AdminFeedback[];
+}
+
+export interface AdminVoiceLabClip {
+  success: boolean;
+  style: string;
+  label: string;
+  filename: string;
+  url: string;
+  bytes: number;
+  text: string;
+  updatedAt: string;
+  mimeType: string;
+}
+
+export interface AdminVoiceLabStyle {
+  id: string;
+  label: string;
+  description?: string;
+  bestFor?: string;
+  savedClip: Omit<AdminVoiceLabClip, 'success' | 'mimeType'> | null;
 }

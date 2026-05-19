@@ -30,9 +30,20 @@ export default function LoginPage() {
   }, [inviteCode]);
 
   useEffect(() => {
-    if (resetToken) setView('reset');
-    if (requestedMode === 'register') setView('register');
-  }, [requestedMode, resetToken]);
+    if (resetToken) {
+      setView('reset');
+      return;
+    }
+    if (resetStatus === 'success') {
+      setView('login');
+      return;
+    }
+    if (requestedMode === 'register') {
+      setView('register');
+      return;
+    }
+    setView((currentView) => (currentView === 'reset' ? 'login' : currentView));
+  }, [requestedMode, resetStatus, resetToken]);
 
   return (
     <div className="min-h-screen overflow-hidden bg-pit-bg">

@@ -5,6 +5,7 @@ import MainPage from './pages/Main';
 import LandingPage from './pages/Landing';
 import PricingPage from './pages/Pricing';
 import TermsPage from './pages/Terms';
+import VoiceLabPage from './pages/VoiceLab';
 import PreTournamentPage from './pages/PreTournament';
 import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/register" element={<AppSubdomainRedirect mode="register" />} />
         <Route path="/app" element={<AppSubdomainRedirect />} />
         <Route path="/landing" element={<LandingPage />} />
+        <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/reset-password" element={<AppSubdomainRedirect />} />

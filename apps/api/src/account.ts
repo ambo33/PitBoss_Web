@@ -18,6 +18,8 @@ export interface AccountProfile {
   maxgroups: number;
   maxupcominghostedtournaments: number;
   maxplayerspertournament: number;
+  aicreditsremaining: number;
+  defaultaicredits: number;
 }
 
 const TRIAL_HOSTED_TOURNAMENT_LIMIT = 2;
@@ -28,6 +30,13 @@ const HOST_MAX_GROUPS = 1;
 const HOST_MAX_UPCOMING_HOSTED_TOURNAMENTS = 1;
 const HOST_MAX_PLAYERS = 8;
 const BETA_ALL_FEATURES = process.env.BETA_ALL_FEATURES !== 'false';
+const FALLBACK_DEFAULT_AI_CREDITS = 25;
+
+function normalizeCreditCount(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+}
 
 function normalizeTier(value: string | null | undefined): AccountTier {
   if (value === 'club' || value === 'pro') return value;
@@ -103,6 +112,7 @@ export async function syncSuperAdminByEmail(userId: string): Promise<void> {
 
 export async function getAccountProfile(userId: string): Promise<AccountProfile | null> {
   await syncSuperAdminByEmail(userId);
+  const defaultaicredits = await getDefaultAiCredits();
 
   const row = await queryOne<{
     userid: string;
@@ -113,6 +123,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     accounttier: string | null;
     issuperadmin: boolean | null;
     hostedtournamentcount: number | string | null;
+    aicreditsremaining: number | string | null;
   }>(
     `SELECT u.guid AS userid,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
@@ -122,6 +133,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
             ${sqlResolveTierKey('um')} AS accounttier,
             COALESCE(um.issuperadmin, FALSE) AS issuperadmin,
             COALESCE(CAST(um.hostedtournamentcount AS INT), 0) AS hostedtournamentcount
+            , um.aicreditsremaining
      FROM users u
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
@@ -134,6 +146,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
   const tierid = normalizeTierId(row.tierid, accounttier);
   const issuperadmin = Boolean(row.issuperadmin);
   const hostedtournamentcount = Number(row.hostedtournamentcount ?? 0);
+  const aicreditsremaining = normalizeCreditCount(row.aicreditsremaining, defaultaicredits);
   const trialhostedremaining = Math.max(TRIAL_HOSTED_TOURNAMENT_LIMIT - hostedtournamentcount, 0);
   const trialactive = tierid === HOST_TIER_ID && trialhostedremaining > 0;
   const canuseclubfeatures = BETA_ALL_FEATURES || issuperadmin || tierid >= CLUB_TIER_ID || trialactive;
@@ -155,7 +168,54 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     maxgroups: unrestrictedHosting ? Number.MAX_SAFE_INTEGER : HOST_MAX_GROUPS,
     maxupcominghostedtournaments: unrestrictedHosting ? Number.MAX_SAFE_INTEGER : HOST_MAX_UPCOMING_HOSTED_TOURNAMENTS,
     maxplayerspertournament: canuseclubfeatures ? Number.MAX_SAFE_INTEGER : HOST_MAX_PLAYERS,
+    aicreditsremaining,
+    defaultaicredits,
   };
+}
+
+export async function getDefaultAiCredits(): Promise<number> {
+  const row = await queryOne<{ value: string | null }>(
+    `SELECT value FROM appsettings WHERE key = 'default_ai_credits'`
+  );
+  return normalizeCreditCount(row?.value, normalizeCreditCount(process.env.DEFAULT_AI_CREDITS, FALLBACK_DEFAULT_AI_CREDITS));
+}
+
+export async function setDefaultAiCredits(value: number): Promise<number> {
+  const credits = normalizeCreditCount(value, FALLBACK_DEFAULT_AI_CREDITS);
+  await query(
+    `INSERT INTO appsettings (key, value, updatedat)
+     VALUES ('default_ai_credits', $1, now())
+     ON CONFLICT (key)
+     DO UPDATE SET value = EXCLUDED.value, updatedat = now()`,
+    [String(credits)]
+  );
+  return credits;
+}
+
+export async function setAiCreditsForUser(userId: string, value: number): Promise<number> {
+  const credits = normalizeCreditCount(value, 0);
+  await query(
+    `INSERT INTO usermetadata (userid, aicreditsremaining)
+     VALUES ($1, $2)
+     ON CONFLICT (userid)
+     DO UPDATE SET aicreditsremaining = $2`,
+    [userId, credits]
+  );
+  return credits;
+}
+
+export async function consumeAiCredit(userId: string): Promise<{ allowed: boolean; remaining: number; defaultaicredits: number }> {
+  const defaultaicredits = await getDefaultAiCredits();
+  const row = await queryOne<{ aicreditsremaining: number | string | null }>(
+    `SELECT aicreditsremaining FROM usermetadata WHERE userid = $1`,
+    [userId]
+  );
+  const current = normalizeCreditCount(row?.aicreditsremaining, defaultaicredits);
+  if (current <= 0) return { allowed: false, remaining: 0, defaultaicredits };
+
+  const next = current - 1;
+  await setAiCreditsForUser(userId, next);
+  return { allowed: true, remaining: next, defaultaicredits };
 }
 
 export async function requireSuperAdmin(userId: string): Promise<boolean> {

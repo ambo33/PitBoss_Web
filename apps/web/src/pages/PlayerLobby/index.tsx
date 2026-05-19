@@ -294,16 +294,19 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     );
   }
 
+  const bountyTotal = tournament.bountyenabled ? Number(field.bountytotal ?? 0) : 0;
+  const bountyRemaining = tournament.bountyenabled ? Number(field.bountyremaining ?? 0) : 0;
+  const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0) - bountyTotal, 0);
   const stats = [
     { label: 'Players Left', value: field.activecount },
     ...(field.checkedincount > 0 ? [{ label: 'Checked In', value: field.checkedincount }] : []),
     ...(tournament.rebuyprice > 0 ? [{ label: 'Rebuys', value: field.totalrebuys }] : []),
     ...(tournament.addonprice > 0 ? [{ label: 'Add-Ons', value: field.totaladdons }] : []),
-    { label: 'Prize Pool', value: formatMoney(Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0), 0)), accent: true },
+    ...(tournament.bountyenabled ? [{ label: 'Bounties Left', value: formatMoney(bountyRemaining), accent: true }] : []),
+    { label: 'Prize Pool', value: formatMoney(prizePool), accent: true },
   ];
   const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), field.checkedincount > 0 ? field.checkedincount : field.registeredcount);
   const payoutSplits = buildDefaultSplits(payoutPlaces);
-  const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0), 0);
   const payoutAmounts = payoutSplits.map((split) => (prizePool * split) / 100);
   const seatMessage = entry?.placed == null && entry?.seat != null
     ? `PLEASE BE SEATED AT: TABLE ${entry.tablenumber} SEAT ${entry.seat}`

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db';
-import { sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
+import { getDefaultAiCredits, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
@@ -217,6 +217,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 async function selectAuthProfile(userId: string) {
+  const defaultAiCredits = await getDefaultAiCredits();
   return queryOne<{
     guid: string;
     emailaddress: string;
@@ -230,6 +231,8 @@ async function selectAuthProfile(userId: string) {
     trialhostedremaining: number;
     trialactive: boolean;
     canuseclubfeatures: boolean;
+    aicreditsremaining?: number | null;
+    defaultaicredits?: number;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
     hascheckinaudio?: boolean;
@@ -251,6 +254,8 @@ async function selectAuthProfile(userId: string) {
               ELSE FALSE
             END AS trialactive,
             ${sqlCanUseClubFeatures('m')} AS canuseclubfeatures,
+            COALESCE(CAST(m.aicreditsremaining AS INT), $2) AS aicreditsremaining,
+            $2::INT AS defaultaicredits,
             m.checkinaudiodata,
             m.checkinaudiofilename,
             CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
@@ -263,7 +268,7 @@ async function selectAuthProfile(userId: string) {
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}
      WHERE u.guid = $1`,
-    [userId]
+    [userId, defaultAiCredits]
   ).then((row) => row ? {
     ...row,
     emailaddress: publicEmail(row.emailencrypted, row.emailaddress),
