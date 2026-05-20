@@ -114,8 +114,8 @@ export const api = {
   addLeagueGuest: (id: string, displayname: string) =>
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname }),
   getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
-  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number }) =>
-    post<{ event: LeagueEvent }>(`/leagues/${id}/events`, data),
+  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) =>
+    post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
   logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>

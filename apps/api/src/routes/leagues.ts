@@ -686,21 +686,48 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; eventdate?: string | null; eventnumber?: number };
+  const body = req.body as { name?: string; eventdate?: string | null; eventnumber?: number; eventcount?: number };
   const name = String(body.name ?? '').trim().slice(0, 160);
-  if (!name) {
+  const eventCount = Math.max(1, Math.min(100, Math.round(Number(body.eventcount ?? 1))));
+  if (!name && eventCount === 1) {
     res.status(400).json({ error: 'Event name required.' });
     return;
   }
   const eventNumber = Math.max(1, Math.round(Number(body.eventnumber ?? 1)));
   const date = body.eventdate ? String(body.eventdate).slice(0, 10) : null;
-  const row = await queryOne<LeagueEventRow>(
-    `INSERT INTO leagueevents (leagueid, name, eventdate, eventnumber)
-     VALUES ($1, $2, $3, $4)
-     RETURNING eventid, leagueid, name, eventdate, eventnumber, active, createdat`,
-    [req.params.id, name, date, eventNumber]
-  );
-  res.status(201).json({ event: row });
+  if (eventCount === 1) {
+    const row = await queryOne<LeagueEventRow>(
+      `INSERT INTO leagueevents (leagueid, name, eventdate, eventnumber)
+       VALUES ($1, $2, $3, $4)
+       RETURNING eventid, leagueid, name, eventdate, eventnumber, active, createdat`,
+      [req.params.id, name, date, eventNumber]
+    );
+    res.status(201).json({ event: row, events: row ? [row] : [] });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const rows: LeagueEventRow[] = [];
+    for (let index = 0; index < eventCount; index += 1) {
+      const number = eventNumber + index;
+      const result = await client.query<LeagueEventRow>(
+        `INSERT INTO leagueevents (leagueid, name, eventdate, eventnumber)
+         VALUES ($1, $2, NULL, $3)
+         RETURNING eventid, leagueid, name, eventdate, eventnumber, active, createdat`,
+        [req.params.id, `Event #${number}`, number]
+      );
+      if (result.rows[0]) rows.push(result.rows[0]);
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ event: rows[0] ?? null, events: rows });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 async function upsertResult(req: Request, res: Response, targetUserId: string) {

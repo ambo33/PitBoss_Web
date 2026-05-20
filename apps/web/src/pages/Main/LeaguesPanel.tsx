@@ -157,7 +157,7 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
   });
 
   const createEventMutation = useMutation({
-    mutationFn: (payload: { name: string; eventdate?: string | null; eventnumber?: number }) => api.createLeagueEvent(league.leagueid, payload),
+    mutationFn: (payload: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -1127,7 +1127,7 @@ function CreateEventModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; eventdate?: string | null; eventnumber?: number }) => void;
+  onSubmit: (data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => void;
   nextEventNumber: number;
   loading: boolean;
   error?: string;
@@ -1135,11 +1135,14 @@ function CreateEventModal({
   const [name, setName] = useState(`Event #${nextEventNumber}`);
   const [eventdate, setEventdate] = useState('');
   const [eventnumber, setEventnumber] = useState(String(nextEventNumber));
+  const [eventcount, setEventcount] = useState('1');
+  const countValue = Math.max(1, Math.min(100, Number(eventcount) || 1));
   useEffect(() => {
     if (!open) return;
     setName(`Event #${nextEventNumber}`);
     setEventdate('');
     setEventnumber(String(nextEventNumber));
+    setEventcount('1');
   }, [nextEventNumber, open]);
 
   return (
@@ -1153,27 +1156,47 @@ function CreateEventModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || !name.trim()}
-            onClick={() => onSubmit({ name, eventdate: eventdate || null, eventnumber: Number(eventnumber) || nextEventNumber })}
+            disabled={loading || (countValue === 1 && !name.trim())}
+            onClick={() => onSubmit({
+              name,
+              eventdate: countValue === 1 ? eventdate || null : null,
+              eventnumber: Number(eventnumber) || nextEventNumber,
+              eventcount: countValue,
+            })}
           >
-            {loading ? 'Saving...' : 'Save event'}
+            {loading ? 'Saving...' : countValue > 1 ? `Create ${countValue} events` : 'Save event'}
           </button>
         </>
       )}
     >
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Event name" />
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event date</span>
-            <input className="input" type="date" value={eventdate} onChange={(event) => setEventdate(event.target.value)} />
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">How many events?</span>
+            <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} placeholder="1" />
           </label>
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event order</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting event order</span>
             <input className="input" inputMode="numeric" value={eventnumber} onChange={(event) => setEventnumber(event.target.value.replace(/\D/g, ''))} placeholder="1" />
           </label>
         </div>
+        {countValue === 1 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event name</span>
+              <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Event name" />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event date</span>
+              <input className="input" type="date" value={eventdate} onChange={(event) => setEventdate(event.target.value)} />
+            </label>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
+            This will create {countValue} blank events named Event #{Number(eventnumber) || nextEventNumber} through Event #{(Number(eventnumber) || nextEventNumber) + countValue - 1}.
+          </div>
+        )}
       </div>
     </Modal>
   );
