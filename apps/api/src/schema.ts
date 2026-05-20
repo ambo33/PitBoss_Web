@@ -456,6 +456,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         name STRING(160) NOT NULL,
         invitecode STRING(12) UNIQUE NOT NULL,
         approvalneeded BOOL DEFAULT FALSE,
+        expectedplayercount INT DEFAULT 36,
         showupbonuspoints INT DEFAULT 300,
         bestfinishcount INT DEFAULT 7,
         pointslookup JSONB NOT NULL,
@@ -471,6 +472,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS name STRING(160) DEFAULT 'League'`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS invitecode STRING(12)`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS approvalneeded BOOL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS expectedplayercount INT DEFAULT 36`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS showupbonuspoints INT DEFAULT 300`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS bestfinishcount INT DEFAULT 7`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pointslookup JSONB DEFAULT '[{"place":"DNF","points":0},{"place":1,"points":671},{"place":2,"points":448},{"place":3,"points":336}]'`);
@@ -482,6 +484,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
     await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
+    await client.query(`UPDATE leagues SET expectedplayercount = 36 WHERE expectedplayercount IS NULL`);
     await client.query(`UPDATE leagues SET finalenabled = FALSE WHERE finalenabled IS NULL`);
     await client.query(`UPDATE leagues SET finalmultiplierlookup = '[]' WHERE finalmultiplierlookup IS NULL`);
     await client.query(`UPDATE leagues SET finalchiprounding = 100 WHERE finalchiprounding IS NULL`);

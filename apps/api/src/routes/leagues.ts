@@ -44,6 +44,13 @@ const DEFAULT_POINTS_LOOKUP: LeaguePointRule[] = [
   { place: 35, points: 38 },
   { place: 36, points: 37 },
 ];
+const BASE_POINT_TOTAL = DEFAULT_POINTS_LOOKUP
+  .filter((rule) => rule.place !== 'DNF')
+  .reduce((sum, rule) => sum + rule.points, 0);
+const TOP_THREE_SHARE = DEFAULT_POINTS_LOOKUP
+  .filter((rule) => typeof rule.place === 'number' && rule.place <= 3)
+  .reduce((sum, rule) => sum + rule.points, 0) / BASE_POINT_TOTAL;
+const TOP_EIGHT_SHARE = 0.5;
 
 type LeagueRow = {
   leagueid: string;
@@ -51,6 +58,7 @@ type LeagueRow = {
   name: string;
   invitecode: string;
   approvalneeded: boolean;
+  expectedplayercount: number;
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[] | string;
@@ -124,6 +132,43 @@ function normalizePointsLookup(value: unknown): LeaguePointRule[] {
   return rules.length ? rules : DEFAULT_POINTS_LOOKUP;
 }
 
+function generatePointsLookup(playerCount: number, totalPoints?: number): LeaguePointRule[] {
+  const players = Math.max(1, Math.min(500, Math.round(Number(playerCount || 36))));
+  const total = Math.max(players, Math.round(Number(totalPoints || players * 100)));
+  const baseByPlace = new Map<number, number>();
+  for (const rule of DEFAULT_POINTS_LOOKUP) {
+    if (typeof rule.place === 'number') baseByPlace.set(rule.place, rule.points);
+  }
+  const weightForPlace = (place: number) => {
+    if (baseByPlace.has(place)) return baseByPlace.get(place)!;
+    const last = baseByPlace.get(36) ?? 1;
+    return Math.max(1, last * Math.pow(0.96, place - 36));
+  };
+  const topCount = Math.min(8, players);
+  const topThreeCount = Math.min(3, players);
+  const buckets = [
+    { start: 1, end: topThreeCount, share: players >= 3 ? TOP_THREE_SHARE : 1 },
+    { start: 4, end: topCount, share: players >= 8 ? TOP_EIGHT_SHARE - TOP_THREE_SHARE : Math.max(0, 1 - TOP_THREE_SHARE) },
+    { start: 9, end: players, share: players >= 9 ? 1 - TOP_EIGHT_SHARE : 0 },
+  ].filter((bucket) => bucket.start <= bucket.end && bucket.share > 0);
+  const raw = buckets.flatMap((bucket) => {
+    const places = Array.from({ length: bucket.end - bucket.start + 1 }, (_, index) => bucket.start + index);
+    const weightTotal = places.reduce((sum, place) => sum + weightForPlace(place), 0);
+    return places.map((place) => ({
+      place,
+      value: (total * bucket.share * weightForPlace(place)) / weightTotal,
+    }));
+  });
+  const rounded = raw.map((item) => ({ ...item, points: Math.floor(item.value), remainder: item.value - Math.floor(item.value) }));
+  let delta = total - rounded.reduce((sum, item) => sum + item.points, 0);
+  for (const item of [...rounded].sort((a, b) => b.remainder - a.remainder || a.place - b.place)) {
+    if (delta <= 0) break;
+    item.points += 1;
+    delta -= 1;
+  }
+  return [{ place: 'DNF', points: 0 }, ...rounded.sort((a, b) => a.place - b.place).map(({ place, points }) => ({ place, points }))];
+}
+
 function normalizeFinalMultipliers(value: unknown): LeagueFinalMultiplier[] {
   const source = Array.isArray(value) ? value : Array.from({ length: 36 }, (_, index) => ({
     place: index + 1,
@@ -146,6 +191,11 @@ function normalizeFinalMultipliers(value: unknown): LeagueFinalMultiplier[] {
 function serializeLeague(row: LeagueRow) {
   return {
     ...row,
+    expectedplayercount: Number(row.expectedplayercount || 36),
+    showupbonuspoints: Number(row.showupbonuspoints || 0),
+    bestfinishcount: Number(row.bestfinishcount || 7),
+    finalchiprounding: Number(row.finalchiprounding || 100),
+    finalstartingbigblind: Number(row.finalstartingbigblind || 100),
     pointslookup: typeof row.pointslookup === 'string'
       ? JSON.parse(row.pointslookup) as LeaguePointRule[]
       : row.pointslookup,
@@ -236,7 +286,7 @@ async function requireLeagueMember(leagueId: string, userId: string): Promise<bo
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.expectedplayercount, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
@@ -252,7 +302,7 @@ async function getLeagueForUser(leagueId: string, userId: string) {
 leaguesRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.expectedplayercount, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
@@ -275,6 +325,7 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
   const body = req.body as {
     name?: string;
     approvalneeded?: boolean;
+    expectedplayercount?: number;
     showupbonuspoints?: number;
     bestfinishcount?: number;
     pointslookup?: unknown;
@@ -295,6 +346,7 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
   }
   const showupBonus = body.showupbonuspoints == null ? Number(current.showupbonuspoints || 0) : Math.max(0, Math.round(Number(body.showupbonuspoints)));
   const bestFinishCount = body.bestfinishcount == null ? Number(current.bestfinishcount || 7) : Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount))));
+  const expectedPlayerCount = body.expectedplayercount == null ? Number(current.expectedplayercount || 36) : Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount))));
   const pointsLookup = body.pointslookup == null ? normalizePointsLookup(current.pointslookup) : normalizePointsLookup(body.pointslookup);
   const finalEnabled = body.finalenabled == null ? Boolean(current.finalenabled) : Boolean(body.finalenabled);
   const finalMultipliers = body.finalmultiplierlookup == null ? normalizeFinalMultipliers(current.finalmultiplierlookup) : normalizeFinalMultipliers(body.finalmultiplierlookup);
@@ -308,21 +360,23 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
       `UPDATE leagues
        SET name = $2,
            approvalneeded = $3,
-           showupbonuspoints = $4,
-           bestfinishcount = $5,
-           pointslookup = $6,
-           finalenabled = $7,
-           finalmultiplierlookup = $8,
-           finalchiprounding = $9,
-           finalstartingbigblind = $10
+           expectedplayercount = $4,
+           showupbonuspoints = $5,
+           bestfinishcount = $6,
+           pointslookup = $7,
+           finalenabled = $8,
+           finalmultiplierlookup = $9,
+           finalchiprounding = $10,
+           finalstartingbigblind = $11
        WHERE leagueid = $1
-       RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, showupbonuspoints,
+       RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, expectedplayercount, showupbonuspoints,
                  bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup,
                  finalchiprounding, finalstartingbigblind, active, createdat`,
       [
         req.params.id,
         name,
         Boolean(body.approvalneeded ?? current.approvalneeded),
+        expectedPlayerCount,
         showupBonus,
         bestFinishCount,
         JSON.stringify(pointsLookup),
@@ -366,15 +420,18 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
-  const body = req.body as { name?: string; approvalneeded?: boolean; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown };
+  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown };
   const name = String(body.name ?? '').trim().slice(0, 160);
   if (!name) {
     res.status(400).json({ error: 'League name required.' });
     return;
   }
+  const expectedPlayerCount = Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount ?? 36))));
   const showupBonus = Math.max(0, Math.round(Number(body.showupbonuspoints ?? 300)));
   const bestFinishCount = Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount ?? 7))));
-  const pointsLookup = normalizePointsLookup(body.pointslookup);
+  const pointsLookup = body.pointslookup == null
+    ? generatePointsLookup(expectedPlayerCount)
+    : normalizePointsLookup(body.pointslookup);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const invitecode = generateInviteCode();
@@ -382,10 +439,10 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
     try {
       await client.query('BEGIN');
       const leagueResult = await client.query<{ leagueid: string }>(
-        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, showupbonuspoints, bestfinishcount, pointslookup, active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, expectedplayercount, showupbonuspoints, bestfinishcount, pointslookup, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
          RETURNING leagueid`,
-        [req.userId, name, invitecode, Boolean(body.approvalneeded), showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
+        [req.userId, name, invitecode, Boolean(body.approvalneeded), expectedPlayerCount, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
       );
       const league = leagueResult.rows[0];
       await client.query(

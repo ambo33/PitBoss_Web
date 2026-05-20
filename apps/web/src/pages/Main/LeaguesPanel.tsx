@@ -6,6 +6,26 @@ import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 const DEFAULT_POINTS_PREVIEW = '1st 671 / 2nd 448 / 3rd 336';
+const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
+  { place: 'DNF', points: 0 },
+  { place: 1, points: 671 }, { place: 2, points: 448 }, { place: 3, points: 336 },
+  { place: 4, points: 269 }, { place: 5, points: 224 }, { place: 6, points: 192 },
+  { place: 7, points: 168 }, { place: 8, points: 150 }, { place: 9, points: 135 },
+  { place: 10, points: 122 }, { place: 11, points: 112 }, { place: 12, points: 104 },
+  { place: 13, points: 96 }, { place: 14, points: 90 }, { place: 15, points: 84 },
+  { place: 16, points: 79 }, { place: 17, points: 75 }, { place: 18, points: 71 },
+  { place: 19, points: 68 }, { place: 20, points: 64 }, { place: 21, points: 61 },
+  { place: 22, points: 59 }, { place: 23, points: 56 }, { place: 24, points: 54 },
+  { place: 25, points: 52 }, { place: 26, points: 50 }, { place: 27, points: 48 },
+  { place: 28, points: 47 }, { place: 29, points: 45 }, { place: 30, points: 44 },
+  { place: 31, points: 42 }, { place: 32, points: 41 }, { place: 33, points: 40 },
+  { place: 34, points: 39 }, { place: 35, points: 38 }, { place: 36, points: 37 },
+];
+const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
+const TOP_THREE_SHARE = BASE_POINTS_LOOKUP
+  .filter((rule) => typeof rule.place === 'number' && rule.place <= 3)
+  .reduce((sum, rule) => sum + rule.points, 0) / BASE_POINT_TOTAL;
+const TOP_EIGHT_SHARE = 0.5;
 
 export default function LeaguesPanel() {
   const qc = useQueryClient();
@@ -220,7 +240,7 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
           <p className="eyebrow">League standings</p>
           <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-4">
-            <LeagueHeroStat label="Players" value={detail.members.filter((member) => member.approved).length} />
+            <LeagueHeroStat label="Players" value={`${detail.members.filter((member) => member.approved).length}/${detail.league.expectedplayercount}`} />
             <LeagueHeroStat label="Events" value={detail.events.length} />
             <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
             <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
@@ -308,7 +328,7 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
       />
       <PointsEditorModal
         open={pointsModalOpen}
-        points={detail.league.pointslookup}
+        league={detail.league}
         loading={updateLeagueMutation.isPending}
         error={updateLeagueMutation.error?.message}
         onClose={() => setPointsModalOpen(false)}
@@ -472,23 +492,23 @@ function ResultLogger({
 
 function PointsEditorModal({
   open,
-  points,
+  league,
   loading,
   error,
   onClose,
   onSubmit,
 }: {
   open: boolean;
-  points: LeaguePointRule[];
+  league: League;
   loading: boolean;
   error?: string;
   onClose: () => void;
   onSubmit: (points: LeaguePointRule[]) => void;
 }) {
-  const [draft, setDraft] = useState<LeaguePointRule[]>(points);
+  const [draft, setDraft] = useState<LeaguePointRule[]>(league.pointslookup);
   useEffect(() => {
-    if (open) setDraft(points);
-  }, [open, points]);
+    if (open) setDraft(league.pointslookup);
+  }, [league.pointslookup, open]);
   const rows = draft.filter((rule) => rule.place !== 'DNF').sort((a, b) => Number(a.place) - Number(b.place));
   const dnf = draft.find((rule) => rule.place === 'DNF') ?? { place: 'DNF' as const, points: 0 };
   const updateRule = (place: number | 'DNF', pointsValue: string) => {
@@ -520,6 +540,9 @@ function PointsEditorModal({
         <p className="text-sm leading-6 text-pit-text">
           Updating these values recalculates all logged league finishes.
         </p>
+        <button type="button" className="btn-ghost w-full justify-center" onClick={() => setDraft(generateLeaguePoints(league.expectedplayercount || 36))}>
+          Help me decide from {league.expectedplayercount || 36} players
+        </button>
         <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
           <div className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
             <span className="font-semibold text-white">DNF</span>
@@ -649,14 +672,18 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; showupbonuspoints: number; bestfinishcount: number }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[] }) => void;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState('Season Championship League');
   const [approvalneeded, setApprovalneeded] = useState(false);
+  const [expectedplayercount, setExpectedplayercount] = useState('36');
   const [showupbonuspoints, setShowupbonuspoints] = useState('300');
   const [bestfinishcount, setBestfinishcount] = useState('7');
+  const [pointslookup, setPointslookup] = useState<LeaguePointRule[]>(() => generateLeaguePoints(36));
+  const playerCount = Math.max(2, Number(expectedplayercount) || 36);
+  const pointTotal = pointslookup.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 
   return (
     <Modal
@@ -669,12 +696,14 @@ function CreateLeagueModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || !name.trim()}
+            disabled={loading || !name.trim() || !Number(expectedplayercount)}
             onClick={() => onSubmit({
               name,
               approvalneeded,
+              expectedplayercount: playerCount,
               showupbonuspoints: Number(showupbonuspoints) || 0,
               bestfinishcount: Number(bestfinishcount) || 7,
+              pointslookup,
             })}
           >
             {loading ? 'Creating...' : 'Create League'}
@@ -685,7 +714,16 @@ function CreateLeagueModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" placeholder="League name" value={name} onChange={(event) => setName(event.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Expected players</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={expectedplayercount}
+              onChange={(event) => setExpectedplayercount(event.target.value.replace(/\D/g, ''))}
+            />
+          </label>
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Show-up bonus</span>
             <input className="input" inputMode="numeric" value={showupbonuspoints} onChange={(event) => setShowupbonuspoints(event.target.value)} />
@@ -698,6 +736,22 @@ function CreateLeagueModal({
         <p className="text-sm leading-6 text-pit-text">
           Placement point rules will be configured next. This first step creates the league, invite code, and season scoring basics.
         </p>
+        <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Suggested point chart</p>
+              <p className="mt-1 text-xs text-pit-muted">
+                {formatNumber(pointTotal)} points per event. Top 8 share about 50%; top 3 share {Math.round(TOP_THREE_SHARE * 10000) / 100}%.
+              </p>
+            </div>
+            <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => setPointslookup(generateLeaguePoints(playerCount))}>
+              Help me decide
+            </button>
+          </div>
+          <p className="mt-3 text-xs font-mono text-pit-teal">
+            {pointslookup.filter((rule) => rule.place !== 'DNF').slice(0, 8).map((rule) => `${rule.place}${ordinal(Number(rule.place))} ${rule.points}`).join(' / ')}
+          </p>
+        </div>
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" checked={approvalneeded} onChange={(event) => setApprovalneeded(event.target.checked)} />
           <span className="text-sm text-pit-text">Require approval to join</span>
@@ -819,6 +873,43 @@ function defaultFinalMultipliers(): LeagueFinalMultiplier[] {
     place: index + 1,
     multiplier: index === 0 ? 0 : Math.max(2, 19 - index),
   }));
+}
+
+function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 100): LeaguePointRule[] {
+  const players = Math.max(1, Math.min(500, Math.round(Number(playerCount || 36))));
+  const total = Math.max(players, Math.round(Number(totalPoints || players * 100)));
+  const baseByPlace = new Map<number, number>();
+  for (const rule of BASE_POINTS_LOOKUP) {
+    if (typeof rule.place === 'number') baseByPlace.set(rule.place, rule.points);
+  }
+  const weightForPlace = (place: number) => {
+    if (baseByPlace.has(place)) return baseByPlace.get(place)!;
+    const last = baseByPlace.get(36) ?? 1;
+    return Math.max(1, last * Math.pow(0.96, place - 36));
+  };
+  const topCount = Math.min(8, players);
+  const topThreeCount = Math.min(3, players);
+  const buckets = [
+    { start: 1, end: topThreeCount, share: players >= 3 ? TOP_THREE_SHARE : 1 },
+    { start: 4, end: topCount, share: players >= 8 ? TOP_EIGHT_SHARE - TOP_THREE_SHARE : Math.max(0, 1 - TOP_THREE_SHARE) },
+    { start: 9, end: players, share: players >= 9 ? 1 - TOP_EIGHT_SHARE : 0 },
+  ].filter((bucket) => bucket.start <= bucket.end && bucket.share > 0);
+  const raw = buckets.flatMap((bucket) => {
+    const places = Array.from({ length: bucket.end - bucket.start + 1 }, (_, index) => bucket.start + index);
+    const weightTotal = places.reduce((sum, place) => sum + weightForPlace(place), 0);
+    return places.map((place) => ({
+      place,
+      value: (total * bucket.share * weightForPlace(place)) / weightTotal,
+    }));
+  });
+  const rounded = raw.map((item) => ({ ...item, points: Math.floor(item.value), remainder: item.value - Math.floor(item.value) }));
+  let delta = total - rounded.reduce((sum, item) => sum + item.points, 0);
+  for (const item of [...rounded].sort((a, b) => b.remainder - a.remainder || a.place - b.place)) {
+    if (delta <= 0) break;
+    item.points += 1;
+    delta -= 1;
+  }
+  return [{ place: 'DNF', points: 0 }, ...rounded.sort((a, b) => a.place - b.place).map(({ place, points }) => ({ place, points }))];
 }
 
 function formatNumber(value: number) {

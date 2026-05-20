@@ -99,9 +99,9 @@ export const api = {
 
   // Leagues
   getLeagues: () => get<League[]>('/leagues'),
-  createLeague: (data: { name: string; approvalneeded?: boolean; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
+  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
     post<{ leagueid: string; invitecode: string }>('/leagues', data),
-  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
     patch<{ league: League }>(`/leagues/${id}`, data),
   deleteLeague: (id: string) =>
     del<{ success: boolean }>(`/leagues/${id}`),
@@ -331,6 +331,7 @@ export interface League {
   name: string;
   invitecode: string;
   approvalneeded: boolean;
+  expectedplayercount: number;
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[];
