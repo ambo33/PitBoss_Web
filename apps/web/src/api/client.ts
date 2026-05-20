@@ -99,12 +99,16 @@ export const api = {
 
   // Leagues
   getLeagues: () => get<League[]>('/leagues'),
-  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
+  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
     post<{ leagueid: string; invitecode: string }>('/leagues', data),
-  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
     patch<{ league: League }>(`/leagues/${id}`, data),
   deleteLeague: (id: string) =>
     del<{ success: boolean }>(`/leagues/${id}`),
+  createLeaguePayment: (id: string, data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
+    post<{ payment: LeaguePayment }>(`/leagues/${id}/payments`, data),
+  deleteLeaguePayment: (id: string, paymentId: string) =>
+    del<{ success: boolean }>(`/leagues/${id}/payments/${paymentId}`),
   joinLeague: (invitecode: string) =>
     post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
   getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
@@ -332,6 +336,8 @@ export interface League {
   invitecode: string;
   approvalneeded: boolean;
   expectedplayercount: number;
+  leaguefee: number;
+  pereventfee: number;
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[];
@@ -377,6 +383,21 @@ export interface LeagueResult {
   createdat: string;
   updatedat: string;
 }
+export type LeaguePaymentType = 'league' | 'event' | 'other';
+export interface LeaguePayment {
+  paymentid: string;
+  leagueid: string;
+  userid: string;
+  displayname?: string | null;
+  eventid?: string | null;
+  eventname?: string | null;
+  paymenttype: LeaguePaymentType | string;
+  amount: number;
+  paidat: string;
+  note?: string | null;
+  recordedby?: string | null;
+  createdat: string;
+}
 export interface LeagueStanding {
   userid: string;
   displayname?: string | null;
@@ -401,6 +422,7 @@ export interface LeagueDetail {
   members: LeagueMember[];
   events: LeagueEvent[];
   results: LeagueResult[];
+  payments: LeaguePayment[];
   standings: LeagueStanding[];
   finalstacks: LeagueFinalStack[];
 }

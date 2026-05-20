@@ -59,6 +59,8 @@ type LeagueRow = {
   invitecode: string;
   approvalneeded: boolean;
   expectedplayercount: number;
+  leaguefee: number;
+  pereventfee: number;
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[] | string;
@@ -106,6 +108,20 @@ type LeagueResultRow = {
   loggedby: string | null;
   createdat: string;
   updatedat: string;
+};
+type LeaguePaymentRow = {
+  paymentid: string;
+  leagueid: string;
+  userid: string;
+  displayname: string | null;
+  eventid: string | null;
+  eventname: string | null;
+  paymenttype: string;
+  amount: number;
+  paidat: string;
+  note: string | null;
+  recordedby: string | null;
+  createdat: string;
 };
 
 function generateInviteCode(length = 6): string {
@@ -192,6 +208,8 @@ function serializeLeague(row: LeagueRow) {
   return {
     ...row,
     expectedplayercount: Number(row.expectedplayercount || 36),
+    leaguefee: Number(row.leaguefee || 0),
+    pereventfee: Number(row.pereventfee || 0),
     showupbonuspoints: Number(row.showupbonuspoints || 0),
     bestfinishcount: Number(row.bestfinishcount || 7),
     finalchiprounding: Number(row.finalchiprounding || 100),
@@ -286,7 +304,7 @@ async function requireLeagueMember(leagueId: string, userId: string): Promise<bo
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.expectedplayercount, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
@@ -302,7 +320,7 @@ async function getLeagueForUser(leagueId: string, userId: string) {
 leaguesRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.expectedplayercount, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
@@ -326,6 +344,8 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
     name?: string;
     approvalneeded?: boolean;
     expectedplayercount?: number;
+    leaguefee?: number;
+    pereventfee?: number;
     showupbonuspoints?: number;
     bestfinishcount?: number;
     pointslookup?: unknown;
@@ -345,6 +365,8 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
     return;
   }
   const showupBonus = body.showupbonuspoints == null ? Number(current.showupbonuspoints || 0) : Math.max(0, Math.round(Number(body.showupbonuspoints)));
+  const leagueFee = body.leaguefee == null ? Number(current.leaguefee || 0) : Math.max(0, Math.round(Number(body.leaguefee) * 100) / 100);
+  const perEventFee = body.pereventfee == null ? Number(current.pereventfee || 0) : Math.max(0, Math.round(Number(body.pereventfee) * 100) / 100);
   const bestFinishCount = body.bestfinishcount == null ? Number(current.bestfinishcount || 7) : Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount))));
   const expectedPlayerCount = body.expectedplayercount == null ? Number(current.expectedplayercount || 36) : Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount))));
   const pointsLookup = body.pointslookup == null ? normalizePointsLookup(current.pointslookup) : normalizePointsLookup(body.pointslookup);
@@ -361,15 +383,17 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
        SET name = $2,
            approvalneeded = $3,
            expectedplayercount = $4,
-           showupbonuspoints = $5,
-           bestfinishcount = $6,
-           pointslookup = $7,
-           finalenabled = $8,
-           finalmultiplierlookup = $9,
-           finalchiprounding = $10,
-           finalstartingbigblind = $11
+           leaguefee = $5,
+           pereventfee = $6,
+           showupbonuspoints = $7,
+           bestfinishcount = $8,
+           pointslookup = $9,
+           finalenabled = $10,
+           finalmultiplierlookup = $11,
+           finalchiprounding = $12,
+           finalstartingbigblind = $13
        WHERE leagueid = $1
-       RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, expectedplayercount, showupbonuspoints,
+       RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints,
                  bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup,
                  finalchiprounding, finalstartingbigblind, active, createdat`,
       [
@@ -377,6 +401,8 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
         name,
         Boolean(body.approvalneeded ?? current.approvalneeded),
         expectedPlayerCount,
+        leagueFee,
+        perEventFee,
         showupBonus,
         bestFinishCount,
         JSON.stringify(pointsLookup),
@@ -420,13 +446,15 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
-  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown };
+  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown };
   const name = String(body.name ?? '').trim().slice(0, 160);
   if (!name) {
     res.status(400).json({ error: 'League name required.' });
     return;
   }
   const expectedPlayerCount = Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount ?? 36))));
+  const leagueFee = Math.max(0, Math.round(Number(body.leaguefee ?? 0) * 100) / 100);
+  const perEventFee = Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100);
   const showupBonus = Math.max(0, Math.round(Number(body.showupbonuspoints ?? 300)));
   const bestFinishCount = Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount ?? 7))));
   const pointsLookup = body.pointslookup == null
@@ -439,10 +467,10 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
     try {
       await client.query('BEGIN');
       const leagueResult = await client.query<{ leagueid: string }>(
-        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, expectedplayercount, showupbonuspoints, bestfinishcount, pointslookup, active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+        `INSERT INTO leagues (userid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints, bestfinishcount, pointslookup, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
          RETURNING leagueid`,
-        [req.userId, name, invitecode, Boolean(body.approvalneeded), expectedPlayerCount, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
+        [req.userId, name, invitecode, Boolean(body.approvalneeded), expectedPlayerCount, leagueFee, perEventFee, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
       );
       const league = leagueResult.rows[0];
       await client.query(
@@ -522,14 +550,73 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      WHERE r.leagueid = $1`,
     [league.leagueid]
   );
+  const payments = await query<LeaguePaymentRow>(
+    `SELECT p.paymentid, p.leagueid, p.userid,
+            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            p.eventid, e.name AS eventname, p.paymenttype, CAST(p.amount AS DECIMAL) AS amount,
+            p.paidat, p.note, p.recordedby, p.createdat
+     FROM leaguepayments p
+     JOIN users u ON u.guid = p.userid
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     LEFT JOIN leagueevents e ON e.eventid = p.eventid
+     WHERE p.leagueid = $1
+     ORDER BY p.paidat DESC, p.createdat DESC`,
+    [league.leagueid]
+  );
   res.json({
     league,
     members,
     events,
     results,
+    payments: payments.map((payment) => ({ ...payment, amount: Number(payment.amount || 0) })),
     standings: buildStandings(members, results, Number(league.bestfinishcount || 7)),
     finalstacks: buildFinalStacks(buildStandings(members, results, Number(league.bestfinishcount || 7)), league),
   });
+});
+
+leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as { userid?: string; eventid?: string | null; paymenttype?: string; amount?: number; paidat?: string; note?: string };
+  const userId = String(body.userid ?? '');
+  if (!await requireLeagueMember(req.params.id, userId)) {
+    res.status(400).json({ error: 'Player is not an approved league member.' });
+    return;
+  }
+  const paymentType = ['league', 'event', 'other'].includes(String(body.paymenttype)) ? String(body.paymenttype) : 'league';
+  const amount = Math.max(0, Math.round(Number(body.amount ?? 0) * 100) / 100);
+  if (!amount) {
+    res.status(400).json({ error: 'Payment amount required.' });
+    return;
+  }
+  const eventId = body.eventid ? String(body.eventid) : null;
+  if (eventId) {
+    const event = await queryOne(`SELECT 1 FROM leagueevents WHERE leagueid = $1 AND eventid = $2`, [req.params.id, eventId]);
+    if (!event) {
+      res.status(400).json({ error: 'Event is not part of this league.' });
+      return;
+    }
+  }
+  const paidAt = body.paidat ? String(body.paidat).slice(0, 10) : null;
+  const note = String(body.note ?? '').trim().slice(0, 240) || null;
+  const row = await queryOne<LeaguePaymentRow>(
+    `INSERT INTO leaguepayments (leagueid, userid, eventid, paymenttype, amount, paidat, note, recordedby)
+     VALUES ($1, $2, $3, $4, $5, COALESCE($6::DATE, current_date()), $7, $8)
+     RETURNING paymentid, leagueid, userid, eventid, paymenttype, CAST(amount AS DECIMAL) AS amount, paidat, note, recordedby, createdat`,
+    [req.params.id, userId, eventId, paymentType, amount, paidAt, note, req.userId]
+  );
+  res.status(201).json({ payment: row ? { ...row, amount: Number(row.amount || 0) } : null });
+});
+
+leaguesRouter.delete('/:id/payments/:paymentId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  await query(`DELETE FROM leaguepayments WHERE leagueid = $1 AND paymentid = $2`, [req.params.id, req.params.paymentId]);
+  res.json({ success: true });
 });
 
 leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {

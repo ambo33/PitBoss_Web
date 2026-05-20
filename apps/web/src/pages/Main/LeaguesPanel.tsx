@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Copy, Crown, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, Users } from 'lucide-react';
-import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeaguePointRule } from '../../api/client';
+import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, Users } from 'lucide-react';
+import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -149,6 +149,7 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
   const [finalModalOpen, setFinalModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid],
@@ -170,7 +171,7 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const updateLeagueMutation = useMutation({
-    mutationFn: (payload: Partial<Pick<League, 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+    mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
       api.updateLeague(league.leagueid, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
@@ -178,6 +179,18 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
       setPointsModalOpen(false);
       setFinalModalOpen(false);
     },
+  });
+  const createPaymentMutation = useMutation({
+    mutationFn: (payload: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
+      api.createLeaguePayment(league.leagueid, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      setPaymentModalOpen(false);
+    },
+  });
+  const deletePaymentMutation = useMutation({
+    mutationFn: (paymentId: string) => api.deleteLeaguePayment(league.leagueid, paymentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const deleteLeagueMutation = useMutation({
     mutationFn: () => api.deleteLeague(league.leagueid),
@@ -213,6 +226,10 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
               <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setFinalModalOpen(true)}>
                 <Trophy size={14} />
                 Final
+              </button>
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setPaymentModalOpen(true)}>
+                <DollarSign size={14} />
+                Payment
               </button>
               <button className="btn-primary gap-2 px-3 py-2 text-xs" onClick={() => setEventModalOpen(true)}>
                 <Plus size={14} />
@@ -254,6 +271,14 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
           </div>
         </div>
       </section>
+
+      <PaymentTracker
+        detail={detail}
+        onSettings={(payload) => updateLeagueMutation.mutate(payload)}
+        onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
+        settingsLoading={updateLeagueMutation.isPending}
+        deleteLoading={deletePaymentMutation.isPending}
+      />
 
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <section className="card space-y-3">
@@ -341,6 +366,14 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
         error={updateLeagueMutation.error?.message}
         onClose={() => setFinalModalOpen(false)}
         onSubmit={(payload) => updateLeagueMutation.mutate(payload)}
+      />
+      <RecordPaymentModal
+        open={paymentModalOpen}
+        detail={detail}
+        loading={createPaymentMutation.isPending}
+        error={createPaymentMutation.error?.message}
+        onClose={() => setPaymentModalOpen(false)}
+        onSubmit={(payload) => createPaymentMutation.mutate(payload)}
       />
     </div>
   );
@@ -437,6 +470,97 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function PaymentTracker({
+  detail,
+  onSettings,
+  onDeletePayment,
+  settingsLoading,
+  deleteLoading,
+}: {
+  detail: LeagueDetail;
+  onSettings: (payload: Pick<League, 'leaguefee' | 'pereventfee'>) => void;
+  onDeletePayment: (paymentId: string) => void;
+  settingsLoading: boolean;
+  deleteLoading: boolean;
+}) {
+  const [leagueFee, setLeagueFee] = useState(String(detail.league.leaguefee || 0));
+  const [perEventFee, setPerEventFee] = useState(String(detail.league.pereventfee || 0));
+  useEffect(() => {
+    setLeagueFee(String(detail.league.leaguefee || 0));
+    setPerEventFee(String(detail.league.pereventfee || 0));
+  }, [detail.league.leaguefee, detail.league.pereventfee]);
+  const approvedMembers = detail.members.filter((member) => member.approved);
+  const eventCount = detail.events.length;
+  const totalDuePerPlayer = Number(detail.league.leaguefee || 0) + Number(detail.league.pereventfee || 0) * eventCount;
+  const totalPaid = detail.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const totalDue = approvedMembers.length * totalDuePerPlayer;
+
+  return (
+    <section className="card space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="eyebrow">Payment audit</p>
+          <h3 className="text-xl font-bold text-white">League Fees</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="chip">{formatCurrency(totalPaid)} paid</span>
+          <span className="chip">{formatCurrency(Math.max(0, totalDue - totalPaid))} open</span>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">League fee</span>
+          <input className="input" inputMode="decimal" value={leagueFee} onChange={(event) => setLeagueFee(event.target.value.replace(/[^\d.]/g, ''))} />
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Per event fee</span>
+          <input className="input" inputMode="decimal" value={perEventFee} onChange={(event) => setPerEventFee(event.target.value.replace(/[^\d.]/g, ''))} />
+        </label>
+        <button className="btn-primary px-3 py-2 text-sm" disabled={settingsLoading} onClick={() => onSettings({ leaguefee: Number(leagueFee) || 0, pereventfee: Number(perEventFee) || 0 })}>
+          <Save size={14} />
+          Save Fees
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
+        <div className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px] gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted">
+          <span>Player</span>
+          <span className="text-right">Due</span>
+          <span className="text-right">Paid</span>
+          <span className="text-right">Open</span>
+        </div>
+        {approvedMembers.map((member) => {
+          const paid = detail.payments.filter((payment) => payment.userid === member.userid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const open = Math.max(0, totalDuePerPlayer - paid);
+          return (
+            <div key={member.userid} className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px] gap-2 border-b border-pit-border/50 px-3 py-3 text-sm last:border-0">
+              <span className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</span>
+              <span className="text-right text-pit-text">{formatCurrency(totalDuePerPlayer)}</span>
+              <span className="text-right text-pit-teal">{formatCurrency(paid)}</span>
+              <span className={`text-right font-semibold ${open ? 'text-pit-gold' : 'text-pit-muted'}`}>{formatCurrency(open)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+        {detail.payments.map((payment) => (
+          <div key={payment.paymentid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_90px_90px_36px] sm:items-center">
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-white">{payment.displayname ?? 'Player'} <span className="text-xs font-normal text-pit-muted">({payment.paymenttype})</span></p>
+              <p className="mt-1 truncate text-xs text-pit-muted">{payment.eventname ?? 'Season'} · {String(payment.paidat).slice(0, 10)}{payment.note ? ` · ${payment.note}` : ''}</p>
+            </div>
+            <span className="font-mono text-pit-teal sm:text-right">{formatCurrency(payment.amount)}</span>
+            <span className="text-xs text-pit-muted sm:text-right">{String(payment.createdat).slice(0, 10)}</span>
+            <button className="btn-ghost h-9 w-9 p-0 text-red-300" disabled={deleteLoading} onClick={() => onDeletePayment(payment.paymentid)}>
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        {detail.payments.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No payments recorded yet.</p>}
+      </div>
+    </section>
   );
 }
 
@@ -672,13 +796,15 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[] }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[] }) => void;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState('Season Championship League');
   const [approvalneeded, setApprovalneeded] = useState(false);
   const [expectedplayercount, setExpectedplayercount] = useState('36');
+  const [leaguefee, setLeaguefee] = useState('0');
+  const [pereventfee, setPereventfee] = useState('0');
   const [showupbonuspoints, setShowupbonuspoints] = useState('300');
   const [bestfinishcount, setBestfinishcount] = useState('7');
   const [pointslookup, setPointslookup] = useState<LeaguePointRule[]>(() => generateLeaguePoints(36));
@@ -701,6 +827,8 @@ function CreateLeagueModal({
               name,
               approvalneeded,
               expectedplayercount: playerCount,
+              leaguefee: Number(leaguefee) || 0,
+              pereventfee: Number(pereventfee) || 0,
               showupbonuspoints: Number(showupbonuspoints) || 0,
               bestfinishcount: Number(bestfinishcount) || 7,
               pointslookup,
@@ -731,6 +859,16 @@ function CreateLeagueModal({
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Best finishes scored</span>
             <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value)} />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">League fee</span>
+            <input className="input" inputMode="decimal" value={leaguefee} onChange={(event) => setLeaguefee(event.target.value.replace(/[^\d.]/g, ''))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Per event fee</span>
+            <input className="input" inputMode="decimal" value={pereventfee} onChange={(event) => setPereventfee(event.target.value.replace(/[^\d.]/g, ''))} />
           </label>
         </div>
         <p className="text-sm leading-6 text-pit-text">
@@ -786,6 +924,106 @@ function JoinLeagueModal({ open, onClose, onSubmit, loading, error }: {
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input font-mono uppercase tracking-widest" placeholder="League code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
+      </div>
+    </Modal>
+  );
+}
+
+function RecordPaymentModal({
+  open,
+  detail,
+  loading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  detail: LeagueDetail;
+  loading: boolean;
+  error?: string;
+  onClose: () => void;
+  onSubmit: (data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) => void;
+}) {
+  const members = detail.members.filter((member) => member.approved);
+  const [userid, setUserid] = useState(members[0]?.userid ?? '');
+  const [paymenttype, setPaymenttype] = useState<LeaguePaymentType>('league');
+  const [eventid, setEventid] = useState('');
+  const [amount, setAmount] = useState(String(detail.league.leaguefee || ''));
+  const [paidat, setPaidat] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setUserid(members[0]?.userid ?? '');
+    setPaymenttype('league');
+    setEventid('');
+    setAmount(String(detail.league.leaguefee || ''));
+    setPaidat(new Date().toISOString().slice(0, 10));
+    setNote('');
+  }, [detail.league.leaguefee, members, open]);
+
+  const selectedMember = members.find((member) => member.userid === userid);
+  return (
+    <Modal
+      title="Record Payment"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading || !userid || !Number(amount)}
+            onClick={() => onSubmit({ userid, eventid: paymenttype === 'event' ? eventid || null : null, paymenttype, amount: Number(amount) || 0, paidat, note })}
+          >
+            {loading ? 'Saving...' : 'Save Payment'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Player</span>
+          <select className="input" value={userid} onChange={(event) => setUserid(event.target.value)}>
+            {members.map((member: LeagueMember) => <option key={member.userid} value={member.userid}>{member.displayname ?? 'Player'}</option>)}
+          </select>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Type</span>
+            <select
+              className="input"
+              value={paymenttype}
+              onChange={(event) => {
+                const next = event.target.value as LeaguePaymentType;
+                setPaymenttype(next);
+                setAmount(String(next === 'event' ? detail.league.pereventfee || '' : detail.league.leaguefee || ''));
+              }}
+            >
+              <option value="league">League fee</option>
+              <option value="event">Event fee</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Amount</span>
+            <input className="input" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ''))} />
+          </label>
+        </div>
+        {paymenttype === 'event' && (
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event</span>
+            <select className="input" value={eventid} onChange={(event) => setEventid(event.target.value)}>
+              <option value="">No event selected</option>
+              {detail.events.map((event) => <option key={event.eventid} value={event.eventid}>{event.name}</option>)}
+            </select>
+          </label>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input className="input" type="date" value={paidat} onChange={(event) => setPaidat(event.target.value)} />
+          <input className="input" placeholder={`Note for ${selectedMember?.displayname ?? 'payment'}`} value={note} onChange={(event) => setNote(event.target.value)} />
+        </div>
       </div>
     </Modal>
   );
@@ -914,4 +1152,8 @@ function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 1
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 }
