@@ -28,6 +28,10 @@ import { initSocket } from './socket';
 dotenv.config();
 dotenv.config({ path: path.resolve(__dirname, '../../../.env'), override: false });
 
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled promise rejection', err);
+});
+
 const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
