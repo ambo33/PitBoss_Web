@@ -580,6 +580,43 @@ leaguesRouter.post('/:id/members/guest', async (req: Request, res: Response) => 
   }
 });
 
+leaguesRouter.delete('/:id/members/:userId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const member = await queryOne<{ userid: string; isadmin: boolean; isowner: boolean }>(
+    `SELECT lm.userid, lm.admin AS isadmin, l.userid = lm.userid AS isowner
+     FROM leaguemembers lm
+     JOIN leagues l ON l.leagueid = lm.leagueid
+     WHERE lm.leagueid = $1 AND lm.userid = $2`,
+    [req.params.id, req.params.userId]
+  );
+  if (!member) {
+    res.status(404).json({ error: 'League player not found.' });
+    return;
+  }
+  if (member.isadmin || member.isowner) {
+    res.status(400).json({ error: 'League admins cannot be removed here.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM leaguepayments WHERE leagueid = $1 AND userid = $2`, [req.params.id, req.params.userId]);
+    await client.query(`DELETE FROM leagueresults WHERE leagueid = $1 AND userid = $2`, [req.params.id, req.params.userId]);
+    await client.query(`DELETE FROM leaguemembers WHERE leagueid = $1 AND userid = $2`, [req.params.id, req.params.userId]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
   if (!leagueRow) {

@@ -113,6 +113,8 @@ export const api = {
     post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
   addLeagueGuest: (id: string, displayname: string) =>
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname }),
+  removeLeagueMember: (id: string, userId: string) =>
+    del<{ success: boolean }>(`/leagues/${id}/members/${userId}`),
   getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
   createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) =>
     post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),

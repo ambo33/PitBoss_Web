@@ -168,6 +168,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       qc.invalidateQueries({ queryKey: ['leagues'] });
     },
   });
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) => api.removeLeagueMember(league.leagueid, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
 
   const resultMutation = useMutation({
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
@@ -289,8 +296,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           <LeagueMembersCard
             detail={detail}
             onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
-            loading={addGuestMutation.isPending}
-            error={addGuestMutation.error?.message}
+            onRemoveMember={(userId) => removeMemberMutation.mutate(userId)}
+            addLoading={addGuestMutation.isPending}
+            removeLoading={removeMemberMutation.isPending}
+            error={addGuestMutation.error?.message ?? removeMemberMutation.error?.message}
           />
           <section className="card space-y-3">
             <div className="flex items-center justify-between">
@@ -488,12 +497,16 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
 function LeagueMembersCard({
   detail,
   onAddGuest,
-  loading,
+  onRemoveMember,
+  addLoading,
+  removeLoading,
   error,
 }: {
   detail: LeagueDetail;
   onAddGuest: (displayname: string) => void;
-  loading: boolean;
+  onRemoveMember: (userId: string) => void;
+  addLoading: boolean;
+  removeLoading: boolean;
   error?: string;
 }) {
   const [guestName, setGuestName] = useState('');
@@ -534,9 +547,9 @@ function LeagueMembersCard({
             />
           </label>
           {error && <p className="text-xs text-red-300">{error}</p>}
-          <button className="btn-primary w-full justify-center px-3 py-2 text-xs" disabled={loading || !guestName.trim()} onClick={submitGuest}>
+          <button className="btn-primary w-full justify-center px-3 py-2 text-xs" disabled={addLoading || !guestName.trim()} onClick={submitGuest}>
             <UserPlus size={13} />
-            {loading ? 'Adding...' : 'Add guest'}
+            {addLoading ? 'Adding...' : 'Add guest'}
           </button>
         </div>
       )}
@@ -549,6 +562,20 @@ function LeagueMembersCard({
               <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
                 <Crown size={9} className="mr-0.5" /> Admin
               </span>
+            )}
+            {detail.league.isadmin && !member.isadmin && (
+              <button
+                className="btn-ghost h-8 w-8 shrink-0 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
+                disabled={removeLoading}
+                title={`Remove ${member.displayname ?? 'player'}`}
+                onClick={() => {
+                  if (window.confirm(`Remove ${member.displayname ?? 'this player'} from ${detail.league.name}? Their league finishes and payment records will be removed too.`)) {
+                    onRemoveMember(member.userid);
+                  }
+                }}
+              >
+                <Trash2 size={13} />
+              </button>
             )}
           </div>
         ))}
