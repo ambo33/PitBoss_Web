@@ -111,6 +111,8 @@ export const api = {
     del<{ success: boolean }>(`/leagues/${id}/payments/${paymentId}`),
   joinLeague: (invitecode: string) =>
     post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
+  addLeagueGuest: (id: string, displayname: string) =>
+    post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname }),
   getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
   createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number }) =>
     post<{ event: LeagueEvent }>(`/leagues/${id}/events`, data),

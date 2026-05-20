@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { query, queryOne, pool } from '../db';
 import { requireAuth } from '../middleware/auth';
+import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -131,6 +133,10 @@ function generateInviteCode(length = 6): string {
 
 function normalizeInviteCode(value: string | undefined): string {
   return (value ?? '').trim().toUpperCase();
+}
+
+function createGuestEmail() {
+  return `guest+${crypto.randomUUID()}@guest.pokerplanner.bet`;
 }
 
 function normalizePointsLookup(value: unknown): LeaguePointRule[] {
@@ -512,6 +518,62 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
     [league.leagueid, req.userId, !league.approvalneeded]
   );
   res.json({ leagueid: league.leagueid, pending: Boolean(league.approvalneeded) });
+});
+
+leaguesRouter.post('/:id/members/guest', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const displayname = String((req.body as { displayname?: string }).displayname ?? '').trim().slice(0, 120);
+  if (!displayname) {
+    res.status(400).json({ error: 'Guest player name required.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const guestId = crypto.randomUUID();
+    const guestEmail = createGuestEmail();
+    const createdUserResult = await client.query<{ guid: string }>(
+      `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       RETURNING guid`,
+      [guestId, privateEmailPlaceholder(guestId), hashEmail(guestEmail), encryptEmail(guestEmail), `guest:${crypto.randomUUID()}`]
+    );
+    const createdUser = createdUserResult.rows[0];
+    if (!createdUser) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ error: 'Failed to create guest player.' });
+      return;
+    }
+    await client.query(
+      `INSERT INTO usermetadata (userid, nickname, isguestuser, guestofuserid)
+       VALUES ($1, $2, TRUE, $3)`,
+      [createdUser.guid, displayname, req.userId]
+    );
+    await client.query(
+      `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
+       VALUES ($1, $2, FALSE, TRUE)`,
+      [req.params.id, createdUser.guid]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({
+      member: {
+        userid: createdUser.guid,
+        emailaddress: null,
+        displayname,
+        isadmin: false,
+        approved: true,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {

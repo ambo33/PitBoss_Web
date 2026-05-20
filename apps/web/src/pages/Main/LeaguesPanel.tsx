@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, Users } from 'lucide-react';
+import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -164,6 +164,13 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
       setEventModalOpen(false);
     },
   });
+  const addGuestMutation = useMutation({
+    mutationFn: (displayname: string) => api.addLeagueGuest(league.leagueid, displayname),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
 
   const resultMutation = useMutation({
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
@@ -281,36 +288,44 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
       />
 
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <section className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-white">Events</h3>
-            <CalendarDays size={16} className="text-pit-teal" />
-          </div>
-          {detail.events.length === 0 ? (
-            <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
-              No events yet.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {detail.events.map((event) => (
-                <button
-                  key={event.eventid}
-                  type="button"
-                  onClick={() => setSelectedEvent(event)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                    currentEvent?.eventid === event.eventid ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-bg/60 hover:border-pit-teal/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-white">{event.name}</p>
-                    <span className="text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
-                  </div>
-                  <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? event.eventdate.slice(0, 10) : 'Date TBD'}</p>
-                </button>
-              ))}
+        <div className="space-y-5">
+          <LeagueMembersCard
+            detail={detail}
+            onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
+            loading={addGuestMutation.isPending}
+            error={addGuestMutation.error?.message}
+          />
+          <section className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-white">Events</h3>
+              <CalendarDays size={16} className="text-pit-teal" />
             </div>
-          )}
-        </section>
+            {detail.events.length === 0 ? (
+              <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
+                No events yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {detail.events.map((event) => (
+                  <button
+                    key={event.eventid}
+                    type="button"
+                    onClick={() => setSelectedEvent(event)}
+                    className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                      currentEvent?.eventid === event.eventid ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-bg/60 hover:border-pit-teal/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-white">{event.name}</p>
+                      <span className="text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
+                    </div>
+                    <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? event.eventdate.slice(0, 10) : 'Date TBD'}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
 
         <section className="card space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -470,6 +485,79 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function LeagueMembersCard({
+  detail,
+  onAddGuest,
+  loading,
+  error,
+}: {
+  detail: LeagueDetail;
+  onAddGuest: (displayname: string) => void;
+  loading: boolean;
+  error?: string;
+}) {
+  const [guestName, setGuestName] = useState('');
+  const approvedMembers = detail.members.filter((member) => member.approved);
+  const pendingCount = detail.members.filter((member) => !member.approved).length;
+
+  const submitGuest = () => {
+    const name = guestName.trim();
+    if (!name) return;
+    onAddGuest(name);
+    setGuestName('');
+  };
+
+  return (
+    <section className="card space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-white">Players</h3>
+          <p className="mt-1 text-xs text-pit-muted">
+            {approvedMembers.length}/{detail.league.expectedplayercount} active{pendingCount ? `, ${pendingCount} pending` : ''}
+          </p>
+        </div>
+        <Users size={16} className="text-pit-teal" />
+      </div>
+
+      {detail.league.isadmin && (
+        <div className="space-y-2 rounded-xl border border-pit-border bg-pit-bg/55 p-3">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Guest player</span>
+            <input
+              className="input py-2"
+              value={guestName}
+              onChange={(event) => setGuestName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitGuest();
+              }}
+              placeholder="Player name"
+            />
+          </label>
+          {error && <p className="text-xs text-red-300">{error}</p>}
+          <button className="btn-primary w-full justify-center px-3 py-2 text-xs" disabled={loading || !guestName.trim()} onClick={submitGuest}>
+            <UserPlus size={13} />
+            {loading ? 'Adding...' : 'Add guest'}
+          </button>
+        </div>
+      )}
+
+      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+        {approvedMembers.map((member) => (
+          <div key={member.userid} className="flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
+            <p className="min-w-0 truncate text-sm font-semibold text-white">{member.displayname ?? 'Player'}</p>
+            {member.isadmin && (
+              <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
+                <Crown size={9} className="mr-0.5" /> Admin
+              </span>
+            )}
+          </div>
+        ))}
+        {approvedMembers.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No approved players yet.</p>}
+      </div>
+    </section>
   );
 }
 
@@ -1047,6 +1135,12 @@ function CreateEventModal({
   const [name, setName] = useState(`Event #${nextEventNumber}`);
   const [eventdate, setEventdate] = useState('');
   const [eventnumber, setEventnumber] = useState(String(nextEventNumber));
+  useEffect(() => {
+    if (!open) return;
+    setName(`Event #${nextEventNumber}`);
+    setEventdate('');
+    setEventnumber(String(nextEventNumber));
+  }, [nextEventNumber, open]);
 
   return (
     <Modal
@@ -1071,8 +1165,14 @@ function CreateEventModal({
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Event name" />
         <div className="grid gap-3 sm:grid-cols-2">
-          <input className="input" type="date" value={eventdate} onChange={(event) => setEventdate(event.target.value)} />
-          <input className="input" inputMode="numeric" value={eventnumber} onChange={(event) => setEventnumber(event.target.value)} placeholder="Event number" />
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event date</span>
+            <input className="input" type="date" value={eventdate} onChange={(event) => setEventdate(event.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event order</span>
+            <input className="input" inputMode="numeric" value={eventnumber} onChange={(event) => setEventnumber(event.target.value.replace(/\D/g, ''))} placeholder="1" />
+          </label>
         </div>
       </div>
     </Modal>
