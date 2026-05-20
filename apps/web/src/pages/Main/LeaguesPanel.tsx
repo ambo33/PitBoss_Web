@@ -884,7 +884,7 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[] }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number }) => void;
   loading: boolean;
   error?: string;
 }) {
@@ -895,8 +895,10 @@ function CreateLeagueModal({
   const [pereventfee, setPereventfee] = useState('0');
   const [showupbonuspoints, setShowupbonuspoints] = useState('300');
   const [bestfinishcount, setBestfinishcount] = useState('7');
+  const [eventcount, setEventcount] = useState('10');
   const [pointslookup, setPointslookup] = useState<LeaguePointRule[]>(() => generateLeaguePoints(36));
   const playerCount = Math.max(2, Number(expectedplayercount) || 36);
+  const startingEventCount = Math.max(0, Math.min(100, Number(eventcount) || 0));
   const pointTotal = pointslookup.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 
   return (
@@ -920,6 +922,7 @@ function CreateLeagueModal({
               showupbonuspoints: Number(showupbonuspoints) || 0,
               bestfinishcount: Number(bestfinishcount) || 7,
               pointslookup,
+              eventcount: startingEventCount,
             })}
           >
             {loading ? 'Creating...' : 'Create League'}
@@ -930,7 +933,7 @@ function CreateLeagueModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" placeholder="League name" value={name} onChange={(event) => setName(event.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Expected players</span>
             <input
@@ -947,6 +950,10 @@ function CreateLeagueModal({
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Best finishes scored</span>
             <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting events</span>
+            <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
           </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">

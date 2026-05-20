@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import type { PoolClient } from 'pg';
 import { query, queryOne, pool } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
@@ -323,6 +324,21 @@ async function getLeagueForUser(leagueId: string, userId: string) {
   );
 }
 
+async function createLeagueEventStubs(client: PoolClient, leagueId: string, startNumber: number, count: number) {
+  const rows: LeagueEventRow[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const number = startNumber + index;
+    const result = await client.query<LeagueEventRow>(
+      `INSERT INTO leagueevents (leagueid, name, eventdate, eventnumber)
+       VALUES ($1, $2, NULL, $3)
+       RETURNING eventid, leagueid, name, eventdate, eventnumber, active, createdat`,
+      [leagueId, `Event #${number}`, number]
+    );
+    if (result.rows[0]) rows.push(result.rows[0]);
+  }
+  return rows;
+}
+
 leaguesRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
@@ -452,7 +468,7 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
-  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown };
+  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown; eventcount?: number };
   const name = String(body.name ?? '').trim().slice(0, 160);
   if (!name) {
     res.status(400).json({ error: 'League name required.' });
@@ -463,6 +479,7 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
   const perEventFee = Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100);
   const showupBonus = Math.max(0, Math.round(Number(body.showupbonuspoints ?? 300)));
   const bestFinishCount = Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount ?? 7))));
+  const eventCount = Math.max(0, Math.min(100, Math.round(Number(body.eventcount ?? 0))));
   const pointsLookup = body.pointslookup == null
     ? generatePointsLookup(expectedPlayerCount)
     : normalizePointsLookup(body.pointslookup);
@@ -484,6 +501,9 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
          VALUES ($1, $2, TRUE, TRUE)`,
         [league.leagueid, req.userId]
       );
+      if (eventCount > 0) {
+        await createLeagueEventStubs(client, league.leagueid, 1, eventCount);
+      }
       await client.query('COMMIT');
       res.status(201).json({ leagueid: league.leagueid, invitecode });
       return;
@@ -709,17 +729,7 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const rows: LeagueEventRow[] = [];
-    for (let index = 0; index < eventCount; index += 1) {
-      const number = eventNumber + index;
-      const result = await client.query<LeagueEventRow>(
-        `INSERT INTO leagueevents (leagueid, name, eventdate, eventnumber)
-         VALUES ($1, $2, NULL, $3)
-         RETURNING eventid, leagueid, name, eventdate, eventnumber, active, createdat`,
-        [req.params.id, `Event #${number}`, number]
-      );
-      if (result.rows[0]) rows.push(result.rows[0]);
-    }
+    const rows = await createLeagueEventStubs(client, req.params.id, eventNumber, eventCount);
     await client.query('COMMIT');
     res.status(201).json({ event: rows[0] ?? null, events: rows });
   } catch (err) {
