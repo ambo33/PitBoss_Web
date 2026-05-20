@@ -5,7 +5,7 @@ import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMe
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
-const DEFAULT_POINTS_PREVIEW = '1st 671 / 2nd 448 / 3rd 336';
+const DEFAULT_POINTS_PREVIEW = 'Scaled points by field size';
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
   { place: 'DNF', points: 0 },
   { place: 1, points: 671 }, { place: 2, points: 448 }, { place: 3, points: 336 },
@@ -22,10 +22,7 @@ const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
   { place: 34, points: 39 }, { place: 35, points: 38 }, { place: 36, points: 37 },
 ];
 const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
-const TOP_THREE_SHARE = BASE_POINTS_LOOKUP
-  .filter((rule) => typeof rule.place === 'number' && rule.place <= 3)
-  .reduce((sum, rule) => sum + rule.points, 0) / BASE_POINT_TOTAL;
-const TOP_EIGHT_SHARE = 0.5;
+const FULL_FIELD_FIRST_PLACE_SHARE = Number(BASE_POINTS_LOOKUP.find((rule) => rule.place === 1)?.points ?? 0) / BASE_POINT_TOTAL;
 
 export default function LeaguesPanel() {
   const qc = useQueryClient();
@@ -933,30 +930,20 @@ function CreateLeagueModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" placeholder="League name" value={name} onChange={(event) => setName(event.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Expected players</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Players</span>
             <input
               className="input"
               inputMode="numeric"
               value={expectedplayercount}
-              onChange={(event) => setExpectedplayercount(event.target.value.replace(/\D/g, ''))}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\D/g, '');
+                setExpectedplayercount(next);
+                setPointslookup(generateLeaguePoints(Math.max(2, Number(next) || 36)));
+              }}
             />
           </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Show-up bonus</span>
-            <input className="input" inputMode="numeric" value={showupbonuspoints} onChange={(event) => setShowupbonuspoints(event.target.value)} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Best finishes scored</span>
-            <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value)} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting events</span>
-            <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
-          </label>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">League fee</span>
             <input className="input" inputMode="decimal" value={leaguefee} onChange={(event) => setLeaguefee(event.target.value.replace(/[^\d.]/g, ''))} />
@@ -964,6 +951,20 @@ function CreateLeagueModal({
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Per event fee</span>
             <input className="input" inputMode="decimal" value={pereventfee} onChange={(event) => setPereventfee(event.target.value.replace(/[^\d.]/g, ''))} />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Show-up bonus</span>
+            <input className="input" inputMode="numeric" value={showupbonuspoints} onChange={(event) => setShowupbonuspoints(event.target.value.replace(/\D/g, ''))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Best finishes scored</span>
+            <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value.replace(/\D/g, ''))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting events</span>
+            <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
           </label>
         </div>
         <p className="text-sm leading-6 text-pit-text">
@@ -974,7 +975,7 @@ function CreateLeagueModal({
             <div>
               <p className="text-sm font-semibold text-white">Suggested point chart</p>
               <p className="mt-1 text-xs text-pit-muted">
-                {formatNumber(pointTotal)} points per event. Top 8 share about 50%; top 3 share {Math.round(TOP_THREE_SHARE * 10000) / 100}%.
+                {formatNumber(pointTotal)} points per event from the league curve. 1st place is about {Math.round(FULL_FIELD_FIRST_PLACE_SHARE * 10000) / 100}% of the pool in a full 36-player field.
               </p>
             </div>
             <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => setPointslookup(generateLeaguePoints(playerCount))}>
@@ -1246,30 +1247,22 @@ function defaultFinalMultipliers(): LeagueFinalMultiplier[] {
 function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 100): LeaguePointRule[] {
   const players = Math.max(1, Math.min(500, Math.round(Number(playerCount || 36))));
   const total = Math.max(players, Math.round(Number(totalPoints || players * 100)));
-  const baseByPlace = new Map<number, number>();
+  const weights: Array<{ place: number; value: number }> = [];
+  let lastWeight = 1;
   for (const rule of BASE_POINTS_LOOKUP) {
-    if (typeof rule.place === 'number') baseByPlace.set(rule.place, rule.points);
+    if (typeof rule.place !== 'number') continue;
+    lastWeight = rule.points;
+    if (rule.place <= players) weights.push({ place: rule.place, value: rule.points });
   }
-  const weightForPlace = (place: number) => {
-    if (baseByPlace.has(place)) return baseByPlace.get(place)!;
-    const last = baseByPlace.get(36) ?? 1;
-    return Math.max(1, last * Math.pow(0.96, place - 36));
-  };
-  const topCount = Math.min(8, players);
-  const topThreeCount = Math.min(3, players);
-  const buckets = [
-    { start: 1, end: topThreeCount, share: players >= 3 ? TOP_THREE_SHARE : 1 },
-    { start: 4, end: topCount, share: players >= 8 ? TOP_EIGHT_SHARE - TOP_THREE_SHARE : Math.max(0, 1 - TOP_THREE_SHARE) },
-    { start: 9, end: players, share: players >= 9 ? 1 - TOP_EIGHT_SHARE : 0 },
-  ].filter((bucket) => bucket.start <= bucket.end && bucket.share > 0);
-  const raw = buckets.flatMap((bucket) => {
-    const places = Array.from({ length: bucket.end - bucket.start + 1 }, (_, index) => bucket.start + index);
-    const weightTotal = places.reduce((sum, place) => sum + weightForPlace(place), 0);
-    return places.map((place) => ({
-      place,
-      value: (total * bucket.share * weightForPlace(place)) / weightTotal,
-    }));
-  });
+  for (let place = weights.length + 1; place <= players; place += 1) {
+    lastWeight = Math.max(1, lastWeight * 0.96);
+    weights.push({ place, value: lastWeight });
+  }
+  const weightTotal = weights.reduce((sum, item) => sum + item.value, 0);
+  const raw = weights.map((item) => ({
+    place: item.place,
+    value: (total * item.value) / weightTotal,
+  }));
   const rounded = raw.map((item) => ({ ...item, points: Math.floor(item.value), remainder: item.value - Math.floor(item.value) }));
   let delta = total - rounded.reduce((sum, item) => sum + item.points, 0);
   for (const item of [...rounded].sort((a, b) => b.remainder - a.remainder || a.place - b.place)) {

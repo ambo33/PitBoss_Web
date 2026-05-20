@@ -47,14 +47,6 @@ const DEFAULT_POINTS_LOOKUP: LeaguePointRule[] = [
   { place: 35, points: 38 },
   { place: 36, points: 37 },
 ];
-const BASE_POINT_TOTAL = DEFAULT_POINTS_LOOKUP
-  .filter((rule) => rule.place !== 'DNF')
-  .reduce((sum, rule) => sum + rule.points, 0);
-const TOP_THREE_SHARE = DEFAULT_POINTS_LOOKUP
-  .filter((rule) => typeof rule.place === 'number' && rule.place <= 3)
-  .reduce((sum, rule) => sum + rule.points, 0) / BASE_POINT_TOTAL;
-const TOP_EIGHT_SHARE = 0.5;
-
 type LeagueRow = {
   leagueid: string;
   ownerid: string;
@@ -158,30 +150,22 @@ function normalizePointsLookup(value: unknown): LeaguePointRule[] {
 function generatePointsLookup(playerCount: number, totalPoints?: number): LeaguePointRule[] {
   const players = Math.max(1, Math.min(500, Math.round(Number(playerCount || 36))));
   const total = Math.max(players, Math.round(Number(totalPoints || players * 100)));
-  const baseByPlace = new Map<number, number>();
+  const weights: Array<{ place: number; value: number }> = [];
+  let lastWeight = 1;
   for (const rule of DEFAULT_POINTS_LOOKUP) {
-    if (typeof rule.place === 'number') baseByPlace.set(rule.place, rule.points);
+    if (typeof rule.place !== 'number') continue;
+    lastWeight = rule.points;
+    if (rule.place <= players) weights.push({ place: rule.place, value: rule.points });
   }
-  const weightForPlace = (place: number) => {
-    if (baseByPlace.has(place)) return baseByPlace.get(place)!;
-    const last = baseByPlace.get(36) ?? 1;
-    return Math.max(1, last * Math.pow(0.96, place - 36));
-  };
-  const topCount = Math.min(8, players);
-  const topThreeCount = Math.min(3, players);
-  const buckets = [
-    { start: 1, end: topThreeCount, share: players >= 3 ? TOP_THREE_SHARE : 1 },
-    { start: 4, end: topCount, share: players >= 8 ? TOP_EIGHT_SHARE - TOP_THREE_SHARE : Math.max(0, 1 - TOP_THREE_SHARE) },
-    { start: 9, end: players, share: players >= 9 ? 1 - TOP_EIGHT_SHARE : 0 },
-  ].filter((bucket) => bucket.start <= bucket.end && bucket.share > 0);
-  const raw = buckets.flatMap((bucket) => {
-    const places = Array.from({ length: bucket.end - bucket.start + 1 }, (_, index) => bucket.start + index);
-    const weightTotal = places.reduce((sum, place) => sum + weightForPlace(place), 0);
-    return places.map((place) => ({
-      place,
-      value: (total * bucket.share * weightForPlace(place)) / weightTotal,
-    }));
-  });
+  for (let place = weights.length + 1; place <= players; place += 1) {
+    lastWeight = Math.max(1, lastWeight * 0.96);
+    weights.push({ place, value: lastWeight });
+  }
+  const weightTotal = weights.reduce((sum, item) => sum + item.value, 0);
+  const raw = weights.map((item) => ({
+    place: item.place,
+    value: (total * item.value) / weightTotal,
+  }));
   const rounded = raw.map((item) => ({ ...item, points: Math.floor(item.value), remainder: item.value - Math.floor(item.value) }));
   let delta = total - rounded.reduce((sum, item) => sum + item.points, 0);
   for (const item of [...rounded].sort((a, b) => b.remainder - a.remainder || a.place - b.place)) {
