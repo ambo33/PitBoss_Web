@@ -459,6 +459,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         showupbonuspoints INT DEFAULT 300,
         bestfinishcount INT DEFAULT 7,
         pointslookup JSONB NOT NULL,
+        finalenabled BOOL DEFAULT FALSE,
+        finalmultiplierlookup JSONB DEFAULT '[]',
+        finalchiprounding INT DEFAULT 100,
+        finalstartingbigblind INT DEFAULT 100,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
@@ -470,10 +474,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS showupbonuspoints INT DEFAULT 300`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS bestfinishcount INT DEFAULT 7`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pointslookup JSONB DEFAULT '[{"place":"DNF","points":0},{"place":1,"points":671},{"place":2,"points":448},{"place":3,"points":336}]'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalenabled BOOL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalmultiplierlookup JSONB DEFAULT '[]'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalchiprounding INT DEFAULT 100`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalstartingbigblind INT DEFAULT 100`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
     await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
+    await client.query(`UPDATE leagues SET finalenabled = FALSE WHERE finalenabled IS NULL`);
+    await client.query(`UPDATE leagues SET finalmultiplierlookup = '[]' WHERE finalmultiplierlookup IS NULL`);
+    await client.query(`UPDATE leagues SET finalchiprounding = 100 WHERE finalchiprounding IS NULL`);
+    await client.query(`UPDATE leagues SET finalstartingbigblind = 100 WHERE finalstartingbigblind IS NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leaguemembers (
         leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,

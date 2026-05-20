@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Copy, Crown, Hash, ListOrdered, Plus, Save, Trophy, UserMinus, Users } from 'lucide-react';
-import { api, League, LeagueDetail, LeagueEvent } from '../../api/client';
+import { CalendarDays, Copy, Crown, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, Users } from 'lucide-react';
+import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -127,6 +127,8 @@ function LeagueCard({ league, onClick }: { league: League; onClick: () => void }
 function LeagueDetailView({ league, onBack }: { league: League; onBack: () => void }) {
   const qc = useQueryClient();
   const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [pointsModalOpen, setPointsModalOpen] = useState(false);
+  const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid],
@@ -147,6 +149,23 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
       api.logLeagueResult(league.leagueid, eventId, userId, { placed, dnf }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
+  const updateLeagueMutation = useMutation({
+    mutationFn: (payload: Partial<Pick<League, 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+      api.updateLeague(league.leagueid, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+      setPointsModalOpen(false);
+      setFinalModalOpen(false);
+    },
+  });
+  const deleteLeagueMutation = useMutation({
+    mutationFn: () => api.deleteLeague(league.leagueid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+      onBack();
+    },
+  });
 
   const detail = data;
   const currentEvent = selectedEvent ?? detail?.events[0] ?? null;
@@ -166,10 +185,32 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
         <div className="flex gap-2">
           <span className="chip font-mono">{detail.league.invitecode}</span>
           {detail.league.isadmin && (
-            <button className="btn-primary gap-2 px-3 py-2 text-xs" onClick={() => setEventModalOpen(true)}>
-              <Plus size={14} />
-              Event
-            </button>
+            <>
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setPointsModalOpen(true)}>
+                <Settings size={14} />
+                Points
+              </button>
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setFinalModalOpen(true)}>
+                <Trophy size={14} />
+                Final
+              </button>
+              <button className="btn-primary gap-2 px-3 py-2 text-xs" onClick={() => setEventModalOpen(true)}>
+                <Plus size={14} />
+                Event
+              </button>
+              <button
+                className="btn-ghost gap-2 px-3 py-2 text-xs text-red-300 hover:border-red-400/40 hover:text-red-200"
+                disabled={deleteLeagueMutation.isPending}
+                onClick={() => {
+                  if (window.confirm(`Delete ${detail.league.name}? This hides the league and its events from everyone.`)) {
+                    deleteLeagueMutation.mutate();
+                  }
+                }}
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -187,7 +228,10 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
         </div>
         <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <StandingsTable detail={detail} />
-          <RankingTimeline detail={detail} />
+          <div className="space-y-4">
+            <RankingTimeline detail={detail} />
+            <FinalStackCard detail={detail} />
+          </div>
         </div>
       </section>
 
@@ -262,6 +306,22 @@ function LeagueDetailView({ league, onBack }: { league: League; onBack: () => vo
         loading={createEventMutation.isPending}
         error={createEventMutation.error?.message}
       />
+      <PointsEditorModal
+        open={pointsModalOpen}
+        points={detail.league.pointslookup}
+        loading={updateLeagueMutation.isPending}
+        error={updateLeagueMutation.error?.message}
+        onClose={() => setPointsModalOpen(false)}
+        onSubmit={(pointslookup) => updateLeagueMutation.mutate({ pointslookup })}
+      />
+      <FinalSettingsModal
+        open={finalModalOpen}
+        league={detail.league}
+        loading={updateLeagueMutation.isPending}
+        error={updateLeagueMutation.error?.message}
+        onClose={() => setFinalModalOpen(false)}
+        onSubmit={(payload) => updateLeagueMutation.mutate(payload)}
+      />
     </div>
   );
 }
@@ -324,6 +384,42 @@ function RankingTimeline({ detail }: { detail: LeagueDetail }) {
   );
 }
 
+function FinalStackCard({ detail }: { detail: LeagueDetail }) {
+  if (!detail.league.finalenabled) {
+    return (
+      <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-semibold text-white">League finish</h3>
+          <Trophy size={16} className="text-pit-muted" />
+        </div>
+        <p className="text-sm leading-6 text-pit-text">
+          Standings decide the league winner after all events are complete. Enable a final table to convert season points into starting stacks.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-semibold text-white">Final game stacks</h3>
+        <Trophy size={16} className="text-pit-gold" />
+      </div>
+      <div className="space-y-2">
+        {detail.finalstacks.slice(0, 8).map((stack) => (
+          <div key={stack.userid} className="grid grid-cols-[32px_minmax(0,1fr)_72px] items-center gap-2 rounded-lg border border-pit-border/70 bg-pit-card/70 px-3 py-2 text-xs">
+            <span className="font-mono text-pit-teal">#{stack.place}</span>
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-white">{stack.displayname ?? 'Player'}</p>
+              <p className="text-pit-muted">{stack.totalpoints} pts x {stack.multiplier}</p>
+            </div>
+            <span className="text-right font-mono text-white">{formatNumber(stack.startingstack)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ResultLogger({
   detail,
   event,
@@ -371,6 +467,176 @@ function ResultLogger({
         );
       })}
     </div>
+  );
+}
+
+function PointsEditorModal({
+  open,
+  points,
+  loading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  points: LeaguePointRule[];
+  loading: boolean;
+  error?: string;
+  onClose: () => void;
+  onSubmit: (points: LeaguePointRule[]) => void;
+}) {
+  const [draft, setDraft] = useState<LeaguePointRule[]>(points);
+  useEffect(() => {
+    if (open) setDraft(points);
+  }, [open, points]);
+  const rows = draft.filter((rule) => rule.place !== 'DNF').sort((a, b) => Number(a.place) - Number(b.place));
+  const dnf = draft.find((rule) => rule.place === 'DNF') ?? { place: 'DNF' as const, points: 0 };
+  const updateRule = (place: number | 'DNF', pointsValue: string) => {
+    const nextPoints = Math.max(0, Math.round(Number(pointsValue) || 0));
+    setDraft((current) => current.map((rule) => rule.place === place ? { ...rule, points: nextPoints } : rule));
+  };
+  const addPlace = () => {
+    const maxPlace = rows.reduce((max, rule) => Math.max(max, Number(rule.place)), 0);
+    setDraft((current) => [...current, { place: maxPlace + 1, points: 0 }]);
+  };
+  const removePlace = (place: number) => setDraft((current) => current.filter((rule) => rule.place !== place));
+
+  return (
+    <Modal
+      title="Placement Points"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={loading} onClick={() => onSubmit([dnf, ...rows])}>
+            {loading ? 'Saving...' : 'Save Points'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <p className="text-sm leading-6 text-pit-text">
+          Updating these values recalculates all logged league finishes.
+        </p>
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+          <div className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+            <span className="font-semibold text-white">DNF</span>
+            <input className="input py-2 text-right" inputMode="numeric" value={dnf.points} onChange={(event) => updateRule('DNF', event.target.value)} />
+          </div>
+          {rows.map((rule) => (
+            <div key={rule.place} className="grid grid-cols-[1fr_120px_36px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+              <span className="font-semibold text-white">{rule.place}{ordinal(Number(rule.place))}</span>
+              <input className="input py-2 text-right" inputMode="numeric" value={rule.points} onChange={(event) => updateRule(Number(rule.place), event.target.value)} />
+              <button className="btn-ghost h-9 w-9 p-0 text-red-300" type="button" onClick={() => removePlace(Number(rule.place))}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn-ghost w-full justify-center" onClick={addPlace}>
+          <Plus size={14} />
+          Add placement
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function FinalSettingsModal({
+  open,
+  league,
+  loading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  league: League;
+  loading: boolean;
+  error?: string;
+  onClose: () => void;
+  onSubmit: (data: Partial<Pick<League, 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) => void;
+}) {
+  const [enabled, setEnabled] = useState(Boolean(league.finalenabled));
+  const [rounding, setRounding] = useState(String(league.finalchiprounding || 100));
+  const [bigBlind, setBigBlind] = useState(String(league.finalstartingbigblind || 100));
+  const [multipliers, setMultipliers] = useState<LeagueFinalMultiplier[]>(league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers());
+  useEffect(() => {
+    if (!open) return;
+    setEnabled(Boolean(league.finalenabled));
+    setRounding(String(league.finalchiprounding || 100));
+    setBigBlind(String(league.finalstartingbigblind || 100));
+    setMultipliers(league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers());
+  }, [league, open]);
+
+  const updateMultiplier = (place: number, value: string) => {
+    const multiplier = Math.max(0, Math.round(Number(value) || 0));
+    setMultipliers((current) => current.map((rule) => rule.place === place ? { ...rule, multiplier } : rule));
+  };
+  const addPlace = () => {
+    const maxPlace = multipliers.reduce((max, rule) => Math.max(max, rule.place), 0);
+    setMultipliers((current) => [...current, { place: maxPlace + 1, multiplier: 0 }]);
+  };
+
+  return (
+    <Modal
+      title="Final Game Setup"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading}
+            onClick={() => onSubmit({
+              finalenabled: enabled,
+              finalmultiplierlookup: multipliers,
+              finalchiprounding: Number(rounding) || 100,
+              finalstartingbigblind: Number(bigBlind) || 100,
+            })}
+          >
+            {loading ? 'Saving...' : 'Save Final'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <span className="text-sm text-pit-text">Use a final game after the regular-season standings</span>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Round chips to</span>
+            <input className="input" inputMode="numeric" value={rounding} onChange={(event) => setRounding(event.target.value.replace(/\D/g, ''))} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting big blind</span>
+            <input className="input" inputMode="numeric" value={bigBlind} onChange={(event) => setBigBlind(event.target.value.replace(/\D/g, ''))} />
+          </label>
+        </div>
+        <p className="text-sm leading-6 text-pit-text">
+          Final stacks use scored season points times the rank multiplier, rounded to your chip denomination, then add each player's total show-up bonus.
+        </p>
+        <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+          {[...multipliers].sort((a, b) => a.place - b.place).map((rule) => (
+            <div key={rule.place} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+              <span className="font-semibold text-white">{rule.place}{ordinal(rule.place)} place multiplier</span>
+              <input className="input py-2 text-right" inputMode="numeric" value={rule.multiplier} onChange={(event) => updateMultiplier(rule.place, event.target.value)} />
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn-ghost w-full justify-center" onClick={addPlace}>
+          <Plus size={14} />
+          Add final placement
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -546,4 +812,15 @@ function ordinal(value?: number | null) {
   if (value % 10 === 2) return 'nd';
   if (value % 10 === 3) return 'rd';
   return 'th';
+}
+
+function defaultFinalMultipliers(): LeagueFinalMultiplier[] {
+  return Array.from({ length: 36 }, (_, index) => ({
+    place: index + 1,
+    multiplier: index === 0 ? 0 : Math.max(2, 19 - index),
+  }));
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 }

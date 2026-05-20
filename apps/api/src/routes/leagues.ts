@@ -54,6 +54,10 @@ type LeagueRow = {
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[] | string;
+  finalenabled: boolean;
+  finalmultiplierlookup: LeagueFinalMultiplier[] | string | null;
+  finalchiprounding: number;
+  finalstartingbigblind: number;
   active: boolean;
   createdat: string;
   isadmin?: boolean;
@@ -63,6 +67,7 @@ type LeagueRow = {
 };
 
 type LeaguePointRule = { place: number | 'DNF'; points: number };
+type LeagueFinalMultiplier = { place: number; multiplier: number };
 type LeagueMemberRow = {
   userid: string;
   emailaddress: string | null;
@@ -119,12 +124,36 @@ function normalizePointsLookup(value: unknown): LeaguePointRule[] {
   return rules.length ? rules : DEFAULT_POINTS_LOOKUP;
 }
 
+function normalizeFinalMultipliers(value: unknown): LeagueFinalMultiplier[] {
+  const source = Array.isArray(value) ? value : Array.from({ length: 36 }, (_, index) => ({
+    place: index + 1,
+    multiplier: index === 0 ? 0 : Math.max(2, 19 - index),
+  }));
+  const rules = source
+    .map((raw) => {
+      const item = raw as Partial<LeagueFinalMultiplier>;
+      const place = Math.max(1, Math.round(Number(item.place)));
+      const multiplier = Math.max(0, Math.round(Number(item.multiplier ?? 0)));
+      if (!Number.isFinite(place)) return null;
+      return { place, multiplier };
+    })
+    .filter(Boolean) as LeagueFinalMultiplier[];
+  const unique = new Map<number, LeagueFinalMultiplier>();
+  for (const rule of rules) unique.set(rule.place, rule);
+  return [...unique.values()].sort((a, b) => a.place - b.place);
+}
+
 function serializeLeague(row: LeagueRow) {
   return {
     ...row,
     pointslookup: typeof row.pointslookup === 'string'
       ? JSON.parse(row.pointslookup) as LeaguePointRule[]
       : row.pointslookup,
+    finalmultiplierlookup: normalizeFinalMultipliers(
+      typeof row.finalmultiplierlookup === 'string'
+        ? JSON.parse(row.finalmultiplierlookup) as LeagueFinalMultiplier[]
+        : row.finalmultiplierlookup
+    ),
   };
 }
 
@@ -167,6 +196,29 @@ function buildStandings(members: LeagueMemberRow[], results: LeagueResultRow[], 
     .sort((a, b) => b.totalpoints - a.totalpoints || b.scoredpoints - a.scoredpoints || (a.averagefinish ?? 999) - (b.averagefinish ?? 999));
 }
 
+function buildFinalStacks(standings: ReturnType<typeof buildStandings>, league: ReturnType<typeof serializeLeague>) {
+  if (!league.finalenabled) return [];
+  const rounding = Math.max(1, Math.round(Number(league.finalchiprounding || 100)));
+  const bigBlind = Math.max(1, Math.round(Number(league.finalstartingbigblind || 100)));
+  const multiplierByPlace = new Map(league.finalmultiplierlookup.map((rule) => [rule.place, rule.multiplier]));
+  return standings.map((standing, index) => {
+    const place = index + 1;
+    const multiplier = multiplierByPlace.get(place) ?? 0;
+    const multiplierChips = Math.round(standing.scoredpoints * multiplier);
+    const roundedChips = Math.round(multiplierChips / rounding) * rounding;
+    const startingstack = roundedChips + standing.showupbonus;
+    return {
+      ...standing,
+      place,
+      multiplier,
+      multiplierchips: multiplierChips,
+      roundedchips: roundedChips,
+      startingstack,
+      bbstostart: Math.round(startingstack / bigBlind),
+    };
+  });
+}
+
 async function requireLeagueAdmin(leagueId: string, userId: string): Promise<boolean> {
   return Boolean(await queryOne(
     `SELECT 1 FROM leaguemembers WHERE leagueid = $1 AND userid = $2 AND approved = TRUE AND admin = TRUE`,
@@ -184,7 +236,9 @@ async function requireLeagueMember(leagueId: string, userId: string): Promise<bo
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.showupbonuspoints, l.bestfinishcount, l.pointslookup, l.active, l.createdat,
+            l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
+            l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
             (SELECT count(*) FROM leaguemembers WHERE leagueid = l.leagueid AND approved = TRUE) AS membercount,
             (SELECT count(*) FROM leagueevents WHERE leagueid = l.leagueid AND active = TRUE) AS eventcount
@@ -198,7 +252,9 @@ async function getLeagueForUser(leagueId: string, userId: string) {
 leaguesRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
-            l.showupbonuspoints, l.bestfinishcount, l.pointslookup, l.active, l.createdat,
+            l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
+            l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
             (SELECT count(*) FROM leaguemembers WHERE leagueid = l.leagueid AND approved = TRUE) AS membercount,
             (SELECT count(*) FROM leagueevents WHERE leagueid = l.leagueid AND active = TRUE) AS eventcount
@@ -209,6 +265,104 @@ leaguesRouter.get('/', async (req: Request, res: Response) => {
     [req.userId]
   );
   res.json(rows.map(serializeLeague));
+});
+
+leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as {
+    name?: string;
+    approvalneeded?: boolean;
+    showupbonuspoints?: number;
+    bestfinishcount?: number;
+    pointslookup?: unknown;
+    finalenabled?: boolean;
+    finalmultiplierlookup?: unknown;
+    finalchiprounding?: number;
+    finalstartingbigblind?: number;
+  };
+  const current = await getLeagueForUser(req.params.id, req.userId!);
+  if (!current) {
+    res.status(404).json({ error: 'League not found.' });
+    return;
+  }
+  const name = body.name == null ? current.name : String(body.name).trim().slice(0, 160);
+  if (!name) {
+    res.status(400).json({ error: 'League name required.' });
+    return;
+  }
+  const showupBonus = body.showupbonuspoints == null ? Number(current.showupbonuspoints || 0) : Math.max(0, Math.round(Number(body.showupbonuspoints)));
+  const bestFinishCount = body.bestfinishcount == null ? Number(current.bestfinishcount || 7) : Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount))));
+  const pointsLookup = body.pointslookup == null ? normalizePointsLookup(current.pointslookup) : normalizePointsLookup(body.pointslookup);
+  const finalEnabled = body.finalenabled == null ? Boolean(current.finalenabled) : Boolean(body.finalenabled);
+  const finalMultipliers = body.finalmultiplierlookup == null ? normalizeFinalMultipliers(current.finalmultiplierlookup) : normalizeFinalMultipliers(body.finalmultiplierlookup);
+  const finalChipRounding = body.finalchiprounding == null ? Number(current.finalchiprounding || 100) : Math.max(1, Math.round(Number(body.finalchiprounding)));
+  const finalStartingBigBlind = body.finalstartingbigblind == null ? Number(current.finalstartingbigblind || 100) : Math.max(1, Math.round(Number(body.finalstartingbigblind)));
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query<LeagueRow>(
+      `UPDATE leagues
+       SET name = $2,
+           approvalneeded = $3,
+           showupbonuspoints = $4,
+           bestfinishcount = $5,
+           pointslookup = $6,
+           finalenabled = $7,
+           finalmultiplierlookup = $8,
+           finalchiprounding = $9,
+           finalstartingbigblind = $10
+       WHERE leagueid = $1
+       RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, showupbonuspoints,
+                 bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup,
+                 finalchiprounding, finalstartingbigblind, active, createdat`,
+      [
+        req.params.id,
+        name,
+        Boolean(body.approvalneeded ?? current.approvalneeded),
+        showupBonus,
+        bestFinishCount,
+        JSON.stringify(pointsLookup),
+        finalEnabled,
+        JSON.stringify(finalMultipliers),
+        finalChipRounding,
+        finalStartingBigBlind,
+      ]
+    );
+    const results = await client.query<{ resultid: string; placed: number | null; dnf: boolean }>(
+      `SELECT resultid, placed, dnf FROM leagueresults WHERE leagueid = $1`,
+      [req.params.id]
+    );
+    for (const result of results.rows) {
+      await client.query(
+        `UPDATE leagueresults SET points = $2, showupbonuspoints = $3, updatedat = now() WHERE resultid = $1`,
+        [
+          result.resultid,
+          pointsForPlace(pointsLookup, result.placed, result.dnf),
+          result.dnf ? 0 : showupBonus,
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ league: serializeLeague({ ...updated.rows[0], isadmin: true, approved: true }) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  await query(`UPDATE leagues SET active = FALSE WHERE leagueid = $1`, [req.params.id]);
+  res.json({ success: true });
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
@@ -317,6 +471,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     events,
     results,
     standings: buildStandings(members, results, Number(league.bestfinishcount || 7)),
+    finalstacks: buildFinalStacks(buildStandings(members, results, Number(league.bestfinishcount || 7)), league),
   });
 });
 

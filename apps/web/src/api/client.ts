@@ -26,6 +26,8 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const put = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+const patch = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 export const api = {
@@ -99,6 +101,10 @@ export const api = {
   getLeagues: () => get<League[]>('/leagues'),
   createLeague: (data: { name: string; approvalneeded?: boolean; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[] }) =>
     post<{ leagueid: string; invitecode: string }>('/leagues', data),
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+    patch<{ league: League }>(`/leagues/${id}`, data),
+  deleteLeague: (id: string) =>
+    del<{ success: boolean }>(`/leagues/${id}`),
   joinLeague: (invitecode: string) =>
     post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
   getLeague: (id: string) => get<LeagueDetail>(`/leagues/${id}`),
@@ -315,6 +321,10 @@ export interface LeaguePointRule {
   place: number | 'DNF';
   points: number;
 }
+export interface LeagueFinalMultiplier {
+  place: number;
+  multiplier: number;
+}
 export interface League {
   leagueid: string;
   ownerid: string;
@@ -324,6 +334,10 @@ export interface League {
   showupbonuspoints: number;
   bestfinishcount: number;
   pointslookup: LeaguePointRule[];
+  finalenabled: boolean;
+  finalmultiplierlookup: LeagueFinalMultiplier[];
+  finalchiprounding: number;
+  finalstartingbigblind: number;
   active: boolean;
   createdat: string;
   isadmin?: boolean;
@@ -373,12 +387,21 @@ export interface LeagueStanding {
   averagefinish?: number | null;
   bestfinishes: number[];
 }
+export interface LeagueFinalStack extends LeagueStanding {
+  place: number;
+  multiplier: number;
+  multiplierchips: number;
+  roundedchips: number;
+  startingstack: number;
+  bbstostart: number;
+}
 export interface LeagueDetail {
   league: League;
   members: LeagueMember[];
   events: LeagueEvent[];
   results: LeagueResult[];
   standings: LeagueStanding[];
+  finalstacks: LeagueFinalStack[];
 }
 export interface PlayerCoinBadge {
   coinid: string; name: string;
