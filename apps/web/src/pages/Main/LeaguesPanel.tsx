@@ -144,32 +144,44 @@ function LeagueCard({ league, onClick }: { league: League; onClick: () => void }
 function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>; onBack: () => void }) {
   const qc = useQueryClient();
   const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [seasonModalOpen, setSeasonModalOpen] = useState(false);
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
-    queryKey: ['league', league.leagueid],
-    queryFn: () => api.getLeague(league.leagueid),
+    queryKey: ['league', league.leagueid, selectedSeasonId],
+    queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
   });
 
   const createEventMutation = useMutation({
-    mutationFn: (payload: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, payload),
+    mutationFn: (payload: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
       setEventModalOpen(false);
     },
   });
+  const createSeasonMutation = useMutation({
+    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number }) => api.createLeagueSeason(league.leagueid, payload),
+    onSuccess: (created) => {
+      setSelectedSeasonId(created.season.seasonid);
+      setSelectedEvent(null);
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+      setSeasonModalOpen(false);
+    },
+  });
   const addGuestMutation = useMutation({
-    mutationFn: (displayname: string) => api.addLeagueGuest(league.leagueid, displayname),
+    mutationFn: (displayname: string) => api.addLeagueGuest(league.leagueid, displayname, data?.selectedseasonid ?? selectedSeasonId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
     },
   });
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => api.removeLeagueMember(league.leagueid, userId),
+    mutationFn: (userId: string) => api.removeLeagueMember(league.leagueid, userId, data?.selectedseasonid ?? selectedSeasonId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -193,7 +205,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   });
   const createPaymentMutation = useMutation({
     mutationFn: (payload: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
-      api.createLeaguePayment(league.leagueid, payload),
+      api.createLeaguePayment(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       setPaymentModalOpen(false);
@@ -212,13 +224,23 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   });
 
   const detail = data;
-  const currentEvent = selectedEvent ?? detail?.events[0] ?? null;
+  useEffect(() => {
+    if (detail?.selectedseasonid && !selectedSeasonId) setSelectedSeasonId(detail.selectedseasonid);
+  }, [detail?.selectedseasonid, selectedSeasonId]);
+  useEffect(() => {
+    if (selectedEvent && detail && !detail.events.some((event) => event.eventid === selectedEvent.eventid)) {
+      setSelectedEvent(null);
+    }
+  }, [detail, selectedEvent]);
+  const currentEvent = (selectedEvent && detail?.events.find((event) => event.eventid === selectedEvent.eventid)) || detail?.events[0] || null;
   const eventResults = useMemo(() => {
     if (!detail || !currentEvent) return [];
     return detail.results.filter((result) => result.eventid === currentEvent.eventid);
   }, [currentEvent, detail]);
 
   if (isLoading || !detail) return <LoadingSpinner className="mt-16" />;
+  const activeMembers = detail.members.filter((member) => member.approved && member.participating);
+  const selectedSeason = detail.seasons.find((season) => season.seasonid === detail.selectedseasonid);
 
   return (
     <div className="space-y-5">
@@ -226,10 +248,28 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         <button className="text-sm text-pit-muted transition-colors hover:text-white" onClick={onBack} type="button">
           Back to leagues
         </button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <span className="chip font-mono">{detail.league.invitecode}</span>
+          <select
+            className="input max-w-[180px] py-2 text-xs"
+            value={detail.selectedseasonid}
+            onChange={(event) => {
+              setSelectedSeasonId(event.target.value);
+              setSelectedEvent(null);
+            }}
+          >
+            {detail.seasons.map((season) => (
+              <option key={season.seasonid} value={season.seasonid}>
+                {season.name}
+              </option>
+            ))}
+          </select>
           {detail.league.isadmin && (
             <>
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
+                <CalendarDays size={14} />
+                Season
+              </button>
               <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setPointsModalOpen(true)}>
                 <Settings size={14} />
                 Points
@@ -267,8 +307,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-5">
           <p className="eyebrow">League standings</p>
           <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
+          {selectedSeason && (
+            <p className="mt-2 text-sm text-pit-text">
+              {selectedSeason.name} runs {String(selectedSeason.begindate).slice(0, 10)} through {String(selectedSeason.enddate).slice(0, 10)}.
+            </p>
+          )}
           <div className="mt-4 grid gap-3 sm:grid-cols-4">
-            <LeagueHeroStat label="Players" value={`${detail.members.filter((member) => member.approved).length}/${detail.league.expectedplayercount}`} />
+            <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
             <LeagueHeroStat label="Events" value={detail.events.length} />
             <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
             <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
@@ -371,6 +416,14 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         nextEventNumber={detail.events.length + 1}
         loading={createEventMutation.isPending}
         error={createEventMutation.error?.message}
+      />
+      <CreateSeasonModal
+        open={seasonModalOpen}
+        onClose={() => setSeasonModalOpen(false)}
+        onSubmit={(payload) => createSeasonMutation.mutate(payload)}
+        nextSeasonNumber={detail.seasons.length + 1}
+        loading={createSeasonMutation.isPending}
+        error={createSeasonMutation.error?.message}
       />
       <PointsEditorModal
         open={pointsModalOpen}
@@ -510,7 +563,7 @@ function LeagueMembersCard({
   error?: string;
 }) {
   const [guestName, setGuestName] = useState('');
-  const approvedMembers = detail.members.filter((member) => member.approved);
+  const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
   const pendingCount = detail.members.filter((member) => !member.approved).length;
 
   const submitGuest = () => {
@@ -563,13 +616,13 @@ function LeagueMembersCard({
                 <Crown size={9} className="mr-0.5" /> Admin
               </span>
             )}
-            {detail.league.isadmin && !member.isadmin && (
+            {detail.league.isadmin && (
               <button
                 className="btn-ghost h-8 w-8 shrink-0 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
                 disabled={removeLoading}
-                title={`Remove ${member.displayname ?? 'player'}`}
+                title={`Remove ${member.displayname ?? 'player'} from this season`}
                 onClick={() => {
-                  if (window.confirm(`Remove ${member.displayname ?? 'this player'} from ${detail.league.name}? Their league finishes and payment records will be removed too.`)) {
+                  if (window.confirm(`Remove ${member.displayname ?? 'this player'} from this season? They keep league access/admin rights, but this season's finishes and payment records are removed.`)) {
                     onRemoveMember(member.userid);
                   }
                 }}
@@ -604,7 +657,7 @@ function PaymentTracker({
     setLeagueFee(String(detail.league.leaguefee || 0));
     setPerEventFee(String(detail.league.pereventfee || 0));
   }, [detail.league.leaguefee, detail.league.pereventfee]);
-  const approvedMembers = detail.members.filter((member) => member.approved);
+  const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
   const eventCount = detail.events.length;
   const totalDuePerPlayer = Number(detail.league.leaguefee || 0) + Number(detail.league.pereventfee || 0) * eventCount;
   const totalPaid = detail.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -689,7 +742,7 @@ function ResultLogger({
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const resultByUser = new Map(detail.results.filter((result) => result.eventid === event.eventid).map((result) => [result.userid, result]));
-  const approvedMembers = detail.members.filter((member) => member.approved);
+  const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
 
   return (
     <div className="space-y-2">
@@ -908,11 +961,18 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number; seasonname: string; seasonbegindate: string; seasonenddate: string }) => void;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState('Season Championship League');
+  const [seasonname, setSeasonname] = useState('Season 1');
+  const [seasonbegindate, setSeasonbegindate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [seasonenddate, setSeasonenddate] = useState(() => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + 6);
+    return date.toISOString().slice(0, 10);
+  });
   const [approvalneeded, setApprovalneeded] = useState(false);
   const [expectedplayercount, setExpectedplayercount] = useState('36');
   const [leaguefee, setLeaguefee] = useState('0');
@@ -947,6 +1007,9 @@ function CreateLeagueModal({
               bestfinishcount: Number(bestfinishcount) || 7,
               pointslookup,
               eventcount: startingEventCount,
+              seasonname,
+              seasonbegindate,
+              seasonenddate,
             })}
           >
             {loading ? 'Creating...' : 'Create League'}
@@ -957,6 +1020,20 @@ function CreateLeagueModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" placeholder="League name" value={name} onChange={(event) => setName(event.target.value)} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">First season</span>
+            <input className="input" value={seasonname} onChange={(event) => setSeasonname(event.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Begin date</span>
+            <input className="input" type="date" value={seasonbegindate} onChange={(event) => setSeasonbegindate(event.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">End date</span>
+            <input className="input" type="date" value={seasonenddate} onChange={(event) => setSeasonenddate(event.target.value)} />
+          </label>
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Players</span>
@@ -1067,7 +1144,7 @@ function RecordPaymentModal({
   onClose: () => void;
   onSubmit: (data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) => void;
 }) {
-  const members = detail.members.filter((member) => member.approved);
+  const members = detail.members.filter((member) => member.approved && member.participating);
   const [userid, setUserid] = useState(members[0]?.userid ?? '');
   const [paymenttype, setPaymenttype] = useState<LeaguePaymentType>('league');
   const [eventid, setEventid] = useState('');
@@ -1147,6 +1224,83 @@ function RecordPaymentModal({
           <input className="input" type="date" value={paidat} onChange={(event) => setPaidat(event.target.value)} />
           <input className="input" placeholder={`Note for ${selectedMember?.displayname ?? 'payment'}`} value={note} onChange={(event) => setNote(event.target.value)} />
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CreateSeasonModal({
+  open,
+  onClose,
+  onSubmit,
+  nextSeasonNumber,
+  loading,
+  error,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (data: { name: string; begindate: string; enddate: string; eventcount?: number }) => void;
+  nextSeasonNumber: number;
+  loading: boolean;
+  error?: string;
+}) {
+  const [name, setName] = useState(`Season ${nextSeasonNumber}`);
+  const [begindate, setBegindate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [enddate, setEnddate] = useState(() => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + 6);
+    return date.toISOString().slice(0, 10);
+  });
+  const [eventcount, setEventcount] = useState('10');
+  useEffect(() => {
+    if (!open) return;
+    setName(`Season ${nextSeasonNumber}`);
+    setBegindate(new Date().toISOString().slice(0, 10));
+    const date = new Date();
+    date.setMonth(date.getMonth() + 6);
+    setEnddate(date.toISOString().slice(0, 10));
+    setEventcount('10');
+  }, [nextSeasonNumber, open]);
+
+  return (
+    <Modal
+      title="Create Season"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading || !name.trim() || !begindate || !enddate || enddate < begindate}
+            onClick={() => onSubmit({ name, begindate, enddate, eventcount: Math.max(0, Math.min(100, Number(eventcount) || 0)) })}
+          >
+            {loading ? 'Creating...' : 'Create Season'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Season name" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Begin date</span>
+            <input className="input" type="date" value={begindate} onChange={(event) => setBegindate(event.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">End date</span>
+            <input className="input" type="date" value={enddate} onChange={(event) => setEnddate(event.target.value)} />
+          </label>
+        </div>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starter events</span>
+          <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
+        </label>
+        <p className="text-sm leading-6 text-pit-text">
+          A season is the scoring window inside this league. Existing approved league members are added as season players, and admins can remove themselves from season play without losing admin access.
+        </p>
       </div>
     </Modal>
   );
