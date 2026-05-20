@@ -28,14 +28,14 @@ export default function LeaguesPanel() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
-  const [selected, setSelected] = useState<League | null>(null);
+  const [selected, setSelected] = useState<Pick<League, 'leagueid'> | null>(null);
   const { data: leagues = [], isLoading } = useQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
 
   const createMutation = useMutation({
     mutationFn: api.createLeague,
-    onSuccess: async (created) => {
-      const freshLeagues = await qc.fetchQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
-      setSelected(freshLeagues.find((league) => league.leagueid === created.leagueid) ?? null);
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+      setSelected({ leagueid: created.leagueid });
       setShowCreate(false);
     },
   });
@@ -141,7 +141,7 @@ function LeagueCard({ league, onClick }: { league: League; onClick: () => void }
   );
 }
 
-function LeagueDetailView({ league, onBack }: { league: League; onBack: () => void }) {
+function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>; onBack: () => void }) {
   const qc = useQueryClient();
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
