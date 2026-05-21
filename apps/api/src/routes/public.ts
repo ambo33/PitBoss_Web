@@ -28,13 +28,13 @@ publicRouter.post('/ai-voice-preview', async (req: Request, res: Response) => {
   try {
     const result = await generateVoicePreview(style);
     if (!result.aiEnabled || !result.audioBase64) {
-      res.status(503).json({ error: 'AI voice preview is unavailable right now.' });
+      res.status(503).json({ error: 'Voice preview is unavailable right now.' });
       return;
     }
     res.json(result);
   } catch (err) {
-    console.error('AI voice preview failed', err instanceof Error ? err.message : err);
-    res.status(503).json({ error: 'AI voice preview is unavailable right now.' });
+    console.error('Voice preview failed', err instanceof Error ? err.message : err);
+    res.status(503).json({ error: 'Voice preview is unavailable right now.' });
   }
 });
 

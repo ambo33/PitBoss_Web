@@ -166,7 +166,7 @@ export const api = {
   unsubscribePublicBlindTimer: (token: string) =>
     post<{ success: boolean }>(`/public/blind-timers/unsubscribe/${encodeURIComponent(token)}`),
 
-  // AI experiments
+  // Voice and coaching
   generateAnnouncerMoment: (id: string, data: AnnouncerMomentRequest) =>
     post<AnnouncerMomentResponse>(`/ai/tournaments/${id}/announcer`, data),
   analyzeHand: (id: string, data: HandAnalysisRequest) =>
@@ -464,6 +464,7 @@ export interface AuthProfile {
   canuseclubfeatures?: boolean;
   aicreditsremaining?: number;
   defaultaicredits?: number;
+  aicreditsrefreshat?: string;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;

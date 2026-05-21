@@ -20,7 +20,7 @@ import { adminRouter } from './routes/admin';
 import { jobsRouter } from './routes/jobs';
 import { feedbackRouter } from './routes/feedback';
 import { aiRouter } from './routes/ai';
-import { getClientUrl } from './config';
+import { getAllowedClientUrls } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
@@ -59,7 +59,17 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors({ origin: getClientUrl(), credentials: true }));
+const allowedClientUrls = getAllowedClientUrls();
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedClientUrls.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '8mb' }));
 app.use('/api', apiLimiter);
 

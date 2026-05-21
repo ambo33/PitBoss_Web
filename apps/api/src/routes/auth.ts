@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db';
-import { getDefaultAiCredits, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
+import { ensureAiCreditWindow, getDefaultAiCredits, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
@@ -104,7 +104,12 @@ authRouter.post('/request-reset', async (req: Request, res: Response) => {
   if (user) {
     const resetPin = Math.floor(100000 + Math.random() * 900000).toString();
     await query(`UPDATE users SET verificationpin = $1 WHERE guid = $2`, [resetPin, user.guid]);
-    try { await sendPasswordResetEmail(publicEmail(user.emailencrypted, user.emailaddress) || normalizedEmail, resetPin); } catch { /* non-fatal */ }
+    const resetEmail = publicEmail(user.emailencrypted, user.emailaddress) || normalizedEmail;
+    try {
+      await sendPasswordResetEmail(resetEmail, resetPin);
+    } catch (err) {
+      console.error('Password reset email failed', { email: resetEmail, err });
+    }
   }
   res.json({ message: 'If that email is registered, a reset link has been sent.' });
 });
@@ -218,6 +223,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
 
 async function selectAuthProfile(userId: string) {
   const defaultAiCredits = await getDefaultAiCredits();
+  const creditWindow = await ensureAiCreditWindow(userId, defaultAiCredits);
   return queryOne<{
     guid: string;
     emailaddress: string;
@@ -233,6 +239,7 @@ async function selectAuthProfile(userId: string) {
     canuseclubfeatures: boolean;
     aicreditsremaining?: number | null;
     defaultaicredits?: number;
+    aicreditsrefreshat?: string;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
     hascheckinaudio?: boolean;
@@ -254,8 +261,9 @@ async function selectAuthProfile(userId: string) {
               ELSE FALSE
             END AS trialactive,
             ${sqlCanUseClubFeatures('m')} AS canuseclubfeatures,
-            COALESCE(CAST(m.aicreditsremaining AS INT), $2) AS aicreditsremaining,
-            $2::INT AS defaultaicredits,
+            $2::INT AS aicreditsremaining,
+            $3::INT AS defaultaicredits,
+            $4::STRING AS aicreditsrefreshat,
             m.checkinaudiodata,
             m.checkinaudiofilename,
             CASE WHEN m.checkinaudiodata IS NOT NULL AND length(m.checkinaudiodata) > 0 THEN TRUE ELSE FALSE END AS hascheckinaudio,
@@ -268,7 +276,7 @@ async function selectAuthProfile(userId: string) {
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}
      WHERE u.guid = $1`,
-    [userId, defaultAiCredits]
+    [userId, creditWindow.remaining, defaultAiCredits, creditWindow.refreshat]
   ).then((row) => row ? {
     ...row,
     emailaddress: publicEmail(row.emailencrypted, row.emailaddress),

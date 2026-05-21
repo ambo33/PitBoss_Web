@@ -76,7 +76,7 @@ adminRouter.get('/settings/ai-credits', async (_req: Request, res: Response) => 
 adminRouter.put('/settings/ai-credits', async (req: Request, res: Response) => {
   const credits = Number((req.body as { defaultaicredits?: number }).defaultaicredits);
   if (!Number.isFinite(credits) || credits < 0) {
-    res.status(400).json({ error: 'Default AI credits must be zero or higher.' });
+    res.status(400).json({ error: 'Default voice credits must be zero or higher.' });
     return;
   }
   res.json({ defaultaicredits: await setDefaultAiCredits(credits) });
@@ -272,7 +272,7 @@ adminRouter.post('/voice-lab/script', async (req: Request, res: Response) => {
     res.json({ script });
   } catch (err) {
     console.error('Voice lab script failed', err instanceof Error ? err.message : err);
-    res.status(503).json({ error: 'AI script generation is unavailable right now.' });
+    res.status(503).json({ error: 'Script generation is unavailable right now.' });
   }
 });
 
@@ -341,7 +341,7 @@ adminRouter.post('/voice-lab/clips', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('Voice lab clip failed', err instanceof Error ? err.message : err);
-    res.status(503).json({ error: 'AI voice generation is unavailable right now.' });
+    res.status(503).json({ error: 'Voice generation is unavailable right now.' });
   }
 });
 
@@ -410,7 +410,8 @@ adminRouter.get('/users', async (req: Request, res: Response) => {
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
      WHERE ($2::STRING IS NULL OR u.emailhash = $2)
        AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.pokerplanner.bet'
-     ORDER BY u.emailaddress`,
+       AND COALESCE(um.isguestuser, FALSE) = FALSE
+     ORDER BY lower(COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress)) ASC`,
     [nowInAppTimezone(), emailHash]
   );
   res.json(rows.map((row) => {
@@ -468,7 +469,7 @@ adminRouter.put('/users/:id', async (req: Request, res: Response) => {
     return;
   }
   if (aicreditsremaining != null && (!Number.isFinite(Number(aicreditsremaining)) || Number(aicreditsremaining) < 0)) {
-    res.status(400).json({ error: 'AI credits must be zero or higher.' });
+    res.status(400).json({ error: 'Voice credits must be zero or higher.' });
     return;
   }
 

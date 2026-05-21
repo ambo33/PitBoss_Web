@@ -561,8 +561,12 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
   const leagueFee = Math.max(0, Math.round(Number(body.leaguefee ?? 0) * 100) / 100);
   const perEventFee = Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100);
   const showupBonus = Math.max(0, Math.round(Number(body.showupbonuspoints ?? 300)));
+  const eventCount = Math.max(1, Math.min(100, Math.round(Number(body.eventcount ?? 1))));
   const bestFinishCount = Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount ?? 7))));
-  const eventCount = Math.max(0, Math.min(100, Math.round(Number(body.eventcount ?? 0))));
+  if (bestFinishCount > eventCount) {
+    res.status(400).json({ error: 'Top events scored cannot exceed total events.' });
+    return;
+  }
   const pointsLookup = body.pointslookup == null
     ? generatePointsLookup(expectedPlayerCount)
     : normalizePointsLookup(body.pointslookup);

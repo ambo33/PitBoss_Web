@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
-const siteUrl = 'https://pokerplanner.bet';
-const appUrl = 'https://app.pokerplanner.bet';
+const siteUrl = 'https://thepokerplanner.com';
+const appUrl = 'https://app.thepokerplanner.com';
 
 const sharedFaq = [
   {
@@ -365,7 +365,7 @@ ${articleSections}
       </article>
     </main>
     <footer>
-      <p>PokerPlanner.bet helps home-game hosts plan tournaments, run the clock, and keep players informed.</p>
+      <p>ThePokerPlanner.com helps home-game hosts plan tournaments, run the clock, and keep players informed.</p>
     </footer>
   </body>
 </html>

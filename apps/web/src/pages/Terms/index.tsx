@@ -7,7 +7,7 @@ const sections = [
   {
     title: '1. What PokerPlanner Is',
     body: [
-      'PokerPlanner.bet is a planning and tournament-management tool for poker hosts. It provides features such as blind timers, tournament clocks, seating tools, payout planning, group organization, player check-in, and related administrative tools.',
+      'ThePokerPlanner.com is a planning and tournament-management tool for poker hosts. It provides features such as blind timers, tournament clocks, seating tools, payout planning, group organization, player check-in, and related administrative tools.',
       'PokerPlanner is not a gambling operator, sportsbook, casino, payment processor, escrow service, money transmitter, or betting platform. The service does not take wagers, hold player funds, settle bets, award prizes, or participate in any gambling activity.',
     ],
   },
@@ -72,7 +72,7 @@ const sections = [
   {
     title: '10. Contact',
     body: [
-      'Questions about these Terms can be sent to hello@pokerplanner.bet.',
+      'Questions about these Terms can be sent to hello@thepokerplanner.com.',
     ],
   },
 ];
@@ -82,7 +82,7 @@ export default function TermsPage() {
     <main className="min-h-screen bg-pit-bg text-white">
       <header className="border-b border-pit-border bg-pit-surface/80">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5">
-          <Link to="/" aria-label="PokerPlanner.bet home">
+          <Link to="/" aria-label="ThePokerPlanner.com home">
             <BrandLockup compact />
           </Link>
           <nav className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export default function TermsPage() {
         </p>
         <h1 className="text-4xl font-black leading-tight sm:text-5xl">Terms of Service</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-pit-text">
-          Last updated: {updatedDate}. These Terms govern your access to and use of PokerPlanner.bet.
+          Last updated: {updatedDate}. These Terms govern your access to and use of ThePokerPlanner.com.
         </p>
 
         <section className="mt-8 rounded-xl border border-red-400/25 bg-red-400/10 p-5">

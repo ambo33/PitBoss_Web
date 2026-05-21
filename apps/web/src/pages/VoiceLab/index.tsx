@@ -246,7 +246,7 @@ export default function VoiceLabPage() {
             ))}
           </div>
           <div className="mt-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 p-3 text-xs leading-5 text-yellow-100">
-            These are saved as static MP3 files, so the landing page can reuse them without spending API credits per visitor.
+            These are saved as static MP3 files, so the landing page can reuse them without spending voice credits per visitor.
           </div>
         </aside>
 
@@ -254,7 +254,7 @@ export default function VoiceLabPage() {
           <div className="flex flex-col justify-between gap-3 border-b border-pit-border pb-4 sm:flex-row sm:items-start">
             <div>
               <p className="text-xs font-semibold uppercase text-pit-teal">Generate Landing Audio</p>
-              <h1 className="mt-1 text-2xl font-bold">AI Voice Clip Lab</h1>
+              <h1 className="mt-1 text-2xl font-bold">Voice Clip Lab</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-pit-text">
                 Use this for one-off marketing clips. Generate the script, tweak it, then create a reusable MP3.
               </p>
@@ -337,7 +337,7 @@ export default function VoiceLabPage() {
             )}
 
             <div className="rounded-lg border border-pit-border bg-pit-bg/70 px-3 py-2 text-xs text-pit-muted">
-              Landing asset path: <span className="font-mono text-pit-text">/sounds/ai-demo/custom/{style.replace(/_/g, '-')}.mp3</span>
+              Landing asset: <span className="text-pit-text">{selectedStyle.label} saved MP3</span>
             </div>
 
             <div className="flex flex-wrap gap-2">

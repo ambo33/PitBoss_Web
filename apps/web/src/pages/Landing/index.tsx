@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, Clock3, Mic2, Play, QrCode, Sparkles, Trophy, Users, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Clock3, Mic2, QrCode, Trophy, Users, Volume2 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
@@ -23,10 +23,10 @@ const features = [
     stat: 'TV',
   },
   {
-    title: 'AI voice director',
-    body: 'Set a group voice style and let level changes announce the action with game-aware context and personality.',
+    title: 'Voice director',
+    body: 'Set a group voice style and let clock changes announce the action with the right personality.',
     icon: Mic2,
-    stat: 'AI',
+    stat: 'Voice',
   },
 ];
 
@@ -181,12 +181,11 @@ export default function LandingPage() {
       audioRef.current = new Audio(clip.src);
       await audioRef.current.play();
     } catch (err) {
-      setVoiceError(err instanceof Error ? err.message : 'Stored AI preview clip is not available yet.');
+      setVoiceError(err instanceof Error ? err.message : 'Stored voice preview clip is not available yet.');
     }
   }
 
   const allInAlexIndex = Math.max(voiceClips.findIndex((clip) => clip.style === 'all_in_alex'), 0);
-  const allInAlexClip = voiceClips[allInAlexIndex] ?? cannedVoiceStyles[0];
 
   return (
     <main className="min-h-screen bg-pit-bg text-white">
@@ -220,21 +219,25 @@ export default function LandingPage() {
         </div>
 
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
-          <header className="flex items-center justify-between gap-4">
-            <BrandLockup compact />
-            <nav className="flex items-center gap-2">
-              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/blind-timer">
+          <header className="flex items-center justify-between gap-3">
+            <BrandLockup compact showSlogan={false} className="min-w-0" />
+            <nav className="flex shrink-0 items-center gap-2">
+              <Link className="btn-ghost px-2 py-2 text-xs sm:px-3 sm:text-sm" to="/blind-timer">
                 <Clock3 size={15} />
-                Blind timer
+                <span className="hidden sm:inline">Blind timer</span>
+                <span className="sm:hidden">Timer</span>
               </Link>
-              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/login">Sign in</Link>
-              <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
+              <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/login">Sign in</Link>
+              <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">
+                <span className="hidden sm:inline">Create account</span>
+                <span className="sm:hidden">Join</span>
+              </Link>
             </nav>
           </header>
 
           <div data-reveal className="mt-5 rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
             <div>
-              <span className="font-semibold text-white">PokerPlanner.bet is live!</span>
+              <span className="font-semibold text-white">ThePokerPlanner.com is live!</span>
               <span className="ml-1">Help us build and shape for all hosting needs!</span>
             </div>
             <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/login?mode=register">
@@ -261,9 +264,14 @@ export default function LandingPage() {
                 </Link>
                 <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
                   <Volume2 size={16} />
-                  Preview AI voice
+                  Preview voice
                 </button>
               </div>
+              {voiceError && (
+                <p className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+                  {voiceError}
+                </p>
+              )}
               <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
                 {steps.map((step, index) => (
                   <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
@@ -283,41 +291,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div data-reveal className="mb-8">
-          <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
-          <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-3">
-          <ProductShot
-            title="Run Tournament"
-            eyebrow="Host command center"
-            caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
-          >
-            <RunTournamentMock />
-          </ProductShot>
-          <ProductShot
-            title="Player Lobby"
-            eyebrow="Phone friendly"
-            caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
-          >
-            <PlayerLobbyMock />
-          </ProductShot>
-          <ProductShot
-            title="Pocket Admin"
-            eyebrow="Mobile control"
-            caption="Hosts can control the timer and handle quick actions while walking the room."
-          >
-            <PocketAdminMock />
-          </ProductShot>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
+      <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div data-reveal className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-sm font-semibold uppercase text-pit-teal">Built for live games</p>
+            <p className="text-sm font-semibold uppercase text-pit-teal">Designed for hosts, players, and the room.</p>
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">A better rhythm for every part of tournament night.</h2>
           </div>
           <p className="max-w-xl text-sm leading-6 text-pit-text">
@@ -349,94 +326,6 @@ export default function LandingPage() {
               </article>
             );
           })}
-        </div>
-      </section>
-
-      <section className="border-y border-pit-border bg-pit-surface/30">
-        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
-          <div data-reveal className="lg:sticky lg:top-8 lg:self-start">
-            <p className="text-sm font-semibold uppercase text-pit-teal">AI voice director</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
-            <p className="mt-4 text-sm leading-6 text-pit-text">
-              Pick a voice style for each group and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.
-            </p>
-            <div className="mt-6 space-y-3">
-              <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-pit-teal" />
-                  <h3 className="text-sm font-semibold text-white">Context when it matters</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-pit-text">
-                  Classic mode keeps announcements short and clean. When a group wants more color, level changes can include live tournament context like field movement, rebuys, add-ons, and bounty pressure.
-                </p>
-              </div>
-              <div className="grid gap-2 text-sm text-pit-text sm:grid-cols-2 lg:grid-cols-1">
-                {['Group-level voice preset', 'Custom prompt flavor', 'Concise clock, pause, knockout, rebuy, and add-on calls', 'Saved preview clips for the landing page'].map((item) => (
-                  <div key={item} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
-                    <CheckCircle2 size={15} className="text-pit-teal" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase text-pit-muted">Voice preview</p>
-                <h3 className="mt-1 text-xl font-bold text-white">Hear All-In Alex</h3>
-              </div>
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10">
-                <span className="pp-ring absolute inset-1 rounded-full border border-pit-teal/40" style={{ animation: 'pp-pulse-ring 1.8s ease-in-out infinite' }} />
-                <Bot size={22} className="relative text-pit-teal" />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-pit-teal">Now previewing</p>
-                  <h4 className="mt-1 text-2xl font-bold text-white">{allInAlexClip.label}</h4>
-                  <p className="mt-2 text-sm leading-6 text-pit-text">{allInAlexClip.text}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary shrink-0 px-4 py-2 text-sm"
-                  onClick={() => playVoicePreview(allInAlexIndex)}
-                >
-                  <Play size={15} />
-                  Play clip
-                </button>
-              </div>
-              <div className="mt-4 rounded-lg border border-pit-border bg-pit-bg/70 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Sample line</p>
-                <p className="mt-1 text-sm leading-6 text-white">
-                  {allInAlexClip.sampleText ?? (allInAlexClip.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
-                </p>
-              </div>
-            </div>
-
-            {voiceError && (
-              <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-                {voiceError}
-              </p>
-            )}
-
-            <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/70 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles size={16} className="text-pit-teal" />
-                <p className="text-sm font-semibold text-white">What groups can customize</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <VoiceMetric label="Preset" value="All-In Alex" />
-                <VoiceMetric label="Mode" value="Classic or contextual" />
-              </div>
-              <p className="mt-3 text-sm leading-6 text-pit-text">
-                The full app lets groups choose from more announcer styles, but the landing page keeps the pitch focused: one strong sample, then get people into the product.
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -619,113 +508,6 @@ function PlayerTrackingMock() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function VoiceMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-pit-border bg-pit-card p-3">
-      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
-      <p className="mt-1 text-sm font-bold text-white">{value}</p>
-    </div>
-  );
-}
-
-function ProductShot({
-  title,
-  eyebrow,
-  caption,
-  children,
-}: {
-  title: string;
-  eyebrow: string;
-  caption: string;
-  children: ReactNode;
-}) {
-  return (
-    <article data-reveal className="overflow-hidden rounded-xl border border-pit-border bg-pit-card">
-      <div className="border-b border-pit-border p-4">
-        <p className="text-xs font-semibold uppercase text-pit-teal">{eyebrow}</p>
-        <h3 className="mt-1 text-xl font-bold text-white">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-pit-text">{caption}</p>
-      </div>
-      <div className="bg-[#111113] p-4">{children}</div>
-    </article>
-  );
-}
-
-function RunTournamentMock() {
-  return (
-    <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="rounded-md border border-pit-border px-2 py-1 text-xs text-pit-text">TV 478381</span>
-        <span className="rounded-md bg-pit-teal px-2 py-1 text-xs font-semibold text-white">Start</span>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-4 text-center">
-        <p className="text-xs uppercase text-pit-text">Level 3 of 9</p>
-        <p className="font-mono text-5xl font-black text-white">19:07</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <MiniBlind label="Current" value="75 / 150" />
-          <MiniBlind label="Next" value="125 / 250" />
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {['3 left', '4 rebuys', '$155 pot'].map((item) => (
-          <div key={item} className="rounded-md border border-pit-border bg-pit-card p-2 text-center text-xs text-white">{item}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PlayerLobbyMock() {
-  return (
-    <div className="mx-auto max-w-[250px] rounded-[1.75rem] border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 text-center">
-        <p className="text-sm font-bold text-white">June Tournament</p>
-        <p className="mt-1 text-[11px] text-pit-teal">TABLE 4 SEAT 6</p>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-3 text-center">
-        <p className="font-mono text-4xl font-black text-white">08:54</p>
-        <p className="mt-1 text-xs text-pit-text">300 / 600</p>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <LobbyPill label="Registered" value="Yes" />
-        <LobbyPill label="Checked In" value="Yes" />
-      </div>
-      <button className="mt-3 w-full rounded-lg bg-red-600/25 px-3 py-2 text-xs font-bold text-red-300">I Have Been Knocked Out</button>
-    </div>
-  );
-}
-
-function LobbyPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-pit-border bg-pit-card p-2 text-center">
-      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
-      <p className="text-sm font-bold text-white">{value}</p>
-    </div>
-  );
-}
-
-function PocketAdminMock() {
-  return (
-    <div className="mx-auto max-w-[250px] rounded-xl border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] uppercase text-pit-muted">Pocket Admin</p>
-          <p className="text-sm font-bold text-white">June Tournament</p>
-        </div>
-        <span className="rounded-md border border-yellow-300/50 px-2 py-1 text-[10px] text-yellow-200">Awake</span>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-3 text-center">
-        <p className="font-mono text-4xl font-black text-white">20:00</p>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {['Start', '+ Rebuy', '+ Add-On', 'Next'].map((item) => (
-          <button key={item} className="rounded-lg border border-pit-border bg-pit-card px-2 py-2 text-xs font-semibold text-white">{item}</button>
-        ))}
-      </div>
     </div>
   );
 }

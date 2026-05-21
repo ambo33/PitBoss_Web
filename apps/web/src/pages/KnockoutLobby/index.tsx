@@ -84,7 +84,7 @@ export default function KnockoutLobbyPage() {
     <div className="min-h-screen bg-pit-bg p-4 text-white">
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="pt-6 text-center">
-          <p className="text-sm text-pit-text">PokerPlanner.bet - Knockout Station</p>
+          <p className="text-sm text-pit-text">ThePokerPlanner.com - Knockout Station</p>
           <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
           <p className="mt-2 text-sm text-pit-text">Use this after you bust out so the tournament state stays current.</p>
         </header>

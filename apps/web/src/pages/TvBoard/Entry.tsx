@@ -14,7 +14,7 @@ export default function TvBoardEntryPage() {
   return (
     <div className="min-h-screen bg-pit-bg px-4 py-8 text-white">
       <div className="mx-auto mt-16 max-w-md rounded-2xl border border-pit-border bg-pit-surface/70 p-6 text-center">
-        <p className="text-sm text-pit-text">PokerPlanner.bet</p>
+        <p className="text-sm text-pit-text">ThePokerPlanner.com</p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Open TV Board</h1>
         <p className="mt-2 text-sm text-pit-text">Enter the 6-digit display code from the host screen.</p>
 

@@ -560,7 +560,7 @@ export default function RunTournament({
         playGeneratedSpeech(result.audioBase64, result.mimeType);
       }
     }).catch(() => {
-      // Knockout announcements are additive. If AI is unavailable, keep the game flow quiet.
+      // Knockout announcements are additive. If generation is unavailable, keep the game flow quiet.
     });
   }
 
@@ -580,7 +580,7 @@ export default function RunTournament({
         playGeneratedSpeech(result.audioBase64, result.mimeType);
       }
     }).catch(() => {
-      // Rebuy/add-on announcements should never interrupt the host workflow if AI is unavailable.
+      // Rebuy/add-on announcements should never interrupt the host workflow if generation is unavailable.
     });
   }
 

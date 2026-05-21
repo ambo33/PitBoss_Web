@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ImageIcon, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
+import { Camera, KeyRound, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
@@ -67,6 +67,7 @@ export default function MainPage() {
       canuseclubfeatures: currentProfile.canuseclubfeatures,
       aicreditsremaining: currentProfile.aicreditsremaining,
       defaultaicredits: currentProfile.defaultaicredits,
+      aicreditsrefreshat: currentProfile.aicreditsrefreshat,
       avatarimagedata: currentProfile.avatarimagedata ?? null,
       hasavatarimage: currentProfile.hasavatarimage ?? false,
       onboardingcomplete: currentProfile.onboardingcomplete,
@@ -138,7 +139,7 @@ function OnboardingTour({
 
   return (
     <Modal
-      title="Welcome to PokerPlanner.bet"
+      title="Welcome to ThePokerPlanner.com"
       open={open}
       onClose={onClose}
       footer={
@@ -200,6 +201,7 @@ function ProfilePanel() {
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
+  const [passwordResetMessage, setPasswordResetMessage] = useState<string | null>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['me'],
@@ -215,6 +217,7 @@ function ProfilePanel() {
       hasavatarimage: profile.hasavatarimage ?? false,
       aicreditsremaining: profile.aicreditsremaining,
       defaultaicredits: profile.defaultaicredits,
+      aicreditsrefreshat: profile.aicreditsrefreshat,
       onboardingcomplete: profile.onboardingcomplete,
     });
   }, [profile, updateUser]);
@@ -230,6 +233,7 @@ function ProfilePanel() {
         hasavatarimage: updated.hasavatarimage ?? false,
         aicreditsremaining: updated.aicreditsremaining,
         defaultaicredits: updated.defaultaicredits,
+        aicreditsrefreshat: updated.aicreditsrefreshat,
       });
       if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
         setMediaSuccess(variables.clearcheckinaudio ? 'Check-in clip removed.' : 'Check-in clip saved.');
@@ -238,6 +242,16 @@ function ProfilePanel() {
       } else {
         setMediaSuccess('Profile updated.');
       }
+    },
+  });
+
+  const passwordResetMutation = useMutation({
+    mutationFn: (email: string) => api.requestReset(email) as Promise<{ message?: string }>,
+    onSuccess: (result) => {
+      setPasswordResetMessage(result.message ?? 'Password reset email sent.');
+    },
+    onError: (error) => {
+      setPasswordResetMessage(error instanceof Error ? error.message : 'Unable to send password reset email.');
     },
   });
 
@@ -327,15 +341,47 @@ function ProfilePanel() {
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
       <div className="card flex flex-col items-center gap-4 py-8 text-center">
-        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-pit-teal/30 bg-pit-teal/15 text-3xl font-bold text-pit-teal">
-          {avatarImage ? (
-            <img src={avatarImage} alt={displayName} className="h-full w-full object-cover" />
-          ) : initials}
-        </div>
+        <button
+          type="button"
+          className="group relative flex h-24 w-24 items-center justify-center overflow-visible rounded-3xl border border-pit-teal/30 bg-pit-teal/15 text-3xl font-bold text-pit-teal transition hover:border-pit-teal"
+          onClick={() => avatarInputRef.current?.click()}
+          disabled={updateProfileMutation.isPending}
+          aria-label="Update avatar"
+        >
+          <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-3xl">
+            {avatarImage ? (
+              <img src={avatarImage} alt={displayName} className="h-full w-full object-cover" />
+            ) : initials}
+          </span>
+          <span className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full border border-pit-border bg-pit-teal text-white shadow-lg shadow-pit-teal/20 transition group-hover:scale-105">
+            <Camera size={16} />
+          </span>
+        </button>
         <div>
           <p className="text-lg font-bold text-white">{displayName}</p>
           <p className="text-sm text-pit-muted">{emailAddress}</p>
         </div>
+        {avatarImage && (
+          <button
+            type="button"
+            className="text-sm font-medium text-red-300 transition hover:text-red-200"
+            onClick={() => {
+              setMediaError(null);
+              setMediaSuccess(null);
+              updateProfileMutation.mutate({ clearavatarimage: true });
+            }}
+            disabled={updateProfileMutation.isPending}
+          >
+            Remove avatar
+          </button>
+        )}
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          onChange={handleAvatarFile}
+        />
       </div>
 
       {(mediaError || updateProfileMutation.error) && (
@@ -351,9 +397,12 @@ function ProfilePanel() {
 
       <section className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-white">Beta Access</h3>
-            <p className="text-sm text-pit-muted">Every feature is unlocked while PokerPlanner.bet is in beta.</p>
+          <div className="flex items-center gap-3">
+            <Shield size={18} className="text-pit-teal" />
+            <div>
+              <h3 className="font-semibold text-white">Account Status</h3>
+              <p className="text-sm text-pit-muted">Your current PokerPlanner tier.</p>
+            </div>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
             profile?.accounttier === 'host'
@@ -364,72 +413,31 @@ function ProfilePanel() {
           </span>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
+          <TierStat label="Current status" value={formatTierName(profile?.accounttier)} accent />
           <TierStat label="Hosted tournaments" value={profile?.hostedtournamentcount ?? 0} />
-          <TierStat label="Beta status" value="Free" accent />
           <TierStat
             label="Club features"
-            value={profile?.canuseclubfeatures ? 'Enabled' : 'Locked'}
+            value={profile?.canuseclubfeatures ? 'Available' : 'Host only'}
             accent={profile?.canuseclubfeatures}
           />
-        </div>
-        <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
-          Beta users have full access while we test the product. If paid tiers launch later, beta testers will receive discounted rates.
         </div>
       </section>
 
       <section className="card space-y-3">
         <div className="flex items-center gap-3">
-          <Bot size={18} className="text-pit-teal" />
+          <Music4 size={18} className="text-pit-teal" />
           <div>
-            <h3 className="font-semibold text-white">AI Credits</h3>
-            <p className="text-sm text-pit-muted">Used for AI announcer clips and hand analysis.</p>
+            <h3 className="font-semibold text-white">Voice Credits</h3>
+            <p className="text-sm text-pit-muted">Remaining voice generations for this credit window.</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <TierStat label="Credits remaining" value={profile?.aicreditsremaining ?? 0} accent={(profile?.aicreditsremaining ?? 0) > 0} />
-          <TierStat label="Default allotment" value={profile?.defaultaicredits ?? 0} />
+          <TierStat label="Remaining" value={profile?.aicreditsremaining ?? 0} accent={(profile?.aicreditsremaining ?? 0) > 0} />
+          <TierStat label="Refreshes" value={formatCreditRefreshDate(profile?.aicreditsrefreshat)} />
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card space-y-4">
-          <div className="flex items-center gap-3">
-            <ImageIcon size={18} className="text-pit-teal" />
-            <div>
-              <h3 className="font-semibold text-white">Avatar</h3>
-              <p className="text-sm text-pit-muted">Upload a profile image for your account.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button type="button" className="btn-primary gap-2" onClick={() => avatarInputRef.current?.click()} disabled={updateProfileMutation.isPending}>
-              <Upload size={14} />
-              {avatarImage ? 'Replace Avatar' : 'Upload Avatar'}
-            </button>
-            {avatarImage && (
-              <button
-                type="button"
-                className="btn-ghost gap-2 text-red-400 hover:text-red-300"
-                onClick={() => {
-                  setMediaError(null);
-                  setMediaSuccess(null);
-                  updateProfileMutation.mutate({ clearavatarimage: true });
-                }}
-                disabled={updateProfileMutation.isPending}
-              >
-                <Trash2 size={14} />
-                Remove
-              </button>
-            )}
-          </div>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            onChange={handleAvatarFile}
-          />
-        </section>
-
+      <div className="grid gap-4">
         <section className="card space-y-4">
           <div className="flex items-center gap-3">
             <Music4 size={18} className="text-pit-teal" />
@@ -484,6 +492,27 @@ function ProfilePanel() {
           <Shield size={16} />
           <span>Account managed via email/password</span>
         </div>
+        <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 text-sm text-pit-muted">
+            <KeyRound size={16} />
+            <span>Password</span>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost gap-2"
+            onClick={() => {
+              setPasswordResetMessage(null);
+              if (emailAddress) passwordResetMutation.mutate(emailAddress);
+            }}
+            disabled={!emailAddress || passwordResetMutation.isPending}
+          >
+            <KeyRound size={14} />
+            {passwordResetMutation.isPending ? 'Sending...' : 'Email reset link'}
+          </button>
+        </div>
+        {passwordResetMessage && (
+          <p className="px-4 py-3 text-sm text-pit-text">{passwordResetMessage}</p>
+        )}
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-400/5 hover:text-red-300"
@@ -580,6 +609,13 @@ function TierStat({
       <p className={`mt-1 text-lg font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</p>
     </div>
   );
+}
+
+function formatCreditRefreshDate(value?: string | null) {
+  if (!value) return 'Not scheduled';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not scheduled';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatTierName(tier: 'host' | 'club' | 'pro' | undefined) {

@@ -147,7 +147,7 @@ async function createSpeech(
       model,
       voice,
       input,
-      instructions: options.instructions ?? `Voice direction: ${presetInstructions[preset]} Make it sound like an AI-generated tournament announcer.`,
+      instructions: options.instructions ?? `Voice direction: ${presetInstructions[preset]} Make it sound like a polished tournament announcer.`,
       response_format: 'mp3',
     }),
   });
@@ -165,7 +165,7 @@ export async function generateVoicePreview(
   style: 'football' | 'british_dealer'
 ): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean }> {
   if (!process.env.OPENAI_API_KEY) {
-    return { text: 'AI voice preview is not configured on this server.', aiEnabled: false };
+    return { text: 'Voice preview is not configured on this server.', aiEnabled: false };
   }
   const config = style === 'british_dealer'
     ? {
@@ -232,7 +232,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
   if (context.classicMode) {
     const text = buildClassicAnnouncerScript(context);
     if (!process.env.OPENAI_API_KEY) {
-      return { text: 'AI announcer is not configured on this server.', aiEnabled: false, preset, voice: presetVoices[preset] };
+      return { text: 'Voice announcer is not configured on this server.', aiEnabled: false, preset, voice: presetVoices[preset] };
     }
     const speech = await createSpeech(text, preset);
     return { text, ...speech, aiEnabled: true, preset, voice: presetVoices[preset] };
@@ -279,7 +279,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
       ].filter(Boolean).join('\n');
 
   if (!process.env.OPENAI_API_KEY) {
-    return { text: 'AI announcer is not configured on this server.', aiEnabled: false };
+    return { text: 'Voice announcer is not configured on this server.', aiEnabled: false };
   }
   let text: string;
   try {
@@ -358,7 +358,7 @@ export async function analyzePokerHand(context: HandAnalysisContext): Promise<{ 
   if (!process.env.OPENAI_API_KEY) {
     return {
       aiEnabled: false,
-      analysis: 'AI is not configured yet. Add OPENAI_API_KEY, then describe the hand with positions, stack sizes, cards, action, and pot size for coaching.',
+      analysis: 'Coaching is not configured yet. Add OPENAI_API_KEY, then describe the hand with positions, stack sizes, cards, action, and pot size for coaching.',
     };
   }
   return { aiEnabled: true, analysis: await createText(prompt) };

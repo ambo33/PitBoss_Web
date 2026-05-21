@@ -334,16 +334,19 @@ export default function PublicBlindTimerPage() {
   return (
     <main className="min-h-screen bg-pit-bg text-white">
       <header className="border-b border-pit-border bg-pit-surface/80">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
           <Link className="min-w-0" to="/landing">
             <BrandLockup compact showSlogan={false} />
           </Link>
           <div className="flex shrink-0 items-center gap-2">
-            <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/landing">
+            <Link className="btn-ghost px-2 py-2 text-xs sm:px-3 sm:text-sm" to="/landing" aria-label="Back to landing page">
               <ArrowLeft size={15} />
-              Landing
+              <span className="hidden sm:inline">Landing</span>
             </Link>
-            <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
+            <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">
+              <span className="hidden sm:inline">Create account</span>
+              <span className="sm:hidden">Join</span>
+            </Link>
           </div>
         </div>
       </header>

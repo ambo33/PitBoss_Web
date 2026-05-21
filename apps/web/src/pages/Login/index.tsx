@@ -53,7 +53,7 @@ export default function LoginPage() {
       </div>
 
       <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
-        <Link to="/" aria-label="PokerPlanner.bet home">
+        <Link to="/" aria-label="ThePokerPlanner.com home">
           <BrandLockup compact />
         </Link>
         <nav className="flex items-center gap-2">

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://pokerplanner.bet/sitemap.xml
+Sitemap: https://thepokerplanner.com/sitemap.xml

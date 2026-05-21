@@ -47,12 +47,12 @@ export default function TvBoardPage() {
 
           <div className="flex items-center gap-3 text-right">
             <div>
-              <p className="text-xl font-semibold tracking-tight text-white xl:text-2xl">PokerPlanner.bet</p>
+              <p className="text-xl font-semibold tracking-tight text-white xl:text-2xl">ThePokerPlanner.com</p>
               <p className="mt-0.5 text-[11px] uppercase tracking-[0.24em] text-pit-muted xl:text-xs">Run Better Poker Nights</p>
             </div>
             <img
               src="/branding/pokerplanner-logo-compact.png"
-              alt="PokerPlanner.bet"
+              alt="ThePokerPlanner.com"
               className="h-10 w-10 object-contain xl:h-12 xl:w-12"
             />
           </div>

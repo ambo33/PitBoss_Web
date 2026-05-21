@@ -365,7 +365,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     <div className="min-h-screen bg-pit-bg p-3 text-white">
       <header className="mb-4 text-center">
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
-        {displayIdentity && <p className="mt-1 text-sm text-pit-text">PokerPlanner.bet - {displayIdentity}</p>}
+        {displayIdentity && <p className="mt-1 text-sm text-pit-text">ThePokerPlanner.com - {displayIdentity}</p>}
         <CoinBadgeStrip coins={entry?.awardedcoins} size="lg" limit={8} className="mt-3 justify-center" />
         {entry && <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-pit-teal">{seatMessage}</p>}
         <button

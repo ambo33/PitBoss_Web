@@ -1,6 +1,6 @@
-# PokerPlanner.bet
+# ThePokerPlanner.com
 
-PokerPlanner.bet is a monorepo with:
+ThePokerPlanner.com is a monorepo with:
 
 - `apps/api`: Express + Socket.IO API
 - `apps/web`: Vite + React frontend

@@ -3,7 +3,7 @@ import https from 'https';
 import { getAppUrl } from '../config';
 
 const resendApiKey = process.env.RESEND_API_KEY;
-const from = process.env.EMAIL_FROM ?? 'PokerPlanner.bet <noreply@pokerplanner.bet>';
+const from = process.env.EMAIL_FROM ?? 'ThePokerPlanner.com <noreply@thepokerplanner.com>';
 const appUrl = getAppUrl();
 
 type EmailPayload = {
@@ -129,7 +129,7 @@ function emailLayout({
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;border:1px solid #2a2c35;border-radius:18px;background:#17181f;overflow:hidden;">
                 <tr>
                   <td style="padding:26px 28px 18px;border-bottom:1px solid #2a2c35;">
-                    <div style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#ffffff;">PokerPlanner.bet</div>
+                    <div style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#ffffff;">ThePokerPlanner.com</div>
                     <div style="margin-top:4px;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#8d93a5;">Run Better Poker Nights</div>
                   </td>
                 </tr>
@@ -148,7 +148,7 @@ function emailLayout({
                 </tr>
                 <tr>
                   <td style="padding:18px 28px;border-top:1px solid #2a2c35;color:#8d93a5;font-size:12px;line-height:1.5;">
-                    You are receiving this because you use PokerPlanner.bet. Replies may not be monitored.
+                    You are receiving this because you use ThePokerPlanner.com. Replies may not be monitored.
                   </td>
                 </tr>
               </table>
@@ -163,12 +163,16 @@ function emailLayout({
 export async function sendVerificationEmail(email: string, pin: string): Promise<void> {
   await sendMail({
     to: email,
-    subject: 'Verify your PokerPlanner.bet account',
+    subject: 'Welcome to ThePokerPlanner.com - verify your email',
     html: emailLayout({
-      eyebrow: 'Account Verification',
-      title: 'Verify your account',
-      intro: 'Use this PIN to finish setting up your PokerPlanner.bet account.',
-      body: `<div style="display:inline-block;border-radius:12px;border:1px solid #2a2c35;background:#101116;padding:14px 18px;font-size:28px;font-weight:800;letter-spacing:0.18em;color:#ffffff;">${escapeHtml(pin)}</div>`,
+      eyebrow: 'Welcome to ThePokerPlanner.com',
+      title: 'Verify your email',
+      intro: 'You are one step away from running cleaner poker nights.',
+      body: `
+        <p style="margin:0 0 14px;">Enter this PIN to activate your account:</p>
+        <div style="display:inline-block;border-radius:12px;border:1px solid #2a2c35;background:#101116;padding:14px 18px;font-size:28px;font-weight:800;letter-spacing:0.18em;color:#ffffff;">${escapeHtml(pin)}</div>
+        <p style="margin:18px 0 0;">After verification, you can create groups, schedule tournaments, run the clock, and invite players.</p>
+      `,
     }),
   });
 }
@@ -177,7 +181,7 @@ export async function sendPasswordResetEmail(email: string, resetGuid: string): 
   const link = `${appUrl}/reset-password?token=${resetGuid}`;
   await sendMail({
     to: email,
-    subject: 'Reset your PokerPlanner.bet password',
+    subject: 'Reset your ThePokerPlanner.com password',
     html: emailLayout({
       eyebrow: 'Password Reset',
       title: 'Reset your password',
@@ -219,11 +223,11 @@ export async function sendGroupInviteEmail(
   const joinLink = `${appUrl}/join/${encodeURIComponent(inviteCode)}`;
   await sendMail({
     to: email,
-    subject: `You're invited to join ${groupName} on PokerPlanner.bet`,
+    subject: `You're invited to join ${groupName} on ThePokerPlanner.com`,
     html: emailLayout({
       eyebrow: 'Group Invite',
       title: `Join ${groupName}`,
-      intro: 'You were invited to join a PokerPlanner.bet group.',
+      intro: 'You were invited to join a ThePokerPlanner.com group.',
       body: `
         <p style="margin:0 0 12px;">Join code: <strong style="color:#ffffff;letter-spacing:0.12em;">${escapeHtml(inviteCode)}</strong></p>
         ${note ? `<p style="margin:0 0 12px;border-left:3px solid #13adad;padding-left:12px;">${escapeHtml(note)}</p>` : ''}
@@ -254,7 +258,7 @@ export async function sendGroupPostApprovalEmail(
         <p style="margin:0;">Open the group Posts tab to approve or reject it.</p>
       `,
       ctaHref: appUrl,
-      ctaLabel: 'Open PokerPlanner.bet',
+      ctaLabel: 'Open ThePokerPlanner.com',
     }),
   });
 }
@@ -323,9 +327,9 @@ export async function sendTournamentCancelledEmail(
       eyebrow: 'Tournament Cancelled',
       title: `${tournamentName} has been cancelled`,
       intro: when ? `Scheduled time: ${when}` : undefined,
-      body: '<p style="margin:0;">Please check PokerPlanner.bet for updated tournament plans.</p>',
+      body: '<p style="margin:0;">Please check ThePokerPlanner.com for updated tournament plans.</p>',
       ctaHref: appUrl,
-      ctaLabel: 'Open PokerPlanner.bet',
+      ctaLabel: 'Open ThePokerPlanner.com',
     }),
   });
 }

@@ -217,7 +217,7 @@ export default function Layout({
       </div>
 
       {!hideMobileNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-pit-surface/90 backdrop-blur-md md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-[#24252d]/95 backdrop-blur-md md:hidden">
           {navItems.map(({ id, label, Icon }) => {
             const active = tab === id;
             const isAdmin = id === 'admin';

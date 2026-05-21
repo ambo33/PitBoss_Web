@@ -982,7 +982,9 @@ function CreateLeagueModal({
   const [eventcount, setEventcount] = useState('10');
   const [pointslookup, setPointslookup] = useState<LeaguePointRule[]>(() => generateLeaguePoints(36));
   const playerCount = Math.max(2, Number(expectedplayercount) || 36);
-  const startingEventCount = Math.max(0, Math.min(100, Number(eventcount) || 0));
+  const totalEventCount = Math.max(1, Math.min(100, Number(eventcount) || 1));
+  const topEventsScored = Math.max(1, Math.min(100, Number(bestfinishcount) || 1));
+  const eventsScoredTooHigh = topEventsScored > totalEventCount;
   const pointTotal = pointslookup.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 
   return (
@@ -996,7 +998,7 @@ function CreateLeagueModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || !name.trim() || !Number(expectedplayercount)}
+            disabled={loading || !name.trim() || !Number(expectedplayercount) || eventsScoredTooHigh}
             onClick={() => onSubmit({
               name,
               approvalneeded,
@@ -1004,9 +1006,9 @@ function CreateLeagueModal({
               leaguefee: Number(leaguefee) || 0,
               pereventfee: Number(pereventfee) || 0,
               showupbonuspoints: Number(showupbonuspoints) || 0,
-              bestfinishcount: Number(bestfinishcount) || 7,
+              bestfinishcount: topEventsScored,
               pointslookup,
-              eventcount: startingEventCount,
+              eventcount: totalEventCount,
               seasonname,
               seasonbegindate,
               seasonenddate,
@@ -1057,24 +1059,51 @@ function CreateLeagueModal({
             <input className="input" inputMode="decimal" value={pereventfee} onChange={(event) => setPereventfee(event.target.value.replace(/[^\d.]/g, ''))} />
           </label>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Show-up bonus</span>
-            <input className="input" inputMode="numeric" value={showupbonuspoints} onChange={(event) => setShowupbonuspoints(event.target.value.replace(/\D/g, ''))} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Best finishes scored</span>
-            <input className="input" inputMode="numeric" value={bestfinishcount} onChange={(event) => setBestfinishcount(event.target.value.replace(/\D/g, ''))} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting events</span>
-            <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
-          </label>
-        </div>
         <p className="text-sm leading-6 text-pit-text">
-          Placement point rules will be configured next. This first step creates the league, invite code, and season scoring basics.
+          Placement point rules can be tuned before launch. This first step creates the league, invite code, and first season.
         </p>
         <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Total events</span>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={eventcount}
+                onChange={(event) => {
+                  const next = event.target.value.replace(/\D/g, '');
+                  setEventcount(next);
+                  const nextTotal = Math.max(1, Math.min(100, Number(next) || 1));
+                  if (topEventsScored > nextTotal) setBestfinishcount(String(nextTotal));
+                }}
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Top events scored</span>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={bestfinishcount}
+                onChange={(event) => {
+                  const next = event.target.value.replace(/\D/g, '');
+                  if (!next) {
+                    setBestfinishcount('');
+                    return;
+                  }
+                  setBestfinishcount(String(Math.min(totalEventCount, Math.max(1, Number(next) || 1))));
+                }}
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Show-up bonus</span>
+              <input className="input" inputMode="numeric" value={showupbonuspoints} onChange={(event) => setShowupbonuspoints(event.target.value.replace(/\D/g, ''))} />
+            </label>
+          </div>
+          {eventsScoredTooHigh && (
+            <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+              Top events scored cannot exceed total events.
+            </p>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-white">Suggested point chart</p>

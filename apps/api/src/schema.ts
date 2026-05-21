@@ -147,6 +147,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS aicreditsrefreshedat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS checkinaudiodata STRING
     `);
     await client.query(`

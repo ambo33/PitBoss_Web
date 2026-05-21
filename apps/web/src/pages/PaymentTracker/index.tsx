@@ -60,7 +60,7 @@ export default function PaymentTrackerPage() {
   return (
     <div className="min-h-screen bg-pit-bg p-4 text-white">
       <header className="mb-6 text-center">
-        <p className="text-sm text-pit-text">PokerPlanner.bet - Payment Tracker</p>
+        <p className="text-sm text-pit-text">ThePokerPlanner.com - Payment Tracker</p>
         <h1 className="text-xl font-bold text-white">{tournament.name}</h1>
         <p className="mt-1 text-sm text-pit-text">
           {paid.length}/{players.length} paid
