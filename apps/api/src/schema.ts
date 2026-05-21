@@ -170,6 +170,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS onboardingtourcompletedat TIMESTAMPTZ
     `);
     await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS phonenumber STRING(32)
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS smsoptedin BOOL DEFAULT FALSE
+    `);
+    await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS emailhash STRING(64)
     `);
@@ -284,6 +292,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         message STRING(800) NOT NULL,
         createdat TIMESTAMPTZ DEFAULT now()
       )
+    `);
+    await client.query(`
+      ALTER TABLE groupmembers
+      ADD COLUMN IF NOT EXISTS emailalertsenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE groupmembers
+      ADD COLUMN IF NOT EXISTS smsalertsenabled BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE groupmembers
+      ADD COLUMN IF NOT EXISTS pushalertsenabled BOOL DEFAULT FALSE
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS feedback (

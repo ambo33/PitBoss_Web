@@ -11,11 +11,16 @@ type View = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
 export default function LoginPage() {
   const [view, setView] = useState<View>('login');
   const [pendingEmail, setPendingEmail] = useState('');
+  const [autoVerifyMessage, setAutoVerifyMessage] = useState('');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [searchParams] = useSearchParams();
   const resetToken = searchParams.get('token');
   const resetStatus = searchParams.get('reset');
   const requestedMode = searchParams.get('mode');
+  const verifyEmail = searchParams.get('verifyEmail');
+  const verifyCode = searchParams.get('code');
   const inviteCode = searchParams.get('invite') ?? getPendingGroupInvite() ?? '';
   const nextPath = searchParams.get('next');
 
@@ -30,6 +35,7 @@ export default function LoginPage() {
   }, [inviteCode]);
 
   useEffect(() => {
+    if (verifyEmail) setPendingEmail(verifyEmail);
     if (resetToken) {
       setView('reset');
       return;
@@ -42,8 +48,35 @@ export default function LoginPage() {
       setView('register');
       return;
     }
+    if (requestedMode === 'verify' || verifyEmail) {
+      setView('verify');
+      return;
+    }
     setView((currentView) => (currentView === 'reset' ? 'login' : currentView));
-  }, [requestedMode, resetStatus, resetToken]);
+  }, [requestedMode, resetStatus, resetToken, verifyEmail]);
+
+  useEffect(() => {
+    if (!verifyEmail || !verifyCode) return;
+    let cancelled = false;
+    setAutoVerifyMessage('Verifying your email...');
+    api.verifyEmail({ email: verifyEmail, pin: verifyCode })
+      .then(async ({ token }) => {
+        if (cancelled) return;
+        localStorage.setItem('pb_token', token);
+        queryClient.clear();
+        const user = await api.me();
+        if (cancelled) return;
+        setAuth(token, user);
+        navigate(resolveSuccessPath(), { replace: true });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setAutoVerifyMessage(err instanceof Error ? err.message : 'Verification failed. Enter the code manually.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [verifyEmail, verifyCode, queryClient, setAuth, navigate]);
 
   return (
     <div className="min-h-screen overflow-hidden bg-pit-bg">
@@ -98,6 +131,7 @@ export default function LoginPage() {
               <VerifyForm
                 email={pendingEmail}
                 inviteCode={inviteCode}
+                autoMessage={autoVerifyMessage}
                 onSuccess={() => navigate(resolveSuccessPath())}
               />
             )}
@@ -252,7 +286,7 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
   );
 }
 
-function VerifyForm({ email, inviteCode, onSuccess }: { email: string; inviteCode: string; onSuccess: () => void }) {
+function VerifyForm({ email, inviteCode, autoMessage, onSuccess }: { email: string; inviteCode: string; autoMessage?: string; onSuccess: () => void }) {
   const setAuth = useAuthStore((s) => s.setAuth);
   const queryClient = useQueryClient();
   const [pin, setPin] = useState('');
@@ -284,6 +318,11 @@ function VerifyForm({ email, inviteCode, onSuccess }: { email: string; inviteCod
         Enter the 6-digit code sent to <span className="font-medium text-white">{email}</span>
       </p>
       {inviteCode && <p className="text-sm text-pit-text">After verification, your group join will continue automatically.</p>}
+      {autoMessage && (
+        <p className="rounded-lg border border-pit-teal/20 bg-pit-teal/10 px-3 py-2 text-sm text-pit-text">
+          {autoMessage}
+        </p>
+      )}
       {error && <ErrorBanner msg={error} />}
       <input
         className="input py-3 text-center font-mono text-2xl tracking-[0.4em]"

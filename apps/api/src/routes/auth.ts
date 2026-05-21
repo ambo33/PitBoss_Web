@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../db';
 import { getDefaultAiCredits, sqlCanUseClubFeatures, sqlResolveTierId, sqlResolveTierKey, syncSuperAdminByEmail } from '../account';
 import { signToken, requireAuth } from '../middleware/auth';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
+import { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } from '../services/email';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 
 export const authRouter = Router();
@@ -13,6 +13,17 @@ const AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav|mp4|m4a|
 const MAX_AUDIO_DATA_URL_LENGTH = 4_200_000;
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
+
+function normalizePhoneNumber(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const compact = raw.replace(/[^\d+]/g, '');
+  if (!/^\+?\d{10,15}$/.test(compact)) return null;
+  if (compact.startsWith('+')) return compact;
+  if (compact.length === 11 && compact.startsWith('1')) return `+${compact}`;
+  return `+1${compact}`;
+}
 
 authRouter.post('/register', async (req: Request, res: Response) => {
   const { email, password, displayname, acceptterms } = req.body as {
@@ -65,6 +76,11 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
   }
   await query(`UPDATE users SET emailverified = TRUE, verificationpin = NULL WHERE guid = $1`, [user.guid]);
   await repairEmailEncryption(user.guid, normalizedEmail);
+  try {
+    await sendWelcomeEmail(normalizedEmail);
+  } catch (err) {
+    console.error('Welcome email failed', err instanceof Error ? err.message : err);
+  }
   const token = signToken(user.guid);
   res.json({ token });
 });
@@ -136,7 +152,7 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
-  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding } = req.body as {
+  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin } = req.body as {
     displayname?: string;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
@@ -145,9 +161,12 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     avatarfilename?: string | null;
     clearavatarimage?: boolean;
     completeonboarding?: boolean;
+    phonenumber?: string | null;
+    smsoptedin?: boolean;
   };
 
   const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim() : undefined;
+  const normalizedPhoneNumber = normalizePhoneNumber(phonenumber);
   const normalizedAudioData = typeof checkinaudiodata === 'string' ? checkinaudiodata.trim() : undefined;
   const normalizedAudioFilename = typeof checkinaudiofilename === 'string' ? checkinaudiofilename.trim().slice(0, 255) : undefined;
   const normalizedAvatarData = typeof avatarimagedata === 'string' ? avatarimagedata.trim() : undefined;
@@ -170,6 +189,20 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     }
     if (normalizedAvatarData.length > MAX_IMAGE_DATA_URL_LENGTH) {
       res.status(400).json({ error: 'Image is too large. Keep it under about 2 MB.' });
+      return;
+    }
+  }
+  if (phonenumber !== undefined && normalizedPhoneNumber === null && String(phonenumber ?? '').trim()) {
+    res.status(400).json({ error: 'Enter a valid 10 digit SMS number.' });
+    return;
+  }
+  if (smsoptedin === true && !normalizedPhoneNumber) {
+    const existing = await queryOne<{ phonenumber: string | null }>(
+      `SELECT phonenumber FROM usermetadata WHERE userid = $1`,
+      [req.userId]
+    );
+    if (!existing?.phonenumber) {
+      res.status(400).json({ error: 'Add a phone number before enabling SMS alerts.' });
       return;
     }
   }
@@ -200,6 +233,16 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
          onboardingtourcompletedat = CASE
            WHEN $9::BOOL = TRUE THEN COALESCE(onboardingtourcompletedat, now())
            ELSE onboardingtourcompletedat
+         END,
+         phonenumber = CASE
+           WHEN $10::STRING IS NOT NULL THEN $10::STRING
+           WHEN $11::BOOL = TRUE THEN NULL
+           ELSE phonenumber
+         END,
+         smsoptedin = CASE
+           WHEN $11::BOOL = TRUE THEN FALSE
+           WHEN $12::BOOL IS NOT NULL THEN $12::BOOL
+           ELSE smsoptedin
          END
      WHERE userid = $1`,
     [
@@ -212,6 +255,9 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
       normalizedAvatarFilename ?? null,
       clearavatarimage === true,
       completeonboarding === true,
+      normalizedPhoneNumber,
+      phonenumber === null || String(phonenumber ?? '').trim() === '',
+      smsoptedin === undefined ? null : smsoptedin === true,
     ]
   );
 
@@ -249,6 +295,8 @@ async function selectAuthProfile(userId: string) {
     hasavatarimage?: boolean;
     onboardingtourcompletedat?: string | null;
     onboardingcomplete?: boolean;
+    phonenumber?: string | null;
+    smsoptedin?: boolean;
   }>(
     `SELECT u.guid, u.emailaddress, u.emailencrypted, u.emailverified,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
@@ -271,7 +319,9 @@ async function selectAuthProfile(userId: string) {
             m.avatarfilename,
             CASE WHEN m.avatarimagedata IS NOT NULL AND length(m.avatarimagedata) > 0 THEN TRUE ELSE FALSE END AS hasavatarimage,
             m.onboardingtourcompletedat,
-            CASE WHEN m.onboardingtourcompletedat IS NOT NULL THEN TRUE ELSE FALSE END AS onboardingcomplete
+            CASE WHEN m.onboardingtourcompletedat IS NOT NULL THEN TRUE ELSE FALSE END AS onboardingcomplete,
+            m.phonenumber,
+            COALESCE(m.smsoptedin, FALSE) AS smsoptedin
      FROM users u
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}

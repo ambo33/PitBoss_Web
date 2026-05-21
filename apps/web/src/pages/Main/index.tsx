@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ImageIcon, LogOut, Music4, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
+import { Bot, ImageIcon, LogOut, Music4, Phone, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
@@ -66,6 +66,8 @@ export default function MainPage() {
       canuseclubfeatures: currentProfile.canuseclubfeatures,
       aicreditsremaining: currentProfile.aicreditsremaining,
       defaultaicredits: currentProfile.defaultaicredits,
+      phonenumber: currentProfile.phonenumber ?? null,
+      smsoptedin: currentProfile.smsoptedin ?? false,
       avatarimagedata: currentProfile.avatarimagedata ?? null,
       hasavatarimage: currentProfile.hasavatarimage ?? false,
       onboardingcomplete: currentProfile.onboardingcomplete,
@@ -198,6 +200,8 @@ function ProfilePanel() {
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [smsOptIn, setSmsOptIn] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['me'],
@@ -213,8 +217,12 @@ function ProfilePanel() {
       hasavatarimage: profile.hasavatarimage ?? false,
       aicreditsremaining: profile.aicreditsremaining,
       defaultaicredits: profile.defaultaicredits,
+      phonenumber: profile.phonenumber ?? null,
+      smsoptedin: profile.smsoptedin ?? false,
       onboardingcomplete: profile.onboardingcomplete,
     });
+    setPhoneNumber(profile.phonenumber ?? '');
+    setSmsOptIn(Boolean(profile.smsoptedin));
   }, [profile, updateUser]);
 
   const updateProfileMutation = useMutation({
@@ -228,7 +236,11 @@ function ProfilePanel() {
         hasavatarimage: updated.hasavatarimage ?? false,
         aicreditsremaining: updated.aicreditsremaining,
         defaultaicredits: updated.defaultaicredits,
+        phonenumber: updated.phonenumber ?? null,
+        smsoptedin: updated.smsoptedin ?? false,
       });
+      setPhoneNumber(updated.phonenumber ?? '');
+      setSmsOptIn(Boolean(updated.smsoptedin));
       if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
         setMediaSuccess(variables.clearcheckinaudio ? 'Check-in clip removed.' : 'Check-in clip saved.');
       } else if ('avatarimagedata' in variables || variables.clearavatarimage) {
@@ -350,8 +362,8 @@ function ProfilePanel() {
       <section className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-white">Beta Access</h3>
-            <p className="text-sm text-pit-muted">Every feature is unlocked while ThePokerPlanner is in beta.</p>
+            <h3 className="font-semibold text-white">Current Status</h3>
+            <p className="text-sm text-pit-muted">Your active ThePokerPlanner account tier.</p>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
             profile?.accounttier === 'host'
@@ -363,15 +375,12 @@ function ProfilePanel() {
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <TierStat label="Hosted tournaments" value={profile?.hostedtournamentcount ?? 0} />
-          <TierStat label="Beta status" value="Free" accent />
+          <TierStat label="Status" value={formatTierName(profile?.accounttier)} accent />
           <TierStat
             label="Club features"
             value={profile?.canuseclubfeatures ? 'Enabled' : 'Locked'}
             accent={profile?.canuseclubfeatures}
           />
-        </div>
-        <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
-          Beta users have full access while we test the product. If paid tiers launch later, beta testers will receive discounted rates.
         </div>
       </section>
 
@@ -379,13 +388,54 @@ function ProfilePanel() {
         <div className="flex items-center gap-3">
           <Bot size={18} className="text-pit-teal" />
           <div>
-            <h3 className="font-semibold text-white">AI Credits</h3>
-            <p className="text-sm text-pit-muted">Used for AI announcer clips and hand analysis.</p>
+            <h3 className="font-semibold text-white">Voice Credits</h3>
+            <p className="text-sm text-pit-muted">Used for announcer clips and hand analysis.</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <TierStat label="Credits remaining" value={profile?.aicreditsremaining ?? 0} accent={(profile?.aicreditsremaining ?? 0) > 0} />
           <TierStat label="Default allotment" value={profile?.defaultaicredits ?? 0} />
+        </div>
+      </section>
+
+      <section className="card space-y-4">
+        <div className="flex items-center gap-3">
+          <Phone size={18} className="text-pit-teal" />
+          <div>
+            <h3 className="font-semibold text-white">Notification Contact</h3>
+            <p className="text-sm text-pit-muted">Add SMS only if you want groups to offer text alerts later.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <input
+            className="input"
+            type="tel"
+            placeholder="Mobile number, optional"
+            value={phoneNumber}
+            onChange={(event) => setPhoneNumber(event.target.value)}
+          />
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-2 text-sm text-pit-text">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-pit-border bg-pit-bg accent-pit-teal"
+              checked={smsOptIn}
+              onChange={(event) => setSmsOptIn(event.target.checked)}
+            />
+            SMS opt-in
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={updateProfileMutation.isPending}
+            onClick={() => updateProfileMutation.mutate({ phonenumber: phoneNumber.trim() || null, smsoptedin: smsOptIn })}
+          >
+            Save Contact
+          </button>
+          <p className="text-xs leading-5 text-pit-muted">
+            SMS sending is not active yet. This only stores consent and preferences so we can wire a provider cleanly later.
+          </p>
         </div>
       </section>
 

@@ -110,7 +110,8 @@ async function notifyGroupAdminsForPost(groupId: string, postId: string, authorN
      JOIN users u ON u.guid = gm.userid
      WHERE gm.groupid = $1
        AND gm.admin = TRUE
-       AND gm.approved = TRUE`,
+       AND gm.approved = TRUE
+       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE`,
     [groupId]
   );
   await Promise.allSettled(
@@ -251,6 +252,9 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
      SELECT u.guid AS userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             gm.admin AS isadmin, gm.approved,
+            COALESCE(gm.emailalertsenabled, TRUE) AS emailalertsenabled,
+            COALESCE(gm.smsalertsenabled, FALSE) AS smsalertsenabled,
+            COALESCE(gm.pushalertsenabled, FALSE) AS pushalertsenabled,
             COALESCE(mc.firstplacecount, 0) AS firstplacecount,
             COALESCE(mc.secondplacecount, 0) AS secondplacecount,
             COALESCE(mc.thirdplacecount, 0) AS thirdplacecount
@@ -404,6 +408,53 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     }
     throw err;
   }
+});
+
+groupsRouter.put('/:id/notification-preferences', async (req: Request, res: Response) => {
+  if (!await requireApprovedMember(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group member' });
+    return;
+  }
+
+  const { emailalertsenabled, smsalertsenabled, pushalertsenabled } = req.body as {
+    emailalertsenabled?: boolean;
+    smsalertsenabled?: boolean;
+    pushalertsenabled?: boolean;
+  };
+
+  if (smsalertsenabled === true) {
+    const profile = await queryOne<{ phonenumber: string | null; smsoptedin: boolean }>(
+      `SELECT phonenumber, COALESCE(smsoptedin, FALSE) AS smsoptedin
+       FROM usermetadata
+       WHERE userid = $1`,
+      [req.userId]
+    );
+    if (!profile?.phonenumber || !profile.smsoptedin) {
+      res.status(400).json({ error: 'Add a phone number and enable SMS alerts in Profile first.' });
+      return;
+    }
+  }
+
+  const updated = await queryOne<Pick<GroupMember, 'userid' | 'emailalertsenabled' | 'smsalertsenabled' | 'pushalertsenabled'>>(
+    `UPDATE groupmembers
+     SET emailalertsenabled = COALESCE($3::BOOL, emailalertsenabled),
+         smsalertsenabled = COALESCE($4::BOOL, smsalertsenabled),
+         pushalertsenabled = COALESCE($5::BOOL, pushalertsenabled)
+     WHERE groupid = $1 AND userid = $2
+     RETURNING userid,
+               COALESCE(emailalertsenabled, TRUE) AS emailalertsenabled,
+               COALESCE(smsalertsenabled, FALSE) AS smsalertsenabled,
+               COALESCE(pushalertsenabled, FALSE) AS pushalertsenabled`,
+    [
+      req.params.id,
+      req.userId,
+      emailalertsenabled === undefined ? null : emailalertsenabled === true,
+      smsalertsenabled === undefined ? null : smsalertsenabled === true,
+      pushalertsenabled === undefined ? null : pushalertsenabled === true,
+    ]
+  );
+
+  res.json({ success: true, preferences: updated });
 });
 
 groupsRouter.get('/:id/blind-structures', async (req: Request, res: Response) => {

@@ -16,6 +16,8 @@ interface AuthUser {
   defaultaicredits?: number;
   avatarimagedata?: string | null;
   hasavatarimage?: boolean;
+  phonenumber?: string | null;
+  smsoptedin?: boolean;
   onboardingcomplete?: boolean;
 }
 

@@ -161,14 +161,38 @@ function emailLayout({
 }
 
 export async function sendVerificationEmail(email: string, pin: string): Promise<void> {
+  const verifyLink = `${appUrl}/login?verifyEmail=${encodeURIComponent(email)}&code=${encodeURIComponent(pin)}`;
   await sendMail({
     to: email,
     subject: 'Verify your ThePokerPlanner account',
     html: emailLayout({
       eyebrow: 'Account Verification',
       title: 'Verify your account',
-      intro: 'Use this PIN to finish setting up your ThePokerPlanner account.',
-      body: `<div style="display:inline-block;border-radius:12px;border:1px solid #2a2c35;background:#101116;padding:14px 18px;font-size:28px;font-weight:800;letter-spacing:0.18em;color:#ffffff;">${escapeHtml(pin)}</div>`,
+      intro: 'Use this PIN or click the button to finish setting up your ThePokerPlanner account.',
+      body: `
+        <div style="display:inline-block;border-radius:12px;border:1px solid #2a2c35;background:#101116;padding:14px 18px;font-size:28px;font-weight:800;letter-spacing:0.18em;color:#ffffff;">${escapeHtml(pin)}</div>
+        <p style="margin:16px 0 0;">This code is only for verifying your account.</p>
+      `,
+      ctaHref: verifyLink,
+      ctaLabel: 'Verify Email',
+    }),
+  });
+}
+
+export async function sendWelcomeEmail(email: string): Promise<void> {
+  await sendMail({
+    to: email,
+    subject: 'Welcome to ThePokerPlanner',
+    html: emailLayout({
+      eyebrow: 'Welcome',
+      title: 'Your poker night hub is ready',
+      intro: 'Create your first group, invite your players, and start coordinating better poker nights.',
+      body: `
+        <p style="margin:0 0 12px;">Groups keep your players, tournament history, announcements, and invites organized in one place.</p>
+        <p style="margin:0;">Start with a group, then schedule your first tournament when you are ready.</p>
+      `,
+      ctaHref: appUrl,
+      ctaLabel: 'Create a Group',
     }),
   });
 }

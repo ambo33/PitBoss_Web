@@ -326,6 +326,7 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
        LEFT JOIN usermetadata um ON um.userid = u.guid
        WHERE gm.groupid = $1
          AND gm.approved = TRUE
+         AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
          AND COALESCE(um.isguestuser, FALSE) = FALSE
          AND u.emailencrypted IS NOT NULL`,
       [groupid]

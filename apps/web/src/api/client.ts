@@ -42,6 +42,8 @@ export const api = {
   me: () => get<AuthProfile>('/auth/me'),
   updateMe: (data: {
     displayname?: string;
+    phonenumber?: string | null;
+    smsoptedin?: boolean;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
     clearcheckinaudio?: boolean;
@@ -94,6 +96,8 @@ export const api = {
     post<{ coin: GroupCoin }>(`/groups/${groupId}/coins`, data),
   awardGroupCoin: (groupId: string, coinId: string, data: { userid: string; note?: string }) =>
     post<{ award: GroupCoinAward }>(`/groups/${groupId}/coins/${coinId}/awards`, data),
+  updateGroupNotificationPreferences: (groupId: string, data: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
+    put<{ success: boolean; preferences: Partial<GroupMember> }>(`/groups/${groupId}/notification-preferences`, data),
 
   // Tournaments
   getTournaments: () => get<Tournament[]>('/tournaments'),
@@ -234,6 +238,7 @@ export type AnnouncerPreset =
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
+  emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean;
   firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
 }
 export interface Tournament {
@@ -321,6 +326,8 @@ export interface AuthProfile {
   avatarimagedata?: string | null;
   avatarfilename?: string | null;
   hasavatarimage?: boolean;
+  phonenumber?: string | null;
+  smsoptedin?: boolean;
   onboardingcomplete?: boolean;
   onboardingtourcompletedat?: string | null;
 }

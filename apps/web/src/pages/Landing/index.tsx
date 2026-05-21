@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, Clock3, Mic2, Play, QrCode, Sparkles, Trophy, Users, Volume2 } from 'lucide-react';
+import { Bot, CheckCircle2, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle, Volume2 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
@@ -23,10 +23,10 @@ const features = [
     stat: 'TV',
   },
   {
-    title: 'AI voice director',
+    title: 'Voice director',
     body: 'Set a group voice style and let level changes announce the action with game-aware context and personality.',
     icon: Mic2,
-    stat: 'AI',
+    stat: 'Voice',
   },
 ];
 
@@ -125,6 +125,7 @@ type VoiceManifestEntry = {
 export default function LandingPage() {
   const [voiceError, setVoiceError] = useState('');
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(cannedVoiceStyles);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function LandingPage() {
       audioRef.current = new Audio(clip.src);
       await audioRef.current.play();
     } catch (err) {
-      setVoiceError(err instanceof Error ? err.message : 'Stored AI preview clip is not available yet.');
+      setVoiceError(err instanceof Error ? err.message : 'Stored voice preview clip is not available yet.');
     }
   }
 
@@ -220,19 +221,56 @@ export default function LandingPage() {
         </div>
 
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
-          <header className="-mx-5 -mt-5 flex items-center justify-between gap-4 rounded-b-2xl border-b border-pit-teal/20 bg-[#122E30] px-5 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.30)] backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
-            <BrandLockup compact />
-            <nav className="flex items-center gap-2">
-              <Link className="btn border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 sm:text-sm" to="/blind-timer">
-                <Clock3 size={15} />
+          <header className="-mx-5 -mt-5 border-b border-pit-teal/20 bg-[#122E30]/95 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur sm:-mx-8 sm:rounded-b-2xl sm:px-8 sm:py-4 lg:-mx-10 lg:px-10">
+            <div className="flex h-14 items-center justify-between gap-3 sm:h-auto">
+            <Link to="/landing" className="flex min-w-0 items-center gap-2" aria-label="ThePokerPlanner home">
+              <img
+                src="/branding/the-poker-planner-logo.svg"
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-white/15 sm:h-10 sm:w-10"
+              />
+              <span className="truncate text-base font-extrabold leading-none text-white sm:text-base">ThePokerPlanner</span>
+            </Link>
+
+            <nav className="hidden shrink-0 items-center gap-2 sm:flex">
+              <Link className="btn h-10 whitespace-nowrap border-white/15 bg-white/5 px-3 text-sm text-white hover:bg-white/10" to="/blind-timer">
+                <Clock3 size={14} />
                 Blind timer
               </Link>
-              <Link className="btn border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 sm:text-sm" to="/login">Sign in</Link>
-              <Link className="btn bg-pit-teal px-3 py-2 text-xs text-white shadow-[0_10px_30px_rgba(0,0,0,0.20)] hover:bg-pit-teal-hover sm:text-sm" to="/login?mode=register">Create account</Link>
+              <Link className="btn h-10 whitespace-nowrap border-white/15 bg-white/5 px-3 text-sm text-white hover:bg-white/10" to="/login">Sign in</Link>
+              <Link className="btn h-10 whitespace-nowrap bg-pit-teal px-3 text-sm text-white shadow-[0_10px_30px_rgba(0,0,0,0.20)] hover:bg-pit-teal-hover" to="/login?mode=register">Create account</Link>
             </nav>
+
+            <button
+              type="button"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white sm:hidden"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              aria-label="Open menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <Menu size={20} />
+            </button>
+            </div>
+
+            {mobileMenuOpen && (
+              <div className="grid gap-2 border-t border-white/10 pt-3 sm:hidden">
+                <Link className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white" to="/login" onClick={() => setMobileMenuOpen(false)}>
+                  <UserCircle size={16} />
+                  Sign in
+                </Link>
+                <Link className="flex items-center gap-2 rounded-lg border border-pit-teal/30 bg-pit-teal/15 px-3 py-2 text-sm font-semibold text-pit-teal" to="/login?mode=register" onClick={() => setMobileMenuOpen(false)}>
+                  <Users size={16} />
+                  Create account
+                </Link>
+                <Link className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white" to="/blind-timer" onClick={() => setMobileMenuOpen(false)}>
+                  <Clock3 size={16} />
+                  Free blind timer
+                </Link>
+              </div>
+            )}
           </header>
 
-          <div data-reveal className="mt-5 rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
+          <div data-reveal className="mt-5 hidden rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
             <div>
               <span className="font-semibold text-white">ThePokerPlanner is live!</span>
               <span className="ml-1">Help us build and shape for all hosting needs!</span>
@@ -242,29 +280,29 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          <div className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:py-16">
+          <div className="grid flex-1 items-start gap-10 py-6 sm:items-center sm:py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:py-16">
             <div data-reveal className="max-w-2xl">
-              <p className="mb-4 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal">
+              <p className="mb-3 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[11px] font-semibold uppercase text-pit-teal sm:mb-4 sm:text-xs">
                 Poker nights, organized
               </p>
-              <h1 className="text-5xl font-black leading-[0.98] text-white sm:text-6xl lg:text-7xl">
+              <h1 className="text-[2.65rem] font-black leading-[0.94] text-white sm:text-6xl sm:leading-[0.98] lg:text-7xl">
                 Run Better Poker Nights
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-8 text-pit-text">
+              <p className="mt-4 max-w-xl text-[15px] leading-6 text-pit-text sm:mt-6 sm:text-lg sm:leading-8">
                 Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link className="btn-primary px-5 py-3" to="/login?mode=register">Start hosting</Link>
-                <Link className="btn-ghost px-5 py-3" to="/blind-timer">
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-8 sm:flex sm:flex-wrap sm:gap-3">
+                <Link className="btn-primary justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/login?mode=register">Start hosting</Link>
+                <Link className="btn-ghost justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/blind-timer">
                   <Clock3 size={16} />
-                  Free blind timer
+                  Blind timer
                 </Link>
-                <button className="btn-ghost px-5 py-3" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
+                <button className="col-span-2 justify-center border-0 bg-transparent px-0 py-1.5 text-xs font-semibold text-pit-muted underline decoration-pit-teal/50 underline-offset-4 transition-colors hover:text-white sm:btn-ghost sm:col-span-auto sm:px-5 sm:py-3 sm:text-base sm:no-underline" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
                   <Volume2 size={16} />
-                  Preview AI voice
+                  Preview voice
                 </button>
               </div>
-              <div className="mt-8 grid max-w-lg gap-2 text-sm text-pit-text sm:grid-cols-3">
+              <div className="mt-8 hidden max-w-lg gap-2 text-sm text-pit-text sm:grid sm:grid-cols-3">
                 {steps.map((step, index) => (
                   <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
                     <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-pit-teal/15 text-xs font-bold text-pit-teal">
@@ -355,7 +393,7 @@ export default function LandingPage() {
       <section className="border-y border-pit-border bg-pit-surface/30">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
           <div data-reveal className="lg:sticky lg:top-8 lg:self-start">
-            <p className="text-sm font-semibold uppercase text-pit-teal">AI voice director</p>
+            <p className="text-sm font-semibold uppercase text-pit-teal">Voice director</p>
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
             <p className="mt-4 text-sm leading-6 text-pit-text">
               Pick a voice style for each group and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.

@@ -18,6 +18,8 @@ export interface User {
   avatarimagedata?: string | null;
   avatarfilename?: string | null;
   hasavatarimage?: boolean;
+  phonenumber?: string | null;
+  smsoptedin?: boolean;
 }
 
 export interface Group {
@@ -49,6 +51,9 @@ export interface GroupMember {
   displayname?: string;
   isadmin: boolean;
   approved: boolean;
+  emailalertsenabled?: boolean;
+  smsalertsenabled?: boolean;
+  pushalertsenabled?: boolean;
   firstplacecount?: number;
   secondplacecount?: number;
   thirdplacecount?: number;

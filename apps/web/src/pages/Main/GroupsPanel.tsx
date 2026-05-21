@@ -223,6 +223,33 @@ function AnnouncementField({
   );
 }
 
+function PreferenceToggle({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
+        active
+          ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
+          : 'border-pit-border bg-pit-surface text-pit-muted hover:text-white'
+      }`}
+    >
+      {label} {active ? 'On' : 'Off'}
+    </button>
+  );
+}
+
 function previewAnnouncement(template: string) {
   return template
     .replace(/\{BlindLevel\}/g, '4')
@@ -361,6 +388,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       qc.invalidateQueries({ queryKey: ['tournament'] });
     },
   });
+  const notificationPrefsMutation = useMutation({
+    mutationFn: (payload: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
+      api.updateGroupNotificationPreferences(group.groupid, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid] }),
+  });
   const leaveMutation = useMutation({
     mutationFn: () => api.leaveGroup(group.groupid, user!.guid),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); onBack(); },
@@ -495,6 +527,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const members: GroupMember[] = data?.members ?? [];
   const pending = members.filter(m => !m.approved);
   const approved = members.filter(m => m.approved);
+  const currentMember = members.find((member) => member.userid === user?.guid);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
   const canUseClubFeatures = Boolean(account?.issuperadmin || account?.canuseclubfeatures || account?.tierid === 2 || account?.tierid === 3);
@@ -1131,6 +1164,41 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
         {/* Members tab */}
         {detailTab === 'members' && (
           <div className="space-y-3">
+            {currentMember?.approved && (
+              <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Your group alerts</p>
+                    <p className="mt-1 text-xs leading-5 text-pit-muted">
+                      Choose how this group can notify you. SMS and push are preference-ready while provider/browser delivery is wired.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <PreferenceToggle
+                      label="Email"
+                      active={currentMember.emailalertsenabled !== false}
+                      disabled={notificationPrefsMutation.isPending}
+                      onClick={() => notificationPrefsMutation.mutate({ emailalertsenabled: currentMember.emailalertsenabled === false })}
+                    />
+                    <PreferenceToggle
+                      label="SMS"
+                      active={Boolean(currentMember.smsalertsenabled)}
+                      disabled={notificationPrefsMutation.isPending}
+                      onClick={() => notificationPrefsMutation.mutate({ smsalertsenabled: !currentMember.smsalertsenabled })}
+                    />
+                    <PreferenceToggle
+                      label="Push"
+                      active={Boolean(currentMember.pushalertsenabled)}
+                      disabled={notificationPrefsMutation.isPending}
+                      onClick={() => notificationPrefsMutation.mutate({ pushalertsenabled: !currentMember.pushalertsenabled })}
+                    />
+                  </div>
+                </div>
+                {notificationPrefsMutation.error && (
+                  <p className="mt-2 text-sm text-red-400">{notificationPrefsMutation.error.message}</p>
+                )}
+              </div>
+            )}
             {pending.length > 0 && group.isadmin && (
               <div>
                 <p className="eyebrow mb-2">Pending Approval</p>
