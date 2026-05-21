@@ -264,9 +264,9 @@ function renderPage(page) {
     <meta property="og:url" content="${pageUrl(page.slug)}">
     <meta property="og:image" content="${siteUrl}/seo-assets/${page.screenshot}">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="icon" type="image/svg+xml" href="/branding/the-poker-planner-logo.svg">
+    <link rel="icon" type="image/png" href="/branding/the-poker-planner-logo-192.png">
     <link rel="alternate icon" type="image/png" href="/favicon.png">
-    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo.svg">
+    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo-192.png">
     ${renderSchema(page)}
     <style>
       :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; --gold:#f4b24a; --red:#ef4444; }
@@ -324,7 +324,7 @@ function renderPage(page) {
     <header>
       <nav class="nav" aria-label="Primary">
         <a class="brand" href="/">
-          <img src="/branding/the-poker-planner-logo.svg" alt="" width="34" height="34">
+          <img src="/branding/the-poker-planner-logo-192.png" alt="" width="34" height="34">
           <span>ThePokerPlanner</span>
         </a>
         <div class="navlinks">

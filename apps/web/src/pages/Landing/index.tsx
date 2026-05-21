@@ -220,14 +220,14 @@ export default function LandingPage() {
           <div className="h-full w-full bg-[radial-gradient(circle_at_30%_12%,rgba(14,165,165,0.20),transparent_30%),radial-gradient(circle_at_78%_8%,rgba(240,165,0,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_58%)]" />
         </div>
 
-        <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
-          <header className="-mx-5 -mt-5 border-b border-pit-teal/20 bg-[#122E30]/95 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur sm:-mx-8 sm:rounded-b-2xl sm:px-8 sm:py-4 lg:-mx-10 lg:px-10">
-            <div className="flex h-14 items-center justify-between gap-3 sm:h-auto">
+        <div className="relative mx-auto flex max-w-7xl flex-col px-5 pb-4 pt-5 sm:min-h-[92vh] sm:px-8 sm:pb-5 lg:px-10">
+          <header className="-mx-5 -mt-5 border-b border-pit-teal/20 bg-[#122E30]/95 px-4 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur sm:-mx-8 sm:rounded-b-2xl sm:px-8 sm:py-4 lg:-mx-10 lg:px-10">
+            <div className="flex h-12 items-center justify-between gap-3 sm:h-auto">
             <Link to="/landing" className="flex min-w-0 items-center gap-2" aria-label="ThePokerPlanner home">
               <img
-                src="/branding/the-poker-planner-logo.svg"
+                src="/branding/the-poker-planner-logo-192.png"
                 alt=""
-                className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-white/15 sm:h-10 sm:w-10"
+                className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-white/15 sm:h-10 sm:w-10"
               />
               <span className="truncate text-base font-extrabold leading-none text-white sm:text-base">ThePokerPlanner</span>
             </Link>
@@ -243,7 +243,7 @@ export default function LandingPage() {
 
             <button
               type="button"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white sm:hidden"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white sm:hidden"
               onClick={() => setMobileMenuOpen((open) => !open)}
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -280,24 +280,24 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          <div className="grid flex-1 items-start gap-10 py-6 sm:items-center sm:py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:py-16">
-            <div data-reveal className="max-w-2xl">
-              <p className="mb-3 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[11px] font-semibold uppercase text-pit-teal sm:mb-4 sm:text-xs">
+          <div className="grid items-start gap-3 py-3 sm:flex-1 sm:gap-10 sm:py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:items-center lg:py-16">
+            <div data-reveal className="mx-auto max-w-2xl text-center lg:mx-0 lg:text-left">
+              <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-4 sm:text-xs">
                 Poker nights, organized
               </p>
-              <h1 className="text-[2.65rem] font-black leading-[0.94] text-white sm:text-6xl sm:leading-[0.98] lg:text-7xl">
+              <h1 className="whitespace-nowrap text-[clamp(1.62rem,6.9vw,2rem)] font-black leading-none text-white sm:whitespace-normal sm:text-6xl sm:leading-[0.98] lg:text-7xl">
                 Run Better Poker Nights
               </h1>
-              <p className="mt-4 max-w-xl text-[15px] leading-6 text-pit-text sm:mt-6 sm:text-lg sm:leading-8">
+              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 lg:mx-0">
                 Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
-              <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-8 sm:flex sm:flex-wrap sm:gap-3">
+              <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
                 <Link className="btn-primary justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/login?mode=register">Start hosting</Link>
                 <Link className="btn-ghost justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/blind-timer">
                   <Clock3 size={16} />
                   Blind timer
                 </Link>
-                <button className="col-span-2 justify-center border-0 bg-transparent px-0 py-1.5 text-xs font-semibold text-pit-muted underline decoration-pit-teal/50 underline-offset-4 transition-colors hover:text-white sm:btn-ghost sm:col-span-auto sm:px-5 sm:py-3 sm:text-base sm:no-underline" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
+                <button className="btn-ghost justify-center px-5 py-3 text-base" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
                   <Volume2 size={16} />
                   Preview voice
                 </button>
@@ -314,7 +314,11 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div data-reveal>
+            <div data-reveal className="sm:hidden">
+              <MobileHeroPreview />
+            </div>
+
+            <div data-reveal className="hidden sm:block">
               <HeroBoard />
             </div>
           </div>
@@ -560,6 +564,55 @@ function HeroBoard() {
               </div>
             </div>
             <MiniPayout />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileHeroPreview() {
+  return (
+    <div className="mx-auto w-full max-w-[23rem] overflow-hidden rounded-xl border border-white/10 bg-[#111114] shadow-[0_22px_60px_rgba(0,0,0,0.5)]">
+      <div className="flex items-center justify-between border-b border-pit-border bg-pit-card px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Tournament Display</p>
+          <p className="truncate text-xs font-bold text-white">Saturday Championship</p>
+        </div>
+        <span className="rounded-md border border-pit-teal/30 bg-pit-teal/10 px-2 py-1 text-[9px] font-semibold text-pit-teal">
+          TV 478381
+        </span>
+      </div>
+      <div className="grid grid-cols-[0.62fr_1fr] gap-2 p-2">
+        <div className="rounded-lg border border-pit-border bg-black/25 p-2">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase text-white">Blinds</p>
+            <span className="text-[8px] text-pit-muted">12</span>
+          </div>
+          {['100 / 200', '150 / 300', '200 / 400', '300 / 600'].map((level, index) => (
+            <div
+              key={level}
+              className={`mt-1 flex justify-between rounded px-1.5 py-1 text-[9px] ${
+                index === 3 ? 'bg-yellow-200/80 text-yellow-950' : 'bg-pit-bg/70 text-pit-text'
+              }`}
+            >
+              <span>{index + 1}</span>
+              <span>{level}</span>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg border border-pit-border bg-black/30 p-3 text-center">
+          <p className="text-[9px] font-semibold uppercase text-pit-text">Level 4 of 12</p>
+          <p className="mt-2 font-mono text-5xl font-black leading-none text-white">18:42</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-md border border-pit-border bg-pit-bg/70 p-2">
+              <p className="text-[8px] uppercase text-pit-muted">Current</p>
+              <p className="mt-0.5 text-sm font-bold text-white">300/600</p>
+            </div>
+            <div className="rounded-md border border-pit-border bg-pit-bg/70 p-2">
+              <p className="text-[8px] uppercase text-pit-muted">Players</p>
+              <p className="mt-0.5 text-sm font-bold text-white">18 in</p>
+            </div>
           </div>
         </div>
       </div>

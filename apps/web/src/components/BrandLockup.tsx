@@ -37,7 +37,7 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
 
   return (
     <img
-      src="/branding/the-poker-planner-logo.svg"
+      src="/branding/the-poker-planner-logo-192.png"
       alt="ThePokerPlanner logo"
       className="block shrink-0 rounded-full object-cover ring-1 ring-white/15"
       style={{ width: size, height: size }}

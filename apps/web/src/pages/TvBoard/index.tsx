@@ -51,7 +51,7 @@ export default function TvBoardPage() {
               <p className="mt-0.5 text-[11px] uppercase tracking-[0.24em] text-pit-muted xl:text-xs">Run Better Poker Nights</p>
             </div>
             <img
-              src="/branding/the-poker-planner-logo.svg"
+              src="/branding/the-poker-planner-logo-192.png"
               alt="ThePokerPlanner"
               className="h-10 w-10 object-contain xl:h-12 xl:w-12"
             />
