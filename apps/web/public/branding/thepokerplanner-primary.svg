@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 360" role="img" aria-label="The Poker Planner primary logo">
+  <defs><style>.t{fill:#149B91}.w{fill:#fff}.g{fill:#A7A7A7}.b{fill:#050708}</style></defs>
+  <rect width="1400" height="360" fill="#050708"/>
+  <g transform="translate(50 42) scale(.54)">
+    <circle cx="256" cy="256" r="226" fill="#050708" stroke="#149B91" stroke-width="10"/>
+    <circle cx="256" cy="256" r="190" fill="#050708" stroke="#111719" stroke-width="18"/>
+    <g stroke="#0E1113" stroke-width="18" stroke-linejoin="round">
+      <path fill="#149B91" d="M217 31a226 226 0 0 1 78 0l-13 74a151 151 0 0 0-52 0z"/><path fill="#fff" d="M350 56a226 226 0 0 1 68 40l-49 57a151 151 0 0 0-45-27z"/><path fill="#149B91" d="M455 176a226 226 0 0 1 0 80l-75-10a151 151 0 0 0 0-54z"/><path fill="#fff" d="M418 416a226 226 0 0 1-68 40l-26-70a151 151 0 0 0 45-27z"/><path fill="#149B91" d="M295 481a226 226 0 0 1-78 0l13-74a151 151 0 0 0 52 0z"/><path fill="#fff" d="M162 456a226 226 0 0 1-68-40l49-57a151 151 0 0 0 45 27z"/><path fill="#149B91" d="M57 336a226 226 0 0 1 0-80l75 10a151 151 0 0 0 0 54z"/><path fill="#fff" d="M94 96a226 226 0 0 1 68-40l26 70a151 151 0 0 0-45 27z"/>
+    </g>
+    <circle cx="256" cy="256" r="145" fill="#050708" stroke="#149B91" stroke-width="9"/>
+    <path fill="#149B91" d="M249 145h-74c-48 0-82 32-82 80s34 80 82 80h28v-52h-29c-18 0-31-11-31-28s13-28 31-28h24v170h51z"/><path fill="#149B91" d="M198 145h51v222h-51z" opacity=".96"/><path fill="#fff" d="M263 145h79c47 0 78 30 78 75s-31 75-78 75h-28v72h-51zm51 51v48h29c16 0 26-9 26-24s-10-24-26-24z"/>
+  </g>
+  <text x="355" y="98" font-family="Montserrat, Arial, sans-serif" font-size="50" font-style="italic" font-weight="900" class="t">THE</text>
+  <text x="355" y="195" font-family="Montserrat, Arial, sans-serif" font-size="88" font-style="italic" font-weight="900" class="w">POKER</text>
+  <text x="690" y="195" font-family="Montserrat, Arial, sans-serif" font-size="88" font-style="italic" font-weight="900" class="t">PLANNER</text>
+  <line x1="510" y1="75" x2="1205" y2="75" stroke="#149B91" stroke-width="4" opacity=".65"/>
+  <line x1="355" y1="245" x2="510" y2="245" stroke="#149B91" stroke-width="4" opacity=".9"/>
+  <line x1="1055" y1="245" x2="1240" y2="245" stroke="#149B91" stroke-width="4" opacity=".9"/>
+  <text x="535" y="259" font-family="Montserrat, Arial, sans-serif" font-size="30" letter-spacing="15" font-weight="600" class="w">RUN BETTER POKER NIGHTS.</text>
+</svg>

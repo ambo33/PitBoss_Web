@@ -34,10 +34,10 @@ function HomeRoute() {
 function AppSubdomainRedirect({ mode }: { mode?: 'register' }) {
   const location = useLocation();
   const isPublicDomain = typeof window !== 'undefined'
-    && ['pokerplanner.bet', 'www.pokerplanner.bet'].includes(window.location.hostname);
+    && ['thepokerplanner.com', 'www.thepokerplanner.com'].includes(window.location.hostname);
 
   if (isPublicDomain) {
-    const target = new URL('https://app.pokerplanner.bet');
+    const target = new URL('https://app.thepokerplanner.com');
     if (location.pathname === '/app') {
       target.pathname = '/';
     } else if (mode === 'register') {

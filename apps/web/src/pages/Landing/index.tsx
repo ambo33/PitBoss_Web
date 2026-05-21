@@ -220,21 +220,21 @@ export default function LandingPage() {
         </div>
 
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
-          <header className="flex items-center justify-between gap-4">
+          <header className="-mx-5 -mt-5 flex items-center justify-between gap-4 rounded-b-2xl border-b border-pit-teal/20 bg-[#122E30] px-5 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.30)] backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
             <BrandLockup compact />
             <nav className="flex items-center gap-2">
-              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/blind-timer">
+              <Link className="btn border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 sm:text-sm" to="/blind-timer">
                 <Clock3 size={15} />
                 Blind timer
               </Link>
-              <Link className="btn-ghost px-3 py-2 text-xs sm:text-sm" to="/login">Sign in</Link>
-              <Link className="btn-primary px-3 py-2 text-xs sm:text-sm" to="/login?mode=register">Create account</Link>
+              <Link className="btn border-white/15 bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10 sm:text-sm" to="/login">Sign in</Link>
+              <Link className="btn bg-pit-teal px-3 py-2 text-xs text-white shadow-[0_10px_30px_rgba(0,0,0,0.20)] hover:bg-pit-teal-hover sm:text-sm" to="/login?mode=register">Create account</Link>
             </nav>
           </header>
 
           <div data-reveal className="mt-5 rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
             <div>
-              <span className="font-semibold text-white">PokerPlanner.bet is live!</span>
+              <span className="font-semibold text-white">ThePokerPlanner is live!</span>
               <span className="ml-1">Help us build and shape for all hosting needs!</span>
             </div>
             <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/login?mode=register">
@@ -321,7 +321,7 @@ export default function LandingPage() {
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">A better rhythm for every part of tournament night.</h2>
           </div>
           <p className="max-w-xl text-sm leading-6 text-pit-text">
-            PokerPlanner keeps the host focused on decisions instead of explanations: clear state, fast actions, and screens that make sense from across the room.
+            ThePokerPlanner keeps the host focused on decisions instead of explanations: clear state, fast actions, and screens that make sense from across the room.
           </p>
         </div>
 
@@ -446,7 +446,7 @@ export default function LandingPage() {
             <p className="text-sm font-semibold uppercase text-pit-teal">Player tracking</p>
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Track the game without losing the night.</h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-pit-text">
-              PokerPlanner keeps the useful history: entries, check-ins, knockouts, payouts, placement medals, and group challenge coins. The point is not to make poker night feel like work. It is to let the app quietly handle the record keeping while the group focuses on the table talk, rivalries, and stories people actually remember.
+              ThePokerPlanner keeps the useful history: entries, check-ins, knockouts, payouts, placement medals, and group challenge coins. The point is not to make poker night feel like work. It is to let the app quietly handle the record keeping while the group focuses on the table talk, rivalries, and stories people actually remember.
             </p>
             <div className="mt-6 grid gap-3 md:grid-cols-3">
               {playerTrackingHighlights.map((item, index) => (

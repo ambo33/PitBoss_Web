@@ -192,7 +192,7 @@ export async function generateVoiceLabScript(styleName: string, styleDirection: 
     throw new Error('OPENAI_API_KEY is not configured.');
   }
   const prompt = [
-    'Write one short PokerPlanner landing page voice demo script.',
+    'Write one short ThePokerPlanner landing page voice demo script.',
     `Style: ${styleName}`,
     `Voice direction: ${styleDirection}`,
     `Creative brief: ${brief}`,

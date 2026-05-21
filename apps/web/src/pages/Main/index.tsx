@@ -136,7 +136,7 @@ function OnboardingTour({
 
   return (
     <Modal
-      title="Welcome to PokerPlanner.bet"
+      title="Welcome to ThePokerPlanner"
       open={open}
       onClose={onClose}
       footer={
@@ -351,7 +351,7 @@ function ProfilePanel() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="font-semibold text-white">Beta Access</h3>
-            <p className="text-sm text-pit-muted">Every feature is unlocked while PokerPlanner.bet is in beta.</p>
+            <p className="text-sm text-pit-muted">Every feature is unlocked while ThePokerPlanner is in beta.</p>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
             profile?.accounttier === 'host'

@@ -28,7 +28,7 @@ const styles = [
     id: 'hype_host',
     label: 'Hype Host',
     sample: 'Cards are in the air, the clock is live, and tonight’s bragging rights are officially on the table.',
-    brief: 'A polished hype line for the hero section of PokerPlanner.',
+    brief: 'A polished hype line for the hero section of ThePokerPlanner.',
   },
   {
     id: 'minimalist',

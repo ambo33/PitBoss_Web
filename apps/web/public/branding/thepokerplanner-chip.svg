@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Poker Planner PP chip icon">
+  <defs>
+    <style>
+      .teal{fill:#149B91}.white{fill:#fff}.black{fill:#050708}.stroke{stroke:#0E1113;stroke-width:18;stroke-linejoin:round}.thin{stroke:#149B91;stroke-width:10;fill:none}.shadow{filter:url(#s)}
+    </style>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#000" flood-opacity=".55"/></filter>
+  </defs>
+  <circle cx="256" cy="256" r="226" fill="#050708" stroke="#149B91" stroke-width="10"/>
+  <circle cx="256" cy="256" r="190" fill="#050708" stroke="#111719" stroke-width="18"/>
+  <g class="shadow">
+    <path class="teal stroke" d="M217 31a226 226 0 0 1 78 0l-13 74a151 151 0 0 0-52 0z"/>
+    <path class="white stroke" d="M350 56a226 226 0 0 1 68 40l-49 57a151 151 0 0 0-45-27z"/>
+    <path class="teal stroke" d="M455 176a226 226 0 0 1 0 80l-75-10a151 151 0 0 0 0-54z"/>
+    <path class="white stroke" d="M418 416a226 226 0 0 1-68 40l-26-70a151 151 0 0 0 45-27z"/>
+    <path class="teal stroke" d="M295 481a226 226 0 0 1-78 0l13-74a151 151 0 0 0 52 0z"/>
+    <path class="white stroke" d="M162 456a226 226 0 0 1-68-40l49-57a151 151 0 0 0 45 27z"/>
+    <path class="teal stroke" d="M57 336a226 226 0 0 1 0-80l75 10a151 151 0 0 0 0 54z"/>
+    <path class="white stroke" d="M94 96a226 226 0 0 1 68-40l26 70a151 151 0 0 0-45 27z"/>
+  </g>
+  <circle cx="256" cy="256" r="145" fill="#050708" stroke="#149B91" stroke-width="9"/>
+  <circle cx="256" cy="256" r="116" fill="#050708"/>
+  <g transform="translate(0,2)" class="shadow">
+    <!-- mirrored left P -->
+    <path class="teal" d="M249 145h-74c-48 0-82 32-82 80s34 80 82 80h28v-52h-29c-18 0-31-11-31-28s13-28 31-28h24v170h51z"/>
+    <path class="teal" d="M198 145h51v222h-51z" opacity=".96"/>
+    <!-- right P -->
+    <path class="white" d="M263 145h79c47 0 78 30 78 75s-31 75-78 75h-28v72h-51zm51 51v48h29c16 0 26-9 26-24s-10-24-26-24z"/>
+  </g>
+</svg>

@@ -16,7 +16,7 @@ import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 export const publicRouter = Router();
 
 function createGuestEmail() {
-  return `guest+${crypto.randomUUID()}@guest.pokerplanner.bet`;
+  return `guest+${crypto.randomUUID()}@guest.thepokerplanner.com`;
 }
 
 function truthySql(column: string) {

@@ -53,7 +53,7 @@ export default function LoginPage() {
       </div>
 
       <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
-        <Link to="/" aria-label="PokerPlanner.bet home">
+        <Link to="/" aria-label="ThePokerPlanner home">
           <BrandLockup compact />
         </Link>
         <nav className="flex items-center gap-2">
@@ -236,7 +236,7 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
           <Link to="/terms" target="_blank" rel="noreferrer" className="font-semibold text-pit-teal hover:text-pit-teal-hover">
             Terms of Service
           </Link>
-          , including the rules against using PokerPlanner to facilitate illegal gambling or illegal activity, and understand uploaded avatars or clips must be mine to use and appropriate for a poker group.
+          , including the rules against using ThePokerPlanner to facilitate illegal gambling or illegal activity, and understand uploaded avatars or clips must be mine to use and appropriate for a poker group.
         </span>
       </label>
       <button type="submit" className="btn-primary mt-1 w-full py-2.5" disabled={loading}>

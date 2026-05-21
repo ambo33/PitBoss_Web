@@ -81,7 +81,7 @@ export default function PwaInstallPrompt() {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-white">Install PokerPlanner</p>
+              <p className="text-sm font-semibold text-white">Install ThePokerPlanner</p>
               <p className="mt-1 text-xs leading-5 text-pit-text">
                 {ios
                   ? 'Tap Share, then Add to Home Screen to launch it like an app.'

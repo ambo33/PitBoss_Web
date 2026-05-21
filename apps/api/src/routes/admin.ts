@@ -409,6 +409,7 @@ adminRouter.get('/users', async (req: Request, res: Response) => {
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
      WHERE ($2::STRING IS NULL OR u.emailhash = $2)
+       AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.thepokerplanner.com'
        AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.pokerplanner.bet'
      ORDER BY u.emailaddress`,
     [nowInAppTimezone(), emailHash]

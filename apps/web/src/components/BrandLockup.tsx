@@ -19,7 +19,7 @@ export default function BrandLockup({
       {showWordmark && (
         <div className="min-w-0">
           <p className={`${compact ? 'text-base' : 'text-3xl'} font-extrabold leading-none tracking-tight text-white`}>
-            PokerPlanner.bet
+            ThePokerPlanner
           </p>
           {showSlogan && (
             <p className={`${compact ? 'mt-1 text-[11px]' : 'mt-2 text-sm'} font-medium text-pit-text`}>
@@ -34,15 +34,12 @@ export default function BrandLockup({
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   const size = compact ? 40 : 88;
-  const src = compact
-    ? '/branding/pokerplanner-logo-compact.png'
-    : '/branding/pokerplanner-logo.png';
 
   return (
     <img
-      src={src}
-      alt="PokerPlanner.bet logo"
-      className="shrink-0 rounded-full object-cover"
+      src="/branding/the-poker-planner-logo.svg"
+      alt="ThePokerPlanner logo"
+      className="block shrink-0 rounded-full object-cover ring-1 ring-white/15"
       style={{ width: size, height: size }}
     />
   );

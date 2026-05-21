@@ -16,7 +16,7 @@ export default function UnsubscribePage() {
     try {
       await api.unsubscribePublicBlindTimer(token);
       setStatus('done');
-      setMessage('You have been unsubscribed from PokerPlanner promotional emails for this timer.');
+      setMessage('You have been unsubscribed from ThePokerPlanner promotional emails for this timer.');
     } catch (err) {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Unable to unsubscribe from that link.');
@@ -35,7 +35,7 @@ export default function UnsubscribePage() {
             <p className="eyebrow">Email Preferences</p>
             <h1 className="mt-1 text-2xl font-bold">Unsubscribe from updates</h1>
             <p className="mt-2 text-sm leading-6 text-pit-text">
-              This stops promotional PokerPlanner emails tied to your public blind timer code. Your timer itself stays available.
+              This stops promotional ThePokerPlanner emails tied to your public blind timer code. Your timer itself stays available.
             </p>
           </div>
         </div>
@@ -47,7 +47,7 @@ export default function UnsubscribePage() {
         )}
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Link className="btn-ghost" to="/landing">Back to PokerPlanner</Link>
+          <Link className="btn-ghost" to="/landing">Back to ThePokerPlanner</Link>
           <button className="btn-primary" type="button" onClick={unsubscribe} disabled={status === 'saving' || status === 'done'}>
             {status === 'saving' ? 'Unsubscribing...' : status === 'done' ? 'Unsubscribed' : 'Unsubscribe'}
           </button>

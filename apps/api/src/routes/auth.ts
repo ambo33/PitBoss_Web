@@ -44,7 +44,11 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   );
   await syncSuperAdminByEmail(row.guid);
 
-  try { await sendVerificationEmail(normalizedEmail, pin); } catch { /* non-fatal */ }
+  try {
+    await sendVerificationEmail(normalizedEmail, pin);
+  } catch (err) {
+    console.error('Verification email failed', err instanceof Error ? err.message : err);
+  }
 
   res.status(201).json({ message: 'Account created. Check your email for a verification PIN.' });
 });
@@ -104,7 +108,11 @@ authRouter.post('/request-reset', async (req: Request, res: Response) => {
   if (user) {
     const resetPin = Math.floor(100000 + Math.random() * 900000).toString();
     await query(`UPDATE users SET verificationpin = $1 WHERE guid = $2`, [resetPin, user.guid]);
-    try { await sendPasswordResetEmail(publicEmail(user.emailencrypted, user.emailaddress) || normalizedEmail, resetPin); } catch { /* non-fatal */ }
+    try {
+      await sendPasswordResetEmail(publicEmail(user.emailencrypted, user.emailaddress) || normalizedEmail, resetPin);
+    } catch (err) {
+      console.error('Password reset email failed', err instanceof Error ? err.message : err);
+    }
   }
   res.json({ message: 'If that email is registered, a reset link has been sent.' });
 });

@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
-const siteUrl = 'https://pokerplanner.bet';
-const appUrl = 'https://app.pokerplanner.bet';
+const siteUrl = 'https://thepokerplanner.com';
+const appUrl = 'https://app.thepokerplanner.com';
 
 const sharedFaq = [
   {
-    q: 'Is PokerPlanner free to use?',
+    q: 'Is ThePokerPlanner free to use?',
     a: 'All features are free during the beta and a free model will always be available. Hosts can create groups, build tournaments, run the clock, use the TV board, track players, and use the core planning tools.',
   },
   {
@@ -18,11 +18,11 @@ const sharedFaq = [
   },
   {
     q: 'Does the poker timer work on a TV?',
-    a: 'Yes. PokerPlanner includes a TV-friendly tournament clock that can be opened on a shared screen so players can see the current level, next blinds, and timer.',
+    a: 'Yes. ThePokerPlanner includes a TV-friendly tournament clock that can be opened on a shared screen so players can see the current level, next blinds, and timer.',
   },
   {
     q: 'Do players need to download an app?',
-    a: 'No. PokerPlanner runs in the browser. Players can use links or QR codes to view lobby information, check in, and follow tournament status without installing anything.',
+    a: 'No. ThePokerPlanner runs in the browser. Players can use links or QR codes to view lobby information, check in, and follow tournament status without installing anything.',
   },
 ];
 
@@ -38,91 +38,91 @@ const relatedLinks = [
 const pages = [
   {
     slug: 'poker-timer',
-    title: 'Free Poker Timer & Tournament Clock | PokerPlanner',
+    title: 'Free Poker Timer & Tournament Clock | ThePokerPlanner',
     description: 'Run a home poker tournament with a free poker timer, blind structure, player tracking, breaks, and TV-friendly tournament clock.',
     h1: 'Free Poker Timer for Home Tournaments',
     eyebrow: 'Free poker timer',
     primaryKeyword: 'free poker timer for home game',
     screenshot: 'timer-board.svg',
-    screenshotAlt: 'PokerPlanner poker timer showing current blinds, next blinds, and remaining level time',
-    intro: 'PokerPlanner gives home-game hosts a clean poker timer that is built for the real pace of a tournament night. Instead of juggling a phone timer, a spreadsheet, and a group chat, you can create the event, set the blind structure, display the clock, and keep players informed from one browser-based workspace.',
+    screenshotAlt: 'ThePokerPlanner poker timer showing current blinds, next blinds, and remaining level time',
+    intro: 'ThePokerPlanner gives home-game hosts a clean poker timer that is built for the real pace of a tournament night. Instead of juggling a phone timer, a spreadsheet, and a group chat, you can create the event, set the blind structure, display the clock, and keep players informed from one browser-based workspace.',
     sections: [
-      ['A timer made for live poker nights', 'A useful poker timer needs to do more than count down. Players want to know the current blinds, the next jump, when the break is coming, and how much time is left before the room changes pace. PokerPlanner keeps that information visible without turning the host screen into a cluttered control panel. The timer view is easy to read from across the room, and the host controls stay close enough for quick pauses, starts, and level changes.'],
-      ['Plan before cards are in the air', 'Good home tournaments start before the first hand. PokerPlanner lets you connect the timer to the tournament setup: buy-in, field size, rebuys, add-ons, payout estimates, saved structures, and player registration. That means the timer is not an isolated stopwatch. It is part of the same workflow that tells you who is checked in, how many chips are in play, what the current level should be, and what needs attention next.'],
-      ['TV-friendly by default', 'Many poker timer apps look fine on a phone but fall apart on a shared screen. PokerPlanner includes a tournament clock view that can be opened on a TV or spare monitor. It highlights the active level, current blinds, next blinds, and key tournament details so players do not need to ask the host every ten minutes. For a home game, that alone removes a surprising amount of friction.'],
-      ['No download required', 'PokerPlanner runs in a web browser. Hosts can use it from a laptop or tablet, while players can open QR links on their phones. That makes it easier for a rotating group of players because nobody needs to install a special poker timer app just to follow the night. The goal is simple: give the host enough structure to run a cleaner tournament without making casual players learn new software.'],
+      ['A timer made for live poker nights', 'A useful poker timer needs to do more than count down. Players want to know the current blinds, the next jump, when the break is coming, and how much time is left before the room changes pace. ThePokerPlanner keeps that information visible without turning the host screen into a cluttered control panel. The timer view is easy to read from across the room, and the host controls stay close enough for quick pauses, starts, and level changes.'],
+      ['Plan before cards are in the air', 'Good home tournaments start before the first hand. ThePokerPlanner lets you connect the timer to the tournament setup: buy-in, field size, rebuys, add-ons, payout estimates, saved structures, and player registration. That means the timer is not an isolated stopwatch. It is part of the same workflow that tells you who is checked in, how many chips are in play, what the current level should be, and what needs attention next.'],
+      ['TV-friendly by default', 'Many poker timer apps look fine on a phone but fall apart on a shared screen. ThePokerPlanner includes a tournament clock view that can be opened on a TV or spare monitor. It highlights the active level, current blinds, next blinds, and key tournament details so players do not need to ask the host every ten minutes. For a home game, that alone removes a surprising amount of friction.'],
+      ['No download required', 'ThePokerPlanner runs in a web browser. Hosts can use it from a laptop or tablet, while players can open QR links on their phones. That makes it easier for a rotating group of players because nobody needs to install a special poker timer app just to follow the night. The goal is simple: give the host enough structure to run a cleaner tournament without making casual players learn new software.'],
     ],
     faq: [
       ...sharedFaq,
       {
         q: 'What makes this different from a simple phone timer?',
-        a: 'A phone timer counts down one interval. PokerPlanner connects the timer to blinds, players, check-in, seats, payouts, group links, and the TV clock.',
+        a: 'A phone timer counts down one interval. ThePokerPlanner connects the timer to blinds, players, check-in, seats, payouts, group links, and the TV clock.',
       },
     ],
   },
   {
     slug: 'poker-tournament-clock',
-    title: 'Free Poker Tournament Clock for TV | PokerPlanner',
+    title: 'Free Poker Tournament Clock for TV | ThePokerPlanner',
     description: 'Use a browser-based poker tournament clock for home games with blind levels, breaks, next blinds, player tracking, and TV display.',
     h1: 'Free Poker Tournament Clock for Home Games',
     eyebrow: 'Tournament clock',
     primaryKeyword: 'home poker tournament clock',
     screenshot: 'clock-tv.svg',
     screenshotAlt: 'TV poker tournament clock with large time, current blinds, next blinds, and payout panel',
-    intro: 'A poker tournament clock should be obvious from across the room. PokerPlanner gives hosts a free browser-based clock that can be used on a laptop, tablet, or TV display, with the blind level, countdown, next level, and tournament context visible at a glance.',
+    intro: 'A poker tournament clock should be obvious from across the room. ThePokerPlanner gives hosts a free browser-based clock that can be used on a laptop, tablet, or TV display, with the blind level, countdown, next level, and tournament context visible at a glance.',
     sections: [
-      ['Built for the shared screen', 'The best tournament clock is not just for the host. It is for everyone at the table. When the clock is easy to read, players stop asking what the blinds are, how much time is left, and when the next level starts. PokerPlanner keeps the most important information large and centered, then surrounds it with useful details like structure, payouts, field size, and room status.'],
-      ['Control the flow of the night', 'Home tournaments often slow down because the host has too many small jobs. Someone needs to start the timer, pause for a ruling, handle a rebuy, announce a break, and answer questions about payouts. PokerPlanner puts the clock inside a broader tournament workflow so those actions can happen from the same place. The clock becomes the center of the night instead of another separate tab.'],
+      ['Built for the shared screen', 'The best tournament clock is not just for the host. It is for everyone at the table. When the clock is easy to read, players stop asking what the blinds are, how much time is left, and when the next level starts. ThePokerPlanner keeps the most important information large and centered, then surrounds it with useful details like structure, payouts, field size, and room status.'],
+      ['Control the flow of the night', 'Home tournaments often slow down because the host has too many small jobs. Someone needs to start the timer, pause for a ruling, handle a rebuy, announce a break, and answer questions about payouts. ThePokerPlanner puts the clock inside a broader tournament workflow so those actions can happen from the same place. The clock becomes the center of the night instead of another separate tab.'],
       ['Useful for casual and recurring groups', 'For a one-night home game, you can build a structure and run the clock quickly. For a recurring group, saved structures and group tools help you repeat what works. The tournament clock can be paired with player registration, check-in, seating, and announcements, which makes the setup feel more consistent over time.'],
-      ['Browser-based and simple to share', 'Because PokerPlanner is web-based, you can open the TV clock on a device connected to the room display and keep host controls nearby on another screen. Players can also use phone-friendly links to see tournament information. The result feels more polished than a kitchen timer, but it stays approachable for casual poker nights.'],
+      ['Browser-based and simple to share', 'Because ThePokerPlanner is web-based, you can open the TV clock on a device connected to the room display and keep host controls nearby on another screen. Players can also use phone-friendly links to see tournament information. The result feels more polished than a kitchen timer, but it stays approachable for casual poker nights.'],
     ],
     faq: [
       ...sharedFaq,
       {
         q: 'Can I put the tournament clock on a television?',
-        a: 'Yes. PokerPlanner has a TV display built for shared screens with large timer text and visible blind information.',
+        a: 'Yes. ThePokerPlanner has a TV display built for shared screens with large timer text and visible blind information.',
       },
     ],
   },
   {
     slug: 'poker-tournament-director',
-    title: 'Poker Tournament Director Software for Home Games | PokerPlanner',
+    title: 'Poker Tournament Director Software for Home Games | ThePokerPlanner',
     description: 'Run home poker tournaments with director tools for blind levels, player check-in, seating, payouts, rebuys, add-ons, and TV clocks.',
     h1: 'Poker Tournament Director for Home Games',
     eyebrow: 'Tournament director tools',
     primaryKeyword: 'poker tournament director for home games',
     screenshot: 'director-dashboard.svg',
-    screenshotAlt: 'PokerPlanner tournament director dashboard with players, timer, payouts, and controls',
-    intro: 'PokerPlanner acts like a lightweight poker tournament director for home games. It helps the host organize players, structure, blinds, seats, payouts, and the clock without turning a friendly poker night into spreadsheet maintenance.',
+    screenshotAlt: 'ThePokerPlanner tournament director dashboard with players, timer, payouts, and controls',
+    intro: 'ThePokerPlanner acts like a lightweight poker tournament director for home games. It helps the host organize players, structure, blinds, seats, payouts, and the clock without turning a friendly poker night into spreadsheet maintenance.',
     sections: [
-      ['Keep the host out of the weeds', 'Most home-game hosts are also playing. That makes tournament administration tricky. You need to know who has arrived, who is registered, whether the blinds are moving, how many players are left, and what the payout math looks like. PokerPlanner keeps those jobs in one place so the host can make quick decisions and get back to the table.'],
-      ['Manage players and tournament state', 'A good poker tournament director tool should understand the players, not just the timer. PokerPlanner supports player check-in, guest players, group members, rebuys, add-ons, knockouts, and seats. When players can use QR links and phone-friendly pages, they do not need to crowd the host to ask basic questions or report status.'],
+      ['Keep the host out of the weeds', 'Most home-game hosts are also playing. That makes tournament administration tricky. You need to know who has arrived, who is registered, whether the blinds are moving, how many players are left, and what the payout math looks like. ThePokerPlanner keeps those jobs in one place so the host can make quick decisions and get back to the table.'],
+      ['Manage players and tournament state', 'A good poker tournament director tool should understand the players, not just the timer. ThePokerPlanner supports player check-in, guest players, group members, rebuys, add-ons, knockouts, and seats. When players can use QR links and phone-friendly pages, they do not need to crowd the host to ask basic questions or report status.'],
       ['Make the room feel organized', 'The TV board gives the room a central source of truth. The host dashboard gives the organizer the controls they need. Player lobbies give each participant a phone-sized view of the information that matters. Together, those pieces make a home tournament feel smoother without requiring casino-level equipment.'],
-      ['Use it as much or as little as you need', 'Some hosts only need a tournament clock and blind schedule. Others want check-in, player tracking, saved structures, group messages, and payouts. PokerPlanner is built so a casual game can stay simple, while recurring groups can add more organization as the night grows. You can start with the essentials and add director-style controls only when they solve a real problem at the table.'],
+      ['Use it as much or as little as you need', 'Some hosts only need a tournament clock and blind schedule. Others want check-in, player tracking, saved structures, group messages, and payouts. ThePokerPlanner is built so a casual game can stay simple, while recurring groups can add more organization as the night grows. You can start with the essentials and add director-style controls only when they solve a real problem at the table.'],
     ],
     faq: [
       ...sharedFaq,
       {
-        q: 'Is PokerPlanner the same as casino tournament director software?',
+        q: 'Is ThePokerPlanner the same as casino tournament director software?',
         a: 'No. It is built for home and private poker groups, with practical host tools instead of casino operations complexity.',
       },
     ],
   },
   {
     slug: 'home-poker-tournament',
-    title: 'How to Run a Home Poker Tournament | PokerPlanner',
+    title: 'How to Run a Home Poker Tournament | ThePokerPlanner',
     description: 'A practical guide to running a home poker tournament with blinds, chips, players, breaks, payouts, seating, and a tournament clock.',
     h1: 'How to Run a Home Poker Tournament',
     eyebrow: 'Home poker guide',
     primaryKeyword: 'how to run a home poker tournament',
     screenshot: 'home-tournament.svg',
     screenshotAlt: 'Home poker tournament setup with players, chip stacks, blind schedule, and tournament timer',
-    intro: 'Running a home poker tournament is mostly about clear structure. If players know the buy-in, chips, blind levels, breaks, payouts, and timing, the night feels smooth. PokerPlanner helps hosts put those pieces in one place and keep the game moving.',
+    intro: 'Running a home poker tournament is mostly about clear structure. If players know the buy-in, chips, blind levels, breaks, payouts, and timing, the night feels smooth. ThePokerPlanner helps hosts put those pieces in one place and keep the game moving.',
     sections: [
-      ['Start with the field size and time limit', 'Before choosing blinds, decide how many players you expect and how long the tournament should last. A 6-player weeknight game has different needs than a 16-player Saturday event. The blind schedule, starting chips, rebuy rules, and break timing should all support the length of night you want. PokerPlanner helps connect those choices so the timer and structure match the actual game.'],
+      ['Start with the field size and time limit', 'Before choosing blinds, decide how many players you expect and how long the tournament should last. A 6-player weeknight game has different needs than a 16-player Saturday event. The blind schedule, starting chips, rebuy rules, and break timing should all support the length of night you want. ThePokerPlanner helps connect those choices so the timer and structure match the actual game.'],
       ['Choose a blind schedule players can follow', 'The blind schedule should rise steadily without making the early levels meaningless or the late levels chaotic. Home tournaments often work best with simple levels, clear breaks, and enough time for players to settle in. Showing current and next blinds on a TV or laptop keeps everyone oriented, especially when a host is also playing.'],
-      ['Make check-in and seating clear', 'A little organization before cards are dealt saves time later. Decide who is in, whether guests can register, how seating will work, and how late arrivals are handled. PokerPlanner supports group members, player check-in, table seating, and player-facing lobby links so the host can spend less time answering the same setup questions.'],
-      ['Set payouts before the bubble', 'Payout arguments are avoidable. Decide how many places pay and what percentages make sense for the field before the tournament starts. PokerPlanner includes payout tools and tournament state so the prize pool can stay visible as players register, rebuy, or add on. That keeps the night friendly when the money gets real.'],
+      ['Make check-in and seating clear', 'A little organization before cards are dealt saves time later. Decide who is in, whether guests can register, how seating will work, and how late arrivals are handled. ThePokerPlanner supports group members, player check-in, table seating, and player-facing lobby links so the host can spend less time answering the same setup questions.'],
+      ['Set payouts before the bubble', 'Payout arguments are avoidable. Decide how many places pay and what percentages make sense for the field before the tournament starts. ThePokerPlanner includes payout tools and tournament state so the prize pool can stay visible as players register, rebuy, or add on. That keeps the night friendly when the money gets real.'],
     ],
     faq: [
       ...sharedFaq,
@@ -134,19 +134,19 @@ const pages = [
   },
   {
     slug: 'poker-blinds-schedule',
-    title: 'Poker Blind Schedule Generator for Home Tournaments | PokerPlanner',
+    title: 'Poker Blind Schedule Generator for Home Tournaments | ThePokerPlanner',
     description: 'Build a poker blinds schedule for home tournaments with level timing, breaks, starting stacks, chip planning, and a TV timer.',
     h1: 'Poker Blinds Schedule for Home Tournaments',
     eyebrow: 'Blind structure planning',
     primaryKeyword: 'poker tournament blind structure generator',
     screenshot: 'blind-schedule.svg',
     screenshotAlt: 'Poker blind schedule table with highlighted current level and next blind level',
-    intro: 'A clear poker blinds schedule is the backbone of a good home tournament. PokerPlanner helps hosts build and run blind structures that are easy to understand, visible on the clock, and connected to the rest of the tournament setup.',
+    intro: 'A clear poker blinds schedule is the backbone of a good home tournament. ThePokerPlanner helps hosts build and run blind structures that are easy to understand, visible on the clock, and connected to the rest of the tournament setup.',
     sections: [
-      ['The blind schedule controls the pace', 'If blinds climb too slowly, the tournament drags. If they jump too quickly, players feel rushed and short-stacked before the game has developed. A good home poker blind schedule balances starting chips, level length, antes, breaks, and expected field size. PokerPlanner gives the host a practical place to manage that structure and then use it directly in the tournament clock.'],
-      ['Make current and next levels visible', 'Players do not only need the current blinds. They also want to know what is coming next. PokerPlanner highlights the active level and shows upcoming levels so the room can prepare for the next jump. That is especially helpful near breaks, after rebuys close, or when players are deciding whether to take a marginal spot.'],
-      ['Save structures for recurring groups', 'Many home games eventually find a structure that feels right. Once that happens, a host should not need to rebuild it every week. PokerPlanner supports saved group blind structures so recurring games can start from a proven schedule and adjust only when the format changes.'],
-      ['Use the blind schedule with the timer', 'A blind schedule is useful on paper, but it is better when tied to the actual countdown. PokerPlanner connects blind levels to the tournament timer and TV board, reducing manual announcements and keeping the room aligned. The host can focus on decisions instead of remembering which level comes next.'],
+      ['The blind schedule controls the pace', 'If blinds climb too slowly, the tournament drags. If they jump too quickly, players feel rushed and short-stacked before the game has developed. A good home poker blind schedule balances starting chips, level length, antes, breaks, and expected field size. ThePokerPlanner gives the host a practical place to manage that structure and then use it directly in the tournament clock.'],
+      ['Make current and next levels visible', 'Players do not only need the current blinds. They also want to know what is coming next. ThePokerPlanner highlights the active level and shows upcoming levels so the room can prepare for the next jump. That is especially helpful near breaks, after rebuys close, or when players are deciding whether to take a marginal spot.'],
+      ['Save structures for recurring groups', 'Many home games eventually find a structure that feels right. Once that happens, a host should not need to rebuild it every week. ThePokerPlanner supports saved group blind structures so recurring games can start from a proven schedule and adjust only when the format changes.'],
+      ['Use the blind schedule with the timer', 'A blind schedule is useful on paper, but it is better when tied to the actual countdown. ThePokerPlanner connects blind levels to the tournament timer and TV board, reducing manual announcements and keeping the room aligned. The host can focus on decisions instead of remembering which level comes next.'],
     ],
     faq: [
       ...sharedFaq,
@@ -158,19 +158,19 @@ const pages = [
   },
   {
     slug: 'poker-chip-calculator',
-    title: 'Poker Chip Calculator for Home Tournaments | PokerPlanner',
+    title: 'Poker Chip Calculator for Home Tournaments | ThePokerPlanner',
     description: 'Plan poker chips for a home tournament with starting stacks, blinds, rebuys, add-ons, chip counts, and tournament structure.',
     h1: 'Poker Chip Calculator for Home Tournaments',
     eyebrow: 'Chip planning',
     primaryKeyword: 'poker chip calculator for home tournament',
     screenshot: 'chip-calculator.svg',
     screenshotAlt: 'Poker chip calculator showing starting stacks, blind levels, and chips in play',
-    intro: 'A poker chip calculator helps you avoid awkward setup problems before the first hand. PokerPlanner helps home-game hosts think through starting stacks, blind levels, rebuys, add-ons, and tournament pacing so the chip plan matches the night.',
+    intro: 'A poker chip calculator helps you avoid awkward setup problems before the first hand. ThePokerPlanner helps home-game hosts think through starting stacks, blind levels, rebuys, add-ons, and tournament pacing so the chip plan matches the night.',
     sections: [
-      ['Start with the tournament format', 'Chip planning depends on the number of players, starting stack, blinds, rebuy rules, and how long you want the tournament to last. A deep-stack game needs a different chip mix than a quick weeknight tournament. PokerPlanner keeps chip decisions connected to the blind structure and tournament settings so the host can see the bigger picture.'],
-      ['Avoid chip chaos at the table', 'The best chip setup is easy for players to use. Too many small chips slow down betting. Too few useful denominations create awkward change problems. A poker chip calculator should help the host think about practical denominations, chips in play, and how rebuys or add-ons affect the room. PokerPlanner pairs those planning decisions with live tournament tracking.'],
-      ['Track rebuys and add-ons clearly', 'Rebuys and add-ons can change the prize pool and chips in play quickly. When the host tracks them in the same tool as the tournament clock, there is less chance of losing count or misquoting the pool. PokerPlanner includes player-level actions so the chip and payout picture stays easier to manage.'],
-      ['Plan chips alongside blinds', 'Chip stacks only make sense relative to the blind schedule. If the opening blinds are too high for the starting stack, players feel short immediately. If the structure is too deep, the night may run long. PokerPlanner helps hosts plan chips and blinds together so the tournament has a realistic rhythm. That makes chip planning less about guessing and more about matching the stacks to the experience you want players to have.'],
+      ['Start with the tournament format', 'Chip planning depends on the number of players, starting stack, blinds, rebuy rules, and how long you want the tournament to last. A deep-stack game needs a different chip mix than a quick weeknight tournament. ThePokerPlanner keeps chip decisions connected to the blind structure and tournament settings so the host can see the bigger picture.'],
+      ['Avoid chip chaos at the table', 'The best chip setup is easy for players to use. Too many small chips slow down betting. Too few useful denominations create awkward change problems. A poker chip calculator should help the host think about practical denominations, chips in play, and how rebuys or add-ons affect the room. ThePokerPlanner pairs those planning decisions with live tournament tracking.'],
+      ['Track rebuys and add-ons clearly', 'Rebuys and add-ons can change the prize pool and chips in play quickly. When the host tracks them in the same tool as the tournament clock, there is less chance of losing count or misquoting the pool. ThePokerPlanner includes player-level actions so the chip and payout picture stays easier to manage.'],
+      ['Plan chips alongside blinds', 'Chip stacks only make sense relative to the blind schedule. If the opening blinds are too high for the starting stack, players feel short immediately. If the structure is too deep, the night may run long. ThePokerPlanner helps hosts plan chips and blinds together so the tournament has a realistic rhythm. That makes chip planning less about guessing and more about matching the stacks to the experience you want players to have.'],
     ],
     faq: [
       ...sharedFaq,
@@ -214,7 +214,7 @@ function renderSchema(page) {
   const software = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
-    name: 'PokerPlanner',
+    name: 'ThePokerPlanner',
     applicationCategory: 'GameApplication',
     operatingSystem: 'Web browser',
     url: pageUrl(page.slug),
@@ -264,8 +264,9 @@ function renderPage(page) {
     <meta property="og:url" content="${pageUrl(page.slug)}">
     <meta property="og:image" content="${siteUrl}/seo-assets/${page.screenshot}">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/branding/the-poker-planner-logo.svg">
+    <link rel="alternate icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo.svg">
     ${renderSchema(page)}
     <style>
       :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; --gold:#f4b24a; --red:#ef4444; }
@@ -323,8 +324,8 @@ function renderPage(page) {
     <header>
       <nav class="nav" aria-label="Primary">
         <a class="brand" href="/">
-          <img src="/branding/pokerplanner-logo-compact.png" alt="" width="34" height="34">
-          <span>PokerPlanner</span>
+          <img src="/branding/the-poker-planner-logo.svg" alt="" width="34" height="34">
+          <span>ThePokerPlanner</span>
         </a>
         <div class="navlinks">
           <a href="/poker-timer/">Poker timer</a>
@@ -365,7 +366,7 @@ ${articleSections}
       </article>
     </main>
     <footer>
-      <p>PokerPlanner.bet helps home-game hosts plan tournaments, run the clock, and keep players informed.</p>
+      <p>ThePokerPlanner helps home-game hosts plan tournaments, run the clock, and keep players informed.</p>
     </footer>
   </body>
 </html>

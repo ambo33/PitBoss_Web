@@ -1,6 +1,6 @@
 {
-  "name": "PokerPlanner.bet",
-  "short_name": "PokerPlanner",
+  "name": "ThePokerPlanner",
+  "short_name": "ThePokerPlanner",
   "description": "Run Better Poker Nights",
   "start_url": "/",
   "scope": "/",
@@ -8,6 +8,12 @@
   "background_color": "#0f1014",
   "theme_color": "#0f1014",
   "icons": [
+    {
+      "src": "/branding/the-poker-planner-logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",

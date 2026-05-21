@@ -562,7 +562,7 @@ export default function PublicBlindTimerPage() {
                 <p className="eyebrow">Timer saved</p>
                 <h2 className="mt-1 text-2xl font-bold">{promoConsentActive ? 'Save and sound are enabled' : `Your blind timer code is ${timerCode}`}</h2>
                 <p className="mt-2 text-sm leading-6 text-pit-text">
-                  Enter your email to save timer progress across sessions and enable level/time-warning sound announcements. This also signs you up for occasional PokerPlanner updates and hosting tips, and every email includes an unsubscribe link.
+                  Enter your email to save timer progress across sessions and enable level/time-warning sound announcements. This also signs you up for occasional ThePokerPlanner updates and hosting tips, and every email includes an unsubscribe link.
                 </p>
               </div>
             </div>

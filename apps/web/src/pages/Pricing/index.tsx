@@ -42,7 +42,7 @@ export default function PricingPage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_8%,rgba(14,165,165,0.18),transparent_30%),radial-gradient(circle_at_78%_12%,rgba(240,165,0,0.10),transparent_24%)]" />
         <div className="relative mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
           <header className="flex items-center justify-between gap-4">
-            <Link to="/" aria-label="PokerPlanner.bet home">
+            <Link to="/" aria-label="ThePokerPlanner home">
               <BrandLockup compact />
             </Link>
             <nav className="flex items-center gap-2">
@@ -60,7 +60,7 @@ export default function PricingPage() {
               Every feature is free during beta.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-pit-text sm:text-lg">
-              Help us shape PokerPlanner.bet while it is in beta. If paid tiers happen later, beta users will receive discounted rates as a thank-you for testing early.
+              Help us shape ThePokerPlanner while it is in beta. If paid tiers happen later, beta users will receive discounted rates as a thank-you for testing early.
             </p>
           </div>
         </div>

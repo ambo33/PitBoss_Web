@@ -1,6 +1,6 @@
 const localClientUrl = 'http://localhost:5173';
-const productionAppUrl = 'https://app.pokerplanner.bet';
-const productionPublicUrl = 'https://pokerplanner.bet';
+const productionAppUrl = 'https://app.thepokerplanner.com';
+const productionPublicUrl = 'https://thepokerplanner.com';
 
 function cleanUrl(value: string): string {
   return value.replace(/\/+$/, '');

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const PRIVATE_EMAIL_DOMAIN = 'private.pokerplanner.bet';
+const PRIVATE_EMAIL_DOMAIN = 'private.thepokerplanner.com';
 
 function getEncryptionKey(): Buffer {
   const material = process.env.EMAIL_ENCRYPTION_KEY || process.env.JWT_SECRET || 'dev-secret';
