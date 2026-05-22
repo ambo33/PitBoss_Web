@@ -24,7 +24,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['"Nunito Sans"', 'sans-serif'],
+        sans: ['Sora', 'sans-serif'],
       },
     },
   },
