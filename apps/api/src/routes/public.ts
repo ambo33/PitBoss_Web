@@ -204,6 +204,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
   const guestUserId = typeof req.query.guestUserId === 'string' ? req.query.guestUserId : null;
   const entryUserId = req.userId ?? guestUserId;
   let entry: LobbyEntry | null = null;
+  let isdeclined = false;
 
   if (entryUserId) {
     entry = await queryOne<LobbyEntry>(
@@ -229,6 +230,13 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     );
     if (entry) {
       [entry] = await attachPlayerCoinBadges([entry], tournament.groupid);
+    }
+    if (req.userId) {
+      const declined = await queryOne(
+        `SELECT 1 FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+        [req.params.id, req.userId]
+      );
+      isdeclined = Boolean(declined);
     }
   }
 
@@ -263,6 +271,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     },
     seating,
     entry,
+    isdeclined,
     activePlayers: activePlayersWithCoins,
   });
 });
@@ -307,6 +316,11 @@ publicRouter.post('/tournaments/:id/checkin/self', requireAuth, async (req: Requ
     res.status(403).json({ error: 'You are not allowed to register for this tournament.' });
     return;
   }
+
+  await query(
+    `DELETE FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, req.userId]
+  );
 
   const existing = await queryOne(
     `SELECT 1 FROM tournamentplayers WHERE tournamentid = $1 AND userid = $2`,
@@ -453,6 +467,10 @@ publicRouter.post('/tournaments/:id/register/self', requireAuth, async (req: Req
     return;
   }
 
+  await query(
+    `DELETE FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.id, req.userId]
+  );
   await query(
     `INSERT INTO tournamentplayers (tournamentid, userid, checkedin)
      VALUES ($1, $2, FALSE)

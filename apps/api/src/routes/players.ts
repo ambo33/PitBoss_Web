@@ -220,6 +220,10 @@ playersRouter.post('/:tid/players/group-register', async (req: Request, res: Res
   if (exists) { res.status(409).json({ error: 'Already registered' }); return; }
 
   await query(
+    `DELETE FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.tid, req.userId]
+  );
+  await query(
     `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2)`,
     [req.params.tid, req.userId]
   );
@@ -242,6 +246,10 @@ playersRouter.post('/:tid/players/self', async (req: Request, res: Response) => 
   if (exists) { res.status(409).json({ error: 'Already registered' }); return; }
 
   await query(
+    `DELETE FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.tid, req.userId]
+  );
+  await query(
     `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2)`,
     [req.params.tid, req.userId]
   );
@@ -261,6 +269,38 @@ playersRouter.delete('/:tid/players/self', async (req: Request, res: Response) =
     [req.params.tid, req.userId]
   );
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'leave-tournament' });
+  res.json({ success: true });
+});
+
+playersRouter.post('/:tid/players/self/decline', async (req: Request, res: Response) => {
+  const t = await queryOne<{ tournamentid: string; groupid: string | null; playerselftracking: boolean }>(
+    `SELECT tournamentid, groupid, playerselftracking FROM tournaments WHERE tournamentid = $1`,
+    [req.params.tid]
+  );
+  if (!t) { res.status(404).json({ error: 'Tournament not found' }); return; }
+
+  let canDecline = Boolean(t.playerselftracking);
+  if (t.groupid) {
+    const member = await queryOne(
+      `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND approved = TRUE`,
+      [t.groupid, req.userId]
+    );
+    canDecline = Boolean(member);
+  }
+  if (!canDecline) { res.status(403).json({ error: 'You are not allowed to RSVP for this tournament.' }); return; }
+
+  await query(
+    `DELETE FROM tournamentplayers WHERE tournamentid = $1 AND userid = $2`,
+    [req.params.tid, req.userId]
+  );
+  await query(
+    `INSERT INTO tournamentdeclines (tournamentid, userid, declinedat)
+     VALUES ($1, $2, now())
+     ON CONFLICT (tournamentid, userid)
+     DO UPDATE SET declinedat = excluded.declinedat`,
+    [req.params.tid, req.userId]
+  );
+  broadcastTournamentUpdate(req.params.tid, { players: true, source: 'decline-tournament' });
   res.json({ success: true });
 });
 

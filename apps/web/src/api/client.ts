@@ -183,6 +183,7 @@ export const api = {
   selfRegister: (tid: string) => post(`/tournaments/${tid}/players/self`),
   groupRegister: (tid: string) => post(`/tournaments/${tid}/players/group-register`),
   leaveTournament: (tid: string) => del(`/tournaments/${tid}/players/self`),
+  declineTournament: (tid: string) => post(`/tournaments/${tid}/players/self/decline`),
   removePlayer: (tid: string, uid: string) => del(`/tournaments/${tid}/players/${uid}`),
   toggleCheckin: (tid: string, uid: string) =>
     put(`/tournaments/${tid}/players/${uid}/checkin`),
@@ -307,7 +308,7 @@ export interface Tournament {
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
   isowner?: boolean;
-  playercount?: number; checkedincount?: number; isregistered?: boolean;
+  playercount?: number; checkedincount?: number; isregistered?: boolean; isdeclined?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
 }
 export interface TournamentPlayer {
@@ -551,6 +552,7 @@ export interface PublicLobbyResponse {
   field: LobbyFieldStats;
   seating: SeatingAssignment[];
   entry: LobbyEntry | null;
+  isdeclined?: boolean;
   activePlayers?: KnockoutOption[];
 }
 export interface KnockoutOption {

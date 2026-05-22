@@ -111,6 +111,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const tournament = data?.tournament;
   const field = data?.field;
   const entry = data?.entry;
+  const isDeclined = Boolean(data?.isdeclined);
   const activePlayers = data?.activePlayers ?? [];
   const checkInMode = mode === 'checkin';
   const [knockedOutByUserId, setKnockedOutByUserId] = useState('');
@@ -166,6 +167,22 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     mutationFn: () => api.lobbySelfRegister(id!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: () => api.declineTournament(id!),
+    onSuccess: () => {
+      qc.setQueryData(['public-lobby', id, guestUserId, user?.guid], (current: unknown) => {
+        if (!current || typeof current !== 'object') return current;
+        return {
+          ...(current as Record<string, unknown>),
+          entry: null,
+          isdeclined: true,
+        };
+      });
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
 
@@ -606,17 +623,31 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           <section className="card space-y-3 p-3">
             <h2 className="text-base font-semibold text-white">Player Lobby</h2>
             <p className="text-sm text-pit-text">
-              You are not registered for this tournament yet. Register here, then see the host to complete check-in.
+              {isDeclined
+                ? "You've marked that you can't attend. Register again if plans change."
+                : 'You are not registered for this tournament yet. Register here, then see the host to complete check-in.'}
             </p>
             {token ? (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => selfRegisterMutation.mutate()}
-                disabled={selfRegisterMutation.isPending}
-              >
-                {selfRegisterMutation.isPending ? 'Registering...' : 'Register for Tournament'}
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => selfRegisterMutation.mutate()}
+                  disabled={selfRegisterMutation.isPending || declineMutation.isPending}
+                >
+                  {selfRegisterMutation.isPending ? 'Registering...' : 'Register for Tournament'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn-ghost border-red-300/25 text-red-200 hover:border-red-300/45 hover:text-red-100 ${
+                    isDeclined ? 'bg-red-400/20 shadow-inner ring-1 ring-red-300/25' : ''
+                  }`}
+                  onClick={() => declineMutation.mutate()}
+                  disabled={selfRegisterMutation.isPending || declineMutation.isPending || isDeclined}
+                >
+                  {declineMutation.isPending ? 'Saving...' : "Can't go"}
+                </button>
+              </div>
             ) : (
               <div className="space-y-3">
                 <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Register</button>
@@ -642,6 +673,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
               </div>
             )}
             {selfRegisterMutation.error && <p className="text-sm text-red-400">{selfRegisterMutation.error.message}</p>}
+            {declineMutation.error && <p className="text-sm text-red-400">{declineMutation.error.message}</p>}
             {guestRegisterMutation.error && <p className="text-sm text-red-400">{guestRegisterMutation.error.message}</p>}
           </section>
         ) : entry?.placed != null ? (

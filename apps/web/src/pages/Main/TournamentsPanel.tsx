@@ -60,6 +60,25 @@ export default function TournamentsPanel() {
     },
   });
 
+  const declineMutation = useMutation({
+    mutationFn: (tid: string) => api.declineTournament(tid),
+    onSuccess: (_result, tid) => {
+      qc.setQueryData<Tournament[]>(['tournaments', 'mine'], (current) => (
+        current?.map((tournament) => tournament.tournamentid === tid
+          ? {
+              ...tournament,
+              isregistered: false,
+              isdeclined: true,
+              playercount: Math.max(0, Number(tournament.playercount ?? 0) - (tournament.isregistered ? 1 : 0)),
+            }
+          : tournament
+        )
+      ));
+      qc.invalidateQueries({ queryKey: ['tournaments'] });
+    },
+  });
+  const rsvpError = registerMutation.error?.message || leaveMutation.error?.message || declineMutation.error?.message;
+
   const upcoming = mine.filter((t) => {
     return isUpcomingTournament(t);
   });
@@ -121,6 +140,11 @@ export default function TournamentsPanel() {
 
       {(loadingMine || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
         <>
+          {rsvpError && (
+            <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+              {rsvpError}
+            </p>
+          )}
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">
@@ -146,10 +170,11 @@ export default function TournamentsPanel() {
                   key={t.tournamentid}
                   t={t}
                   isUpcoming={scheduleView === 'upcoming'}
-                  loading={registerMutation.isPending || leaveMutation.isPending}
+                  loading={registerMutation.isPending || leaveMutation.isPending || declineMutation.isPending}
                   onClick={() => navigate(`/tournament/${t.tournamentid}`)}
                   onRegister={() => registerMutation.mutate(t)}
                   onLeave={() => leaveMutation.mutate(t.tournamentid)}
+                  onDecline={() => declineMutation.mutate(t.tournamentid)}
                 />
               ))}
               {scheduleList.length === 0 && <EmptyState view={scheduleView} />}
@@ -336,6 +361,7 @@ function TournamentCard({
   onClick,
   onRegister,
   onLeave,
+  onDecline,
 }: {
   t: Tournament;
   isUpcoming: boolean;
@@ -343,10 +369,11 @@ function TournamentCard({
   onClick: () => void;
   onRegister: () => void;
   onLeave: () => void;
+  onDecline: () => void;
 }) {
   const dateLabel = getDateKey(t.tourneydate);
   const hasDate = !!dateLabel;
-  const hasBuyin = t.buyin > 0;
+  const buyinLabel = formatBuyinLabel(t.buyin);
   const canOpen = !t.groupid || t.canmanage;
   const adminActionLabel = isUpcoming ? 'Run tournament' : 'Open tournament';
   const showAdminAction = canOpen;
@@ -356,11 +383,17 @@ function TournamentCard({
     <div
       onClick={canOpen ? onClick : undefined}
       className={`${canOpen ? 'card-hover cursor-pointer' : 'card cursor-default'} group ${
-        t.isregistered ? 'border-pit-teal/45 bg-pit-teal/5' : ''
+        t.isdeclined && !t.isregistered
+          ? 'border-red-300/35 bg-red-500/10'
+          : t.isregistered
+            ? 'border-pit-teal/45 bg-pit-teal/5'
+            : ''
       }`}
     >
       <div className={`mb-4 h-0.5 -mx-4 -mt-4 rounded-t-xl ${
-        t.isregistered
+        t.isdeclined && !t.isregistered
+          ? 'bg-gradient-to-r from-red-300/80 via-red-400/35 to-transparent'
+          : t.isregistered
           ? 'bg-gradient-to-r from-pit-teal via-pit-teal/45 to-transparent'
           : 'bg-gradient-to-r from-pit-teal/60 via-pit-teal/20 to-transparent'
       }`} />
@@ -374,12 +407,10 @@ function TournamentCard({
               Registered
             </span>
           )}
-          {hasBuyin && (
-            <span className="flex items-center gap-0.5 text-sm font-bold text-pit-gold">
-              <DollarSign size={13} strokeWidth={2.5} />
-              {Number(t.buyin).toFixed(0)}
-            </span>
-          )}
+          <span className="flex items-center gap-0.5 text-sm font-bold text-pit-gold">
+            {Number(t.buyin) > 0 && <DollarSign size={13} strokeWidth={2.5} />}
+            {buyinLabel}
+          </span>
         </div>
       </div>
 
@@ -429,21 +460,38 @@ function TournamentCard({
               {adminActionLabel}
             </button>
           ) : (
-            <button
-              type="button"
-              className={t.isregistered ? 'btn-ghost w-full' : 'btn-primary w-full'}
-              disabled={loading}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (t.isregistered) {
-                  onLeave();
-                  return;
-                }
-                onRegister();
-              }}
-            >
-              {t.isregistered ? 'Leave tournament' : 'Register'}
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                className={t.isregistered ? 'btn-ghost w-full sm:col-span-2' : 'btn-primary w-full'}
+                disabled={loading}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (t.isregistered) {
+                    onLeave();
+                    return;
+                  }
+                  onRegister();
+                }}
+              >
+                {t.isregistered ? 'Leave tournament' : 'Register'}
+              </button>
+              {!t.isregistered && (
+                <button
+                  type="button"
+                  className={`btn-ghost w-full border-red-300/25 text-red-200 hover:border-red-300/45 hover:text-red-100 ${
+                    t.isdeclined ? 'bg-red-400/20 shadow-inner ring-1 ring-red-300/25' : ''
+                  }`}
+                  disabled={loading || t.isdeclined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDecline();
+                  }}
+                >
+                  Can't go
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -465,6 +513,12 @@ function EmptyState({ view }: { view: 'upcoming' | 'history' }) {
       </div>
     </div>
   );
+}
+
+function formatBuyinLabel(value: unknown) {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 'FREE';
+  return amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2);
 }
 
 function CreateTournamentComposer({

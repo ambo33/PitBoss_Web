@@ -427,6 +427,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS reminderemailsentat TIMESTAMPTZ
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS tournamentdeclines (
+        tournamentid UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        declinedat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (tournamentid, userid)
+      )
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS groupcoins (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,

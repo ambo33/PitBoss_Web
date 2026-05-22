@@ -894,7 +894,8 @@ groupsRouter.get('/:id/tournaments', async (req: Request, res: Response) => {
             t.buyin, t.rebuycost AS rebuyprice, t.addoncost AS addonprice, t.maxplayers,
             t.createdate AS createdat, t.groupid,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
-            EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered
+            EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
+            EXISTS(SELECT 1 FROM tournamentdeclines WHERE tournamentid = t.tournamentid AND userid = $2) AS isdeclined
      FROM tournaments t
      WHERE t.groupid = $1
      ORDER BY t.createdate DESC`,

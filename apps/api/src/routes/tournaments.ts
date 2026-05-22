@@ -145,6 +145,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $1) AS isregistered,
+            EXISTS(SELECT 1 FROM tournamentdeclines WHERE tournamentid = t.tournamentid AND userid = $1) AS isdeclined,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
               WHEN t.userid = $1 THEN TRUE
@@ -321,6 +322,10 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
 
   if (registerself) {
     await query(
+      `DELETE FROM tournamentdeclines WHERE tournamentid = $1 AND userid = $2`,
+      [row.tournamentid, req.userId]
+    );
+    await query(
       `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [row.tournamentid, req.userId]
     );
@@ -397,6 +402,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
+            EXISTS(SELECT 1 FROM tournamentdeclines WHERE tournamentid = t.tournamentid AND userid = $2) AS isdeclined,
             COALESCE(gm.admin = TRUE, FALSE) AS isgroupadmin,
             CASE
               WHEN $3 = TRUE THEN TRUE

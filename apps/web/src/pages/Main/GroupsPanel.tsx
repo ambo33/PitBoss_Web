@@ -401,6 +401,24 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     mutationFn: (tid: string) => api.groupRegister(tid),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'tournaments'] }),
   });
+  const declineMutation = useMutation({
+    mutationFn: (tid: string) => api.declineTournament(tid),
+    onSuccess: (_result, tid) => {
+      qc.setQueryData<Array<Tournament & { isregistered: boolean; isdeclined?: boolean }>>(
+        ['group', group.groupid, 'tournaments'],
+        (current) => current?.map((tournament) => tournament.tournamentid === tid
+          ? {
+              ...tournament,
+              isregistered: false,
+              isdeclined: true,
+              playercount: Math.max(0, Number(tournament.playercount ?? 0) - (tournament.isregistered ? 1 : 0)),
+            }
+          : tournament
+        )
+      );
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'tournaments'] });
+    },
+  });
   const updateGroupMutation = useMutation({
     mutationFn: (payload: {
       invitecode?: string;
@@ -1402,6 +1420,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
 
         {detailTab === 'history' && (
           <div>
+            {(registerMutation.error?.message || declineMutation.error?.message) && (
+              <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+                {registerMutation.error?.message || declineMutation.error?.message}
+              </p>
+            )}
             {loadingTourneys
               ? <LoadingSpinner className="py-8" />
               : groupTournaments.length === 0
@@ -1413,9 +1436,13 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 )
                 : (
                   <div className="space-y-2">
-                    {groupTournaments.map((t: Tournament & { isregistered: boolean }) => (
+                    {groupTournaments.map((t: Tournament & { isregistered: boolean; isdeclined?: boolean }) => (
                       <div key={t.tournamentid}
-                        className="flex items-center justify-between p-3 rounded-xl bg-pit-bg border border-pit-border gap-3">
+                        className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
+                          t.isdeclined && !t.isregistered
+                            ? 'border-red-300/35 bg-red-500/10'
+                            : 'border-pit-border bg-pit-bg'
+                        }`}>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-white truncate">{t.name}</p>
                           <p className="text-xs text-pit-muted mt-0.5">
@@ -1425,11 +1452,22 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                         <div className="flex items-center gap-1.5 shrink-0">
                           {t.isregistered
                             ? <span className="chip text-pit-teal border-pit-teal/30">Registered</span>
-                            : <button className="btn-primary text-xs px-2.5 py-1"
-                                onClick={() => registerMutation.mutate(t.tournamentid)}
-                                disabled={registerMutation.isPending}>
-                                Register
-                              </button>
+                            : (
+                              <>
+                                <button className="btn-primary text-xs px-2.5 py-1"
+                                  onClick={() => registerMutation.mutate(t.tournamentid)}
+                                  disabled={registerMutation.isPending || declineMutation.isPending}>
+                                  Register
+                                </button>
+                                <button className={`btn-ghost border-red-300/25 px-2.5 py-1 text-xs text-red-200 hover:border-red-300/45 hover:text-red-100 ${
+                                    t.isdeclined ? 'bg-red-400/20 shadow-inner ring-1 ring-red-300/25' : ''
+                                  }`}
+                                  onClick={() => declineMutation.mutate(t.tournamentid)}
+                                  disabled={registerMutation.isPending || declineMutation.isPending || t.isdeclined}>
+                                  Can't go
+                                </button>
+                              </>
+                            )
                           }
                           <button
                             className="flex items-center justify-center w-7 h-7 rounded-lg text-pit-muted hover:text-white hover:bg-pit-surface transition-all"

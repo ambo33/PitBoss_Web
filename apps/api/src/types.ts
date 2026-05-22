@@ -140,6 +140,7 @@ export interface Tournament {
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;
+  isdeclined?: boolean;
   isgroupadmin?: boolean;
   canmanage?: boolean;
 }

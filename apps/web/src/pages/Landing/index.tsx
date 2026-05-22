@@ -227,7 +227,7 @@ export default function LandingPage() {
           <div className="h-full w-full bg-[radial-gradient(circle_at_30%_12%,rgba(14,165,165,0.20),transparent_30%),radial-gradient(circle_at_78%_8%,rgba(240,165,0,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_58%)]" />
         </div>
 
-        <div className="relative mx-auto flex max-w-7xl flex-col px-5 pb-4 pt-5 sm:min-h-[92vh] sm:px-8 sm:pb-5 lg:px-10">
+        <div className="relative mx-auto flex max-w-7xl flex-col px-5 pb-4 pt-5 sm:px-8 sm:pb-5 lg:px-10">
           <header className="-mx-5 -mt-5 border-b border-pit-teal/20 bg-[#122E30]/95 px-4 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur sm:-mx-8 sm:rounded-b-2xl sm:px-8 sm:py-4 lg:-mx-10 lg:px-10">
             <div className="flex h-12 items-center justify-between gap-3 sm:h-auto">
             <Link to="/landing" className="flex min-w-0 items-center gap-2" aria-label="ThePokerPlanner home">
@@ -277,19 +277,9 @@ export default function LandingPage() {
             )}
           </header>
 
-          <div data-reveal className="mt-5 hidden rounded-xl border border-pit-teal/25 bg-pit-teal/10 px-4 py-3 text-sm text-pit-text shadow-[0_18px_60px_rgba(0,0,0,0.25)] sm:flex sm:items-center sm:justify-between sm:gap-4">
-            <div>
-              <span className="font-semibold text-white">ThePokerPlanner is live!</span>
-              <span className="ml-1">Help us build and shape for all hosting needs!</span>
-            </div>
-            <Link className="mt-3 inline-flex text-sm font-semibold text-pit-teal hover:text-pit-teal/80 sm:mt-0" to="/login?mode=register">
-              Create your account
-            </Link>
-          </div>
-
-          <div className="grid items-start gap-3 py-3 sm:flex-1 sm:gap-10 sm:py-12 xl:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] xl:items-center xl:py-16">
+          <div className="grid items-start gap-3 py-3 sm:gap-10 sm:pb-10 sm:pt-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] xl:pb-14 xl:pt-8">
             <div data-reveal className="mx-auto max-w-2xl text-center xl:mx-0 xl:text-left">
-              <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-4 sm:text-xs">
+              <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-3 sm:text-xs">
                 Poker nights, organized
               </p>
               <h1 className="whitespace-nowrap text-[clamp(1.62rem,6.9vw,2rem)] font-black leading-none text-white sm:whitespace-normal sm:text-6xl sm:leading-[0.98] lg:text-7xl">

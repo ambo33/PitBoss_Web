@@ -33,8 +33,10 @@ jobsRouter.post('/tournament-reminders', async (req: Request, res: Response) => 
      JOIN users u ON u.guid = tp.userid
      LEFT JOIN usermetadata um ON um.userid = tp.userid
      LEFT JOIN groupmembers gm ON gm.groupid = t.groupid AND gm.userid = tp.userid
+     LEFT JOIN tournamentdeclines td ON td.tournamentid = t.tournamentid AND td.userid = tp.userid
      WHERE t.date IS NOT NULL
        AND COALESCE(tp.reminderemailsentat, NULL) IS NULL
+       AND td.userid IS NULL
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
        AND u.emailencrypted IS NOT NULL
