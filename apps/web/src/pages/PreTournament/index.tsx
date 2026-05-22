@@ -179,7 +179,7 @@ function TournamentMobileNav({
   dockToBottom?: boolean;
 }) {
   return (
-    <nav className={`fixed inset-x-0 z-40 grid grid-cols-4 border-t border-pit-border bg-pit-surface/95 backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}>
+    <nav className={`fixed inset-x-0 z-40 grid grid-cols-4 border-t border-pit-border bg-[#24252d]/96 backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}>
       {tabs.map(({ id, mobileLabel, Icon }) => {
         const active = activeTab === id;
         return (

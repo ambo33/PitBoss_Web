@@ -26,6 +26,8 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const put = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+const patch = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 export const api = {
@@ -99,6 +101,34 @@ export const api = {
   updateGroupNotificationPreferences: (groupId: string, data: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
     put<{ success: boolean; preferences: Partial<GroupMember> }>(`/groups/${groupId}/notification-preferences`, data),
 
+  // Leagues
+  getLeagues: () => get<League[]>('/leagues'),
+  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[]; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string }) =>
+    post<{ leagueid: string; invitecode: string; seasonid: string }>('/leagues', data),
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+    patch<{ league: League }>(`/leagues/${id}`, data),
+  deleteLeague: (id: string) =>
+    del<{ success: boolean }>(`/leagues/${id}`),
+  createLeaguePayment: (id: string, data: { userid: string; eventid?: string | null; seasonid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
+    post<{ payment: LeaguePayment }>(`/leagues/${id}/payments`, data),
+  deleteLeaguePayment: (id: string, paymentId: string) =>
+    del<{ success: boolean }>(`/leagues/${id}/payments/${paymentId}`),
+  joinLeague: (invitecode: string) =>
+    post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
+  addLeagueGuest: (id: string, displayname: string, seasonid?: string | null) =>
+    post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname, seasonid }),
+  removeLeagueMember: (id: string, userId: string, seasonid?: string | null) =>
+    del<{ success: boolean }>(`/leagues/${id}/members/${userId}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
+  getLeague: (id: string, seasonid?: string | null) => get<LeagueDetail>(`/leagues/${id}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
+  createLeagueSeason: (id: string, data: { name: string; begindate: string; enddate: string; eventcount?: number }) =>
+    post<{ season: LeagueSeason; events: LeagueEvent[] }>(`/leagues/${id}/seasons`, data),
+  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null }) =>
+    post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
+  logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
+    put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
+  logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>
+    put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/self-result`, data),
+
   // Tournaments
   getTournaments: () => get<Tournament[]>('/tournaments'),
   getRegistered: () => get<Tournament[]>('/tournaments/registered'),
@@ -140,7 +170,7 @@ export const api = {
   unsubscribePublicBlindTimer: (token: string) =>
     post<{ success: boolean }>(`/public/blind-timers/unsubscribe/${encodeURIComponent(token)}`),
 
-  // AI experiments
+  // Voice and coaching
   generateAnnouncerMoment: (id: string, data: AnnouncerMomentRequest) =>
     post<AnnouncerMomentResponse>(`/ai/tournaments/${id}/announcer`, data),
   analyzeHand: (id: string, data: HandAnalysisRequest) =>
@@ -302,6 +332,125 @@ export interface GroupCoinAward {
   id: string; groupid: string; coinid: string; userid: string;
   displayname?: string; note?: string | null; createdat: string;
 }
+export interface LeaguePointRule {
+  place: number | 'DNF';
+  points: number;
+}
+export interface LeagueFinalMultiplier {
+  place: number;
+  multiplier: number;
+}
+export interface League {
+  leagueid: string;
+  ownerid: string;
+  name: string;
+  invitecode: string;
+  approvalneeded: boolean;
+  expectedplayercount: number;
+  leaguefee: number;
+  pereventfee: number;
+  showupbonuspoints: number;
+  bestfinishcount: number;
+  pointslookup: LeaguePointRule[];
+  finalenabled: boolean;
+  finalmultiplierlookup: LeagueFinalMultiplier[];
+  finalchiprounding: number;
+  finalstartingbigblind: number;
+  active: boolean;
+  createdat: string;
+  isadmin?: boolean;
+  approved?: boolean;
+  membercount?: number;
+  eventcount?: number;
+}
+export interface LeagueMember {
+  userid: string;
+  emailaddress?: string | null;
+  displayname?: string | null;
+  isadmin: boolean;
+  approved: boolean;
+  participating: boolean;
+}
+export interface LeagueSeason {
+  seasonid: string;
+  leagueid: string;
+  name: string;
+  begindate: string;
+  enddate: string;
+  active: boolean;
+  createdat: string;
+}
+export interface LeagueEvent {
+  eventid: string;
+  leagueid: string;
+  seasonid?: string | null;
+  name: string;
+  eventdate?: string | null;
+  eventnumber?: number | null;
+  resultcount?: number;
+  active: boolean;
+  createdat: string;
+}
+export interface LeagueResult {
+  resultid: string;
+  eventid: string;
+  leagueid: string;
+  userid: string;
+  displayname?: string | null;
+  placed?: number | null;
+  dnf: boolean;
+  points: number;
+  showupbonuspoints: number;
+  loggedby?: string | null;
+  createdat: string;
+  updatedat: string;
+}
+export type LeaguePaymentType = 'league' | 'event' | 'other';
+export interface LeaguePayment {
+  paymentid: string;
+  leagueid: string;
+  seasonid?: string | null;
+  userid: string;
+  displayname?: string | null;
+  eventid?: string | null;
+  eventname?: string | null;
+  paymenttype: LeaguePaymentType | string;
+  amount: number;
+  paidat: string;
+  note?: string | null;
+  recordedby?: string | null;
+  createdat: string;
+}
+export interface LeagueStanding {
+  userid: string;
+  displayname?: string | null;
+  isadmin: boolean;
+  eventsplayed: number;
+  showupbonus: number;
+  scoredpoints: number;
+  totalpoints: number;
+  averagefinish?: number | null;
+  bestfinishes: number[];
+}
+export interface LeagueFinalStack extends LeagueStanding {
+  place: number;
+  multiplier: number;
+  multiplierchips: number;
+  roundedchips: number;
+  startingstack: number;
+  bbstostart: number;
+}
+export interface LeagueDetail {
+  league: League;
+  seasons: LeagueSeason[];
+  selectedseasonid: string;
+  members: LeagueMember[];
+  events: LeagueEvent[];
+  results: LeagueResult[];
+  payments: LeaguePayment[];
+  standings: LeagueStanding[];
+  finalstacks: LeagueFinalStack[];
+}
 export interface PlayerCoinBadge {
   coinid: string; name: string;
   description?: string | null; imagedata?: string | null; imageurl?: string | null;
@@ -320,6 +469,7 @@ export interface AuthProfile {
   canuseclubfeatures?: boolean;
   aicreditsremaining?: number;
   defaultaicredits?: number;
+  aicreditsrefreshat?: string;
   checkinaudiodata?: string | null;
   checkinaudiofilename?: string | null;
   hascheckinaudio?: boolean;

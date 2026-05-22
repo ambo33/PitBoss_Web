@@ -102,6 +102,7 @@ export default function TournamentsPanel() {
         onScheduleViewChange={setScheduleView}
         onCreate={() => setShowCreate(true)}
         onOpenGroups={() => navigate('/', { state: { tab: 'groups' } })}
+        onOpenLeagues={() => navigate('/', { state: { tab: 'leagues' } })}
         onDismissSetup={() => {
           setSetupCardDismissed(true);
           try {
@@ -173,6 +174,7 @@ function DashboardOverview({
   onScheduleViewChange,
   onCreate,
   onOpenGroups,
+  onOpenLeagues,
   onDismissSetup,
 }: {
   me?: Awaited<ReturnType<typeof api.me>>;
@@ -187,6 +189,7 @@ function DashboardOverview({
   onScheduleViewChange: (view: 'upcoming' | 'history') => void;
   onCreate: () => void;
   onOpenGroups: () => void;
+  onOpenLeagues: () => void;
   onDismissSetup: () => void;
 }) {
   const firstName = getFirstName(me?.displayname);
@@ -220,7 +223,7 @@ function DashboardOverview({
           <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={scheduleView === 'upcoming'} onClick={() => onScheduleViewChange('upcoming')} />
           <DashboardStat icon={Users} label="Groups" value={groups.length} onClick={onOpenGroups} />
           <DashboardStat icon={Medal} label="History" value={historyCount} active={scheduleView === 'history'} onClick={() => onScheduleViewChange('history')} />
-          <DashboardStat icon={ListOrdered} label="Leagues" value="Soon" />
+          <DashboardStat icon={ListOrdered} label="Leagues" value="Open" onClick={onOpenLeagues} />
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">

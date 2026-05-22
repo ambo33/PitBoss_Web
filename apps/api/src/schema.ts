@@ -151,6 +151,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS aicreditsrefreshedat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS checkinaudiodata STRING
     `);
     await client.query(`
@@ -472,6 +476,182 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_publicblindtimers_unsubscribe
       ON publicblindtimers (promounsubscribetoken)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagues (
+        leagueid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        userid UUID NOT NULL REFERENCES users(guid),
+        name STRING(160) NOT NULL,
+        invitecode STRING(12) UNIQUE NOT NULL,
+        approvalneeded BOOL DEFAULT FALSE,
+        expectedplayercount INT DEFAULT 36,
+        leaguefee DECIMAL(10,2) DEFAULT 0,
+        pereventfee DECIMAL(10,2) DEFAULT 0,
+        showupbonuspoints INT DEFAULT 300,
+        bestfinishcount INT DEFAULT 7,
+        pointslookup JSONB NOT NULL,
+        finalenabled BOOL DEFAULT FALSE,
+        finalmultiplierlookup JSONB DEFAULT '[]',
+        finalchiprounding INT DEFAULT 100,
+        finalstartingbigblind INT DEFAULT 100,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS userid UUID REFERENCES users(guid)`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS name STRING(160) DEFAULT 'League'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS invitecode STRING(12)`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS approvalneeded BOOL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS expectedplayercount INT DEFAULT 36`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS leaguefee DECIMAL(10,2) DEFAULT 0`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pereventfee DECIMAL(10,2) DEFAULT 0`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS showupbonuspoints INT DEFAULT 300`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS bestfinishcount INT DEFAULT 7`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS pointslookup JSONB DEFAULT '[{"place":"DNF","points":0},{"place":1,"points":671},{"place":2,"points":448},{"place":3,"points":336}]'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalenabled BOOL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalmultiplierlookup JSONB DEFAULT '[]'`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalchiprounding INT DEFAULT 100`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalstartingbigblind INT DEFAULT 100`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
+    await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
+    await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
+    await client.query(`UPDATE leagues SET expectedplayercount = 36 WHERE expectedplayercount IS NULL`);
+    await client.query(`UPDATE leagues SET leaguefee = 0 WHERE leaguefee IS NULL`);
+    await client.query(`UPDATE leagues SET pereventfee = 0 WHERE pereventfee IS NULL`);
+    await client.query(`UPDATE leagues SET finalenabled = FALSE WHERE finalenabled IS NULL`);
+    await client.query(`UPDATE leagues SET finalmultiplierlookup = '[]' WHERE finalmultiplierlookup IS NULL`);
+    await client.query(`UPDATE leagues SET finalchiprounding = 100 WHERE finalchiprounding IS NULL`);
+    await client.query(`UPDATE leagues SET finalstartingbigblind = 100 WHERE finalstartingbigblind IS NULL`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueseasons (
+        seasonid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        name STRING(160) NOT NULL,
+        begindate DATE NOT NULL,
+        enddate DATE NOT NULL,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      INSERT INTO leagueseasons (leagueid, name, begindate, enddate)
+      SELECT l.leagueid, 'Season 1', current_date(), CAST(current_date() + INTERVAL '365 days' AS DATE)
+      FROM leagues l
+      WHERE NOT EXISTS (
+        SELECT 1 FROM leagueseasons s WHERE s.leagueid = l.leagueid
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaguemembers (
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        admin BOOL DEFAULT FALSE,
+        approved BOOL DEFAULT TRUE,
+        participating BOOL DEFAULT TRUE,
+        joinedat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (leagueid, userid)
+      )
+    `);
+    await client.query(`ALTER TABLE leaguemembers ADD COLUMN IF NOT EXISTS participating BOOL DEFAULT TRUE`);
+    await client.query(`UPDATE leaguemembers SET participating = TRUE WHERE participating IS NULL`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueseasonparticipants (
+        seasonid UUID NOT NULL REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        participating BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (seasonid, userid)
+      )
+    `);
+    await client.query(`
+      INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+      SELECT s.seasonid, s.leagueid, lm.userid, COALESCE(lm.participating, TRUE)
+      FROM leagueseasons s
+      JOIN leaguemembers lm ON lm.leagueid = s.leagueid
+      WHERE lm.approved = TRUE
+      ON CONFLICT (seasonid, userid) DO NOTHING
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueevents (
+        eventid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
+        name STRING(160) NOT NULL,
+        eventdate DATE,
+        eventnumber INT,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
+    await client.query(`
+      UPDATE leagueevents e
+      SET seasonid = (
+        SELECT s.seasonid
+        FROM leagueseasons s
+        WHERE s.leagueid = e.leagueid AND COALESCE(s.active, TRUE) = TRUE
+        ORDER BY s.begindate DESC, s.createdat DESC
+        LIMIT 1
+      )
+      WHERE e.seasonid IS NULL
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueresults (
+        resultid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        placed INT,
+        dnf BOOL DEFAULT FALSE,
+        points INT DEFAULT 0,
+        showupbonuspoints INT DEFAULT 0,
+        loggedby UUID REFERENCES users(guid),
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (eventid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaguepayments (
+        paymentid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        eventid UUID REFERENCES leagueevents(eventid) ON DELETE SET NULL,
+        paymenttype STRING(20) DEFAULT 'league',
+        amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+        paidat DATE DEFAULT current_date(),
+        note STRING(240),
+        recordedby UUID REFERENCES users(guid),
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`ALTER TABLE leaguepayments ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
+    await client.query(`
+      UPDATE leaguepayments p
+      SET seasonid = COALESCE(
+        (SELECT e.seasonid FROM leagueevents e WHERE e.eventid = p.eventid),
+        (SELECT s.seasonid
+         FROM leagueseasons s
+         WHERE s.leagueid = p.leagueid AND COALESCE(s.active, TRUE) = TRUE
+         ORDER BY s.begindate DESC, s.createdat DESC
+         LIMIT 1)
+      )
+      WHERE p.seasonid IS NULL
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueevents_league
+      ON leagueevents (leagueid, eventnumber)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueresults_league
+      ON leagueresults (leagueid, userid)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leaguepayments_league
+      ON leaguepayments (leagueid, userid)
     `);
     await client.query(`
       ALTER TABLE groupcoins

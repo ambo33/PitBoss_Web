@@ -7,6 +7,7 @@ import { api, AccountTier, AdminFeedback, AdminFeedbackStatus, AdminUserSummary,
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 type TierFilter = 'all' | AccountTier;
+type UserSort = 'tier' | 'name';
 type FeedbackTypeFilter = 'all' | 'issue' | 'idea' | 'question';
 type FeedbackSort = 'newest' | 'oldest' | 'unread';
 type FeedbackView = 'active' | 'closed';
@@ -17,6 +18,7 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState<TierFilter>('all');
   const [flagFilter, setFlagFilter] = useState<'all' | 'admins' | 'trial'>('all');
+  const [userSort, setUserSort] = useState<UserSort>('tier');
   const [defaultAiCreditsInput, setDefaultAiCreditsInput] = useState('');
   const [userAiCreditsInput, setUserAiCreditsInput] = useState('');
   const emailSearch = normalizeEmailSearch(search);
@@ -36,8 +38,8 @@ export default function AdminPanel() {
 
   const summary = useMemo(() => buildSummary(users), [users]);
   const filteredUsers = useMemo(
-    () => filterUsers(users, emailSearch ? '' : search, tierFilter, flagFilter, !emailSearch),
-    [users, emailSearch, search, tierFilter, flagFilter]
+    () => filterUsers(users, emailSearch ? '' : search, tierFilter, flagFilter, !emailSearch, userSort),
+    [users, emailSearch, search, tierFilter, flagFilter, userSort]
   );
   const selectedUser = useMemo(
     () => filteredUsers.find((user) => user.userid === selectedUserId)
@@ -111,7 +113,7 @@ export default function AdminPanel() {
       <section className="flex flex-col justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-4 sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase text-red-200">Superadmin tools</p>
-          <h2 className="mt-1 text-lg font-semibold text-white">AI voice clip lab</h2>
+          <h2 className="mt-1 text-lg font-semibold text-white">Voice clip lab</h2>
           <p className="mt-1 text-sm text-pit-text">Generate reusable landing-page MP3 examples without charging visitors per click.</p>
         </div>
         <Link className="btn-primary px-4 py-2" to="/admin/voice-lab">
@@ -132,7 +134,7 @@ export default function AdminPanel() {
       <section className="rounded-xl border border-pit-border bg-pit-card p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">AI Credits</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">Voice Credits</p>
             <h2 className="mt-1 text-lg font-semibold text-white">Default allotment</h2>
             <p className="mt-1 text-sm text-pit-text">Used when a user has no manual credit override yet.</p>
           </div>
@@ -216,6 +218,24 @@ export default function AdminPanel() {
                 }`}
               >
                 {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-pit-border bg-pit-bg/60 p-1">
+            {([
+              ['tier', 'Tier'],
+              ['name', 'Name'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setUserSort(value)}
+                className={`rounded-md px-2 py-1.5 text-xs font-semibold uppercase ${
+                  userSort === value ? 'bg-pit-teal text-white' : 'text-pit-muted hover:text-white'
+                }`}
+              >
+                Sort {label}
               </button>
             ))}
           </div>
@@ -311,13 +331,13 @@ export default function AdminPanel() {
                   <Stat label="Tier" value={formatTier(detail.account.accounttier)} />
                   <Stat label="Hosted Total" value={detail.account.hostedtournamentcount ?? 0} />
                   <Stat label="Trial Remaining" value={detail.account.trialhostedremaining ?? 0} />
-                  <Stat label="AI Credits" value={detail.account.aicreditsremaining ?? 0} accent={(detail.account.aicreditsremaining ?? 0) > 0} />
+                  <Stat label="Voice Credits" value={detail.account.aicreditsremaining ?? 0} accent={(detail.account.aicreditsremaining ?? 0) > 0} />
                   <Stat label="Club Features" value={detail.account.canuseclubfeatures ? 'Enabled' : 'Locked'} accent={detail.account.canuseclubfeatures} />
                   <Stat label="Email" value={formatEmail(detail.account.emailaddress)} mono />
                 </div>
                 <div className="mt-3 flex flex-col gap-2 rounded-lg border border-pit-border bg-pit-card/60 p-3 sm:flex-row sm:items-end">
                   <label className="min-w-0 flex-1">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-pit-muted">Adjust AI credits</span>
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-pit-muted">Adjust voice credits</span>
                     <input
                       className="input"
                       type="number"
@@ -775,7 +795,14 @@ function buildSummary(users: AdminUserSummary[]) {
   );
 }
 
-function filterUsers(users: AdminUserSummary[], search: string, tierFilter: TierFilter, flagFilter: 'all' | 'admins' | 'trial', hideUnnamed: boolean) {
+function filterUsers(
+  users: AdminUserSummary[],
+  search: string,
+  tierFilter: TierFilter,
+  flagFilter: 'all' | 'admins' | 'trial',
+  hideUnnamed: boolean,
+  userSort: UserSort
+) {
   const needle = search.trim().toLowerCase();
   return users
     .filter((user) => {
@@ -790,11 +817,18 @@ function filterUsers(users: AdminUserSummary[], search: string, tierFilter: Tier
       return matchesSearch && matchesTier && matchesFlag;
     })
     .sort((a, b) => {
+      if (userSort === 'name') {
+        return userSortLabel(a).localeCompare(userSortLabel(b));
+      }
       const tierDiff = tierRank(b.accounttier) - tierRank(a.accounttier);
       if (tierDiff !== 0) return tierDiff;
       if (a.issuperadmin !== b.issuperadmin) return a.issuperadmin ? -1 : 1;
-      return String(a.displayname ?? a.emailaddress ?? '').localeCompare(String(b.displayname ?? b.emailaddress ?? ''));
+      return userSortLabel(a).localeCompare(userSortLabel(b));
     });
+}
+
+function userSortLabel(user: AdminUserSummary) {
+  return String(user.displayname ?? user.emailaddress ?? '').trim().toLowerCase();
 }
 
 function hasUsableDisplayName(user: AdminUserSummary) {

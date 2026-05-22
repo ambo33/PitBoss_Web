@@ -96,17 +96,17 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     return;
   }
   if (!tournament.aiannouncerenabled) {
-    res.status(409).json({ error: 'AI announcer is not enabled for this group.' });
+    res.status(409).json({ error: 'Voice announcer is not enabled for this group.' });
     return;
   }
   const ownerProfile = await getAccountProfile(tournament.ownerid);
   if (!ownerProfile?.canuseclubfeatures) {
-    res.status(403).json({ error: 'AI voice director is available on Club and Pro tiers.' });
+    res.status(403).json({ error: 'Voice director is available on Club and Pro tiers.' });
     return;
   }
   const shouldChargeOwner = !ownerProfile.issuperadmin;
   if (shouldChargeOwner && ownerProfile.aicreditsremaining <= 0) {
-    res.status(402).json({ error: 'No AI credits remaining for this host.' });
+    res.status(402).json({ error: 'No voice credits remaining for this host.' });
     return;
   }
 
@@ -178,7 +178,7 @@ aiRouter.post('/tournaments/:id/analyze-hand', async (req: Request, res: Respons
   const requesterProfile = await getAccountProfile(req.userId!);
   const shouldChargeRequester = !requesterProfile?.issuperadmin;
   if (shouldChargeRequester && Number(requesterProfile?.aicreditsremaining ?? 0) <= 0) {
-    res.status(402).json({ error: 'No AI credits remaining.' });
+    res.status(402).json({ error: 'No voice credits remaining.' });
     return;
   }
 

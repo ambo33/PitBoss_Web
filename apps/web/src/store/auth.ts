@@ -14,6 +14,7 @@ interface AuthUser {
   canuseclubfeatures?: boolean;
   aicreditsremaining?: number;
   defaultaicredits?: number;
+  aicreditsrefreshat?: string;
   avatarimagedata?: string | null;
   hasavatarimage?: boolean;
   phonenumber?: string | null;

@@ -6,6 +6,7 @@ import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
 import GroupsPanel from './GroupsPanel';
+import LeaguesPanel from './LeaguesPanel';
 import TournamentsPanel from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import Modal from '../../components/Modal';
@@ -90,6 +91,7 @@ export default function MainPage() {
       >
         {tab === 'tournaments' && <TournamentsPanel />}
         {tab === 'groups'      && <GroupsPanel />}
+        {tab === 'leagues'     && <LeaguesPanel />}
         {tab === 'profile'     && <ProfilePanel />}
         {tab === 'admin'       && <AdminPanel />}
       </Layout>
