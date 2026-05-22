@@ -299,16 +299,6 @@ export default function LandingPage() {
                   Preview voice
                 </button>
               </div>
-              <div className="mt-8 hidden max-w-lg gap-2 text-sm text-pit-text sm:grid sm:grid-cols-3">
-                {steps.map((step, index) => (
-                  <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
-                    <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-pit-teal/15 text-xs font-bold text-pit-teal">
-                      {index + 1}
-                    </span>
-                    <p>{step}</p>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div data-reveal className="sm:hidden">
@@ -317,6 +307,21 @@ export default function LandingPage() {
 
             <div data-reveal className="hidden sm:block">
               <HeroBoard />
+            </div>
+
+            <div data-reveal className="hidden max-w-lg gap-2 self-start text-sm text-pit-text sm:grid sm:grid-cols-3 xl:mt-[-0.25rem]">
+              {steps.map((step, index) => (
+                <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
+                  <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-pit-teal/15 text-xs font-bold text-pit-teal">
+                    {index + 1}
+                  </span>
+                  <p>{step}</p>
+                </div>
+              ))}
+            </div>
+
+            <div data-reveal className="hidden self-start sm:block xl:mt-[-0.25rem]">
+              <HeroSupportRail />
             </div>
           </div>
         </div>
@@ -596,6 +601,43 @@ function HeroBoard() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function HeroSupportRail() {
+  const items = [
+    {
+      icon: QrCode,
+      label: 'Room-ready display',
+      body: 'TV codes, payouts, seating, and clock state stay visible for everyone.',
+    },
+    {
+      icon: Users,
+      label: 'Player flow',
+      body: 'Register, RSVP, check in, seat players, and track finishes cleanly.',
+    },
+    {
+      icon: Mic2,
+      label: 'Voice director',
+      body: 'Level changes, warnings, breaks, and knockouts can sound like your room.',
+    },
+  ];
+
+  return (
+    <div className="mx-auto grid w-full max-w-3xl gap-3 md:grid-cols-3">
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <div key={item.label} className="rounded-xl border border-pit-border bg-pit-card/70 p-3 shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
+            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
+              <Icon size={15} />
+            </div>
+            <p className="text-sm font-bold text-white">{item.label}</p>
+            <p className="mt-1 text-xs leading-5 text-pit-text">{item.body}</p>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -398,16 +398,16 @@ function TournamentCard({
           : 'bg-gradient-to-r from-pit-teal/60 via-pit-teal/20 to-transparent'
       }`} />
 
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="line-clamp-2 font-bold leading-snug text-white">{t.name}</p>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <div className="mb-3 grid min-h-[3.6rem] grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <p className="line-clamp-2 min-h-[2.85rem] break-words font-bold leading-snug text-white">{t.name}</p>
+        <div className="flex min-w-[4.5rem] shrink-0 flex-col items-end gap-1.5">
           {t.isregistered && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-pit-teal/40 bg-pit-teal/15 px-2 py-0.5 text-[11px] font-semibold text-pit-teal">
+            <span className="inline-flex h-6 items-center gap-1 rounded-full border border-pit-teal/40 bg-pit-teal/15 px-2 text-[11px] font-semibold text-pit-teal">
               <CheckCircle2 size={12} strokeWidth={2.5} />
               Registered
             </span>
           )}
-          <span className="flex items-center gap-0.5 text-sm font-bold text-pit-gold">
+          <span className={`flex h-6 items-center gap-0.5 text-sm font-bold text-pit-gold ${t.isregistered ? '' : 'pt-0.5'}`}>
             {Number(t.buyin) > 0 && <DollarSign size={13} strokeWidth={2.5} />}
             {buyinLabel}
           </span>
