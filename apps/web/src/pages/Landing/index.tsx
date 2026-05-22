@@ -287,15 +287,15 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          <div className="grid items-start gap-3 py-3 sm:flex-1 sm:gap-10 sm:py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] lg:items-center lg:py-16">
-            <div data-reveal className="mx-auto max-w-2xl text-center lg:mx-0 lg:text-left">
+          <div className="grid items-start gap-3 py-3 sm:flex-1 sm:gap-10 sm:py-12 xl:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] xl:items-center xl:py-16">
+            <div data-reveal className="mx-auto max-w-2xl text-center xl:mx-0 xl:text-left">
               <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-4 sm:text-xs">
                 Poker nights, organized
               </p>
               <h1 className="whitespace-nowrap text-[clamp(1.62rem,6.9vw,2rem)] font-black leading-none text-white sm:whitespace-normal sm:text-6xl sm:leading-[0.98] lg:text-7xl">
                 Run Better Poker Nights
               </h1>
-              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 lg:mx-0">
+              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 xl:mx-0">
                 Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
               <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
@@ -592,11 +592,11 @@ function HeroBoard() {
             </div>
             <BrandLockup compact showSlogan={false} className="scale-90" />
           </div>
-          <div className="grid gap-3 lg:grid-cols-[150px_minmax(0,1fr)_150px]">
+          <div className="grid gap-3 xl:grid-cols-[150px_minmax(0,1fr)_150px]">
             <MiniStructure />
             <div className="rounded-xl border border-pit-border bg-black/25 p-4 text-center">
               <p className="text-xs font-semibold uppercase text-pit-text">Level 4 of 12</p>
-              <p className="mt-3 font-mono text-6xl font-black leading-none text-white sm:text-7xl">18:42</p>
+              <p className="mt-3 font-mono text-6xl font-black leading-none text-white md:text-7xl">18:42</p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <MiniBlind label="Current" value="300 / 600" />
                 <MiniBlind label="Next" value="500 / 1K" />
