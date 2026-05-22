@@ -4,6 +4,12 @@
 
 @layer base {
   body { @apply bg-pit-bg text-white font-sans antialiased; }
+
+  @media (display-mode: standalone) {
+    body {
+      padding-top: env(safe-area-inset-top);
+    }
+  }
 }
 
 @layer components {

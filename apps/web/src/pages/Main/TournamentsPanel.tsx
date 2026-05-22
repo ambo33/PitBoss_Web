@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, Medal, PlayCircle, Sparkles, Timer, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
 import { api, Group, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+
+const SETUP_CARD_DISMISSED_KEY = 'thepokerplanner.dashboard.setup.dismissed';
 
 export default function TournamentsPanel() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [tab, setTab] = useState<'upcoming' | 'history'>('upcoming');
+  const [scheduleView, setScheduleView] = useState<'upcoming' | 'history'>('upcoming');
+  const [setupCardDismissed, setSetupCardDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(SETUP_CARD_DISMISSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -56,11 +65,12 @@ export default function TournamentsPanel() {
   });
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
-  const nextTournament = useMemo(() => [...upcoming].sort(compareTournamentSchedule)[0] ?? null, [upcoming]);
-  const list = tab === 'upcoming' ? upcoming : history;
+  const scheduleList = useMemo(
+    () => (scheduleView === 'history' ? [...history].sort(compareTournamentSchedule).reverse() : [...upcoming].sort(compareTournamentSchedule)),
+    [history, scheduleView, upcoming]
+  );
   const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
   const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
-  const hostedTotalCount = mine.filter((tournament) => tournament.ownerid === me?.guid || tournament.canmanage).length;
   const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
   const adminGroupCount = groups.filter((group) => group.isadmin).length;
 
@@ -82,44 +92,25 @@ export default function TournamentsPanel() {
       <DashboardOverview
         me={me}
         groups={groups}
-        nextTournament={nextTournament}
         upcomingCount={upcoming.length}
         historyCount={history.length}
-        hostedTotalCount={hostedTotalCount}
         registeredUpcomingCount={registeredUpcomingCount}
         adminGroupCount={adminGroupCount}
+        createDisabled={hostedTournamentLimitReached}
+        setupCardDismissed={setupCardDismissed}
+        scheduleView={scheduleView}
+        onScheduleViewChange={setScheduleView}
         onCreate={() => setShowCreate(true)}
-        onOpenTournament={(id) => navigate(`/tournament/${id}`)}
         onOpenGroups={() => navigate('/', { state: { tab: 'groups' } })}
-        onOpenTimer={() => navigate('/blind-timer')}
+        onDismissSetup={() => {
+          setSetupCardDismissed(true);
+          try {
+            localStorage.setItem(SETUP_CARD_DISMISSED_KEY, 'true');
+          } catch {
+            // Best effort only. The visible state still dismisses for this session.
+          }
+        }}
       />
-
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div className="flex gap-0.5 rounded-lg border border-pit-border bg-pit-surface p-1">
-          {(['upcoming', 'history'] as const).map((panelTab) => (
-            <button
-              key={panelTab}
-              onClick={() => setTab(panelTab)}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                tab === panelTab
-                  ? 'bg-pit-teal text-white shadow-sm'
-                  : 'text-pit-muted hover:text-white'
-              }`}
-            >
-              {panelTab === 'upcoming' ? 'Upcoming' : 'History'}
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn-primary gap-1.5 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={() => setShowCreate(true)}
-          disabled={hostedTournamentLimitReached}
-          title={hostedTournamentLimitReached ? 'Host tier can host 1 upcoming tournament at a time.' : undefined}
-        >
-          <Trophy size={14} />
-          New
-        </button>
-      </div>
 
       {hostedTournamentLimitReached && (
         <p className="mb-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-200">
@@ -127,23 +118,43 @@ export default function TournamentsPanel() {
         </p>
       )}
 
-      {loadingMine ? (
-        <LoadingSpinner className="mt-16" />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map((t) => (
-            <TournamentCard
-              key={t.tournamentid}
-              t={t}
-              isUpcoming={tab === 'upcoming'}
-              loading={registerMutation.isPending || leaveMutation.isPending}
-              onClick={() => navigate(`/tournament/${t.tournamentid}`)}
-              onRegister={() => registerMutation.mutate(t)}
-              onLeave={() => leaveMutation.mutate(t.tournamentid)}
-            />
-          ))}
-          {list.length === 0 && <EmptyState tab={tab} onNew={() => setShowCreate(true)} />}
-        </div>
+      {(loadingMine || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
+        <>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">
+                {scheduleView === 'history' ? 'Tournament history' : 'Upcoming games'}
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-white">
+                {scheduleView === 'history' ? 'Past games' : 'Your schedule'}
+              </h2>
+            </div>
+            {(scheduleView === 'history' ? history.length : upcoming.length) > 0 && (
+              <span className="rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-pit-text">
+                {scheduleView === 'history' ? `${history.length} history` : `${upcoming.length} upcoming`}
+              </span>
+            )}
+          </div>
+
+          {loadingMine ? (
+            <LoadingSpinner className="mt-16" />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {scheduleList.map((t) => (
+                <TournamentCard
+                  key={t.tournamentid}
+                  t={t}
+                  isUpcoming={scheduleView === 'upcoming'}
+                  loading={registerMutation.isPending || leaveMutation.isPending}
+                  onClick={() => navigate(`/tournament/${t.tournamentid}`)}
+                  onRegister={() => registerMutation.mutate(t)}
+                  onLeave={() => leaveMutation.mutate(t.tournamentid)}
+                />
+              ))}
+              {scheduleList.length === 0 && <EmptyState view={scheduleView} />}
+            </div>
+          )}
+        </>
       )}
     </>
   );
@@ -152,56 +163,51 @@ export default function TournamentsPanel() {
 function DashboardOverview({
   me,
   groups,
-  nextTournament,
   upcomingCount,
   historyCount,
-  hostedTotalCount,
   registeredUpcomingCount,
   adminGroupCount,
+  createDisabled,
+  setupCardDismissed,
+  scheduleView,
+  onScheduleViewChange,
   onCreate,
-  onOpenTournament,
   onOpenGroups,
-  onOpenTimer,
+  onDismissSetup,
 }: {
   me?: Awaited<ReturnType<typeof api.me>>;
   groups: Group[];
-  nextTournament: Tournament | null;
   upcomingCount: number;
   historyCount: number;
-  hostedTotalCount: number;
   registeredUpcomingCount: number;
   adminGroupCount: number;
+  createDisabled: boolean;
+  setupCardDismissed: boolean;
+  scheduleView: 'upcoming' | 'history';
+  onScheduleViewChange: (view: 'upcoming' | 'history') => void;
   onCreate: () => void;
-  onOpenTournament: (id: string) => void;
   onOpenGroups: () => void;
-  onOpenTimer: () => void;
+  onDismissSetup: () => void;
 }) {
   const firstName = getFirstName(me?.displayname);
-  const tier = formatTierLabel(me?.accounttier);
-  const nextCanOpen = !nextTournament?.groupid || nextTournament.canmanage;
-  const nextActionLabel = nextTournament ? (nextCanOpen ? 'Open game' : nextTournament.isregistered ? 'View game' : 'Review invite') : 'Schedule game';
+  const showSupportCard = upcomingCount === 0 && !setupCardDismissed;
   const setupItems = [
     { label: 'Create a host group', complete: adminGroupCount > 0 },
     { label: 'Schedule a game', complete: upcomingCount > 0 },
-    { label: 'Get players registered', complete: registeredUpcomingCount > 0 || (nextTournament?.playercount ?? 0) > 0 },
+    { label: 'Get players registered', complete: registeredUpcomingCount > 0 },
   ];
 
   return (
-    <section className="mb-5 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-      <div className="overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.18),transparent_38%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.2)] sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className={`mb-5 grid gap-3 ${showSupportCard ? 'md:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+      <div className="overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.16),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-pit-teal">Command center</p>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-pit-teal">Command center</p>
+            <h1 className="mt-1.5 text-xl font-bold tracking-tight text-white sm:text-2xl">
               {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
             </h1>
-            <p className="mt-1 text-sm text-pit-muted">Your next game, player flow, and hosting tools in one place.</p>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-pit-teal/25 bg-pit-teal/10 px-3 py-1 text-xs font-semibold text-pit-teal">
-              <Sparkles size={13} />
-              {tier}
-            </span>
             {typeof me?.aicreditsremaining === 'number' && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-pit-text">
                 {me.aicreditsremaining} voice credits
@@ -210,62 +216,57 @@ function DashboardOverview({
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} />
-          <DashboardStat icon={Trophy} label="Hosted" value={hostedTotalCount} />
-          <DashboardStat icon={Users} label="Groups" value={groups.length} />
-          <DashboardStat icon={Medal} label="History" value={historyCount} />
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={scheduleView === 'upcoming'} onClick={() => onScheduleViewChange('upcoming')} />
+          <DashboardStat icon={Users} label="Groups" value={groups.length} onClick={onOpenGroups} />
+          <DashboardStat icon={Medal} label="History" value={historyCount} active={scheduleView === 'history'} onClick={() => onScheduleViewChange('history')} />
+          <DashboardStat icon={ListOrdered} label="Leagues" value="Soon" />
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className="btn-primary px-4 py-2.5 text-sm" onClick={onCreate}>Create tournament</button>
-          <button type="button" className="btn-ghost px-4 py-2.5 text-sm" onClick={onOpenGroups}>Groups</button>
-          <button type="button" className="btn-ghost gap-2 px-4 py-2.5 text-sm" onClick={onOpenTimer}>
-            <Timer size={15} />
-            Blind timer
-          </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {adminGroupCount > 0 ? (
+            <button
+              type="button"
+              className="btn-primary px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onCreate}
+              disabled={createDisabled}
+              title={createDisabled ? 'Host tier can host 1 upcoming tournament at a time.' : undefined}
+            >
+              Create tournament
+            </button>
+          ) : (
+            <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={onOpenGroups}>
+              Set up group
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="rounded-xl border border-pit-border bg-pit-surface/80 p-4 sm:p-5">
-        {nextTournament ? (
+      {showSupportCard && (
+        <div className="rounded-xl border border-pit-border bg-pit-surface/80 p-3 sm:p-4">
           <>
-            <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Next game</p>
-                <h2 className="mt-1 line-clamp-2 text-xl font-bold text-white">{nextTournament.name}</h2>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-muted">Ready when you are</p>
+                <h2 className="mt-1 text-lg font-bold text-white">Set up the next poker night.</h2>
               </div>
-              {nextTournament.tvdisplaycode && (
-                <span className="rounded-full border border-pit-teal/25 bg-pit-teal/10 px-2 py-1 font-mono text-[11px] text-pit-teal">
-                  TV {nextTournament.tvdisplaycode}
-                </span>
-              )}
+              <button
+                type="button"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-pit-border text-pit-muted transition hover:border-pit-teal/50 hover:text-white"
+                onClick={onDismissSetup}
+                aria-label="Hide setup tutorial"
+                title="Hide setup tutorial"
+              >
+                <X size={15} />
+              </button>
             </div>
-            <div className="grid gap-2 text-sm">
-              <DashboardFact icon={Calendar} label={formatDashboardDate(nextTournament)} />
-              {nextTournament.groupname && <DashboardFact icon={Users} label={nextTournament.groupname} />}
-              <DashboardFact icon={Users} label={`${nextTournament.playercount ?? 0} registered${(nextTournament.checkedincount ?? 0) > 0 ? `, ${nextTournament.checkedincount} checked in` : ''}`} />
-            </div>
-            <button
-              type="button"
-              className="btn-primary mt-4 w-full gap-2"
-              onClick={() => onOpenTournament(nextTournament.tournamentid)}
-            >
-              <PlayCircle size={16} />
-              {nextActionLabel}
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Ready when you are</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Set up the next poker night.</h2>
-            <p className="mt-2 text-sm text-pit-muted">
+            <p className="mt-2 text-xs leading-5 text-pit-muted">
               Start with a group, then schedule the tournament and let ThePokerPlanner handle the boring parts.
             </p>
-            <div className="mt-4 space-y-2">
+            <div className="mt-3 space-y-1.5">
               {setupItems.map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-lg border border-pit-border/70 bg-pit-bg/40 px-3 py-2">
-                  <span className="text-sm text-pit-text">{item.label}</span>
+                <div key={item.label} className="flex items-center justify-between rounded-lg border border-pit-border/70 bg-pit-bg/40 px-2.5 py-2">
+                  <span className="text-xs text-pit-text">{item.label}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                     item.complete ? 'bg-pit-teal/15 text-pit-teal' : 'bg-white/5 text-pit-muted'
                   }`}>
@@ -275,8 +276,8 @@ function DashboardOverview({
               ))}
             </div>
           </>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -285,33 +286,42 @@ function DashboardStat({
   icon: Icon,
   label,
   value,
+  active = false,
+  onClick,
 }: {
   icon: typeof Trophy;
   label: string;
-  value: number;
+  value: number | string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/18 px-3 py-3">
+  const content = (
+    <>
       <div className="flex items-center gap-2 text-pit-muted">
-        <Icon size={14} />
-        <span className="text-xs font-medium">{label}</span>
+        <Icon size={12} />
+        <span className="text-[11px] font-medium">{label}</span>
       </div>
-      <p className="mt-2 text-2xl font-bold text-white">{value}</p>
-    </div>
+      <p className="mt-1.5 text-xl font-bold text-white">{value}</p>
+    </>
   );
-}
-
-function DashboardFact({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Calendar;
-  label: string;
-}) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`rounded-lg border px-2.5 py-2 text-left transition ${
+          active
+            ? 'border-pit-teal/45 bg-pit-teal/10'
+            : 'border-white/10 bg-black/18 hover:border-pit-teal/40 hover:bg-pit-teal/5'
+        }`}
+      >
+        {content}
+      </button>
+    );
+  }
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-pit-border/70 bg-pit-bg/45 px-3 py-2 text-pit-text">
-      <Icon size={14} className="text-pit-teal" />
-      <span>{label}</span>
+    <div className="rounded-lg border border-white/10 bg-black/18 px-2.5 py-2">
+      {content}
     </div>
   );
 }
@@ -406,12 +416,13 @@ function TournamentCard({
           {showAdminAction ? (
             <button
               type="button"
-              className="btn-primary w-full"
+              className="btn-primary w-full gap-2"
               onClick={(event) => {
                 event.stopPropagation();
                 onClick();
               }}
             >
+              {isUpcoming && <PlayCircle size={15} />}
               {adminActionLabel}
             </button>
           ) : (
@@ -437,21 +448,18 @@ function TournamentCard({
   );
 }
 
-function EmptyState({ tab, onNew }: { tab: 'upcoming' | 'history'; onNew: () => void }) {
+function EmptyState({ view }: { view: 'upcoming' | 'history' }) {
   return (
-    <div className="col-span-full flex flex-col items-center justify-center gap-4 py-20">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-pit-border bg-pit-surface">
-        <Trophy size={24} className="text-pit-muted" />
+    <div className="col-span-full flex flex-col items-center justify-center gap-3 rounded-xl border border-pit-border bg-pit-surface/45 px-4 py-10">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-pit-border bg-pit-bg/60">
+        <Trophy size={21} className="text-pit-muted" />
       </div>
       <div className="text-center">
-        <p className="font-semibold text-white">No tournaments yet</p>
+        <p className="font-semibold text-white">{view === 'history' ? 'No history yet' : 'No tournaments yet'}</p>
         <p className="mt-1 text-sm text-pit-muted">
-          {tab === 'upcoming' ? 'Only future-dated tournaments appear here' : 'Past and undated tournaments appear here'}
+          {view === 'history' ? 'Completed and past-dated tournaments will appear here.' : 'Create one from the command center when you are ready.'}
         </p>
       </div>
-      {tab === 'upcoming' && (
-        <button className="btn-primary" onClick={onNew}>Create tournament</button>
-      )}
     </div>
   );
 }
@@ -844,17 +852,6 @@ function getTournamentScheduleSortValue(tournament: Tournament) {
 
 function getFirstName(value: string | null | undefined) {
   return value?.trim().split(/\s+/)[0] ?? '';
-}
-
-function formatTierLabel(tier: 'host' | 'club' | 'pro' | undefined) {
-  if (!tier) return 'Host';
-  return `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
-}
-
-function formatDashboardDate(tournament: Tournament) {
-  const date = getDateKey(tournament.tourneydate) ?? 'Date TBD';
-  const time = tournament.tourneytime ? formatTime12Hour(tournament.tourneytime) : '';
-  return `${date}${time ? ` at ${time}` : ''}`;
 }
 
 function isUpcomingTournament(tournament: Tournament): boolean {

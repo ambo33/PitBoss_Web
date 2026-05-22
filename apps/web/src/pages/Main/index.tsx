@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, ImageIcon, LogOut, Music4, Phone, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
@@ -20,6 +20,12 @@ export default function MainPage() {
     : undefined;
   const [tab, setTab] = useState<NavTab>(requestedTab ?? 'tournaments');
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
 
   const { data: currentProfile } = useQuery({
     queryKey: ['me'],
@@ -76,7 +82,12 @@ export default function MainPage() {
 
   return (
     <>
-      <Layout tab={tab} onTabChange={setTab} mainWidthClassName={tab === 'admin' ? 'max-w-7xl' : 'max-w-5xl'}>
+      <Layout
+        tab={tab}
+        onTabChange={setTab}
+        compactSidebar
+        mainWidthClassName={tab === 'admin' ? 'max-w-7xl' : 'max-w-5xl'}
+      >
         {tab === 'tournaments' && <TournamentsPanel />}
         {tab === 'groups'      && <GroupsPanel />}
         {tab === 'profile'     && <ProfilePanel />}
