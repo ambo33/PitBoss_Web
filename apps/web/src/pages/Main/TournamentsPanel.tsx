@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, Medal, PlayCircle, Sparkles, Timer, Trophy, Users } from 'lucide-react';
 import { api, Group, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -56,9 +56,13 @@ export default function TournamentsPanel() {
   });
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
+  const nextTournament = useMemo(() => [...upcoming].sort(compareTournamentSchedule)[0] ?? null, [upcoming]);
   const list = tab === 'upcoming' ? upcoming : history;
   const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
   const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
+  const hostedTotalCount = mine.filter((tournament) => tournament.ownerid === me?.guid || tournament.canmanage).length;
+  const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
+  const adminGroupCount = groups.filter((group) => group.isadmin).length;
 
   if (showCreate) {
     return (
@@ -75,6 +79,21 @@ export default function TournamentsPanel() {
 
   return (
     <>
+      <DashboardOverview
+        me={me}
+        groups={groups}
+        nextTournament={nextTournament}
+        upcomingCount={upcoming.length}
+        historyCount={history.length}
+        hostedTotalCount={hostedTotalCount}
+        registeredUpcomingCount={registeredUpcomingCount}
+        adminGroupCount={adminGroupCount}
+        onCreate={() => setShowCreate(true)}
+        onOpenTournament={(id) => navigate(`/tournament/${id}`)}
+        onOpenGroups={() => navigate('/', { state: { tab: 'groups' } })}
+        onOpenTimer={() => navigate('/blind-timer')}
+      />
+
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="flex gap-0.5 rounded-lg border border-pit-border bg-pit-surface p-1">
           {(['upcoming', 'history'] as const).map((panelTab) => (
@@ -127,6 +146,173 @@ export default function TournamentsPanel() {
         </div>
       )}
     </>
+  );
+}
+
+function DashboardOverview({
+  me,
+  groups,
+  nextTournament,
+  upcomingCount,
+  historyCount,
+  hostedTotalCount,
+  registeredUpcomingCount,
+  adminGroupCount,
+  onCreate,
+  onOpenTournament,
+  onOpenGroups,
+  onOpenTimer,
+}: {
+  me?: Awaited<ReturnType<typeof api.me>>;
+  groups: Group[];
+  nextTournament: Tournament | null;
+  upcomingCount: number;
+  historyCount: number;
+  hostedTotalCount: number;
+  registeredUpcomingCount: number;
+  adminGroupCount: number;
+  onCreate: () => void;
+  onOpenTournament: (id: string) => void;
+  onOpenGroups: () => void;
+  onOpenTimer: () => void;
+}) {
+  const firstName = getFirstName(me?.displayname);
+  const tier = formatTierLabel(me?.accounttier);
+  const nextCanOpen = !nextTournament?.groupid || nextTournament.canmanage;
+  const nextActionLabel = nextTournament ? (nextCanOpen ? 'Open game' : nextTournament.isregistered ? 'View game' : 'Review invite') : 'Schedule game';
+  const setupItems = [
+    { label: 'Create a host group', complete: adminGroupCount > 0 },
+    { label: 'Schedule a game', complete: upcomingCount > 0 },
+    { label: 'Get players registered', complete: registeredUpcomingCount > 0 || (nextTournament?.playercount ?? 0) > 0 },
+  ];
+
+  return (
+    <section className="mb-5 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+      <div className="overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.18),transparent_38%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.2)] sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-pit-teal">Command center</p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
+            </h1>
+            <p className="mt-1 text-sm text-pit-muted">Your next game, player flow, and hosting tools in one place.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-pit-teal/25 bg-pit-teal/10 px-3 py-1 text-xs font-semibold text-pit-teal">
+              <Sparkles size={13} />
+              {tier}
+            </span>
+            {typeof me?.aicreditsremaining === 'number' && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-pit-text">
+                {me.aicreditsremaining} voice credits
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} />
+          <DashboardStat icon={Trophy} label="Hosted" value={hostedTotalCount} />
+          <DashboardStat icon={Users} label="Groups" value={groups.length} />
+          <DashboardStat icon={Medal} label="History" value={historyCount} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" className="btn-primary px-4 py-2.5 text-sm" onClick={onCreate}>Create tournament</button>
+          <button type="button" className="btn-ghost px-4 py-2.5 text-sm" onClick={onOpenGroups}>Groups</button>
+          <button type="button" className="btn-ghost gap-2 px-4 py-2.5 text-sm" onClick={onOpenTimer}>
+            <Timer size={15} />
+            Blind timer
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-pit-border bg-pit-surface/80 p-4 sm:p-5">
+        {nextTournament ? (
+          <>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Next game</p>
+                <h2 className="mt-1 line-clamp-2 text-xl font-bold text-white">{nextTournament.name}</h2>
+              </div>
+              {nextTournament.tvdisplaycode && (
+                <span className="rounded-full border border-pit-teal/25 bg-pit-teal/10 px-2 py-1 font-mono text-[11px] text-pit-teal">
+                  TV {nextTournament.tvdisplaycode}
+                </span>
+              )}
+            </div>
+            <div className="grid gap-2 text-sm">
+              <DashboardFact icon={Calendar} label={formatDashboardDate(nextTournament)} />
+              {nextTournament.groupname && <DashboardFact icon={Users} label={nextTournament.groupname} />}
+              <DashboardFact icon={Users} label={`${nextTournament.playercount ?? 0} registered${(nextTournament.checkedincount ?? 0) > 0 ? `, ${nextTournament.checkedincount} checked in` : ''}`} />
+            </div>
+            <button
+              type="button"
+              className="btn-primary mt-4 w-full gap-2"
+              onClick={() => onOpenTournament(nextTournament.tournamentid)}
+            >
+              <PlayCircle size={16} />
+              {nextActionLabel}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Ready when you are</p>
+            <h2 className="mt-1 text-xl font-bold text-white">Set up the next poker night.</h2>
+            <p className="mt-2 text-sm text-pit-muted">
+              Start with a group, then schedule the tournament and let ThePokerPlanner handle the boring parts.
+            </p>
+            <div className="mt-4 space-y-2">
+              {setupItems.map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-lg border border-pit-border/70 bg-pit-bg/40 px-3 py-2">
+                  <span className="text-sm text-pit-text">{item.label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    item.complete ? 'bg-pit-teal/15 text-pit-teal' : 'bg-white/5 text-pit-muted'
+                  }`}>
+                    {item.complete ? 'Done' : 'Next'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Trophy;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/18 px-3 py-3">
+      <div className="flex items-center gap-2 text-pit-muted">
+        <Icon size={14} />
+        <span className="text-xs font-medium">{label}</span>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function DashboardFact({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof Calendar;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-pit-border/70 bg-pit-bg/45 px-3 py-2 text-pit-text">
+      <Icon size={14} className="text-pit-teal" />
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -644,6 +830,31 @@ function ReviewItem({ label, value }: { label: string; value: string }) {
 function getDateKey(value: string | null | undefined): string | null {
   if (!value) return null;
   return value.slice(0, 10);
+}
+
+function compareTournamentSchedule(a: Tournament, b: Tournament) {
+  return getTournamentScheduleSortValue(a) - getTournamentScheduleSortValue(b);
+}
+
+function getTournamentScheduleSortValue(tournament: Tournament) {
+  const date = getDateKey(tournament.tourneydate) ?? '9999-12-31';
+  const time = tournament.tourneytime || '23:59';
+  return new Date(`${date}T${time}`).getTime();
+}
+
+function getFirstName(value: string | null | undefined) {
+  return value?.trim().split(/\s+/)[0] ?? '';
+}
+
+function formatTierLabel(tier: 'host' | 'club' | 'pro' | undefined) {
+  if (!tier) return 'Host';
+  return `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
+}
+
+function formatDashboardDate(tournament: Tournament) {
+  const date = getDateKey(tournament.tourneydate) ?? 'Date TBD';
+  const time = tournament.tourneytime ? formatTime12Hour(tournament.tourneytime) : '';
+  return `${date}${time ? ` at ${time}` : ''}`;
 }
 
 function isUpcomingTournament(tournament: Tournament): boolean {
