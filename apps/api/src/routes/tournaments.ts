@@ -107,10 +107,16 @@ function estimateConfiguredBountyPool(
     : normalizeMoney(configuredValue);
 }
 
+function normalizeRebuyLastLevel(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 tournamentsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
@@ -164,7 +170,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
 tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
   const rows = await query<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
@@ -194,11 +200,11 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
 });
 
 tournamentsRouter.post('/', async (req: Request, res: Response) => {
-  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
+  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, rebuylastlevel, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, registerself, rake, payoutstructure, savedstructureid, notifygroup,
           bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, bountystartplace, bountyminpayout } = req.body as {
     name: string; tourneydate?: string; tourneytime?: string;
-    buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number;
+    buyin?: number; rake?: number; rebuyprice?: number; rebuychips?: number; rebuylastlevel?: number | null;
           genericrebuys?: number; addonprice?: number; addonchips?: number; genericaddons?: number; maxplayers?: number;
           playerselftracking?: boolean; groupid?: string; registerself?: boolean; payoutstructure?: string | null; notifygroup?: boolean;
           savedstructureid?: string | null;
@@ -228,6 +234,9 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
   const normalizedBountyMode = normalizeBountyMode(bountymode);
+  const normalizedRebuyLastLevel = Number(rebuyprice ?? 0) > 0 || Number(rebuychips ?? 0) > 0
+    ? normalizeRebuyLastLevel(rebuylastlevel)
+    : null;
   const normalizedBountyPoolType = normalizeBountyPoolType(bountypooltype);
   const normalizedBountyPrizepool = normalizedBountyPoolType === 'percent' ? normalizePercent(bountyprizepool) : normalizeMoney(bountyprizepool);
   const normalizedBountyDenomination = normalizeBountyDenomination(bountyroundingdenomination);
@@ -278,12 +287,12 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const row = await queryOne<{ tournamentid: string }>(
       `INSERT INTO tournaments
        (userid, name, date, time, buyin, adjustment, rebuycost,
-        rebuychips, genericrebuys, addoncost, addonchips, genericaddons, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
+        rebuychips, rebuylastlevel, genericrebuys, addoncost, addonchips, genericaddons, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode,
         tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, bountystartplace, bountyminpayout)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING tournamentid`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING tournamentid`,
     [req.userId, name, tourneydate ?? null, tourneytime ?? null,
      buyin ?? 0, rake ?? 0, rebuyprice ?? 0,
-     rebuychips ?? 0, genericrebuys ?? 0, addonprice ?? 0, addonchips ?? 0, genericaddons ?? 0, maxplayers ?? 0,
+     rebuychips ?? 0, normalizedRebuyLastLevel, genericrebuys ?? 0, addonprice ?? 0, addonchips ?? 0, genericaddons ?? 0, maxplayers ?? 0,
      trackingEnabled, groupid ?? null, payoutstructure ?? null, tvDisplayCode,
      true, true, true, Boolean(bountyenabled), normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination, normalizedBountyStartPlace, normalizedBountyMinPayout]
   );
@@ -359,7 +368,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
   const isSuperAdmin = await requireSuperAdmin(req.userId!);
   const row = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
@@ -426,7 +435,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   }
   const isSuperAdmin = await requireSuperAdmin(req.userId!);
 
-  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, genericrebuys,
+  const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, rebuylastlevel, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
           tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, seatingmaxpertable,
           bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, bountystartplace, bountyminpayout } = req.body as Partial<Tournament>;
@@ -440,7 +449,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   const normalizedBountyDenomination = bountyroundingdenomination == null ? null : normalizeBountyDenomination(bountyroundingdenomination);
   const normalizedBountyStartPlace = bountystartplace === undefined ? undefined : normalizeBountyStartPlace(bountystartplace);
   const normalizedBountyMinPayout = bountyminpayout == null ? null : normalizeBountyMinPayout(bountyminpayout);
-  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null; bountyenabled: boolean; bountymode: string | null; bountypooltype: string | null; bountyprizepool: number; bountyroundingdenomination: number; bountystartplace: number | null; bountyminpayout: number; maxplayers: number; buyin: number; rebuyprice: number; addonprice: number; genericrebuys: number; genericaddons: number; registeredcount: number; enteredcount: number; activecount: number }>(
+  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null; bountyenabled: boolean; bountymode: string | null; bountypooltype: string | null; bountyprizepool: number; bountyroundingdenomination: number; bountystartplace: number | null; bountyminpayout: number; maxplayers: number; buyin: number; rebuyprice: number; rebuychips: number; addonprice: number; genericrebuys: number; genericaddons: number; registeredcount: number; enteredcount: number; activecount: number }>(
     `SELECT date AS tourneydate, time AS tourneytime,
             COALESCE(bountyenabled, FALSE) AS bountyenabled,
             COALESCE(bountymode, 'manual') AS bountymode,
@@ -452,6 +461,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
             COALESCE(CAST(maxplayers AS INT), 0) AS maxplayers,
             COALESCE(CAST(buyin AS DECIMAL), 0) AS buyin,
             COALESCE(CAST(rebuycost AS DECIMAL), 0) AS rebuyprice,
+            COALESCE(CAST(rebuychips AS INT), 0) AS rebuychips,
             COALESCE(CAST(addoncost AS DECIMAL), 0) AS addonprice,
             COALESCE(CAST(genericrebuys AS INT), 0) AS genericrebuys,
             COALESCE(CAST(genericaddons AS INT), 0) AS genericaddons,
@@ -466,6 +476,11 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Tournament not found' });
     return;
   }
+  const effectiveRebuyPrice = Number(rebuyprice ?? currentTournament.rebuyprice ?? 0);
+  const effectiveRebuyChips = Number(rebuychips ?? currentTournament.rebuychips ?? 0);
+  const normalizedRebuyLastLevel = rebuylastlevel === undefined
+    ? undefined
+    : (effectiveRebuyPrice > 0 || effectiveRebuyChips > 0 ? normalizeRebuyLastLevel(rebuylastlevel) : null);
   const scheduleLocked = hasTournamentStarted(currentTournament.tourneydate, currentTournament.tourneytime);
   const requestedDate = tourneydate ?? undefined;
   const requestedTime = tourneytime ?? undefined;
@@ -528,30 +543,31 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        adjustment = COALESCE($5, adjustment),
        rebuycost = COALESCE($6, rebuycost),
        rebuychips = COALESCE($7, rebuychips),
-       genericrebuys = COALESCE($8, genericrebuys),
-       addoncost = COALESCE($9, addoncost),
-       addonchips = COALESCE($10, addonchips),
-       genericaddons = COALESCE($11, genericaddons),
-       maxplayers = COALESCE($12, maxplayers),
-       playerselftracking = COALESCE($13, playerselftracking),
-       groupid = COALESCE($15, groupid),
-       payoutstructure = COALESCE($16, payoutstructure),
-       tvgreetingdisplayenabled = COALESCE($17, tvgreetingdisplayenabled),
-       tvgreetingaudioenabled = COALESCE($18, tvgreetingaudioenabled),
-       tvshowknockoutqrenabled = COALESCE($19, tvshowknockoutqrenabled),
-       tvdisplaymode = COALESCE($20, tvdisplaymode),
-       seatingmaxpertable = COALESCE($21, seatingmaxpertable),
-       bountyenabled = COALESCE($22, bountyenabled),
-       bountymode = COALESCE($23, bountymode),
-       bountyprizepool = COALESCE($24, bountyprizepool),
-       bountypooltype = COALESCE($25, bountypooltype),
-       bountyroundingdenomination = COALESCE($26, bountyroundingdenomination),
-       bountystartplace = CASE WHEN $27::BOOL THEN $28::INT ELSE bountystartplace END,
-       bountyminpayout = COALESCE($29, bountyminpayout)
-     WHERE tournamentid = $14`,
+       rebuylastlevel = CASE WHEN $8::BOOL THEN $9::INT ELSE rebuylastlevel END,
+       genericrebuys = COALESCE($10, genericrebuys),
+       addoncost = COALESCE($11, addoncost),
+       addonchips = COALESCE($12, addonchips),
+       genericaddons = COALESCE($13, genericaddons),
+       maxplayers = COALESCE($14, maxplayers),
+       playerselftracking = COALESCE($15, playerselftracking),
+       groupid = COALESCE($17, groupid),
+       payoutstructure = COALESCE($18, payoutstructure),
+       tvgreetingdisplayenabled = COALESCE($19, tvgreetingdisplayenabled),
+       tvgreetingaudioenabled = COALESCE($20, tvgreetingaudioenabled),
+       tvshowknockoutqrenabled = COALESCE($21, tvshowknockoutqrenabled),
+       tvdisplaymode = COALESCE($22, tvdisplaymode),
+       seatingmaxpertable = COALESCE($23, seatingmaxpertable),
+       bountyenabled = COALESCE($24, bountyenabled),
+       bountymode = COALESCE($25, bountymode),
+       bountyprizepool = COALESCE($26, bountyprizepool),
+       bountypooltype = COALESCE($27, bountypooltype),
+       bountyroundingdenomination = COALESCE($28, bountyroundingdenomination),
+       bountystartplace = CASE WHEN $29::BOOL THEN $30::INT ELSE bountystartplace END,
+       bountyminpayout = COALESCE($31, bountyminpayout)
+     WHERE tournamentid = $16`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
-     rebuychips ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
+     rebuychips ?? null, rebuylastlevel !== undefined, normalizedRebuyLastLevel ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
      tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode,
      seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination,

@@ -247,6 +247,7 @@ function TournamentDetailsCard({
     maxplayers: tournament.maxplayers ? String(tournament.maxplayers) : '',
     rebuyprice: String(toNumber(tournament.rebuyprice)),
     rebuychips: String(toNumber(tournament.rebuychips)),
+    rebuylastlevel: tournament.rebuylastlevel ? String(tournament.rebuylastlevel) : '',
     addonprice: String(toNumber(tournament.addonprice)),
     addonchips: String(toNumber(tournament.addonchips)),
     bountyenabled: Boolean(tournament.bountyenabled),
@@ -267,6 +268,7 @@ function TournamentDetailsCard({
       maxplayers: tournament.maxplayers ? String(tournament.maxplayers) : '',
       rebuyprice: String(toNumber(tournament.rebuyprice)),
       rebuychips: String(toNumber(tournament.rebuychips)),
+      rebuylastlevel: tournament.rebuylastlevel ? String(tournament.rebuylastlevel) : '',
       addonprice: String(toNumber(tournament.addonprice)),
       addonchips: String(toNumber(tournament.addonchips)),
       bountyenabled: Boolean(tournament.bountyenabled),
@@ -282,6 +284,7 @@ function TournamentDetailsCard({
 
   function saveDetails() {
     if (bountyMinimumError) return;
+    if (rebuyCutoffError) return;
     onSave({
       name: form.name.trim(),
       tourneydate: form.tourneydate || undefined,
@@ -290,6 +293,7 @@ function TournamentDetailsCard({
       maxplayers: Number(form.maxplayers) || 0,
       rebuyprice: toNumber(form.rebuyprice),
       rebuychips: Number(form.rebuychips) || 0,
+      rebuylastlevel: detailsRebuysEnabled ? Number(form.rebuylastlevel) || null : null,
       addonprice: toNumber(form.addonprice),
       addonchips: Number(form.addonchips) || 0,
       bountyenabled: form.bountyenabled,
@@ -304,6 +308,10 @@ function TournamentDetailsCard({
   }
 
   const estimatedBountyField = Math.max(0, Number(form.maxplayers) || 0);
+  const detailsRebuysEnabled = toNumber(form.rebuyprice) > 0 || Number(form.rebuychips) > 0;
+  const rebuyCutoffError = detailsRebuysEnabled && !Number(form.rebuylastlevel)
+    ? 'Set the final level where rebuys are allowed.'
+    : '';
   const estimatedBountyEligibleCount = form.bountystartplace
     ? Math.min(Number(form.bountystartplace) || 0, estimatedBountyField)
     : estimatedBountyField;
@@ -398,6 +406,23 @@ function TournamentDetailsCard({
             <Field label="Rebuy chips">
               <input className="input" type="number" min="0" value={form.rebuychips} onChange={(e) => setForm((current) => ({ ...current, rebuychips: e.target.value }))} />
             </Field>
+            {detailsRebuysEnabled && (
+              <Field label="Rebuys good through level">
+                <input
+                  className="input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.rebuylastlevel}
+                  onChange={(e) => setForm((current) => ({ ...current, rebuylastlevel: e.target.value }))}
+                />
+              </Field>
+            )}
+            {rebuyCutoffError && (
+              <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
+                {rebuyCutoffError}
+              </p>
+            )}
             <Field label="Add-on price">
               <input className="input" type="number" min="0" step="0.01" value={form.addonprice} onChange={(e) => setForm((current) => ({ ...current, addonprice: e.target.value }))} />
             </Field>
@@ -510,7 +535,7 @@ function TournamentDetailsCard({
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving || Boolean(bountyMinimumError)}>
+            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving || Boolean(bountyMinimumError) || Boolean(rebuyCutoffError)}>
               {saving ? 'Saving...' : 'Save Details'}
             </button>
           </div>
@@ -524,7 +549,9 @@ function TournamentDetailsCard({
           <Row label="Max players" value={tournament.maxplayers || 'Unlimited'} />
           <Row
             label="Rebuy"
-            value={tournament.rebuyprice > 0 ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips` : 'Not enabled'}
+            value={tournament.rebuyprice > 0
+              ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips${tournament.rebuylastlevel ? ` through level ${tournament.rebuylastlevel}` : ''}`
+              : 'Not enabled'}
           />
           <Row
             label="Add-on"

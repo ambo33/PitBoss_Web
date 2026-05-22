@@ -6,7 +6,7 @@ import { Brain, Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
-import { announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPoolFromAssigned } from '../../utils/bountyMath';
 
 interface TimerTick {
@@ -257,7 +257,8 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
       if (!initial && warningState.level != null) {
         const blind = getStateBlind(state);
         if (blind) {
-          announceLevel(state.currentlevel, blind.smallblind, blind.bigblind, announcementTemplatesRef.current.levelUp, blind.ante);
+          if (isBreakLevel(blind)) announceMessage(`${blind.label || 'Break'}. ${Number(blind.minutes ?? 0)} minute break.`);
+          else announceLevel(state.currentlevel, blind.smallblind, blind.bigblind, announcementTemplatesRef.current.levelUp, blind.ante);
         }
       }
       warningState.level = state.currentlevel;
@@ -395,16 +396,22 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
               {!timer?.running && <span className="ml-2 text-yellow-400">Paused</span>}
             </p>
             <p className={`font-mono text-6xl font-bold tabular-nums ${urgency}`}>{timeStr}</p>
-            <div className="flex flex-wrap justify-center gap-6 text-sm text-pit-text">
-              <span>SB: <strong className="text-white">{currentBlind.smallblind.toLocaleString()}</strong></span>
-              <span>BB: <strong className="text-white">{currentBlind.bigblind.toLocaleString()}</strong></span>
-              {currentBlind.ante > 0 && (
-                <span>Ante: <strong className="text-white">{currentBlind.ante.toLocaleString()}</strong></span>
-              )}
-            </div>
+            {isBreakLevel(currentBlind) ? (
+              <p className="text-xl font-semibold text-white">{currentBlind.label || 'Break'}</p>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-6 text-sm text-pit-text">
+                <span>SB: <strong className="text-white">{currentBlind.smallblind.toLocaleString()}</strong></span>
+                <span>BB: <strong className="text-white">{currentBlind.bigblind.toLocaleString()}</strong></span>
+                {currentBlind.ante > 0 && (
+                  <span>Ante: <strong className="text-white">{currentBlind.ante.toLocaleString()}</strong></span>
+                )}
+              </div>
+            )}
             <p className="text-sm text-pit-text">
               {nextBlind
-                ? <>Next: <strong className="text-white">{nextBlind.smallblind.toLocaleString()} / {nextBlind.bigblind.toLocaleString()}</strong>{nextBlind.ante > 0 && <> - Ante <strong className="text-white">{nextBlind.ante.toLocaleString()}</strong></>}</>
+                ? isBreakLevel(nextBlind)
+                  ? <>Next: <strong className="text-white">{nextBlind.label || 'Break'}</strong></>
+                  : <>Next: <strong className="text-white">{nextBlind.smallblind.toLocaleString()} / {nextBlind.bigblind.toLocaleString()}</strong>{nextBlind.ante > 0 && <> - Ante <strong className="text-white">{nextBlind.ante.toLocaleString()}</strong></>}</>
                 : 'Final level'}
             </p>
           </div>
@@ -436,6 +443,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
                   .map((blind) => {
                     const isCurrent = blind.level === timer.currentlevel;
                     const isNext = nextBlind?.level === blind.level;
+                    const breakRow = isBreakLevel(blind);
                     return (
                       <div
                         key={`${blind.level}-${blind.smallblind}-${blind.bigblind}`}
@@ -449,8 +457,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
                       >
                         <span className="font-semibold">{blind.level}</span>
                         <span>
-                          {blind.smallblind.toLocaleString()} / {blind.bigblind.toLocaleString()}
-                          {blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}
+                          {breakRow ? (blind.label || 'Break') : `${blind.smallblind.toLocaleString()} / ${blind.bigblind.toLocaleString()}${blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}`}
                         </span>
                         <span>{blind.minutes}:00</span>
                       </div>
@@ -804,4 +811,8 @@ function clamp(value: number, min: number, max: number) {
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function isBreakLevel(level?: Pick<BlindLevel, 'label' | 'smallblind' | 'bigblind'> | null): boolean {
+  return Boolean(level && (/^break\b/i.test(String(level.label ?? '')) || (Number(level.smallblind) === 0 && Number(level.bigblind) === 0)));
 }

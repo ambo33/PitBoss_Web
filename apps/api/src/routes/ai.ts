@@ -53,6 +53,11 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     bountyamount?: number | null;
     bountyclaimedbyname?: string | null;
     playername?: string | null;
+    isbreak?: boolean;
+    breaklabel?: string | null;
+    breakminutes?: number | null;
+    rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
+    rebuyclosed?: boolean;
   };
 
   const tournament = await queryOne<{
@@ -126,6 +131,11 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     bountyAmount: body.bountyamount == null ? null : Number(body.bountyamount),
     bountyClaimedByName: body.bountyclaimedbyname ? String(body.bountyclaimedbyname).trim().slice(0, 80) : null,
     playerName: body.playername ? String(body.playername).trim().slice(0, 80) : null,
+    isBreak: Boolean(body.isbreak),
+    breakLabel: body.breaklabel ? String(body.breaklabel).trim().slice(0, 80) : null,
+    breakMinutes: body.breakminutes == null ? null : Number(body.breakminutes),
+    rebuyCutoffWarning: body.rebuycutoffwarning ?? null,
+    rebuyClosed: Boolean(body.rebuyclosed),
     remainingPlayers: Number(tournament.remainingplayers ?? 0),
     checkedInPlayers,
     knockedOutDuringPriorLevel: Number(tournament.knockedoutduringpriorlevel ?? 0),

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle, Volume2 } from 'lucide-react';
+import { Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle, Volume2 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
@@ -64,6 +64,11 @@ type VoiceClip = {
 
 const cannedVoiceStyles: VoiceClip[] = [
   {
+    style: 'velvet_dealer',
+    label: 'Velvet Dealer',
+    text: 'Cool female casino host for upscale intros and player welcomes.',
+  },
+  {
     style: 'all_in_alex',
     label: 'All-In Alex',
     text: 'Fast Vegas poker announcer for intros, level increases, and final table moments.',
@@ -72,11 +77,6 @@ const cannedVoiceStyles: VoiceClip[] = [
     style: 'royal_rumble_riley',
     label: 'Royal Rumble Riley',
     text: 'Sports arena energy for knockouts, champion reveals, and shuffle-up moments.',
-  },
-  {
-    style: 'velvet_dealer',
-    label: 'Velvet Dealer',
-    text: 'Cool female casino host for upscale intros and player welcomes.',
   },
   {
     style: 'chipstorm',
@@ -125,6 +125,7 @@ type VoiceManifestEntry = {
 export default function LandingPage() {
   const [voiceError, setVoiceError] = useState('');
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(cannedVoiceStyles);
+  const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -186,11 +187,17 @@ export default function LandingPage() {
     }
   }
 
-  const allInAlexIndex = Math.max(voiceClips.findIndex((clip) => clip.style === 'all_in_alex'), 0);
-  const allInAlexClip = voiceClips[allInAlexIndex] ?? cannedVoiceStyles[0];
+  const selectedVoiceClip = voiceClips[selectedVoiceIndex] ?? voiceClips[0] ?? cannedVoiceStyles[0];
+  const selectAdjacentVoice = (direction: -1 | 1) => {
+    setSelectedVoiceIndex((current) => {
+      const total = voiceClips.length || cannedVoiceStyles.length;
+      return (current + direction + total) % total;
+    });
+    setVoiceError('');
+  };
 
   return (
-    <main className="min-h-screen bg-pit-bg text-white">
+    <main className="min-h-screen overflow-x-hidden bg-pit-bg text-white">
       <style>{`
         @keyframes pp-meter {
           0% { transform: translateX(-55%); }
@@ -297,7 +304,7 @@ export default function LandingPage() {
                   <Clock3 size={16} />
                   Blind timer
                 </Link>
-                <button className="btn-ghost justify-center px-5 py-3 text-base" type="button" onClick={() => playVoicePreview(allInAlexIndex)}>
+                <button className="btn-ghost justify-center px-5 py-3 text-base" type="button" onClick={() => playVoicePreview(selectedVoiceIndex)}>
                   <Volume2 size={16} />
                   Preview voice
                 </button>
@@ -394,9 +401,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y border-pit-border bg-pit-surface/30">
-        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
-          <div data-reveal className="lg:sticky lg:top-8 lg:self-start">
+      <section id="voice-director" className="overflow-hidden border-y border-pit-border bg-pit-surface/30">
+        <div className="mx-auto grid max-w-7xl min-w-0 gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
+          <div data-reveal className="min-w-0 lg:sticky lg:top-8 lg:self-start">
             <p className="text-sm font-semibold uppercase text-pit-teal">Voice director</p>
             <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
             <p className="mt-4 text-sm leading-6 text-pit-text">
@@ -413,7 +420,7 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="grid gap-2 text-sm text-pit-text sm:grid-cols-2 lg:grid-cols-1">
-                {['Group-level voice preset', 'Custom prompt flavor', 'Concise clock, pause, knockout, rebuy, and add-on calls', 'Saved preview clips for the landing page'].map((item) => (
+                {['Group-level voice preset', 'Custom prompt flavor', 'Concise clock, pause, knockout, rebuy, and add-on calls', 'Preview styles before game night'].map((item) => (
                   <div key={item} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
                     <CheckCircle2 size={15} className="text-pit-teal" />
                     <span>{item}</span>
@@ -423,11 +430,11 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
+          <div data-reveal className="min-w-0 overflow-hidden rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase text-pit-muted">Voice preview</p>
-                <h3 className="mt-1 text-xl font-bold text-white">Hear All-In Alex</h3>
+                <h3 className="mt-1 text-xl font-bold text-white">Hear the table personalities</h3>
               </div>
               <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10">
                 <span className="pp-ring absolute inset-1 rounded-full border border-pit-teal/40" style={{ animation: 'pp-pulse-ring 1.8s ease-in-out infinite' }} />
@@ -435,17 +442,62 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
+            <div className="mb-4 flex items-center gap-3 sm:hidden">
+              <button
+                type="button"
+                aria-label="Previous voice"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-pit-border bg-pit-bg/70 text-pit-text"
+                onClick={() => selectAdjacentVoice(-1)}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="min-w-0 flex-1 rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-2 text-center">
+                <p className="truncate text-sm font-semibold text-white">{selectedVoiceClip.label}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-teal">
+                  {selectedVoiceIndex + 1} of {voiceClips.length}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Next voice"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-pit-border bg-pit-bg/70 text-pit-text"
+                onClick={() => selectAdjacentVoice(1)}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="-mx-1 mb-4 hidden max-w-full gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden">
+              {voiceClips.map((clip, index) => (
+                <button
+                  key={clip.style}
+                  type="button"
+                  onClick={() => {
+                    setSelectedVoiceIndex(index);
+                    setVoiceError('');
+                  }}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    index === selectedVoiceIndex
+                      ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
+                      : 'border-pit-border bg-pit-bg/70 text-pit-muted hover:text-white'
+                  }`}
+                >
+                  {clip.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="min-w-0 rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-pit-teal">Now previewing</p>
-                  <h4 className="mt-1 text-2xl font-bold text-white">{allInAlexClip.label}</h4>
-                  <p className="mt-2 text-sm leading-6 text-pit-text">{allInAlexClip.text}</p>
+                  <h4 className="mt-1 text-2xl font-bold text-white">{selectedVoiceClip.label}</h4>
+                  <p className="mt-2 text-sm leading-6 text-pit-text">{selectedVoiceClip.text}</p>
                 </div>
                 <button
                   type="button"
-                  className="btn-primary shrink-0 px-4 py-2 text-sm"
-                  onClick={() => playVoicePreview(allInAlexIndex)}
+                  className="btn-primary w-full shrink-0 px-4 py-2 text-sm sm:w-auto"
+                  onClick={() => playVoicePreview(selectedVoiceIndex)}
                 >
                   <Play size={15} />
                   Play clip
@@ -453,8 +505,8 @@ export default function LandingPage() {
               </div>
               <div className="mt-4 rounded-lg border border-pit-border bg-pit-bg/70 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Sample line</p>
-                <p className="mt-1 text-sm leading-6 text-white">
-                  {allInAlexClip.sampleText ?? (allInAlexClip.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
+                <p className="mt-1 break-words text-sm leading-6 text-white">
+                  {selectedVoiceClip.sampleText ?? (selectedVoiceClip.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
                 </p>
               </div>
             </div>
@@ -465,19 +517,6 @@ export default function LandingPage() {
               </p>
             )}
 
-            <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/70 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles size={16} className="text-pit-teal" />
-                <p className="text-sm font-semibold text-white">What groups can customize</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <VoiceMetric label="Preset" value="All-In Alex" />
-                <VoiceMetric label="Mode" value="Classic or contextual" />
-              </div>
-              <p className="mt-3 text-sm leading-6 text-pit-text">
-                The full app lets groups choose from more announcer styles, but the landing page keeps the pitch focused: one strong sample, then get people into the product.
-              </p>
-            </div>
           </div>
         </div>
       </section>
@@ -710,15 +749,6 @@ function PlayerTrackingMock() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function VoiceMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-pit-border bg-pit-card p-3">
-      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
-      <p className="mt-1 text-sm font-bold text-white">{value}</p>
     </div>
   );
 }

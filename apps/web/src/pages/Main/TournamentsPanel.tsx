@@ -295,6 +295,7 @@ function CreateTournamentComposer({
     rake: '',
     rebuyprice: '',
     rebuychips: '',
+    rebuylastlevel: '',
     addonprice: '',
     addonchips: '',
     maxplayers: '',
@@ -347,6 +348,7 @@ function CreateTournamentComposer({
       rake: Number(form.rake) || 0,
       rebuyprice: Number(form.rebuyprice) || 0,
       rebuychips: Number(form.rebuychips) || 0,
+      rebuylastlevel: rebuysActive ? Number(form.rebuylastlevel) || null : null,
       addonprice: Number(form.addonprice) || 0,
       addonchips: Number(form.addonchips) || 0,
       maxplayers: form.maxplayersmode === 'unlimited' ? 0 : Number(form.maxplayers) || 0,
@@ -359,8 +361,10 @@ function CreateTournamentComposer({
   }
 
   const basicsComplete = Boolean(form.name.trim() && form.tourneydate && form.tourneytime && form.groupid);
+  const rebuysActive = Number(form.rebuyprice) > 0 || Number(form.rebuychips) > 0;
+  const rebuyCutoffComplete = !rebuysActive || Number(form.rebuylastlevel) > 0;
   const maxPlayersComplete = form.maxplayersmode === 'unlimited' || (form.maxplayersmode === 'capped' && Number(form.maxplayers) > 0);
-  const canAdvance = step === 0 ? basicsComplete : step === 1 ? maxPlayersComplete : true;
+  const canAdvance = step === 0 ? basicsComplete : step === 1 ? maxPlayersComplete && rebuyCutoffComplete : true;
   const selectedStructure = savedStructures.find((structure) => structure.id === form.savedstructureid);
   const maxPlayersReview = form.maxplayersmode === 'unlimited' ? 'Unlimited' : form.maxplayers;
   const canOpenStep = (targetStep: number) => {
@@ -473,11 +477,30 @@ function CreateTournamentComposer({
                 )}
                 <Field label="Rebuy price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rebuyprice} onChange={set('rebuyprice')} /></Field>
                 <Field label="Rebuy chips"><input className="input" type="number" placeholder="0" min="0" value={form.rebuychips} onChange={set('rebuychips')} /></Field>
+                {rebuysActive && (
+                  <Field label="Rebuys good through level">
+                    <input
+                      className="input"
+                      type="number"
+                      placeholder="e.g. 4"
+                      min="1"
+                      step="1"
+                      value={form.rebuylastlevel}
+                      onChange={set('rebuylastlevel')}
+                      required
+                    />
+                  </Field>
+                )}
                 <Field label="Add-on price"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.addonprice} onChange={set('addonprice')} /></Field>
                 <Field label="Add-on chips"><input className="input" type="number" placeholder="0" min="0" value={form.addonchips} onChange={set('addonchips')} /></Field>
                 {!maxPlayersComplete && (
                   <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
                     Choose Unlimited or set a max player count before continuing.
+                  </p>
+                )}
+                {!rebuyCutoffComplete && (
+                  <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
+                    Set the final level where rebuys are allowed.
                   </p>
                 )}
               </div>
@@ -530,6 +553,7 @@ function CreateTournamentComposer({
                 <ReviewItem label="Date and time" value={`${form.tourneydate || 'Date TBD'} ${form.tourneytime || ''}`.trim()} />
                 <ReviewItem label="Buy-in" value={`$${Number(form.buyin || 0).toFixed(2)}`} />
                 <ReviewItem label="Max players" value={maxPlayersReview || 'Not set'} />
+                <ReviewItem label="Rebuys" value={rebuysActive ? `Through level ${form.rebuylastlevel || 'not set'}` : 'Not enabled'} />
                 <ReviewItem label="Tracking" value={form.playerselftracking ? 'Player tracked stats' : 'Standard'} />
                 <ReviewItem label="Blind structure" value={selectedStructure?.name || 'Calculator after creation'} />
                 <ReviewItem label="Notifications" value={form.groupid && form.notifygroup ? 'Email group members' : 'No group email'} />

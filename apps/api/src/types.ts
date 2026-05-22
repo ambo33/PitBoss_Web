@@ -101,6 +101,7 @@ export interface Tournament {
   payoutstructure?: string | null;
   rebuyprice: number;
   rebuychips: number;
+  rebuylastlevel?: number | null;
   genericrebuys?: number;
   addonprice: number;
   addonchips: number;

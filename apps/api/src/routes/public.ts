@@ -47,7 +47,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
 
   const tournament = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
@@ -133,7 +133,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
 publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, res: Response) => {
   const tournament = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
@@ -541,7 +541,7 @@ publicRouter.post('/tournaments/:id/register/guest', async (req: Request, res: R
 publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request, res: Response) => {
   const tournament = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
@@ -610,7 +610,7 @@ publicRouter.get('/tournaments/:id/knockout', optionalAuth, async (req: Request,
 publicRouter.get('/tournaments/:id/addon', optionalAuth, async (req: Request, res: Response) => {
   const tournament = await queryOne<Tournament>(
     `SELECT t.tournamentid, t.userid AS ownerid, t.name, t.date AS tourneydate, t.time AS tourneytime,
-            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips,
+            t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             t.createdate AS createdat, t.groupid, g.name AS groupname,

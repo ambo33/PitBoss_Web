@@ -331,8 +331,9 @@ export default function PocketAdminPage() {
             </p>
             {currentBlind && (
               <p className="mt-2 text-sm text-pit-text">
-                {currentBlind.smallblind.toLocaleString()} / {currentBlind.bigblind.toLocaleString()}
-                {currentBlind.ante > 0 ? ` - Ante ${currentBlind.ante.toLocaleString()}` : ''}
+                {isBreakLevel(currentBlind)
+                  ? (currentBlind.label || 'Break')
+                  : `${currentBlind.smallblind.toLocaleString()} / ${currentBlind.bigblind.toLocaleString()}${currentBlind.ante > 0 ? ` - Ante ${currentBlind.ante.toLocaleString()}` : ''}`}
               </p>
             )}
           </div>
@@ -541,6 +542,10 @@ export default function PocketAdminPage() {
 function refreshTournamentData(qc: ReturnType<typeof useQueryClient>, tournamentId: string) {
   qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
   qc.invalidateQueries({ queryKey: ['players', tournamentId] });
+}
+
+function isBreakLevel(level?: Pick<BlindLevel, 'label' | 'smallblind' | 'bigblind'> | null): boolean {
+  return Boolean(level && (/^break\b/i.test(String(level.label ?? '')) || (Number(level.smallblind) === 0 && Number(level.bigblind) === 0)));
 }
 
 function seatLabel(player: Pick<TournamentPlayer, 'tablenumber' | 'seat'>) {

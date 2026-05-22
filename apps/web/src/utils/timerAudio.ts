@@ -314,6 +314,10 @@ export function announceOneMinuteWarning(template?: string | null, tokens?: Anno
   speak(message || DEFAULT_ONE_MINUTE_ANNOUNCEMENT, playOneMinuteWarning);
 }
 
+export function announceMessage(message: string): void {
+  speak(message);
+}
+
 export function announceLevel(level: number, smallBlind: number, bigBlind: number, template?: string | null, ante = 0): void {
   const message = renderAnnouncementTemplate(template || DEFAULT_LEVEL_UP_ANNOUNCEMENT, {
     BlindLevel: level,

@@ -31,6 +31,11 @@ interface AnnouncerContext {
   bountyAmount?: number | null;
   bountyClaimedByName?: string | null;
   playerName?: string | null;
+  isBreak?: boolean;
+  breakLabel?: string | null;
+  breakMinutes?: number | null;
+  rebuyCutoffWarning?: 'five_minute_warning' | 'one_minute_warning' | null;
+  rebuyClosed?: boolean;
   remainingPlayers: number;
   checkedInPlayers: number;
   knockedOutDuringPriorLevel: number;
@@ -263,11 +268,16 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
         'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        context.rebuyCutoffWarning ? 'This is a rebuy cutoff warning. Keep it direct and mention the rebuy deadline only.' : '',
+        context.isBreak ? 'This level is a break. Announce the break note and duration. Do not mention blinds.' : '',
+        context.rebuyClosed ? 'Rebuys just closed. Say that re-buys are officially closed.' : '',
         `Tournament: ${context.tournamentName}`,
         context.groupName ? `Group: ${context.groupName}` : '',
         `Event: ${context.eventType}`,
         `Current level: ${context.currentLevel}`,
         context.previousLevel ? `Previous level: ${context.previousLevel}` : '',
+        context.breakLabel ? `Break note: ${context.breakLabel}` : '',
+        context.breakMinutes ? `Break minutes: ${context.breakMinutes}` : '',
         `Small blind: ${context.smallBlind ?? 0}`,
         `Big blind: ${context.bigBlind ?? 0}`,
         `Ante: ${context.ante ?? 0}`,
@@ -294,8 +304,11 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
 function buildClassicAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
+  if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
+  if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
+  if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
   if (context.eventType === 'level_up') {
-    return `Level ${context.currentLevel}. Small blind is ${smallBlind}, big blind is ${bigBlind}.`;
+    return `Level ${context.currentLevel}. Small blind is ${smallBlind}, big blind is ${bigBlind}.${context.rebuyClosed ? ' Re-buys officially closed.' : ''}`;
   }
   if (context.eventType === 'five_minute_warning') return 'Five minutes remaining in this level.';
   if (context.eventType === 'one_minute_warning') return 'One minute remaining in this level.';
@@ -309,6 +322,9 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   const blinds = `small blind is ${smallBlind}, big blind is ${bigBlind}`;
+  if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
+  if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
+  if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
   if (context.eventType === 'knockout') {
     const player = context.knockedOutPlayerName || 'A player';
     const placement = context.placement ? ` in ${ordinal(context.placement)} place` : '';
@@ -330,7 +346,7 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   const action = priorLosses > 0
     ? `Last level claimed ${priorLosses} player${priorLosses === 1 ? '' : 's'}`
     : 'The field is still battling';
-  return `Level ${context.currentLevel} is live. ${blinds}. ${action}, with ${context.remainingPlayers} players remaining.`;
+  return `Level ${context.currentLevel} is live. ${blinds}. ${context.rebuyClosed ? 'Re-buys are officially closed. ' : ''}${action}, with ${context.remainingPlayers} players remaining.`;
 }
 
 function ordinal(value: number): string {

@@ -244,7 +244,7 @@ export interface GroupMember {
 export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
   tourneydate: string | null; tourneytime: string | null;
-  buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number;
+  buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number; rebuylastlevel?: number | null;
   genericrebuys?: number;
   addonprice: number; addonchips: number;
   genericaddons?: number;
@@ -428,6 +428,11 @@ export interface AnnouncerMomentRequest {
   bountyamount?: number | null;
   bountyclaimedbyname?: string | null;
   playername?: string | null;
+  isbreak?: boolean;
+  breaklabel?: string | null;
+  breakminutes?: number | null;
+  rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
+  rebuyclosed?: boolean;
 }
 
 export interface AnnouncerMomentResponse {

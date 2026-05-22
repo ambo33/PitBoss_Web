@@ -63,6 +63,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS rebuylastlevel INT
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
       ADD COLUMN IF NOT EXISTS addonchips INT DEFAULT 0
     `);
     await client.query(`

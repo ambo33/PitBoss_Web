@@ -439,13 +439,14 @@ function BlindEditor({
     <div className="space-y-3">
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="overflow-x-auto">
-        <div className="grid min-w-[37rem] grid-cols-[36px_96px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
+        <div className="grid min-w-[44rem] grid-cols-[36px_130px_1fr_1fr_1fr_1fr_1.25fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
           <span className="sr-only">Move</span>
           <span>Level</span>
           <span>SB</span>
           <span>BB</span>
           <span>Ante</span>
           <span>Min</span>
+          <span>Break note</span>
           <span className="sr-only">Remove</span>
         </div>
       </div>
@@ -463,16 +464,25 @@ function BlindEditor({
               setDragIndex(null);
             }}
             onDragEnd={() => setDragIndex(null)}
-            className={`grid min-w-[37rem] grid-cols-[36px_96px_1fr_1fr_1fr_1fr_40px] items-center gap-1.5 rounded-lg text-sm ${dragIndex === index ? 'bg-pit-teal/10' : ''}`}
+            className={`grid min-w-[44rem] grid-cols-[36px_130px_1fr_1fr_1fr_1fr_1.25fr_40px] items-center gap-1.5 rounded-lg text-sm ${dragIndex === index ? 'bg-pit-teal/10' : ''}`}
           >
             <div className="flex h-full cursor-grab items-center justify-center text-pit-muted active:cursor-grabbing">
               <GripVertical size={15} />
             </div>
-            <div className="px-2 text-xs font-medium text-pit-text">{breakRow ? level.label || `Break ${index + 1}` : `Level ${index + 1}`}</div>
+            <div className="px-2 text-xs font-medium text-pit-text">{breakRow ? `Break ${index + 1}` : `Level ${index + 1}`}</div>
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} disabled={breakRow} onChange={(event) => update(index, 'smallblind', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} disabled={breakRow} onChange={(event) => update(index, 'bigblind', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} disabled={breakRow} onChange={(event) => update(index, 'ante', event.target.value)} />
             <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" aria-label={`Level ${index + 1} minutes`} value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
+            <input
+              className="input text-xs"
+              type="text"
+              placeholder={breakRow ? 'CHIP UP WHITES' : '-'}
+              aria-label={`Level ${index + 1} break note`}
+              value={breakRow ? level.label.replace(/^Break\s*/i, '') : ''}
+              disabled={!breakRow}
+              onChange={(event) => update(index, 'label', event.target.value ? `Break ${event.target.value}` : `Break ${index + 1}`)}
+            />
             <button type="button" onClick={() => removeLevel(index)} className="text-lg leading-none text-red-400 hover:text-red-300">x</button>
           </div>
           );

@@ -7,7 +7,7 @@ import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client'
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
@@ -431,7 +431,7 @@ export default function RunTournament({
         const announcedBlind = state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel));
         if (announcedBlind) {
           playLevelChangeTone();
-          announceAiOrTemplate('level_up', state, announcedBlind, warningState.level, levelStartedAtRef.current);
+          announceAiOrTemplate('level_up', state, announcedBlind, warningState.level, levelStartedAtRef.current, isRebuyFinalLevel(warningState.level));
         }
       }
       warningState.level = state.currentlevel;
@@ -488,8 +488,13 @@ export default function RunTournament({
     state: TimerState,
     blind: BlindLevel | undefined
   ) {
+    const isRebuyCutoffWarning = isRebuyFinalLevel(state.currentlevel);
     const fallback = () => {
-      if (eventtype === 'five_minute_warning') {
+      if (isRebuyCutoffWarning) {
+        announceMessage(eventtype === 'five_minute_warning'
+          ? 'Five minutes left in the final level for re-buys.'
+          : 'One minute left to get your re-buys in.');
+      } else if (eventtype === 'five_minute_warning') {
         announceFiveMinuteWarning(announcementTemplatesRef.current.fiveMinute, buildAnnouncementTokens(state, blind));
       } else {
         announceOneMinuteWarning(announcementTemplatesRef.current.oneMinute, buildAnnouncementTokens(state, blind));
@@ -498,6 +503,24 @@ export default function RunTournament({
 
     if (!tournament.aiannouncerenabled) {
       fallback();
+      return;
+    }
+
+    if (isRebuyCutoffWarning) {
+      api.generateAnnouncerMoment(tournamentId, {
+        eventtype,
+        currentlevel: Number(state.currentlevel),
+        smallblind: Number(blind?.smallblind ?? 0),
+        bigblind: Number(blind?.bigblind ?? 0),
+        ante: Number(blind?.ante ?? 0),
+        rebuycutoffwarning: eventtype,
+      }).then((result) => {
+        if (result.aiEnabled && result.audioBase64) {
+          playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+        } else {
+          fallback();
+        }
+      }).catch(() => fallback());
       return;
     }
 
@@ -510,16 +533,19 @@ export default function RunTournament({
     state: TimerState,
     blind: BlindLevel | undefined,
     previousLevel: number | null,
-    previousLevelStartedAt: string | null
+    previousLevelStartedAt: string | null,
+    rebuyClosed = false
   ) {
     const fallback = () => {
-      announceLevel(
-        state.currentlevel,
-        Number(blind?.smallblind ?? 0),
-        Number(blind?.bigblind ?? 0),
-        announcementTemplatesRef.current.levelUp,
-        Number(blind?.ante ?? 0)
-      );
+      if (isBreakBlind(blind)) {
+        announceMessage(`${blind?.label || 'Break'}. ${Number(blind?.minutes ?? 0)} minute break.`);
+        return;
+      }
+      if (rebuyClosed) {
+        announceMessage(`Level ${state.currentlevel}. Small blind is ${Number(blind?.smallblind ?? 0).toLocaleString()}, big blind is ${Number(blind?.bigblind ?? 0).toLocaleString()}. Re-buys officially closed.`);
+        return;
+      }
+      announceLevel(state.currentlevel, Number(blind?.smallblind ?? 0), Number(blind?.bigblind ?? 0), announcementTemplatesRef.current.levelUp, Number(blind?.ante ?? 0));
     };
 
     api.generateAnnouncerMoment(tournamentId, {
@@ -530,6 +556,10 @@ export default function RunTournament({
       smallblind: Number(blind?.smallblind ?? 0),
       bigblind: Number(blind?.bigblind ?? 0),
       ante: Number(blind?.ante ?? 0),
+      isbreak: isBreakBlind(blind),
+      breaklabel: isBreakBlind(blind) ? (blind?.label ?? 'Break') : null,
+      breakminutes: isBreakBlind(blind) ? Number(blind?.minutes ?? 0) : null,
+      rebuyclosed: rebuyClosed,
     }).then((result) => {
       if (result.aiEnabled && result.audioBase64) {
         playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
@@ -619,6 +649,12 @@ export default function RunTournament({
     if (!showAdminControls || !targetBlind) return;
     void warmTimerAudio();
     emit('timer-level', { level: Number(targetBlind.level) });
+  }
+
+  function isRebuyFinalLevel(level: number | null | undefined): boolean {
+    return toNumber(tournament.rebuyprice) > 0
+      && Number(tournament.rebuylastlevel ?? 0) > 0
+      && Number(level) === Number(tournament.rebuylastlevel);
   }
 
   const registeredCount = players.length;

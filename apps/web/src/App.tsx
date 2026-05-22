@@ -35,8 +35,13 @@ function AppSubdomainRedirect({ mode }: { mode?: 'register' }) {
   const location = useLocation();
   const isPublicDomain = typeof window !== 'undefined'
     && ['thepokerplanner.com', 'www.thepokerplanner.com'].includes(window.location.hostname);
+  const isStandalonePwa = typeof window !== 'undefined'
+    && (
+      window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
 
-  if (isPublicDomain) {
+  if (isPublicDomain && !isStandalonePwa) {
     const target = new URL('https://app.thepokerplanner.com');
     if (location.pathname === '/app') {
       target.pathname = '/';
