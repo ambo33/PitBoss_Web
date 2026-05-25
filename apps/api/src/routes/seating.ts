@@ -3,6 +3,7 @@ import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { SeatingAssignment } from '../types';
 import { broadcastTournamentUpdate } from '../socket';
+import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export const seatingRouter = Router();
 seatingRouter.use(requireAuth);
@@ -110,7 +111,17 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
     }
 
     broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'assign-seats' });
-    res.json({ assigned: assignments.length });
+    const pushResults = await Promise.all(assignments.map((assignment) =>
+      sendTournamentNotification(req.params.tid, 'seat_assignment', {
+        tableNumber: assignment.tablenumber,
+        seatNumber: assignment.seat,
+      }, {
+        targetUserIds: [assignment.userid],
+        entityId: `${req.params.tid}:${assignment.userid}`,
+      })
+    ));
+    const pushSent = pushResults.reduce((sum, result) => sum + result.sent, 0);
+    res.json({ assigned: assignments.length, pushSent });
     return;
   }
 
@@ -145,7 +156,17 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
   }
 
   broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'assign-seats' });
-  res.json({ assigned: assignments.length });
+  const pushResults = await Promise.all(assignments.map((assignment) =>
+    sendTournamentNotification(req.params.tid, 'seat_assignment', {
+      tableNumber: assignment.tablenumber,
+      seatNumber: assignment.seat,
+    }, {
+      targetUserIds: [assignment.userid],
+      entityId: `${req.params.tid}:${assignment.userid}`,
+    })
+  ));
+  const pushSent = pushResults.reduce((sum, result) => sum + result.sent, 0);
+  res.json({ assigned: assignments.length, pushSent });
 });
 
 seatingRouter.delete('/:tid/seating', async (req: Request, res: Response) => {

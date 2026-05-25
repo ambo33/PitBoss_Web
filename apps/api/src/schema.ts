@@ -706,6 +706,40 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON pushsubscriptions (userid, disabledat)
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS notificationpreferences (
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        category STRING(60) NOT NULL,
+        enabled BOOL NOT NULL DEFAULT TRUE,
+        digestonly BOOL NOT NULL DEFAULT FALSE,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (userid, category)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notificationlog (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        type STRING(80) NOT NULL,
+        category STRING(60) NOT NULL,
+        entitytype STRING(60),
+        entityid STRING(120),
+        tag STRING(240) NOT NULL,
+        status STRING(40) NOT NULL,
+        error STRING(500),
+        sentat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_notificationlog_user_tag
+      ON notificationlog (userid, tag)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_notificationlog_entity
+      ON notificationlog (entitytype, entityid, type)
+    `);
+    await client.query(`
       ALTER TABLE groupcoins
       ADD COLUMN IF NOT EXISTS imageurl STRING(240)
     `);

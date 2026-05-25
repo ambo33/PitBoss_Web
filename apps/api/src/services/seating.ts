@@ -1,4 +1,5 @@
 import { query, queryOne } from '../db';
+import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export async function clearSeatForPlayer(tournamentId: string, userId: string): Promise<void> {
   await query(
@@ -102,5 +103,12 @@ export async function assignSeatIfSeatingStarted(tournamentId: string, userId: s
      VALUES ($1, $2, $3, $4)`,
     [tournamentId, userId, targetTableNumber, nextSeat]
   );
+  await sendTournamentNotification(tournamentId, 'seat_assignment', {
+    tableNumber: targetTableNumber,
+    seatNumber: nextSeat,
+  }, {
+    targetUserIds: [userId],
+    entityId: `${tournamentId}:${userId}`,
+  });
   return true;
 }

@@ -20,6 +20,7 @@ import {
 import { broadcastTournamentUpdate } from '../socket';
 import { BlindLevel, Tournament } from '../types';
 import { publicEmail } from '../privacy';
+import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export const tournamentsRouter = Router();
 tournamentsRouter.use(requireAuth);
@@ -111,6 +112,12 @@ function normalizeRebuyLastLevel(value: unknown): number | null {
   if (value == null || value === '') return null;
   const parsed = Math.floor(Number(value));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatStartTime(date: string | null | undefined, time: string | null | undefined): string {
+  const dateText = date ? date.slice(0, 10) : 'the scheduled date';
+  const timeText = time ? time.slice(0, 5) : 'the scheduled time';
+  return `${dateText} ${timeText}`;
 }
 
 tournamentsRouter.get('/', async (req: Request, res: Response) => {
@@ -361,6 +368,18 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
     );
   }
 
+  if (groupid && notifygroup !== false) {
+    void sendTournamentNotification(row.tournamentid, 'new_tournament_created', {
+      tournamentName: name,
+      tag: `tournament-${row.tournamentid}-created`,
+    }, {
+      audience: 'group-members',
+      entityId: row.tournamentid,
+    }).catch((err) => {
+      console.error('New tournament push failed', err instanceof Error ? err.message : err);
+    });
+  }
+
   res.status(201).json(row);
 });
 
@@ -455,8 +474,8 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   const normalizedBountyDenomination = bountyroundingdenomination == null ? null : normalizeBountyDenomination(bountyroundingdenomination);
   const normalizedBountyStartPlace = bountystartplace === undefined ? undefined : normalizeBountyStartPlace(bountystartplace);
   const normalizedBountyMinPayout = bountyminpayout == null ? null : normalizeBountyMinPayout(bountyminpayout);
-  const currentTournament = await queryOne<{ tourneydate: string | null; tourneytime: string | null; bountyenabled: boolean; bountymode: string | null; bountypooltype: string | null; bountyprizepool: number; bountyroundingdenomination: number; bountystartplace: number | null; bountyminpayout: number; maxplayers: number; buyin: number; rebuyprice: number; rebuychips: number; addonprice: number; genericrebuys: number; genericaddons: number; registeredcount: number; enteredcount: number; activecount: number }>(
-    `SELECT date AS tourneydate, time AS tourneytime,
+  const currentTournament = await queryOne<{ name: string; tourneydate: string | null; tourneytime: string | null; bountyenabled: boolean; bountymode: string | null; bountypooltype: string | null; bountyprizepool: number; bountyroundingdenomination: number; bountystartplace: number | null; bountyminpayout: number; maxplayers: number; buyin: number; rebuyprice: number; rebuychips: number; addonprice: number; genericrebuys: number; genericaddons: number; registeredcount: number; enteredcount: number; activecount: number }>(
+    `SELECT name, date AS tourneydate, time AS tourneytime,
             COALESCE(bountyenabled, FALSE) AS bountyenabled,
             COALESCE(bountymode, 'manual') AS bountymode,
             COALESCE(bountypooltype, 'amount') AS bountypooltype,
@@ -619,6 +638,25 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     await assignMysteryBounties(req.params.id, await resolveBountyPrizepool(req.params.id, configuredValue, poolType), denomination, startPlace, minPayout);
   }
   broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
+  const scheduleChanged = (
+    (requestedDate !== undefined && requestedDate !== currentTournament.tourneydate)
+    || (requestedTime !== undefined && requestedTime !== currentTournament.tourneytime)
+  );
+  if (scheduleChanged) {
+    const newDate = requestedDate ?? currentTournament.tourneydate;
+    const newTime = requestedTime ?? currentTournament.tourneytime;
+    void sendTournamentNotification(req.params.id, 'tournament_schedule_changed', {
+      tournamentName: name ?? currentTournament.name,
+      newStartTime: formatStartTime(newDate, newTime),
+      tag: `tournament-${req.params.id}-schedule-${newDate ?? 'date'}-${newTime ?? 'time'}`,
+    }, {
+      audience: 'participants-and-admins',
+      entityId: req.params.id,
+      dedupe: false,
+    }).catch((err) => {
+      console.error('Schedule change push failed', err instanceof Error ? err.message : err);
+    });
+  }
   res.json({ success: true });
 });
 
@@ -701,6 +739,14 @@ tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
        AND u.emailencrypted IS NOT NULL`,
     [req.params.id]
   );
+
+  await sendTournamentNotification(req.params.id, 'tournament_cancelled', {
+    tournamentName: tournament.name,
+    tag: `tournament-${req.params.id}-cancelled`,
+  }, {
+    audience: 'participants-and-admins',
+    entityId: req.params.id,
+  });
 
   await query(`DELETE FROM tournaments WHERE tournamentid = $1`, [req.params.id]);
 

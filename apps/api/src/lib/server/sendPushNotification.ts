@@ -1,14 +1,8 @@
 import webpush, { PushSubscription, WebPushError } from 'web-push';
 import { query } from '../../db';
+import { NotificationType } from './notifications/types';
 
-export type PushNotificationType =
-  | 'tournament_starting_soon'
-  | 'blinds_up'
-  | 'table_assignment'
-  | 'event_changed'
-  | 'league_event_reminder'
-  | 'league_standings_updated'
-  | 'push_test';
+export type PushNotificationType = NotificationType;
 
 export type PushPayload = {
   type?: PushNotificationType;
@@ -103,64 +97,4 @@ export async function sendPushNotification(subscription: PushSubscriptionRow, pa
     console.error('Push notification failed', err instanceof Error ? err.message : err);
     return false;
   }
-}
-
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<number> {
-  const subscriptions = await query<PushSubscriptionRow>(
-    `SELECT id, userid, endpoint, p256dh, auth
-     FROM pushsubscriptions
-     WHERE userid = $1 AND disabledat IS NULL`,
-    [userId]
-  );
-  const results = await Promise.all(subscriptions.map((subscription) => sendPushNotification(subscription, payload)));
-  return results.filter(Boolean).length;
-}
-
-export async function sendTournamentNotification(tournamentId: string, payload: PushPayload): Promise<number> {
-  const subscriptions = await query<PushSubscriptionRow>(
-    `SELECT DISTINCT ps.id, ps.userid, ps.endpoint, ps.p256dh, ps.auth
-     FROM pushsubscriptions ps
-     JOIN tournamentplayers tp ON tp.userid = ps.userid
-     JOIN tournaments t ON t.tournamentid = tp.tournamentid
-     LEFT JOIN groupmembers gm ON gm.groupid = t.groupid AND gm.userid = ps.userid
-     LEFT JOIN tournamentdeclines td ON td.tournamentid = t.tournamentid AND td.userid = ps.userid
-     WHERE tp.tournamentid = $1
-       AND ps.disabledat IS NULL
-       AND td.userid IS NULL
-       AND COALESCE(gm.pushalertsenabled, TRUE) = TRUE`,
-    [tournamentId]
-  );
-  const results = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendPushNotification(subscription, {
-        url: `/lobby/${tournamentId}`,
-        tag: payload.tag ?? `tournament-${tournamentId}-${payload.type ?? 'update'}`,
-        ...payload,
-      })
-    )
-  );
-  return results.filter(Boolean).length;
-}
-
-export async function sendLeagueNotification(leagueId: string, payload: PushPayload): Promise<number> {
-  const subscriptions = await query<PushSubscriptionRow>(
-    `SELECT DISTINCT ps.id, ps.userid, ps.endpoint, ps.p256dh, ps.auth
-     FROM pushsubscriptions ps
-     JOIN leaguemembers lm ON lm.userid = ps.userid
-     WHERE lm.leagueid = $1
-       AND lm.approved = TRUE
-       AND COALESCE(lm.pushalertsenabled, TRUE) = TRUE
-       AND ps.disabledat IS NULL`,
-    [leagueId]
-  );
-  const results = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendPushNotification(subscription, {
-        url: '/',
-        tag: payload.tag ?? `league-${leagueId}-${payload.type ?? 'update'}`,
-        ...payload,
-      })
-    )
-  );
-  return results.filter(Boolean).length;
 }

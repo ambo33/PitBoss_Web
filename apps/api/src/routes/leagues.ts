@@ -16,6 +16,7 @@ import {
   type LeagueResultRow,
 } from '../leagues/scoring';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
+import { sendLeagueNotification } from '../lib/server/notifications/notificationService';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -933,6 +934,15 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
      RETURNING resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat`,
     [event.eventid, req.params.id, targetUserId, placed, dnf, points, showupBonus, req.userId]
   );
+  void sendLeagueNotification(req.params.id, 'league_standings_updated', {
+    entityId: event.eventid,
+    tag: `league-${req.params.id}-standings-${event.eventid}`,
+  }, {
+    entityId: event.eventid,
+    dedupe: false,
+  }).catch((err) => {
+    console.error('League standings push failed', err instanceof Error ? err.message : err);
+  });
   res.json({ result: row });
 }
 

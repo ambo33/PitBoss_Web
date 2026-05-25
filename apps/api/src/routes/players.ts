@@ -9,6 +9,7 @@ import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seat
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
+import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export const playersRouter = Router();
 playersRouter.use(requireAuth);
@@ -321,6 +322,12 @@ playersRouter.put('/:tid/players/:uid/checkin', async (req: Request, res: Respon
   }
   if (updated.checkedin) {
     await assignSeatIfSeatingStarted(req.params.tid, req.params.uid);
+    void sendTournamentNotification(req.params.tid, 'player_check_in_confirmed', {}, {
+      targetUserIds: [req.params.uid],
+      entityId: `${req.params.tid}:${req.params.uid}:checkin`,
+    }).catch((err) => {
+      console.error('Check-in push failed', err instanceof Error ? err.message : err);
+    });
   } else {
     await clearSeatForPlayer(req.params.tid, req.params.uid);
   }
@@ -654,6 +661,43 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
+  if (nextPlaced != null && knockedoutbyuserid) {
+    const knockedOutPlayer = await queryOne<{
+      playername: string;
+      bountyamount: number;
+      bountyclaimedbyuserid: string | null;
+    }>(
+      `SELECT COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS playername,
+              COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+              tp.bountyclaimedbyuserid
+       FROM tournamentplayers tp
+       JOIN users u ON u.guid = tp.userid
+       LEFT JOIN usermetadata m ON m.userid = tp.userid
+       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
+      [req.params.tid, req.params.uid]
+    );
+    void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
+      playerName: knockedOutPlayer?.playername ?? 'a player',
+      entityId: `${req.params.tid}:knockout:${req.params.uid}`,
+      tag: `tournament-${req.params.tid}-knockout-${req.params.uid}`,
+    }, {
+      targetUserIds: [knockedoutbyuserid],
+      entityId: `${req.params.tid}:knockout:${req.params.uid}`,
+    }).catch((err) => {
+      console.error('Knockout push failed', err instanceof Error ? err.message : err);
+    });
+    if (Number(knockedOutPlayer?.bountyamount ?? 0) > 0 && knockedOutPlayer?.bountyclaimedbyuserid) {
+      void sendTournamentNotification(req.params.tid, 'bounty_earned', {
+        entityId: `${req.params.tid}:bounty:${req.params.uid}`,
+        tag: `tournament-${req.params.tid}-bounty-${req.params.uid}`,
+      }, {
+        targetUserIds: [knockedOutPlayer.bountyclaimedbyuserid],
+        entityId: `${req.params.tid}:bounty:${req.params.uid}`,
+      }).catch((err) => {
+        console.error('Bounty push failed', err instanceof Error ? err.message : err);
+      });
+    }
+  }
   res.json({ success: true });
 });
 

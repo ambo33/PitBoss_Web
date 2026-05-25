@@ -56,6 +56,10 @@ export const api = {
   }) => put<AuthProfile>('/auth/me', data),
   submitFeedback: (data: { type: 'issue' | 'idea' | 'question'; message: string; pageurl?: string; useragent?: string }) =>
     post<{ success: boolean; id: string }>('/feedback', data),
+  getNotificationPreferences: () =>
+    get<{ preferences: NotificationPreference[] }>('/push/preferences'),
+  updateNotificationPreference: (category: NotificationCategory, data: { enabled: boolean; digestOnly?: boolean }) =>
+    put<{ success: boolean; preferences: NotificationPreference[] }>(`/push/preferences/${category}`, data),
 
   // Groups
   getGroups: () => get<Group[]>('/groups'),
@@ -617,6 +621,23 @@ export interface HandAnalysisResponse {
 }
 
 export type AccountTier = 'host' | 'club' | 'pro';
+
+export type NotificationCategory =
+  | 'essential'
+  | 'tournament_play'
+  | 'bounties_achievements'
+  | 'league'
+  | 'social';
+
+export interface NotificationPreference {
+  category: NotificationCategory;
+  label: string;
+  description: string;
+  example: string;
+  enabled: boolean;
+  digestOnly: boolean;
+  defaultEnabled: boolean;
+}
 
 export interface AdminUserSummary {
   userid: string;

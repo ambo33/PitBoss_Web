@@ -6,6 +6,7 @@ import { getAppUrl } from '../config';
 import { BlindLevel, Group, GroupCoin, GroupCoinAward, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
 import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
 import { publicEmail } from '../privacy';
+import { sendGroupNotification } from '../lib/server/notifications/notificationService';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -37,6 +38,11 @@ function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
     })
     .sort((a, b) => a.level - b.level)
     .map((level, index, all) => ({ ...level, level: index + 1, islastlevel: index === all.length - 1 }));
+}
+
+function announcementPreview(message: string): string {
+  const normalized = message.replace(/\s+/g, ' ').trim();
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 
 function normalizeAnnouncementTemplate(value: string | null | undefined, fallback: string): string | null {
@@ -677,6 +683,16 @@ groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
     await client.query('COMMIT');
     if (status === 'pending') {
       void notifyGroupAdminsForPost(req.params.id, post.id, groupSettings?.authorname ?? 'A member', trimmedMessage);
+    } else {
+      void sendGroupNotification(req.params.id, 'host_announcement_posted', {
+        announcementPreview: announcementPreview(trimmedMessage),
+        entityId: post.id,
+        tag: `group-${req.params.id}-post-${post.id}`,
+      }, {
+        entityId: post.id,
+      }).catch((err) => {
+        console.error('Group post push failed', err instanceof Error ? err.message : err);
+      });
     }
     res.status(201).json({ id: post.id, success: true, status });
   } catch (err) {
@@ -693,19 +709,30 @@ groupsRouter.put('/:id/posts/:postId/moderate', async (req: Request, res: Respon
     return;
   }
   const status = (req.body as { status?: string }).status === 'approved' ? 'approved' : 'rejected';
-  const row = await queryOne<{ id: string }>(
+  const row = await queryOne<{ id: string; message: string }>(
     `UPDATE groupposts
      SET status = $3,
          active = CASE WHEN $3 = 'rejected' THEN FALSE ELSE TRUE END,
          approvedat = CASE WHEN $3 = 'approved' THEN now() ELSE approvedat END,
          approvedby = CASE WHEN $3 = 'approved' THEN $2 ELSE approvedby END
      WHERE groupid = $1 AND id = $4
-     RETURNING id`,
+     RETURNING id, message`,
     [req.params.id, req.userId, status, req.params.postId]
   );
   if (!row) {
     res.status(404).json({ error: 'Post not found' });
     return;
+  }
+  if (status === 'approved') {
+    void sendGroupNotification(req.params.id, 'host_announcement_posted', {
+      announcementPreview: announcementPreview(row.message),
+      entityId: row.id,
+      tag: `group-${req.params.id}-post-${row.id}`,
+    }, {
+      entityId: row.id,
+    }).catch((err) => {
+      console.error('Group post approval push failed', err instanceof Error ? err.message : err);
+    });
   }
   res.json({ success: true, id: row.id, status });
 });

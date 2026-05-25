@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, BellOff, Send } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, NotificationCategory } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import {
   getExistingPushSubscription,
@@ -28,6 +30,7 @@ function statusText(status: PushSubscriptionStatus | 'idle' | 'checking') {
 
 export default function PushNotificationSettings() {
   const userId = useAuthStore((state) => state.user?.guid);
+  const qc = useQueryClient();
   const supported = useMemo(() => isPushSupported(), []);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => {
     if (!supported) return 'unsupported';
@@ -38,6 +41,17 @@ export default function PushNotificationSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const showIosGuidance = supported && isLikelyIos() && !isStandalonePwa();
+  const { data: preferencesData } = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => api.getNotificationPreferences(),
+  });
+  const updatePreferenceMutation = useMutation({
+    mutationFn: ({ category, enabled }: { category: NotificationCategory; enabled: boolean }) =>
+      api.updateNotificationPreference(category, { enabled }),
+    onSuccess: (result) => {
+      qc.setQueryData(['notification-preferences'], { preferences: result.preferences });
+    },
+  });
 
   useEffect(() => {
     if (!supported) {
@@ -116,6 +130,42 @@ export default function PushNotificationSettings() {
       <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-2 text-sm text-pit-text">
         <p>{statusText(status)}</p>
         <p className="mt-1 text-xs text-pit-muted">Browser permission: {permission}</p>
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <h4 className="text-sm font-semibold text-white">Notification categories</h4>
+          <p className="text-xs leading-5 text-pit-muted">These apply to every device signed into your account. Social nudges start off by default.</p>
+        </div>
+        <div className="grid gap-2">
+          {(preferencesData?.preferences ?? []).map((preference) => (
+            <button
+              key={preference.category}
+              type="button"
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                preference.enabled
+                  ? 'border-pit-teal/40 bg-pit-teal/10'
+                  : 'border-pit-border bg-pit-bg/45'
+              }`}
+              disabled={updatePreferenceMutation.isPending}
+              onClick={() => updatePreferenceMutation.mutate({
+                category: preference.category,
+                enabled: !preference.enabled,
+              })}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-white">{preference.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  preference.enabled ? 'bg-pit-teal/20 text-pit-teal' : 'bg-pit-border/50 text-pit-muted'
+                }`}>
+                  {preference.enabled ? 'On' : 'Off'}
+                </span>
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-pit-text">{preference.description}</span>
+              <span className="mt-1 block text-[11px] leading-4 text-pit-muted">{preference.example}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {showIosGuidance && (

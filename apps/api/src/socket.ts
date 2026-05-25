@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import { query, queryOne } from './db';
 import { getClientUrl } from './config';
 import { BlindLevel, TimerState } from './types';
+import { sendTournamentNotification } from './lib/server/notifications/notificationService';
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 const timerState = new Map<string, TimerState>();
@@ -41,13 +42,16 @@ export function initSocket(httpServer: HttpServer): void {
 
     socket.on('timer-next', async ({ tournamentId }: { tournamentId: string }) => {
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
+      const previousLevel = state.currentlevel;
       advanceLevel(state);
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
+      if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
 
     socket.on('timer-prev', async ({ tournamentId }: { tournamentId: string }) => {
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
+      const previousLevel = state.currentlevel;
       const previousBlind = getPreviousBlind(state);
       if (previousBlind) {
         state.currentlevel = previousBlind.level;
@@ -55,6 +59,7 @@ export function initSocket(httpServer: HttpServer): void {
       state.remainingsecs = (getCurrentBlind(state)?.minutes ?? 20) * 60;
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
+      if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
 
     socket.on('timer-adjust', async ({ tournamentId, deltaSeconds }: { tournamentId: string; deltaSeconds: number }) => {
@@ -69,12 +74,14 @@ export function initSocket(httpServer: HttpServer): void {
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const targetBlind = state.blinds.find((blind) => blind.level === Number(level));
       if (!targetBlind) return;
+      const previousLevel = state.currentlevel;
       state.currentlevel = targetBlind.level;
       state.remainingsecs = Math.max((targetBlind.minutes ?? 20) * 60, 60);
       timerState.set(tournamentId, state);
       if (state.running) startInterval(tournamentId);
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
+      if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
   });
 }
@@ -91,8 +98,12 @@ function startInterval(tournamentId: string): void {
     tickCount += 1;
 
     if (state.remainingsecs <= 0) {
+      const previousLevel = state.currentlevel;
       advanceLevel(state);
+      if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     }
+
+    maybeNotifyTimerWarnings(state);
 
     io.to(`t:${tournamentId}`).emit('timer-tick', {
       remainingsecs: state.remainingsecs,
@@ -131,6 +142,64 @@ function advanceLevel(state: TimerState): void {
   }
   state.currentlevel = nextBlind.level;
   state.remainingsecs = (nextBlind?.minutes ?? 20) * 60;
+}
+
+function isBreakBlind(blind: BlindLevel | undefined): boolean {
+  return Boolean(blind && (/^break\b/i.test(String(blind.label ?? '')) || (Number(blind.smallblind) === 0 && Number(blind.bigblind) === 0)));
+}
+
+function notifyLevelChanged(state: TimerState): void {
+  const blind = getCurrentBlind(state);
+  if (!blind) return;
+  const isBreak = isBreakBlind(blind);
+  void sendTournamentNotification(state.tournamentid, isBreak ? 'break_started' : 'blinds_level_up', {
+    levelNumber: state.currentlevel,
+    smallBlind: Number(blind.smallblind ?? 0),
+    bigBlind: Number(blind.bigblind ?? 0),
+    ante: Number(blind.ante ?? 0),
+    breakMinutes: Number(blind.minutes ?? 0),
+  }, {
+    audience: 'active-participants-and-admins',
+    entityId: `${state.tournamentid}:level:${state.currentlevel}`,
+  }).catch((err) => {
+    console.error('Timer push notification failed', err instanceof Error ? err.message : err);
+  });
+}
+
+function maybeNotifyTimerWarnings(state: TimerState): void {
+  const blind = getCurrentBlind(state);
+  if (!blind) return;
+  if (isBreakBlind(blind) && state.remainingsecs === 120) {
+    void sendTournamentNotification(state.tournamentid, 'break_ending_soon', {
+      levelNumber: state.currentlevel,
+      minutesRemaining: 2,
+    }, {
+      audience: 'active-participants-and-admins',
+      entityId: `${state.tournamentid}:break-ending:${state.currentlevel}`,
+    }).catch((err) => {
+      console.error('Break ending push notification failed', err instanceof Error ? err.message : err);
+    });
+  }
+
+  if (state.remainingsecs !== 300 && state.remainingsecs !== 60) return;
+  void notifyRebuyPeriodEnding(state);
+}
+
+async function notifyRebuyPeriodEnding(state: TimerState): Promise<void> {
+  const row = await queryOne<{ rebuylastlevel: number | null }>(
+    `SELECT CAST(rebuylastlevel AS INT) AS rebuylastlevel
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [state.tournamentid]
+  );
+  if (row?.rebuylastlevel == null || Number(row.rebuylastlevel) !== Number(state.currentlevel)) return;
+  await sendTournamentNotification(state.tournamentid, 'rebuy_period_ending', {
+    levelNumber: state.currentlevel,
+    minutesRemaining: Math.ceil(state.remainingsecs / 60),
+  }, {
+    audience: 'active-participants-and-admins',
+    entityId: `${state.tournamentid}:rebuy-ending:${state.currentlevel}:${state.remainingsecs}`,
+  });
 }
 
 async function loadTimerState(tournamentId: string): Promise<TimerState> {

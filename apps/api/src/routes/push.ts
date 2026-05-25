@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
-import { sendPushNotification, PushSubscriptionRow } from '../lib/server/sendPushNotification';
+import { PushSubscriptionRow } from '../lib/server/sendPushNotification';
+import { isNotificationCategory } from '../lib/server/notifications/types';
+import {
+  getNotificationPreferencesForUser,
+  sendNotificationToUser,
+  setNotificationPreference,
+} from '../lib/server/notifications/notificationService';
 
 export const pushRouter = Router();
 pushRouter.use(requireAuth);
@@ -73,6 +79,23 @@ pushRouter.post('/unsubscribe', async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+pushRouter.get('/preferences', async (req: Request, res: Response) => {
+  const preferences = await getNotificationPreferencesForUser(req.userId!);
+  res.json({ preferences });
+});
+
+pushRouter.put('/preferences/:category', async (req: Request, res: Response) => {
+  if (!isNotificationCategory(req.params.category)) {
+    res.status(400).json({ error: 'Unknown notification category.' });
+    return;
+  }
+  const enabled = Boolean((req.body as { enabled?: boolean }).enabled);
+  const digestOnly = Boolean((req.body as { digestOnly?: boolean }).digestOnly);
+  await setNotificationPreference(req.userId!, req.params.category, enabled, digestOnly);
+  const preferences = await getNotificationPreferencesForUser(req.userId!);
+  res.json({ success: true, preferences });
+});
+
 pushRouter.post('/test', async (req: Request, res: Response) => {
   const subscriptions = await query<PushSubscriptionRow>(
     `SELECT id, userid, endpoint, p256dh, auth
@@ -87,17 +110,9 @@ pushRouter.post('/test', async (req: Request, res: Response) => {
     return;
   }
 
-  const results = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendPushNotification(subscription, {
-        type: 'push_test',
-        title: 'ThePokerPlanner alerts enabled',
-        body: "You'll get reminders and game updates here.",
-        url: '/',
-        tag: 'push-test',
-      })
-    )
-  );
+  const result = await sendNotificationToUser(req.userId!, 'test_notification', {
+    tag: `push-test-${Date.now()}`,
+  }, { skipPreferences: true, dedupe: false, entityType: 'user', entityId: req.userId! });
 
-  res.json({ success: true, attempted: subscriptions.length, sent: results.filter(Boolean).length });
+  res.json({ success: true, attempted: result.attempted, sent: result.sent });
 });

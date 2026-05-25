@@ -12,6 +12,7 @@ import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { generateVoicePreview } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
+import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export const publicRouter = Router();
 
@@ -343,6 +344,12 @@ publicRouter.post('/tournaments/:id/checkin/self', requireAuth, async (req: Requ
   }
 
   await assignSeatIfSeatingStarted(req.params.id, req.userId!);
+  void sendTournamentNotification(req.params.id, 'player_check_in_confirmed', {}, {
+    targetUserIds: [req.userId!],
+    entityId: `${req.params.id}:${req.userId}:checkin`,
+  }).catch((err) => {
+    console.error('Public check-in push failed', err instanceof Error ? err.message : err);
+  });
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-checkin' });
   res.json({ success: true });

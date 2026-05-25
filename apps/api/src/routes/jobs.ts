@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../db';
 import { sendLeagueEventReminderEmail, sendTournamentReminderEmail } from '../services/email';
 import { publicEmail } from '../privacy';
-import { sendLeagueNotification, sendTournamentNotification } from '../lib/server/sendPushNotification';
+import { sendLeagueNotification, sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
 export const jobsRouter = Router();
 
@@ -156,14 +156,14 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
     tournamentPushRows.map(async (row) => {
       const rawTime = row.tourneytime ? row.tourneytime.slice(0, 5) : '';
       const body = rawTime ? `${row.name} starts today at ${rawTime}.` : `${row.name} starts today.`;
-      const sent = await sendTournamentNotification(row.tournamentid, {
-        type: 'tournament_starting_soon',
+      const sent = await sendTournamentNotification(row.tournamentid, 'tournament_starting_soon', {
+        tournamentName: row.name,
         title: 'Tournament reminder',
         body,
-        url: `/lobby/${row.tournamentid}`,
         tag: `tournament-${row.tournamentid}-daily-reminder`,
+        url: `/lobby/${row.tournamentid}`,
       });
-      if (sent > 0) {
+      if (sent.sent > 0) {
         await query(
           `UPDATE tournamentplayers
            SET reminderpushsentat = now()
@@ -245,14 +245,12 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
 
   const leaguePushResults = await Promise.allSettled(
     leaguePushRows.map(async (row) => {
-      const sent = await sendLeagueNotification(row.leagueid, {
-        type: 'league_event_reminder',
-        title: 'League event today',
-        body: `${row.eventname} is scheduled today.`,
-        url: '/',
+      const sent = await sendLeagueNotification(row.leagueid, 'season_milestone', {
+        message: `${row.eventname} is scheduled today.`,
         tag: `league-${row.leagueid}-event-${row.eventid}-daily-reminder`,
+        entityId: row.eventid,
       });
-      if (sent > 0) {
+      if (sent.sent > 0) {
         await query(
           `INSERT INTO leagueeventreminders (eventid, userid, pushsentat)
            SELECT $1, lm.userid, now()
