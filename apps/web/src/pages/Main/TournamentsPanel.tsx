@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
-import { api, Group, Tournament } from '../../api/client';
+import { api, Group, League, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 const SETUP_CARD_DISMISSED_KEY = 'thepokerplanner.dashboard.setup.dismissed';
@@ -33,6 +33,11 @@ export default function TournamentsPanel() {
   const { data: groups = [] } = useQuery<Group[]>({
     queryKey: ['groups'],
     queryFn: api.getGroups,
+  });
+
+  const { data: leagues = [] } = useQuery<League[]>({
+    queryKey: ['leagues'],
+    queryFn: api.getLeagues,
   });
 
   const createMutation = useMutation({
@@ -111,6 +116,7 @@ export default function TournamentsPanel() {
       <DashboardOverview
         me={me}
         groups={groups}
+        leagueCount={leagues.length}
         upcomingCount={upcoming.length}
         historyCount={history.length}
         registeredUpcomingCount={registeredUpcomingCount}
@@ -189,6 +195,7 @@ export default function TournamentsPanel() {
 function DashboardOverview({
   me,
   groups,
+  leagueCount,
   upcomingCount,
   historyCount,
   registeredUpcomingCount,
@@ -204,6 +211,7 @@ function DashboardOverview({
 }: {
   me?: Awaited<ReturnType<typeof api.me>>;
   groups: Group[];
+  leagueCount: number;
   upcomingCount: number;
   historyCount: number;
   registeredUpcomingCount: number;
@@ -248,7 +256,7 @@ function DashboardOverview({
           <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={scheduleView === 'upcoming'} onClick={() => onScheduleViewChange('upcoming')} />
           <DashboardStat icon={Users} label="Groups" value={groups.length} onClick={onOpenGroups} />
           <DashboardStat icon={Medal} label="History" value={historyCount} active={scheduleView === 'history'} onClick={() => onScheduleViewChange('history')} />
-          <DashboardStat icon={ListOrdered} label="Leagues" value="Open" onClick={onOpenLeagues} />
+          <DashboardStat icon={ListOrdered} label="Leagues" value={leagueCount} onClick={onOpenLeagues} />
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">

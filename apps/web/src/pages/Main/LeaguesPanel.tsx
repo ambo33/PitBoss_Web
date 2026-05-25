@@ -809,6 +809,14 @@ function MemberLeagueView({
   const dueEvents = detail.events.filter((event) => isEventDueToDate(event, today) || resultByEvent.has(event.eventid));
   const remainingEvents = detail.events.filter((event) => !resultByEvent.has(event.eventid) && isEventRemaining(event, today));
   const nextEvent = [...remainingEvents].sort(compareLeagueEvents)[0] ?? null;
+  const resultEventIds = new Set(detail.results.map((result) => result.eventid));
+  const completedEventIds = new Set(
+    detail.events
+      .filter((event) => isEventDueToDate(event, today) || resultEventIds.has(event.eventid))
+      .map((event) => event.eventid)
+  );
+  const playedCompletedEventCount = new Set(userResults.filter((result) => completedEventIds.has(result.eventid)).map((result) => result.eventid)).size;
+  const eventsPlayedLabel = completedEventIds.size === 0 ? '0' : `${playedCompletedEventCount} of ${completedEventIds.size}`;
   const dueEventFees = dueEvents.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
   const totalDueToDate = Number(detail.league.leaguefee || 0) + dueEventFees;
   const totalPaid = currentUserId
@@ -864,13 +872,10 @@ function MemberLeagueView({
                 <span className="chip">{formatNumber(Number(standing?.totalpoints || 0))} pts</span>
               </div>
               <div className="grid gap-3 md:grid-cols-3">
-                <MemberMoneyStat label="Events played" value={standing?.eventsplayed ?? 0} />
+                <MemberMoneyStat label="Events played" value={eventsPlayedLabel} />
                 <MemberMoneyStat label="Paid" value={formatCurrency(totalPaid)} accent="teal" />
                 <MemberMoneyStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
               </div>
-              <p className="mt-3 text-xs leading-5 text-pit-muted">
-                Future-dated event fees are ignored until their event date arrives.
-              </p>
             </section>
 
             <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
