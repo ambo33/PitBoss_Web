@@ -5,6 +5,7 @@ import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMe
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useAuthStore } from '../../store/auth';
 
 const DEFAULT_POINTS_PREVIEW = 'Scaled points by field size';
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
@@ -145,6 +146,7 @@ function LeagueCard({ league, onClick }: { league: League; onClick: () => void }
 
 function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>; onBack: () => void }) {
   const qc = useQueryClient();
+  const currentUserId = useAuthStore((state) => state.user?.guid ?? null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [seasonModalOpen, setSeasonModalOpen] = useState(false);
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
@@ -262,10 +264,24 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   }, [detail, selectedEvent]);
   useEffect(() => {
     if (!detail) return;
-    if (!selectedRankUserId || !detail.standings.some((standing) => standing.userid === selectedRankUserId)) {
+    const preferredUserId = detail.league.isadmin
+      ? selectedRankUserId
+      : currentUserId && detail.standings.some((standing) => standing.userid === currentUserId)
+        ? currentUserId
+        : selectedRankUserId;
+    if (!preferredUserId || !detail.standings.some((standing) => standing.userid === preferredUserId)) {
       setSelectedRankUserId(detail.standings[0]?.userid ?? null);
+      return;
     }
-  }, [detail, selectedRankUserId]);
+    if (!detail.league.isadmin && selectedRankUserId !== preferredUserId) {
+      setSelectedRankUserId(preferredUserId);
+    }
+  }, [currentUserId, detail, selectedRankUserId]);
+  useEffect(() => {
+    if (detail && !detail.league.isadmin && activeDetailTab !== 'overview') {
+      setActiveDetailTab('overview');
+    }
+  }, [activeDetailTab, detail]);
   const currentEvent = (selectedEvent && detail?.events.find((event) => event.eventid === selectedEvent.eventid)) || detail?.events[0] || null;
   const eventResults = useMemo(() => {
     if (!detail || !currentEvent) return [];
@@ -275,6 +291,21 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   if (isLoading || !detail) return <LoadingSpinner className="mt-16" />;
   const activeMembers = detail.members.filter((member) => member.approved && member.participating);
   const selectedSeason = detail.seasons.find((season) => season.seasonid === detail.selectedseasonid);
+
+  if (!detail.league.isadmin) {
+    return (
+      <MemberLeagueView
+        detail={detail}
+        currentUserId={currentUserId}
+        selectedSeason={selectedSeason}
+        onBack={onBack}
+        onSeasonChange={(seasonId) => {
+          setSelectedSeasonId(seasonId);
+          setSelectedEvent(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -298,67 +329,63 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               </option>
             ))}
           </select>
-          {detail.league.isadmin && (
-            <>
-              <button className="btn-ghost h-10 shrink-0 gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
-                <CalendarDays size={14} />
-                +Season
+          <button className="btn-ghost h-10 shrink-0 gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
+            <CalendarDays size={14} />
+            +Season
+          </button>
+          <button
+            className="btn-primary h-10 shrink-0 gap-2 px-3 py-2 text-xs"
+            onClick={() => {
+              setActiveDetailTab('events');
+              setEventModalOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            Event
+          </button>
+          <details className="relative shrink-0 [&_summary::-webkit-details-marker]:hidden">
+            <summary className="btn-ghost h-10 cursor-pointer gap-2 px-3 py-2 text-xs">
+              <MoreVertical size={14} />
+              Manage
+            </summary>
+            <div className="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl">
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setPointsModalOpen(true)}>
+                <Settings size={14} />
+                Points
+              </button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setFinalModalOpen(true)}>
+                <Trophy size={14} />
+                Final
               </button>
               <button
-                className="btn-primary h-10 shrink-0 gap-2 px-3 py-2 text-xs"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
                 onClick={() => {
-                  setActiveDetailTab('events');
-                  setEventModalOpen(true);
+                  setActiveDetailTab('fees');
+                  setPaymentModalOpen(true);
                 }}
               >
-                <Plus size={14} />
-                Event
+                <DollarSign size={14} />
+                Payment
               </button>
-              <details className="relative shrink-0 [&_summary::-webkit-details-marker]:hidden">
-                <summary className="btn-ghost h-10 cursor-pointer gap-2 px-3 py-2 text-xs">
-                  <MoreVertical size={14} />
-                  Manage
-                </summary>
-                <div className="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl">
-                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setPointsModalOpen(true)}>
-                    <Settings size={14} />
-                    Points
-                  </button>
-                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setFinalModalOpen(true)}>
-                    <Trophy size={14} />
-                    Final
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
-                    onClick={() => {
-                      setActiveDetailTab('fees');
-                      setPaymentModalOpen(true);
-                    }}
-                  >
-                    <DollarSign size={14} />
-                    Payment
-                  </button>
-                  <div className="my-1 h-px bg-pit-border" />
-                  <button
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={detail.seasons.length <= 1 || deleteSeasonMutation.isPending}
-                    onClick={() => setDeleteSeasonConfirmOpen(true)}
-                  >
-                    <Trash2 size={14} />
-                    Delete season
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={deleteLeagueMutation.isPending}
-                    onClick={() => setDeleteConfirmOpen(true)}
-                  >
-                    <Trash2 size={14} />
-                    Delete league
-                  </button>
-                </div>
-              </details>
-            </>
-          )}
+              <div className="my-1 h-px bg-pit-border" />
+              <button
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={detail.seasons.length <= 1 || deleteSeasonMutation.isPending}
+                onClick={() => setDeleteSeasonConfirmOpen(true)}
+              >
+                <Trash2 size={14} />
+                Delete season
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={deleteLeagueMutation.isPending}
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 size={14} />
+                Delete league
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -756,6 +783,199 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MemberLeagueView({
+  detail,
+  currentUserId,
+  selectedSeason,
+  onBack,
+  onSeasonChange,
+}: {
+  detail: LeagueDetail;
+  currentUserId: string | null;
+  selectedSeason?: LeagueDetail['seasons'][number];
+  onBack: () => void;
+  onSeasonChange: (seasonId: string) => void;
+}) {
+  const member = currentUserId ? detail.members.find((item) => item.userid === currentUserId) ?? null : null;
+  const standing = currentUserId ? detail.standings.find((item) => item.userid === currentUserId) ?? null : null;
+  const rank = standing ? detail.standings.findIndex((item) => item.userid === standing.userid) + 1 : null;
+  const userResults = currentUserId ? detail.results.filter((result) => result.userid === currentUserId) : [];
+  const resultByEvent = new Map(userResults.map((result) => [result.eventid, result]));
+  const today = todayDateString();
+  const dueEvents = detail.events.filter((event) => isEventDueToDate(event, today) || resultByEvent.has(event.eventid));
+  const remainingEvents = detail.events.filter((event) => !resultByEvent.has(event.eventid) && isEventRemaining(event, today));
+  const nextEvent = [...remainingEvents].sort(compareLeagueEvents)[0] ?? null;
+  const dueEventFees = dueEvents.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
+  const totalDueToDate = Number(detail.league.leaguefee || 0) + dueEventFees;
+  const totalPaid = currentUserId
+    ? detail.payments.filter((payment) => payment.userid === currentUserId).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+    : 0;
+  const openBalance = Math.max(0, totalDueToDate - totalPaid);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <button className="shrink-0 text-sm text-pit-muted transition-colors hover:text-white" onClick={onBack} type="button">
+          Back to leagues
+        </button>
+        <select
+          className="input h-10 w-40 shrink-0 py-2 text-xs sm:w-52"
+          value={detail.selectedseasonid}
+          onChange={(event) => onSeasonChange(event.target.value)}
+        >
+          {detail.seasons.map((season) => (
+            <option key={season.seasonid} value={season.seasonid}>
+              {season.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
+        <div className="grid gap-5 border-b border-pit-border bg-[radial-gradient(circle_at_18%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0">
+            <p className="eyebrow">My league story</p>
+            <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
+            <p className="mt-2 text-sm leading-6 text-pit-text">
+              {selectedSeason?.name ?? 'Current season'}{selectedSeason ? ` runs ${String(selectedSeason.begindate).slice(0, 10)} through ${String(selectedSeason.enddate).slice(0, 10)}.` : ''}
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <MemberStoryStat label="Current place" value={rank ? `#${rank}` : '-'} />
+              <MemberStoryStat label="Avg finish" value={standing?.averagefinish ? standing.averagefinish.toFixed(1) : '-'} />
+              <MemberStoryStat label="Remaining" value={remainingEvents.length} />
+              <MemberStoryStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+            </div>
+          </div>
+          <NextLeagueEventCard detail={detail} event={nextEvent} />
+        </div>
+
+        <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="eyebrow">Season performance</p>
+                  <h3 className="mt-1 text-lg font-bold text-white">{member?.displayname ?? 'League member'}</h3>
+                </div>
+                <span className="chip">{formatNumber(Number(standing?.totalpoints || 0))} pts</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <MemberMoneyStat label="Events played" value={standing?.eventsplayed ?? 0} />
+                <MemberMoneyStat label="Paid" value={formatCurrency(totalPaid)} accent="teal" />
+                <MemberMoneyStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-pit-muted">
+                Future-dated event fees are ignored until their event date arrives.
+              </p>
+            </section>
+
+            <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="font-semibold text-white">My event finishes</h4>
+                <Trophy size={15} className="text-pit-gold" />
+              </div>
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                {detail.events.map((event) => {
+                  const result = resultByEvent.get(event.eventid);
+                  const points = result ? Number(result.points || 0) + Number(result.showupbonuspoints || 0) : 0;
+                  return (
+                    <div key={event.eventid} className="grid grid-cols-[minmax(0,1fr)_88px] gap-3 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-white">{event.name}</p>
+                        <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? String(event.eventdate).slice(0, 10) : 'Date TBD'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-pit-teal">{formatNumber(points)} pts</p>
+                        <p className="mt-1 text-xs text-pit-text">{result ? (result.dnf ? 'DNF' : `${result.placed}${ordinal(result.placed)} place`) : 'No finish'}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {detail.events.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No events scheduled yet.</p>}
+              </div>
+            </section>
+          </div>
+
+          <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-white">Player rankings</h3>
+              <ListOrdered size={16} className="text-pit-teal" />
+            </div>
+            <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
+              {detail.standings.map((item, index) => (
+                <div
+                  key={item.userid}
+                  className={`grid grid-cols-[42px_minmax(0,1fr)_82px] items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    item.userid === currentUserId ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-card/60'
+                  }`}
+                >
+                  <span className="font-mono text-pit-teal">#{index + 1}</span>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{item.displayname ?? 'Player'}</p>
+                    <p className="mt-1 text-xs text-pit-muted">{item.eventsplayed} played{item.averagefinish ? ` - avg ${item.averagefinish.toFixed(1)}` : ''}</p>
+                  </div>
+                  <span className="text-right font-mono text-white">{formatNumber(Number(item.totalpoints || 0))}</span>
+                </div>
+              ))}
+              {detail.standings.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">Standings will appear once finishes are logged.</p>}
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MemberStoryStat({ label, value, accent = 'white' }: { label: string; value: string | number; accent?: 'white' | 'teal' | 'gold' }) {
+  const colorClass = accent === 'teal' ? 'text-pit-teal' : accent === 'gold' ? 'text-pit-gold' : 'text-white';
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+      <p className="text-[10px] uppercase tracking-wide text-pit-muted">{label}</p>
+      <p className={`mt-1 text-2xl font-black ${colorClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function MemberMoneyStat({ label, value, accent = 'white' }: { label: string; value: string | number; accent?: 'white' | 'teal' | 'gold' }) {
+  const colorClass = accent === 'teal' ? 'text-pit-teal' : accent === 'gold' ? 'text-pit-gold' : 'text-white';
+  return (
+    <div className="rounded-lg border border-pit-border bg-pit-card/60 p-3">
+      <p className="text-xs uppercase tracking-wide text-pit-muted">{label}</p>
+      <p className={`mt-2 text-2xl font-black ${colorClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function NextLeagueEventCard({ detail, event }: { detail: LeagueDetail; event: LeagueEvent | null }) {
+  return (
+    <div className="rounded-xl border border-pit-border bg-black/20 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-semibold text-white">Next event</h3>
+        <CalendarDays size={16} className="text-pit-teal" />
+      </div>
+      {event ? (
+        <div>
+          <p className="text-xl font-black text-white">{event.name}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-lg border border-pit-border bg-pit-bg/70 p-3">
+              <p className="text-xs uppercase tracking-wide text-pit-muted">Date</p>
+              <p className="mt-1 font-semibold text-white">{event.eventdate ? String(event.eventdate).slice(0, 10) : 'TBD'}</p>
+            </div>
+            <div className="rounded-lg border border-pit-border bg-pit-bg/70 p-3">
+              <p className="text-xs uppercase tracking-wide text-pit-muted">Fee</p>
+              <p className="mt-1 font-semibold text-white">{formatCurrency(getLeagueEventFee(detail, event))}</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="rounded-lg border border-pit-border bg-pit-bg/70 p-3 text-sm leading-6 text-pit-text">
+          No remaining events are scheduled for you in this season.
+        </p>
+      )}
     </div>
   );
 }
@@ -1772,6 +1992,35 @@ function formatNumber(value: number) {
 
 function getLeagueEventFee(detail: LeagueDetail, event: LeagueEvent) {
   return event.eventfee == null ? Number(detail.league.pereventfee || 0) : Number(event.eventfee || 0);
+}
+
+function todayDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function leagueEventDate(event: LeagueEvent) {
+  return event.eventdate ? String(event.eventdate).slice(0, 10) : '';
+}
+
+function isEventDueToDate(event: LeagueEvent, today: string) {
+  const date = leagueEventDate(event);
+  return Boolean(date && date <= today);
+}
+
+function isEventRemaining(event: LeagueEvent, today: string) {
+  const date = leagueEventDate(event);
+  return !date || date >= today;
+}
+
+function compareLeagueEvents(a: LeagueEvent, b: LeagueEvent) {
+  const aDate = leagueEventDate(a) || '9999-12-31';
+  const bDate = leagueEventDate(b) || '9999-12-31';
+  if (aDate !== bDate) return aDate.localeCompare(bDate);
+  return Number(a.eventnumber ?? 9999) - Number(b.eventnumber ?? 9999);
 }
 
 function formatCurrency(value: number) {

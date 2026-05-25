@@ -333,6 +333,28 @@ export async function sendTournamentReminderEmail(
   });
 }
 
+export async function sendLeagueEventReminderEmail(
+  email: string,
+  leagueId: string,
+  leagueName: string,
+  eventName: string,
+  eventDate?: string | null
+): Promise<void> {
+  const eventDateText = eventDate ? eventDate.slice(0, 10) : 'today';
+  await sendMail({
+    to: email,
+    subject: `Reminder: ${eventName} is today`,
+    html: emailLayout({
+      eyebrow: 'League Event Reminder',
+      title: eventName,
+      intro: `${leagueName} has a league event scheduled for ${eventDateText}.`,
+      body: '<p style="margin:0;">Open ThePokerPlanner to check standings and event details.</p>',
+      ctaHref: `${appUrl}/?tab=leagues&league=${encodeURIComponent(leagueId)}`,
+      ctaLabel: 'Open League',
+    }),
+  });
+}
+
 export async function sendTournamentCancelledEmail(
   email: string,
   tournamentName: string,

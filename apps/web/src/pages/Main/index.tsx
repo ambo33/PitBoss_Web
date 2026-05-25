@@ -10,6 +10,7 @@ import LeaguesPanel from './LeaguesPanel';
 import TournamentsPanel from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import Modal from '../../components/Modal';
+import PushNotificationSettings from '../../components/PushNotificationSettings';
 
 export default function MainPage() {
   const location = useLocation();
@@ -451,6 +452,8 @@ function ProfilePanel() {
           </p>
         </div>
       </section>
+
+      <PushNotificationSettings />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card space-y-4">

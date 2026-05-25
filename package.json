@@ -6,7 +6,10 @@
     "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
-    "generate:ai-demo-clips": "node scripts/generate-ai-demo-clips.mjs"
+    "test:league-workflows": "npm run test:league-workflows -w apps/api",
+    "generate:ai-demo-clips": "node scripts/generate-ai-demo-clips.mjs",
+    "generate:vapid": "npx web-push generate-vapid-keys",
+    "send:daily-reminders": "node scripts/run-daily-reminders.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

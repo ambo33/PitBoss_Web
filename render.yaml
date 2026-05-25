@@ -20,3 +20,11 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:support@thepokerplanner.com
+      - key: JOB_SECRET
+        sync: false

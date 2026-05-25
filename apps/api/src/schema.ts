@@ -311,7 +311,11 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE groupmembers
-      ADD COLUMN IF NOT EXISTS pushalertsenabled BOOL DEFAULT FALSE
+      ADD COLUMN IF NOT EXISTS pushalertsenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE groupmembers
+      ALTER COLUMN pushalertsenabled SET DEFAULT TRUE
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS feedback (
@@ -425,6 +429,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       ALTER TABLE tournamentplayers
       ADD COLUMN IF NOT EXISTS reminderemailsentat TIMESTAMPTZ
+    `);
+    await client.query(`
+      ALTER TABLE tournamentplayers
+      ADD COLUMN IF NOT EXISTS reminderpushsentat TIMESTAMPTZ
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS tournamentdeclines (
@@ -562,7 +570,12 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`ALTER TABLE leaguemembers ADD COLUMN IF NOT EXISTS participating BOOL DEFAULT TRUE`);
+    await client.query(`ALTER TABLE leaguemembers ADD COLUMN IF NOT EXISTS emailalertsenabled BOOL DEFAULT TRUE`);
+    await client.query(`ALTER TABLE leaguemembers ADD COLUMN IF NOT EXISTS pushalertsenabled BOOL DEFAULT TRUE`);
+    await client.query(`ALTER TABLE leaguemembers ALTER COLUMN pushalertsenabled SET DEFAULT TRUE`);
     await client.query(`UPDATE leaguemembers SET participating = TRUE WHERE participating IS NULL`);
+    await client.query(`UPDATE leaguemembers SET emailalertsenabled = TRUE WHERE emailalertsenabled IS NULL`);
+    await client.query(`UPDATE leaguemembers SET pushalertsenabled = TRUE WHERE pushalertsenabled IS NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leagueseasonparticipants (
         seasonid UUID NOT NULL REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
@@ -662,6 +675,35 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leaguepayments_league
       ON leaguepayments (leagueid, userid)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueeventreminders (
+        eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        emailsentat TIMESTAMPTZ,
+        pushsentat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (eventid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pushsubscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        userid UUID REFERENCES users(guid) ON DELETE CASCADE,
+        endpoint STRING NOT NULL UNIQUE,
+        p256dh STRING NOT NULL,
+        auth STRING NOT NULL,
+        useragent STRING(500),
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        disabledat TIMESTAMPTZ,
+        lastsuccessat TIMESTAMPTZ,
+        lastfailureat TIMESTAMPTZ
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pushsubscriptions_user_active
+      ON pushsubscriptions (userid, disabledat)
     `);
     await client.query(`
       ALTER TABLE groupcoins

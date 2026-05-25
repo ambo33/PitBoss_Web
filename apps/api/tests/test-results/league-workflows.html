@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>League Workflow Regression Report</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090d;
+      --panel: #11141b;
+      --panel-2: #171a22;
+      --line: #2a3040;
+      --text: #f7f8ff;
+      --muted: #9aa1b8;
+      --teal: #11b6b4;
+      --green: #38d996;
+      --red: #ff6b7a;
+      --yellow: #f7d85c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, rgba(17, 182, 180, 0.16), transparent 34rem), var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    .hero {
+      border: 1px solid rgba(17, 182, 180, 0.35);
+      background: linear-gradient(135deg, rgba(17, 182, 180, 0.12), rgba(17, 20, 27, 0.92));
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+    }
+    .eyebrow {
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 10px 0 8px;
+      font-size: clamp(30px, 5vw, 54px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    p {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+      margin: 0;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0 0;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(8, 10, 15, 0.55);
+      padding: 16px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 34px;
+      line-height: 1;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .case {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--green);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 14px 16px;
+      min-height: 92px;
+    }
+    .case.fail {
+      border-left-color: var(--red);
+    }
+    .case h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .fail .status { color: var(--red); }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 16px currentColor;
+    }
+    pre {
+      margin: 12px 0 0;
+      white-space: pre-wrap;
+      color: var(--yellow);
+      font-size: 12px;
+    }
+    .stamp {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 760px) {
+      main { width: min(100vw - 20px, 640px); padding-top: 12px; }
+      .summary, .grid { grid-template-columns: 1fr; }
+      .hero { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">ThePokerPlanner QA</div>
+      <h1>League Workflow Regression Report</h1>
+      <p>Saved workflow checks for league creation math, player finishes, point chart changes, standings, show-up bonuses, DNF handling, and final table multipliers.</p>
+      <div class="summary">
+        <div class="metric"><span>Total scenarios</span><strong>12</strong></div>
+        <div class="metric"><span>Passed</span><strong style="color: var(--green)">12</strong></div>
+        <div class="metric"><span>Failed</span><strong style="color: var(--green)">0</strong></div>
+      </div>
+      <div class="stamp">Generated 5/25/2026, 1:18:50 PM</div>
+    </section>
+    <section class="grid">
+      
+        <article class="case ">
+          <h2>1. Help-me-decide point chart creates one score per player and totals player count x 100</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>2. Generated placement scores are monotonic so 9th never beats 8th</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>3. Spreadsheet-style 36-player chart preserves the known 4,311-point payout shape</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>4. DNF and missing placements never award placement points</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>5. JSON point charts normalize string numbers before scoring</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>6. Standings add placement points and show-up bonus numerically, not by string concatenation</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>7. Best-finish scoring keeps only top finishes but keeps every show-up bonus</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>8. Non-participating and unapproved users stay out of season standings</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>9. Re-logging a finish updates placement and recalculates that player only once</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>10. Changing the point chart recalculates standings without touching show-up bonuses</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>11. Changing final multipliers does not change regular-season points</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>12. Default final multipliers start strongest at 1st place instead of zeroing the leader</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+    </section>
+  </main>
+</body>
+</html>
