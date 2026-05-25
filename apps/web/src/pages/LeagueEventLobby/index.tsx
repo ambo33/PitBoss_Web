@@ -60,7 +60,7 @@ export default function LeagueEventLobbyPage() {
           <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-200">
             <CheckCircle2 size={18} />
             <span>
-              Logged: {myResult.placed}{ordinal(myResult.placed)} place, {myResult.points + myResult.showupbonuspoints} points.
+              Logged: {myResult.placed}{ordinal(myResult.placed)} place, {Number(myResult.points || 0) + Number(myResult.showupbonuspoints || 0)} points.
             </span>
           </div>
         )}

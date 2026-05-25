@@ -589,11 +589,13 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         name STRING(160) NOT NULL,
         eventdate DATE,
         eventnumber INT,
+        eventfee DECIMAL(10,2),
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
+    await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventfee DECIMAL(10,2)`);
     await client.query(`
       UPDATE leagueevents e
       SET seasonid = (

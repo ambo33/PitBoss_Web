@@ -106,8 +106,8 @@ export default function Layout({
   const navItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || user?.issuperadmin);
 
   return (
-    <div className="min-h-screen bg-pit-bg">
-      <div className="flex min-h-screen">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-pit-bg">
+      <div className="flex min-h-screen min-w-0 max-w-full overflow-x-hidden">
         {!hideSidebar && (
           <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
           <div className={`border-b border-pit-border/60 py-5 ${compactSidebar ? 'px-3' : 'px-5'}`}>
@@ -192,7 +192,7 @@ export default function Layout({
           </aside>
         )}
 
-        <div className={`flex min-h-screen flex-1 flex-col ${contentMarginClass}`}>
+        <div className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden ${contentMarginClass}`}>
           <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/60 bg-pit-bg/80 backdrop-blur-md ${headerPaddingClass}`}>
             <div className="flex min-w-0 items-center gap-3">
               {back ? (
@@ -210,7 +210,7 @@ export default function Layout({
             {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
           </header>
 
-          <main className={`mx-auto w-full flex-1 ${mainPaddingClass} ${mainWidthClassName}`}>
+          <main className={`mx-auto w-full min-w-0 max-w-full flex-1 overflow-x-hidden ${mainPaddingClass} ${mainWidthClassName}`}>
             {children}
           </main>
         </div>

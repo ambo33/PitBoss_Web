@@ -97,6 +97,7 @@ type LeagueEventRow = {
   name: string;
   eventdate: string | null;
   eventnumber: number | null;
+  eventfee: number | null;
   resultcount?: number;
   active: boolean;
   createdat: string;
@@ -156,8 +157,16 @@ function createGuestEmail() {
 }
 
 function normalizePointsLookup(value: unknown): LeaguePointRule[] {
-  if (!Array.isArray(value)) return DEFAULT_POINTS_LOOKUP;
-  const rules = value
+  let source = value;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source) as unknown;
+    } catch {
+      source = null;
+    }
+  }
+  if (!Array.isArray(source)) return DEFAULT_POINTS_LOOKUP;
+  const rules = source
     .map((raw) => {
       const item = raw as Partial<LeaguePointRule>;
       const rawPlace = String(item.place ?? '').trim().toUpperCase();
@@ -200,11 +209,19 @@ function generatePointsLookup(playerCount: number, totalPoints?: number): League
 }
 
 function normalizeFinalMultipliers(value: unknown): LeagueFinalMultiplier[] {
-  const source = Array.isArray(value) ? value : Array.from({ length: 36 }, (_, index) => ({
+  let source = value;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source) as unknown;
+    } catch {
+      source = null;
+    }
+  }
+  const list = Array.isArray(source) ? source : Array.from({ length: 36 }, (_, index) => ({
     place: index + 1,
-    multiplier: index === 0 ? 0 : Math.max(2, 19 - index),
+    multiplier: Math.max(2, 20 - index),
   }));
-  const rules = source
+  const rules = list
     .map((raw) => {
       const item = raw as Partial<LeagueFinalMultiplier>;
       const place = Math.max(1, Math.round(Number(item.place)));
@@ -252,11 +269,11 @@ function buildStandings(members: LeagueMemberRow[], results: LeagueResultRow[], 
       const playerResults = results.filter((result) => result.userid === member.userid);
       const scoredFinishes = playerResults
         .filter((result) => !result.dnf && result.placed != null)
-        .map((result) => result.points)
+        .map((result) => Number(result.points || 0))
         .sort((a, b) => b - a)
         .slice(0, bestFinishCount);
       const showupBonus = playerResults.reduce((sum, result) => sum + Number(result.showupbonuspoints || 0), 0);
-      const scoredPoints = scoredFinishes.reduce((sum, points) => sum + points, 0);
+      const scoredPoints = scoredFinishes.reduce((sum, points) => sum + Number(points || 0), 0);
       const placements = playerResults
         .filter((result) => !result.dnf && result.placed != null)
         .map((result) => Number(result.placed));
@@ -367,6 +384,17 @@ async function addApprovedMembersToSeason(client: PoolClient, leagueId: string, 
   );
 }
 
+async function addMemberToActiveSeasons(client: PoolClient, leagueId: string, userId: string) {
+  await client.query(
+    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+     SELECT s.seasonid, s.leagueid, $2, TRUE
+     FROM leagueseasons s
+     WHERE s.leagueid = $1 AND COALESCE(s.active, TRUE) = TRUE
+     ON CONFLICT (seasonid, userid) DO UPDATE SET participating = TRUE`,
+    [leagueId, userId]
+  );
+}
+
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
@@ -398,7 +426,7 @@ async function createLeagueEventStubs(client: PoolClient, leagueId: string, seas
     const result = await client.query<LeagueEventRow>(
       `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventnumber)
        VALUES ($1, $2, $3, NULL, $4)
-       RETURNING eventid, leagueid, seasonid, name, eventdate, eventnumber, active, createdat`,
+       RETURNING eventid, leagueid, seasonid, name, eventdate, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
       [leagueId, seasonId, `Event #${number}`, number]
     );
     if (result.rows[0]) rows.push(result.rows[0]);
@@ -509,19 +537,21 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
         finalStartingBigBlind,
       ]
     );
-    const results = await client.query<{ resultid: string; placed: number | null; dnf: boolean }>(
-      `SELECT resultid, placed, dnf FROM leagueresults WHERE leagueid = $1`,
-      [req.params.id]
-    );
-    for (const result of results.rows) {
-      await client.query(
-        `UPDATE leagueresults SET points = $2, showupbonuspoints = $3, updatedat = now() WHERE resultid = $1`,
-        [
-          result.resultid,
-          pointsForPlace(pointsLookup, result.placed, result.dnf),
-          result.dnf ? 0 : showupBonus,
-        ]
+    if (body.pointslookup != null || body.showupbonuspoints != null) {
+      const results = await client.query<{ resultid: string; placed: number | null; dnf: boolean }>(
+        `SELECT resultid, placed, dnf FROM leagueresults WHERE leagueid = $1`,
+        [req.params.id]
       );
+      for (const result of results.rows) {
+        await client.query(
+          `UPDATE leagueresults SET points = $2, showupbonuspoints = $3, updatedat = now() WHERE resultid = $1`,
+          [
+            result.resultid,
+            pointsForPlace(pointsLookup, result.placed, result.dnf),
+            result.dnf ? 0 : showupBonus,
+          ]
+        );
+      }
     }
     await client.query('COMMIT');
     res.json({ league: serializeLeague({ ...updated.rows[0], isadmin: true, approved: true }) });
@@ -637,8 +667,7 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
       [league.leagueid, req.userId, approved]
     );
     if (approved) {
-      const season = await getSelectedSeason(league.leagueid);
-      if (season) await addSeasonParticipant(client, league.leagueid, season.seasonid, req.userId!, true);
+      await addMemberToActiveSeasons(client, league.leagueid, req.userId!);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -679,6 +708,53 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
     const events = eventCount > 0 ? await createLeagueEventStubs(client, req.params.id, season.seasonid, 1, eventCount) : [];
     await client.query('COMMIT');
     res.status(201).json({ season, events });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+leaguesRouter.delete('/:id/seasons/:seasonId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const season = await queryOne<LeagueSeasonRow>(
+    `SELECT seasonid, leagueid, name, begindate, enddate, active, createdat
+     FROM leagueseasons
+     WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id, req.params.seasonId]
+  );
+  if (!season) {
+    res.status(404).json({ error: 'Season not found.' });
+    return;
+  }
+  const activeCount = await queryOne<{ count: string }>(
+    `SELECT count(*)::TEXT AS count
+     FROM leagueseasons
+     WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id]
+  );
+  if (Number(activeCount?.count || 0) <= 1) {
+    res.status(400).json({ error: 'A league needs at least one active season.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE leagueseasons SET active = FALSE WHERE leagueid = $1 AND seasonid = $2`,
+      [req.params.id, req.params.seasonId]
+    );
+    await client.query(
+      `UPDATE leagueevents SET active = FALSE WHERE leagueid = $1 AND seasonid = $2`,
+      [req.params.id, req.params.seasonId]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -812,6 +888,14 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'League season not found.' });
     return;
   }
+  await query(
+    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+     SELECT $2, lm.leagueid, lm.userid, TRUE
+     FROM leaguemembers lm
+     WHERE lm.leagueid = $1 AND lm.approved = TRUE
+     ON CONFLICT (seasonid, userid) DO NOTHING`,
+    [league.leagueid, selectedSeason.seasonid]
+  );
   const members = await query<LeagueMemberRow>(
     `SELECT u.guid AS userid, u.emailaddress,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
@@ -825,7 +909,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     [league.leagueid, selectedSeason.seasonid]
   );
   const events = await query<LeagueEventRow>(
-    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventnumber, e.active, e.createdat,
+    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventnumber, CAST(e.eventfee AS DECIMAL) AS eventfee, e.active, e.createdat,
             (SELECT count(*) FROM leagueresults WHERE eventid = e.eventid) AS resultcount
      FROM leagueevents e
      WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.active = TRUE
@@ -856,16 +940,24 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      ORDER BY p.paidat DESC, p.createdat DESC`,
     [league.leagueid, selectedSeason.seasonid]
   );
+  const normalizedResults = results.map((result) => ({
+    ...result,
+    placed: result.placed == null ? null : Number(result.placed),
+    points: Number(result.points || 0),
+    showupbonuspoints: Number(result.showupbonuspoints || 0),
+  }));
+  const standings = buildStandings(members, normalizedResults, Number(league.bestfinishcount || 7));
+
   res.json({
     league,
     seasons,
     selectedseasonid: selectedSeason.seasonid,
     members,
-    events,
-    results,
+    events: events.map((event) => ({ ...event, eventfee: event.eventfee == null ? null : Number(event.eventfee) })),
+    results: normalizedResults,
     payments: payments.map((payment) => ({ ...payment, amount: Number(payment.amount || 0) })),
-    standings: buildStandings(members, results, Number(league.bestfinishcount || 7)),
-    finalstacks: buildFinalStacks(buildStandings(members, results, Number(league.bestfinishcount || 7)), league),
+    standings,
+    finalstacks: buildFinalStacks(standings, league),
   });
 });
 
@@ -885,7 +977,7 @@ leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
   const eventId = body.eventid ? String(body.eventid) : null;
   let season = body.seasonid ? await getSelectedSeason(req.params.id, String(body.seasonid)) : await getSelectedSeason(req.params.id);
   if (eventId) {
-    const event = await queryOne<LeagueEventRow>(`SELECT eventid, leagueid, seasonid FROM leagueevents WHERE leagueid = $1 AND eventid = $2`, [req.params.id, eventId]);
+    const event = await queryOne<LeagueEventRow>(`SELECT eventid, leagueid, seasonid, CAST(eventfee AS DECIMAL) AS eventfee FROM leagueevents WHERE leagueid = $1 AND eventid = $2`, [req.params.id, eventId]);
     if (!event) {
       res.status(400).json({ error: 'Event is not part of this league.' });
       return;
@@ -925,7 +1017,7 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; eventdate?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string };
+  const body = req.body as { name?: string; eventdate?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string; eventfee?: number };
   const season = await getSelectedSeason(req.params.id, body.seasonid);
   if (!season) {
     res.status(400).json({ error: 'Season not found.' });
@@ -939,12 +1031,13 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
   }
   const eventNumber = Math.max(1, Math.round(Number(body.eventnumber ?? 1)));
   const date = body.eventdate ? String(body.eventdate).slice(0, 10) : null;
+  const eventFee = body.eventfee == null ? null : Math.max(0, Math.round(Number(body.eventfee) * 100) / 100);
   if (eventCount === 1) {
     const row = await queryOne<LeagueEventRow>(
-      `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventnumber)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING eventid, leagueid, seasonid, name, eventdate, eventnumber, active, createdat`,
-      [req.params.id, season.seasonid, name, date, eventNumber]
+      `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventnumber, eventfee)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING eventid, leagueid, seasonid, name, eventdate, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
+      [req.params.id, season.seasonid, name, date, eventNumber, eventFee]
     );
     res.status(201).json({ event: row, events: row ? [row] : [] });
     return;
@@ -964,6 +1057,27 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
   }
 });
 
+leaguesRouter.patch('/:id/events/:eventId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as { eventfee?: number | null };
+  const eventFee = body.eventfee == null ? null : Math.max(0, Math.round(Number(body.eventfee) * 100) / 100);
+  const row = await queryOne<LeagueEventRow>(
+    `UPDATE leagueevents
+     SET eventfee = $3
+     WHERE leagueid = $1 AND eventid = $2 AND active = TRUE
+     RETURNING eventid, leagueid, seasonid, name, eventdate, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
+    [req.params.id, req.params.eventId, eventFee]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  res.json({ event: { ...row, eventfee: row.eventfee == null ? null : Number(row.eventfee) } });
+});
+
 async function upsertResult(req: Request, res: Response, targetUserId: string) {
   const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
   if (!leagueRow) {
@@ -971,7 +1085,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string) {
     return;
   }
   const event = await queryOne<LeagueEventRow>(
-    `SELECT eventid, leagueid, seasonid FROM leagueevents WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
+    `SELECT eventid, leagueid, seasonid, CAST(eventfee AS DECIMAL) AS eventfee FROM leagueevents WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
     [req.params.eventId, req.params.id]
   );
   if (!event) {

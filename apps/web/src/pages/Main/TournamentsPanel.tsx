@@ -164,7 +164,7 @@ export default function TournamentsPanel() {
           {loadingMine ? (
             <LoadingSpinner className="mt-16" />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {scheduleList.map((t) => (
                 <TournamentCard
                   key={t.tournamentid}
@@ -226,8 +226,8 @@ function DashboardOverview({
   ];
 
   return (
-    <section className={`mb-5 grid gap-3 ${showSupportCard ? 'md:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
-      <div className="overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.16),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] sm:p-4">
+    <section className={`mb-5 grid min-w-0 max-w-full gap-3 ${showSupportCard ? 'md:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+      <div className="min-w-0 overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.16),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-pit-teal">Command center</p>
@@ -244,7 +244,7 @@ function DashboardOverview({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 max-[380px]:grid-cols-1 sm:grid-cols-4">
           <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={scheduleView === 'upcoming'} onClick={() => onScheduleViewChange('upcoming')} />
           <DashboardStat icon={Users} label="Groups" value={groups.length} onClick={onOpenGroups} />
           <DashboardStat icon={Medal} label="History" value={historyCount} active={scheduleView === 'history'} onClick={() => onScheduleViewChange('history')} />
@@ -337,7 +337,7 @@ function DashboardStat({
       <button
         type="button"
         onClick={onClick}
-        className={`rounded-lg border px-2.5 py-2 text-left transition ${
+        className={`min-w-0 rounded-lg border px-2.5 py-2 text-left transition ${
           active
             ? 'border-pit-teal/45 bg-pit-teal/10'
             : 'border-white/10 bg-black/18 hover:border-pit-teal/40 hover:bg-pit-teal/5'
@@ -348,7 +348,7 @@ function DashboardStat({
     );
   }
   return (
-    <div className="rounded-lg border border-white/10 bg-black/18 px-2.5 py-2">
+    <div className="min-w-0 rounded-lg border border-white/10 bg-black/18 px-2.5 py-2">
       {content}
     </div>
   );
@@ -382,7 +382,7 @@ function TournamentCard({
   return (
     <div
       onClick={canOpen ? onClick : undefined}
-      className={`${canOpen ? 'card-hover cursor-pointer' : 'card cursor-default'} group ${
+      className={`${canOpen ? 'card-hover cursor-pointer' : 'card cursor-default'} group min-w-0 max-w-full overflow-hidden ${
         t.isdeclined && !t.isregistered
           ? 'border-red-300/35 bg-red-500/10'
           : t.isregistered

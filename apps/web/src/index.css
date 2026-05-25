@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   body { @apply bg-pit-bg text-white font-sans antialiased; }
 
   @media (display-mode: standalone) {

@@ -410,6 +410,25 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
+groupsRouter.delete('/:id', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const group = await queryOne<{ groupid: string }>(
+    `UPDATE groups
+     SET active = FALSE
+     WHERE groupid = $1 AND active = TRUE
+     RETURNING groupid`,
+    [req.params.id]
+  );
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  res.json({ success: true });
+});
+
 groupsRouter.put('/:id/notification-preferences', async (req: Request, res: Response) => {
   if (!await requireApprovedMember(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'Not a group member' });

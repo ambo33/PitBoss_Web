@@ -64,6 +64,8 @@ export const api = {
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
   updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string; aiannouncerclassicmode?: boolean; postapprovalrequired?: boolean }) =>
     put<{ success: boolean } & Partial<Group>>(`/groups/${id}`, data),
+  deleteGroup: (id: string) =>
+    del<{ success: boolean }>(`/groups/${id}`),
   getGroupBlindStructures: (groupId: string) =>
     get<GroupBlindStructure[]>(`/groups/${groupId}/blind-structures`),
   createGroupBlindStructure: (groupId: string, data: { name: string; levels: Omit<BlindLevel, 'id'>[] }) =>
@@ -122,8 +124,12 @@ export const api = {
   getLeague: (id: string, seasonid?: string | null) => get<LeagueDetail>(`/leagues/${id}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
   createLeagueSeason: (id: string, data: { name: string; begindate: string; enddate: string; eventcount?: number }) =>
     post<{ season: LeagueSeason; events: LeagueEvent[] }>(`/leagues/${id}/seasons`, data),
-  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null }) =>
+  deleteLeagueSeason: (id: string, seasonId: string) =>
+    del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}`),
+  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null }) =>
     post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
+  updateLeagueEvent: (id: string, eventId: string, data: { eventfee?: number | null }) =>
+    patch<{ event: LeagueEvent }>(`/leagues/${id}/events/${eventId}`, data),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
   logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>
@@ -388,6 +394,7 @@ export interface LeagueEvent {
   name: string;
   eventdate?: string | null;
   eventnumber?: number | null;
+  eventfee?: number | null;
   resultcount?: number;
   active: boolean;
   createdat: string;

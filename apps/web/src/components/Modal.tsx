@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
 interface Props {
@@ -10,28 +10,21 @@ interface Props {
 }
 
 export default function Modal({ title, open, onClose, children, footer }: Props) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     if (open) {
-      document.addEventListener('keydown', handler);
       document.body.style.overflow = 'hidden';
     }
     return () => {
-      document.removeEventListener('keydown', handler);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div
-      ref={overlayRef}
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
                  bg-black/70 backdrop-blur-sm px-0 sm:px-4"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div className="bg-pit-surface border border-pit-border w-full sm:max-w-md
                       rounded-t-2xl sm:rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.6)]

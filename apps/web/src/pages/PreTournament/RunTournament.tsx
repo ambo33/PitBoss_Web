@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Menu, 
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
@@ -73,6 +74,7 @@ export default function RunTournament({
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
+  const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
@@ -403,16 +405,23 @@ export default function RunTournament({
       const hasSeenPrompt = window.localStorage.getItem(promptKey) === '1';
       if (!hasSeenPrompt) {
         window.localStorage.setItem(promptKey, '1');
-        const startWithoutSeating = window.confirm('Start tourney without seating players?');
-        if (!startWithoutSeating) {
-          if (tournament.tvdisplaymode !== 'seating') {
-            tvOptionsMutation.mutate({ tvdisplaymode: 'seating' });
-          }
-          return;
-        }
+        setStartWithoutSeatingOpen(true);
+        return;
       }
     }
 
+    emit('timer-start');
+  }
+
+  function cancelStartWithoutSeating() {
+    setStartWithoutSeatingOpen(false);
+    if (tournament.tvdisplaymode !== 'seating') {
+      tvOptionsMutation.mutate({ tvdisplaymode: 'seating' });
+    }
+  }
+
+  function confirmStartWithoutSeating() {
+    setStartWithoutSeatingOpen(false);
     emit('timer-start');
   }
 
@@ -1440,6 +1449,16 @@ export default function RunTournament({
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={startWithoutSeatingOpen}
+        title="Start without seating?"
+        tone="warning"
+        message="Players are checked in, but no seats are assigned yet. You can start the clock now, or cancel and show the seating board first."
+        confirmLabel="Start clock"
+        cancelLabel="Show seating"
+        onClose={cancelStartWithoutSeating}
+        onConfirm={confirmStartWithoutSeating}
+      />
     </div>
   );
 }

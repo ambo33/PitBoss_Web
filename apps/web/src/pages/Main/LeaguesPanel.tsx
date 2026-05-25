@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, Plus, Save, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, MoreVertical, Plus, Save, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 const DEFAULT_POINTS_PREVIEW = 'Scaled points by field size';
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
@@ -23,6 +24,7 @@ const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
 ];
 const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 const FULL_FIELD_FIRST_PLACE_SHARE = Number(BASE_POINTS_LOOKUP.find((rule) => rule.place === 1)?.points ?? 0) / BASE_POINT_TOTAL;
+type LeagueDetailTab = 'overview' | 'events' | 'fees';
 
 export default function LeaguesPanel() {
   const qc = useQueryClient();
@@ -148,8 +150,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSeasonConfirmOpen, setDeleteSeasonConfirmOpen] = useState(false);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<LeagueMember | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
     queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
@@ -185,6 +192,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
+      setRemoveMemberTarget(null);
     },
   });
 
@@ -192,6 +200,14 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
       api.logLeagueResult(league.leagueid, eventId, userId, { placed, dnf }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+  });
+  const updateEventMutation = useMutation({
+    mutationFn: ({ eventId, eventfee }: { eventId: string; eventfee: number | null }) =>
+      api.updateLeagueEvent(league.leagueid, eventId, { eventfee }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
   });
   const updateLeagueMutation = useMutation({
     mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
@@ -219,7 +235,19 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     mutationFn: () => api.deleteLeague(league.leagueid),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leagues'] });
+      setDeleteConfirmOpen(false);
       onBack();
+    },
+  });
+  const deleteSeasonMutation = useMutation({
+    mutationFn: (seasonId: string) => api.deleteLeagueSeason(league.leagueid, seasonId),
+    onSuccess: (_result, deletedSeasonId) => {
+      const nextSeasonId = detail?.seasons.find((season) => season.seasonid !== deletedSeasonId)?.seasonid ?? null;
+      setSelectedSeasonId(nextSeasonId);
+      setSelectedEvent(null);
+      setDeleteSeasonConfirmOpen(false);
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
     },
   });
 
@@ -232,6 +260,12 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       setSelectedEvent(null);
     }
   }, [detail, selectedEvent]);
+  useEffect(() => {
+    if (!detail) return;
+    if (!selectedRankUserId || !detail.standings.some((standing) => standing.userid === selectedRankUserId)) {
+      setSelectedRankUserId(detail.standings[0]?.userid ?? null);
+    }
+  }, [detail, selectedRankUserId]);
   const currentEvent = (selectedEvent && detail?.events.find((event) => event.eventid === selectedEvent.eventid)) || detail?.events[0] || null;
   const eventResults = useMemo(() => {
     if (!detail || !currentEvent) return [];
@@ -244,14 +278,14 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button className="text-sm text-pit-muted transition-colors hover:text-white" onClick={onBack} type="button">
+      <div className="flex items-center justify-between gap-3">
+        <button className="shrink-0 text-sm text-pit-muted transition-colors hover:text-white" onClick={onBack} type="button">
           Back to leagues
         </button>
-        <div className="flex flex-wrap gap-2">
-          <span className="chip font-mono">{detail.league.invitecode}</span>
+        <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span className="chip shrink-0 font-mono">{detail.league.invitecode}</span>
           <select
-            className="input max-w-[180px] py-2 text-xs"
+            className="input h-10 w-36 shrink-0 py-2 text-xs sm:w-44"
             value={detail.selectedseasonid}
             onChange={(event) => {
               setSelectedSeasonId(event.target.value);
@@ -266,38 +300,63 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           </select>
           {detail.league.isadmin && (
             <>
-              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
+              <button className="btn-ghost h-10 shrink-0 gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
                 <CalendarDays size={14} />
-                Season
+                +Season
               </button>
-              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setPointsModalOpen(true)}>
-                <Settings size={14} />
-                Points
-              </button>
-              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setFinalModalOpen(true)}>
-                <Trophy size={14} />
-                Final
-              </button>
-              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setPaymentModalOpen(true)}>
-                <DollarSign size={14} />
-                Payment
-              </button>
-              <button className="btn-primary gap-2 px-3 py-2 text-xs" onClick={() => setEventModalOpen(true)}>
+              <button
+                className="btn-primary h-10 shrink-0 gap-2 px-3 py-2 text-xs"
+                onClick={() => {
+                  setActiveDetailTab('events');
+                  setEventModalOpen(true);
+                }}
+              >
                 <Plus size={14} />
                 Event
               </button>
-              <button
-                className="btn-ghost gap-2 px-3 py-2 text-xs text-red-300 hover:border-red-400/40 hover:text-red-200"
-                disabled={deleteLeagueMutation.isPending}
-                onClick={() => {
-                  if (window.confirm(`Delete ${detail.league.name}? This hides the league and its events from everyone.`)) {
-                    deleteLeagueMutation.mutate();
-                  }
-                }}
-              >
-                <Trash2 size={14} />
-                Delete
-              </button>
+              <details className="relative shrink-0 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="btn-ghost h-10 cursor-pointer gap-2 px-3 py-2 text-xs">
+                  <MoreVertical size={14} />
+                  Manage
+                </summary>
+                <div className="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl">
+                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setPointsModalOpen(true)}>
+                    <Settings size={14} />
+                    Points
+                  </button>
+                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setFinalModalOpen(true)}>
+                    <Trophy size={14} />
+                    Final
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                    onClick={() => {
+                      setActiveDetailTab('fees');
+                      setPaymentModalOpen(true);
+                    }}
+                  >
+                    <DollarSign size={14} />
+                    Payment
+                  </button>
+                  <div className="my-1 h-px bg-pit-border" />
+                  <button
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={detail.seasons.length <= 1 || deleteSeasonMutation.isPending}
+                    onClick={() => setDeleteSeasonConfirmOpen(true)}
+                  >
+                    <Trash2 size={14} />
+                    Delete season
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={deleteLeagueMutation.isPending}
+                    onClick={() => setDeleteConfirmOpen(true)}
+                  >
+                    <Trash2 size={14} />
+                    Delete league
+                  </button>
+                </div>
+              </details>
             </>
           )}
         </div>
@@ -319,95 +378,125 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
             <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
           </div>
         </div>
-        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <StandingsTable detail={detail} />
-          <div className="space-y-4">
-            <RankingTimeline detail={detail} />
-            <FinalStackCard detail={detail} />
-          </div>
+        <div className="flex gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3">
+          {[
+            { id: 'overview', label: 'Overview' },
+            { id: 'events', label: 'Events' },
+            { id: 'fees', label: 'Fee Tracker' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`shrink-0 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
+                activeDetailTab === tab.id
+                  ? 'border-pit-teal bg-pit-teal/15 text-white'
+                  : 'border-pit-border bg-pit-card/60 text-pit-text hover:border-pit-teal/50 hover:text-white'
+              }`}
+              onClick={() => setActiveDetailTab(tab.id as LeagueDetailTab)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+        {activeDetailTab === 'overview' && (
+          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={setSelectedRankUserId} />
+            <div className="space-y-4">
+              <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} />
+              <RankingTimeline detail={detail} />
+              <FinalStackCard detail={detail} />
+            </div>
+          </div>
+        )}
       </section>
 
-      <PaymentTracker
-        detail={detail}
-        onSettings={(payload) => updateLeagueMutation.mutate(payload)}
-        onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
-        settingsLoading={updateLeagueMutation.isPending}
-        deleteLoading={deletePaymentMutation.isPending}
-      />
+      {activeDetailTab === 'fees' && (
+        <PaymentTracker
+          detail={detail}
+          onSettings={(payload) => updateLeagueMutation.mutate(payload)}
+          onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
+          settingsLoading={updateLeagueMutation.isPending}
+          deleteLoading={deletePaymentMutation.isPending}
+        />
+      )}
 
-      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <div className="space-y-5">
-          <LeagueMembersCard
-            detail={detail}
-            onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
-            onRemoveMember={(userId) => removeMemberMutation.mutate(userId)}
-            addLoading={addGuestMutation.isPending}
-            removeLoading={removeMemberMutation.isPending}
-            error={addGuestMutation.error?.message ?? removeMemberMutation.error?.message}
-          />
-          <section className="card space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-white">Events</h3>
-              <CalendarDays size={16} className="text-pit-teal" />
-            </div>
-            {detail.events.length === 0 ? (
-              <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
-                No events yet.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {detail.events.map((event) => (
-                  <button
-                    key={event.eventid}
-                    type="button"
-                    onClick={() => setSelectedEvent(event)}
-                    className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                      currentEvent?.eventid === event.eventid ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-bg/60 hover:border-pit-teal/40'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-white">{event.name}</p>
-                      <span className="text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
-                    </div>
-                    <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? event.eventdate.slice(0, 10) : 'Date TBD'}</p>
-                  </button>
-                ))}
+      {activeDetailTab === 'events' && (
+        <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="space-y-5">
+            <LeagueMembersCard
+              detail={detail}
+              onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
+              onRemoveMember={setRemoveMemberTarget}
+              addLoading={addGuestMutation.isPending}
+              removeLoading={removeMemberMutation.isPending}
+              error={addGuestMutation.error?.message ?? removeMemberMutation.error?.message}
+            />
+            <section className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-white">Events</h3>
+                <CalendarDays size={16} className="text-pit-teal" />
               </div>
+              {detail.events.length === 0 ? (
+                <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
+                  No events yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {detail.events.map((event) => (
+                    <button
+                      key={event.eventid}
+                      type="button"
+                      onClick={() => setSelectedEvent(event)}
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                        currentEvent?.eventid === event.eventid ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-bg/60 hover:border-pit-teal/40'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-white">{event.name}</p>
+                        <span className="text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
+                      </div>
+                      <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? event.eventdate.slice(0, 10) : 'Date TBD'}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <section className="card space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">Finish logger</p>
+                <h3 className="text-xl font-bold text-white">{currentEvent ? currentEvent.name : 'No event selected'}</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {currentEvent && (
+                  <a className="chip hover:border-pit-teal/50 hover:text-white" href={`/league/${league.leagueid}/event/${currentEvent.eventid}`}>
+                    <Copy size={13} />
+                    Player lobby
+                  </a>
+                )}
+                <span className="chip">{eventResults.length} finishes</span>
+              </div>
+            </div>
+            {currentEvent ? (
+              <ResultLogger
+                detail={detail}
+                event={currentEvent}
+                onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
+                onEventFeeChange={(eventfee) => updateEventMutation.mutate({ eventId: currentEvent.eventid, eventfee })}
+                loading={resultMutation.isPending}
+                feeLoading={updateEventMutation.isPending}
+                feeError={updateEventMutation.error?.message}
+              />
+            ) : (
+              <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
+                Add an event to start logging finishes.
+              </p>
             )}
           </section>
         </div>
-
-        <section className="card space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow">Finish logger</p>
-              <h3 className="text-xl font-bold text-white">{currentEvent ? currentEvent.name : 'No event selected'}</h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {currentEvent && (
-                <a className="chip hover:border-pit-teal/50 hover:text-white" href={`/league/${league.leagueid}/event/${currentEvent.eventid}`}>
-                  <Copy size={13} />
-                  Player lobby
-                </a>
-              )}
-              <span className="chip">{eventResults.length} finishes</span>
-            </div>
-          </div>
-          {currentEvent ? (
-            <ResultLogger
-              detail={detail}
-              event={currentEvent}
-              onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
-              loading={resultMutation.isPending}
-            />
-          ) : (
-            <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
-              Add an event to start logging finishes.
-            </p>
-          )}
-        </section>
-      </div>
+      )}
 
       <CreateEventModal
         open={eventModalOpen}
@@ -449,11 +538,62 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         onClose={() => setPaymentModalOpen(false)}
         onSubmit={(payload) => createPaymentMutation.mutate(payload)}
       />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete league?"
+        message={(
+          <>
+            Delete <span className="font-semibold text-white">{detail.league.name}</span>? This hides the league and its events from everyone.
+          </>
+        )}
+        confirmLabel="Delete league"
+        loading={deleteLeagueMutation.isPending}
+        requireText={detail.league.name}
+        requireLabel="League name"
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => deleteLeagueMutation.mutate()}
+      />
+      <ConfirmDialog
+        open={deleteSeasonConfirmOpen}
+        title="Delete season?"
+        message={(
+          <>
+            Delete <span className="font-semibold text-white">{selectedSeason?.name ?? 'this season'}</span>? The league stays active, but this season and its events are hidden from standings and tracking.
+          </>
+        )}
+        confirmLabel="Delete season"
+        loading={deleteSeasonMutation.isPending}
+        requireText={selectedSeason?.name}
+        requireLabel="Season name"
+        onClose={() => setDeleteSeasonConfirmOpen(false)}
+        onConfirm={() => selectedSeason && deleteSeasonMutation.mutate(selectedSeason.seasonid)}
+      />
+      <ConfirmDialog
+        open={Boolean(removeMemberTarget)}
+        title="Remove from season?"
+        message={(
+          <>
+            Remove <span className="font-semibold text-white">{removeMemberTarget?.displayname ?? 'this player'}</span> from this season? They keep league access and admin rights, but this season's finishes and payment records are removed.
+          </>
+        )}
+        confirmLabel="Remove player"
+        loading={removeMemberMutation.isPending}
+        onClose={() => setRemoveMemberTarget(null)}
+        onConfirm={() => removeMemberTarget && removeMemberMutation.mutate(removeMemberTarget.userid)}
+      />
     </div>
   );
 }
 
-function StandingsTable({ detail }: { detail: LeagueDetail }) {
+function StandingsTable({
+  detail,
+  selectedUserId,
+  onSelectUser,
+}: {
+  detail: LeagueDetail;
+  selectedUserId: string | null;
+  onSelectUser: (userId: string) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
       <div className="grid grid-cols-[56px_minmax(0,1fr)_80px_80px_80px] gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted">
@@ -464,18 +604,92 @@ function StandingsTable({ detail }: { detail: LeagueDetail }) {
         <span className="text-right">Avg</span>
       </div>
       {detail.standings.map((standing, index) => (
-        <div key={standing.userid} className="grid grid-cols-[56px_minmax(0,1fr)_80px_80px_80px] gap-2 border-b border-pit-border/50 px-3 py-3 text-sm last:border-0">
+        <button
+          key={standing.userid}
+          type="button"
+          onClick={() => onSelectUser(standing.userid)}
+          className={`grid w-full grid-cols-[56px_minmax(0,1fr)_80px_80px_80px] gap-2 border-b border-pit-border/50 px-3 py-3 text-left text-sm transition-colors last:border-0 ${
+            selectedUserId === standing.userid ? 'bg-pit-teal/10' : 'hover:bg-pit-card'
+          }`}
+        >
           <span className="font-mono text-pit-teal">#{index + 1}</span>
           <div className="min-w-0">
             <p className="truncate font-semibold text-white">{standing.displayname ?? 'Player'}</p>
             <p className="mt-1 text-xs text-pit-muted">Best: {standing.bestfinishes.length ? standing.bestfinishes.join(', ') : 'No finishes'}</p>
           </div>
-          <span className="text-right font-bold text-white">{standing.totalpoints}</span>
+          <span className="text-right font-bold text-white">{formatNumber(Number(standing.totalpoints || 0))}</span>
           <span className="text-right text-pit-text">{standing.eventsplayed}</span>
           <span className="text-right text-pit-text">{standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'}</span>
-        </div>
+        </button>
       ))}
       {detail.standings.length === 0 && <p className="p-4 text-sm text-pit-text">No approved players yet.</p>}
+    </div>
+  );
+}
+
+function PlayerLeagueProfile({ detail, userId }: { detail: LeagueDetail; userId: string | null }) {
+  const member = detail.members.find((item) => item.userid === userId) ?? null;
+  const standing = detail.standings.find((item) => item.userid === userId) ?? null;
+  if (!userId || !member || !standing) {
+    return (
+      <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+        <h3 className="font-semibold text-white">Player details</h3>
+        <p className="mt-2 text-sm leading-6 text-pit-text">Select a player in the standings to review event finishes, points, and payment status.</p>
+      </div>
+    );
+  }
+
+  const seasonEventFees = detail.events.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
+  const totalDue = Number(detail.league.leaguefee || 0) + seasonEventFees;
+  const totalPaid = detail.payments
+    .filter((payment) => payment.userid === userId)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return (
+    <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="eyebrow">Player ledger</p>
+          <h3 className="truncate text-lg font-bold text-white">{member.displayname ?? 'Player'}</h3>
+        </div>
+        <span className="chip shrink-0">{formatNumber(Number(standing.totalpoints || 0))} pts</span>
+      </div>
+      <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
+          <p className="text-pit-muted">Played</p>
+          <p className="mt-1 font-bold text-white">{standing.eventsplayed}</p>
+        </div>
+        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
+          <p className="text-pit-muted">Paid</p>
+          <p className="mt-1 font-bold text-pit-teal">{formatCurrency(totalPaid)}</p>
+        </div>
+        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
+          <p className="text-pit-muted">Open</p>
+          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(Math.max(0, totalDue - totalPaid))}</p>
+        </div>
+      </div>
+      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+        {detail.events.map((event) => {
+          const result = detail.results.find((item) => item.eventid === event.eventid && item.userid === userId);
+          const points = result ? Number(result.points || 0) + Number(result.showupbonuspoints || 0) : 0;
+          const paid = detail.payments
+            .filter((payment) => payment.userid === userId && payment.eventid === event.eventid)
+            .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const eventFee = getLeagueEventFee(detail, event);
+          return (
+            <div key={event.eventid} className="rounded-lg border border-pit-border bg-pit-card/60 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate font-semibold text-white">{event.name}</p>
+                <span className="font-mono text-pit-teal">{formatNumber(points)} pts</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-pit-text">
+                <span>{result ? (result.dnf ? 'DNF' : `${result.placed}${ordinal(result.placed)} place`) : 'No finish'}</span>
+                <span className="text-right">{formatCurrency(paid)} / {formatCurrency(eventFee)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -490,12 +704,14 @@ function RankingTimeline({ detail }: { detail: LeagueDetail }) {
       </div>
       <div className="space-y-3">
         {topPlayers.map((player, index) => {
-          const width = detail.standings[0]?.totalpoints ? Math.max(8, (player.totalpoints / detail.standings[0].totalpoints) * 100) : 0;
+          const topPoints = Number(detail.standings[0]?.totalpoints || 0);
+          const playerPoints = Number(player.totalpoints || 0);
+          const width = topPoints ? Math.max(8, (playerPoints / topPoints) * 100) : 0;
           return (
             <div key={player.userid}>
               <div className="mb-1 flex justify-between gap-2 text-xs">
                 <span className="truncate text-pit-text">#{index + 1} {player.displayname}</span>
-                <span className="font-mono text-white">{player.totalpoints}</span>
+                <span className="font-mono text-white">{formatNumber(playerPoints)}</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-pit-border">
                 <div className="h-full rounded-full bg-pit-teal" style={{ width: `${width}%` }} />
@@ -504,9 +720,6 @@ function RankingTimeline({ detail }: { detail: LeagueDetail }) {
           );
         })}
       </div>
-      <p className="mt-4 text-xs leading-5 text-pit-muted">
-        This starts as a slick current-rank visual. The event-by-event rank history can build from the same results table as the season grows.
-      </p>
     </div>
   );
 }
@@ -537,9 +750,9 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
             <span className="font-mono text-pit-teal">#{stack.place}</span>
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">{stack.displayname ?? 'Player'}</p>
-              <p className="text-pit-muted">{stack.totalpoints} pts x {stack.multiplier}</p>
+              <p className="text-pit-muted">{formatNumber(Number(stack.totalpoints || 0))} pts x {Number(stack.multiplier || 0)}</p>
             </div>
-            <span className="text-right font-mono text-white">{formatNumber(stack.startingstack)}</span>
+            <span className="text-right font-mono text-white">{formatNumber(Number(stack.startingstack || 0))}</span>
           </div>
         ))}
       </div>
@@ -557,7 +770,7 @@ function LeagueMembersCard({
 }: {
   detail: LeagueDetail;
   onAddGuest: (displayname: string) => void;
-  onRemoveMember: (userId: string) => void;
+  onRemoveMember: (member: LeagueMember) => void;
   addLoading: boolean;
   removeLoading: boolean;
   error?: string;
@@ -621,11 +834,7 @@ function LeagueMembersCard({
                 className="btn-ghost h-8 w-8 shrink-0 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
                 disabled={removeLoading}
                 title={`Remove ${member.displayname ?? 'player'} from this season`}
-                onClick={() => {
-                  if (window.confirm(`Remove ${member.displayname ?? 'this player'} from this season? They keep league access/admin rights, but this season's finishes and payment records are removed.`)) {
-                    onRemoveMember(member.userid);
-                  }
-                }}
+                onClick={() => onRemoveMember(member)}
               >
                 <Trash2 size={13} />
               </button>
@@ -658,8 +867,8 @@ function PaymentTracker({
     setPerEventFee(String(detail.league.pereventfee || 0));
   }, [detail.league.leaguefee, detail.league.pereventfee]);
   const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
-  const eventCount = detail.events.length;
-  const totalDuePerPlayer = Number(detail.league.leaguefee || 0) + Number(detail.league.pereventfee || 0) * eventCount;
+  const eventFeesTotal = detail.events.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
+  const totalDuePerPlayer = Number(detail.league.leaguefee || 0) + eventFeesTotal;
   const totalPaid = detail.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const totalDue = approvedMembers.length * totalDuePerPlayer;
 
@@ -733,37 +942,95 @@ function ResultLogger({
   detail,
   event,
   onLog,
+  onEventFeeChange,
   loading,
+  feeLoading,
+  feeError,
 }: {
   detail: LeagueDetail;
   event: LeagueEvent;
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
+  onEventFeeChange: (eventfee: number | null) => void;
   loading: boolean;
+  feeLoading: boolean;
+  feeError?: string;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [eventFeeDraft, setEventFeeDraft] = useState('');
   const resultByUser = new Map(detail.results.filter((result) => result.eventid === event.eventid).map((result) => [result.userid, result]));
   const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
+  const eventResults = detail.results.filter((result) => result.eventid === event.eventid);
+  const dnfCount = eventResults.filter((result) => result.dnf).length;
+
+  useEffect(() => {
+    setEventFeeDraft(String(getLeagueEventFee(detail, event) || ''));
+  }, [detail, event.eventid, event.eventfee]);
+  useEffect(() => {
+    setDrafts({});
+  }, [event.eventid]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-3">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-end">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-pit-muted">Event fee</p>
+            <p className="mt-1 text-xs text-pit-text">Used for this event's payment audit.</p>
+          </div>
+          <input
+            className="input py-2"
+            inputMode="decimal"
+            value={eventFeeDraft}
+            onChange={(eventValue) => setEventFeeDraft(eventValue.target.value.replace(/[^\d.]/g, ''))}
+          />
+          <button
+            type="button"
+            className="btn-primary px-3 py-2 text-xs"
+            disabled={feeLoading}
+            onClick={() => onEventFeeChange(eventFeeDraft.trim() ? Number(eventFeeDraft) || 0 : null)}
+          >
+            <Save size={13} />
+            {feeLoading ? 'Saving...' : 'Save fee'}
+          </button>
+        </div>
+        {feeError && <p className="mt-2 text-xs text-red-300">{feeError}</p>}
+      </div>
       {approvedMembers.map((member) => {
         const existing = resultByUser.get(member.userid);
         const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
+        const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
+        const dnfCountForMember = dnfCount - (existing?.dnf ? 1 : 0);
+        const maxPlace = Math.max(1, approvedMembers.length - dnfCountForMember);
+        const usedPlaces = new Set(
+          eventResults
+            .filter((result) => result.userid !== member.userid && !result.dnf && result.placed != null)
+            .map((result) => Number(result.placed))
+        );
+        const availablePlaces = Array.from({ length: maxPlace }, (_, index) => index + 1)
+          .filter((place) => !usedPlaces.has(place));
+        const selectedPlace = Number(value);
+        if (selectedPlace && !availablePlaces.includes(selectedPlace)) {
+          availablePlaces.push(selectedPlace);
+          availablePlaces.sort((a, b) => a - b);
+        }
         return (
           <div key={member.userid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_100px] sm:items-center">
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
               <p className="mt-1 text-xs text-pit-muted">
-                {existing ? `${existing.dnf ? 'DNF' : `${existing.placed}${ordinal(existing.placed)} place`} - ${existing.points + existing.showupbonuspoints} pts` : 'No finish logged'}
+                {existing ? `${existing.dnf ? 'DNF' : `${existing.placed}${ordinal(existing.placed)} place`} - ${formatNumber(totalPoints)} pts` : 'No finish logged'}
               </p>
             </div>
-            <input
+            <select
               className="input py-2"
-              inputMode="numeric"
-              placeholder="Place"
               value={value}
-              onChange={(eventValue) => setDrafts((current) => ({ ...current, [member.userid]: eventValue.target.value.replace(/\D/g, '') }))}
-            />
+              onChange={(eventValue) => setDrafts((current) => ({ ...current, [member.userid]: eventValue.target.value }))}
+            >
+              <option value="">Place</option>
+              {availablePlaces.map((place) => (
+                <option key={place} value={place}>{place}{ordinal(place)}</option>
+              ))}
+            </select>
             <button className="btn-primary px-3 py-2 text-xs" disabled={loading || !value} onClick={() => onLog(member.userid, Number(value), false)}>
               <Save size={13} />
               Log finish
@@ -827,7 +1094,7 @@ function PointsEditorModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <p className="text-sm leading-6 text-pit-text">
-          Updating these values recalculates all logged league finishes.
+          Updating placement point values recalculates logged league finishes. Final game multipliers are handled separately.
         </p>
         <button type="button" className="btn-ghost w-full justify-center" onClick={() => setDraft(generateLeaguePoints(league.expectedplayercount || 36))}>
           Help me decide from {league.expectedplayercount || 36} players
@@ -889,7 +1156,7 @@ function FinalSettingsModal({
   };
   const addPlace = () => {
     const maxPlace = multipliers.reduce((max, rule) => Math.max(max, rule.place), 0);
-    setMultipliers((current) => [...current, { place: maxPlace + 1, multiplier: 0 }]);
+    setMultipliers((current) => [...current, { place: maxPlace + 1, multiplier: Math.max(2, 20 - maxPlace) }]);
   };
 
   return (
@@ -933,7 +1200,7 @@ function FinalSettingsModal({
           </label>
         </div>
         <p className="text-sm leading-6 text-pit-text">
-          Final stacks use scored season points times the rank multiplier, rounded to your chip denomination, then add each player's total show-up bonus.
+          Final stacks use scored season points times the rank multiplier, rounded to your chip denomination, then add each player's total show-up bonus. Changing this does not rewrite logged event points.
         </p>
         <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
           {[...multipliers].sort((a, b) => a.place - b.place).map((rule) => (
@@ -1191,6 +1458,7 @@ function RecordPaymentModal({
   }, [detail.league.leaguefee, members, open]);
 
   const selectedMember = members.find((member) => member.userid === userid);
+  const selectedEvent = detail.events.find((event) => event.eventid === eventid) ?? detail.events[0] ?? null;
   return (
     <Modal
       title="Record Payment"
@@ -1227,7 +1495,13 @@ function RecordPaymentModal({
               onChange={(event) => {
                 const next = event.target.value as LeaguePaymentType;
                 setPaymenttype(next);
-                setAmount(String(next === 'event' ? detail.league.pereventfee || '' : detail.league.leaguefee || ''));
+                if (next === 'event') {
+                  const nextEvent = selectedEvent ?? detail.events[0] ?? null;
+                  setEventid(nextEvent?.eventid ?? '');
+                  setAmount(String(nextEvent ? getLeagueEventFee(detail, nextEvent) || '' : detail.league.pereventfee || ''));
+                } else {
+                  setAmount(String(next === 'league' ? detail.league.leaguefee || '' : ''));
+                }
               }}
             >
               <option value="league">League fee</option>
@@ -1243,7 +1517,16 @@ function RecordPaymentModal({
         {paymenttype === 'event' && (
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event</span>
-            <select className="input" value={eventid} onChange={(event) => setEventid(event.target.value)}>
+            <select
+              className="input"
+              value={eventid}
+              onChange={(eventValue) => {
+                const nextEventId = eventValue.target.value;
+                setEventid(nextEventId);
+                const nextEvent = detail.events.find((item) => item.eventid === nextEventId);
+                if (nextEvent) setAmount(String(getLeagueEventFee(detail, nextEvent) || ''));
+              }}
+            >
               <option value="">No event selected</option>
               {detail.events.map((event) => <option key={event.eventid} value={event.eventid}>{event.name}</option>)}
             </select>
@@ -1450,7 +1733,7 @@ function ordinal(value?: number | null) {
 function defaultFinalMultipliers(): LeagueFinalMultiplier[] {
   return Array.from({ length: 36 }, (_, index) => ({
     place: index + 1,
-    multiplier: index === 0 ? 0 : Math.max(2, 19 - index),
+    multiplier: Math.max(2, 20 - index),
   }));
 }
 
@@ -1485,6 +1768,10 @@ function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 1
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+}
+
+function getLeagueEventFee(detail: LeagueDetail, event: LeagueEvent) {
+  return event.eventfee == null ? Number(detail.league.pereventfee || 0) : Number(event.eventfee || 0);
 }
 
 function formatCurrency(value: number) {

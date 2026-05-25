@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, AnnouncerPreset, Group, GroupCoin, GroupMember, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { useAuthStore } from '../../store/auth';
 import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
 import { playerMedalSuffix, playerNameWithMedals } from '../../utils/playerAchievements';
@@ -342,6 +343,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [awardCoinId, setAwardCoinId] = useState('');
   const [awardUserId, setAwardUserId] = useState('');
   const [awardNote, setAwardNote] = useState('');
+  const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['group', group.groupid],
@@ -440,6 +442,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       );
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+  const deleteGroupMutation = useMutation({
+    mutationFn: () => api.deleteGroup(group.groupid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['groups'] });
+      setDeleteGroupConfirmOpen(false);
+      onBack();
     },
   });
 
@@ -658,16 +668,28 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
             )}
           </div>
         </div>
-        {!group.isadmin && (
-          <button
-            className="btn-ghost justify-center gap-1.5 text-red-300 hover:text-red-200 sm:shrink-0"
-            onClick={() => leaveMutation.mutate()}
-            disabled={leaveMutation.isPending}
-          >
-            <LogOut size={14} />
-            {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          {group.isadmin && (
+            <button
+              className="btn-ghost justify-center gap-1.5 text-red-300 hover:border-red-400/40 hover:text-red-200 sm:shrink-0"
+              onClick={() => setDeleteGroupConfirmOpen(true)}
+              disabled={deleteGroupMutation.isPending}
+            >
+              <Trash2 size={14} />
+              Delete group
+            </button>
+          )}
+          {!group.isadmin && (
+            <button
+              className="btn-ghost justify-center gap-1.5 text-red-300 hover:text-red-200 sm:shrink-0"
+              onClick={() => leaveMutation.mutate()}
+              disabled={leaveMutation.isPending}
+            >
+              <LogOut size={14} />
+              {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -1522,6 +1544,21 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={deleteGroupConfirmOpen}
+        title="Delete group?"
+        message={(
+          <>
+            Delete <span className="font-semibold text-white">{effectiveGroup.name}</span>? This hides the group from members and removes it from group lists.
+          </>
+        )}
+        confirmLabel="Delete group"
+        loading={deleteGroupMutation.isPending}
+        requireText={effectiveGroup.name}
+        requireLabel="Group name"
+        onClose={() => setDeleteGroupConfirmOpen(false)}
+        onConfirm={() => deleteGroupMutation.mutate()}
+      />
     </div>
   );
 }
