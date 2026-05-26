@@ -10,6 +10,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { useAuthStore } from '../../store/auth';
 import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
 import { playerMedalSuffix, playerNameWithMedals } from '../../utils/playerAchievements';
+import { isEnabledFlag } from '../../utils/flags';
 import {
   DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
   DEFAULT_LEVEL_UP_ANNOUNCEMENT,
@@ -1493,7 +1494,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                           }
                           <button
                             className="flex items-center justify-center w-7 h-7 rounded-lg text-pit-muted hover:text-white hover:bg-pit-surface transition-all"
-                            onClick={() => navigate(`/tournament/${t.tournamentid}`)}>
+                            onClick={() => navigate(isEnabledFlag(t.canmanage) ? `/tournament/${t.tournamentid}` : `/lobby/${t.tournamentid}`)}>
                             <ExternalLink size={13} />
                           </button>
                         </div>

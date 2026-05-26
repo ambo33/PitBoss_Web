@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Copy, Crown, DollarSign, Hash, ListOrdered, MoreVertical, Plus, Save, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
-import { api, League, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { CalendarDays, CheckCircle2, Copy, Crown, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueFinalMultiplier, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -25,7 +25,7 @@ const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
 ];
 const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 const FULL_FIELD_FIRST_PLACE_SHARE = Number(BASE_POINTS_LOOKUP.find((rule) => rule.place === 1)?.points ?? 0) / BASE_POINT_TOTAL;
-type LeagueDetailTab = 'overview' | 'events' | 'fees';
+type LeagueDetailTab = 'overview' | 'events' | 'fees' | 'audit' | 'players';
 
 export default function LeaguesPanel() {
   const qc = useQueryClient();
@@ -156,16 +156,19 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [deleteSeasonConfirmOpen, setDeleteSeasonConfirmOpen] = useState(false);
   const [removeMemberTarget, setRemoveMemberTarget] = useState<LeagueMember | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
+  const [editingEvent, setEditingEvent] = useState<LeagueEvent | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
+  const [manageMenuOpen, setManageMenuOpen] = useState(false);
+  const manageMenuRef = useRef<HTMLDivElement | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
     queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
   });
 
   const createEventMutation = useMutation({
-    mutationFn: (payload: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
+    mutationFn: (payload: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -173,7 +176,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     },
   });
   const createSeasonMutation = useMutation({
-    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number }) => api.createLeagueSeason(league.leagueid, payload),
+    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number }) => api.createLeagueSeason(league.leagueid, payload),
     onSuccess: (created) => {
       setSelectedSeasonId(created.season.seasonid);
       setSelectedEvent(null);
@@ -187,6 +190,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
+  const inviteGuestClaimMutation = useMutation({
+    mutationFn: ({ guestUserId, email }: { guestUserId: string; email: string }) =>
+      api.inviteLeagueGuestClaim(league.leagueid, guestUserId, email),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
     },
   });
   const removeMemberMutation = useMutation({
@@ -204,8 +214,22 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const updateEventMutation = useMutation({
-    mutationFn: ({ eventId, eventfee }: { eventId: string; eventfee: number | null }) =>
-      api.updateLeagueEvent(league.leagueid, eventId, { eventfee }),
+    mutationFn: ({ eventId, ...payload }: { eventId: string; name?: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number | null }) =>
+      api.updateLeagueEvent(league.leagueid, eventId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+      setEditingEvent(null);
+    },
+  });
+  const updatePaymentSettingsMutation = useMutation({
+    mutationFn: async (payload: { leaguefee: number; seasonEventFee: number }) => {
+      const seasonId = data?.selectedseasonid ?? selectedSeasonId;
+      await api.updateLeague(league.leagueid, { leaguefee: payload.leaguefee, pereventfee: payload.seasonEventFee });
+      if (seasonId) {
+        await api.updateLeagueSeason(league.leagueid, seasonId, { pereventfee: payload.seasonEventFee });
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -214,9 +238,12 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const updateLeagueMutation = useMutation({
     mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
       api.updateLeague(league.leagueid, payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
-      qc.invalidateQueries({ queryKey: ['leagues'] });
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+        qc.invalidateQueries({ queryKey: ['leagues'] }),
+      ]);
+      await qc.refetchQueries({ queryKey: ['league', league.leagueid], type: 'active' });
       setPointsModalOpen(false);
       setFinalModalOpen(false);
     },
@@ -231,6 +258,11 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   });
   const deletePaymentMutation = useMutation({
     mutationFn: (paymentId: string) => api.deleteLeaguePayment(league.leagueid, paymentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+  });
+  const markEventPaidMutation = useMutation({
+    mutationFn: ({ eventId, userId, all }: { eventId: string; userId?: string; all?: boolean }) =>
+      api.markLeagueEventPaid(league.leagueid, eventId, { userId, all }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const deleteLeagueMutation = useMutation({
@@ -261,20 +293,22 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     if (selectedEvent && detail && !detail.events.some((event) => event.eventid === selectedEvent.eventid)) {
       setSelectedEvent(null);
     }
-  }, [detail, selectedEvent]);
+    if (editingEvent && detail && !detail.events.some((event) => event.eventid === editingEvent.eventid)) {
+      setEditingEvent(null);
+    }
+  }, [detail, editingEvent, selectedEvent]);
   useEffect(() => {
     if (!detail) return;
-    const preferredUserId = detail.league.isadmin
+    const currentUserIsRanked = currentUserId && detail.standings.some((standing) => standing.userid === currentUserId);
+    const fallbackUserId = !detail.league.isadmin && currentUserIsRanked
+      ? currentUserId
+      : detail.standings[0]?.userid ?? null;
+    const preferredUserId = selectedRankUserId && detail.standings.some((standing) => standing.userid === selectedRankUserId)
       ? selectedRankUserId
-      : currentUserId && detail.standings.some((standing) => standing.userid === currentUserId)
-        ? currentUserId
-        : selectedRankUserId;
-    if (!preferredUserId || !detail.standings.some((standing) => standing.userid === preferredUserId)) {
-      setSelectedRankUserId(detail.standings[0]?.userid ?? null);
-      return;
-    }
-    if (!detail.league.isadmin && selectedRankUserId !== preferredUserId) {
+      : fallbackUserId;
+    if (selectedRankUserId !== preferredUserId) {
       setSelectedRankUserId(preferredUserId);
+      return;
     }
   }, [currentUserId, detail, selectedRankUserId]);
   useEffect(() => {
@@ -282,6 +316,22 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       setActiveDetailTab('overview');
     }
   }, [activeDetailTab, detail]);
+  useEffect(() => {
+    if (!manageMenuOpen) return undefined;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (manageMenuRef.current?.contains(event.target as Node)) return;
+      setManageMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setManageMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [manageMenuOpen]);
   const currentEvent = (selectedEvent && detail?.events.find((event) => event.eventid === selectedEvent.eventid)) || detail?.events[0] || null;
   const eventResults = useMemo(() => {
     if (!detail || !currentEvent) return [];
@@ -297,8 +347,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       <MemberLeagueView
         detail={detail}
         currentUserId={currentUserId}
+        selectedUserId={selectedRankUserId}
         selectedSeason={selectedSeason}
         onBack={onBack}
+        onSelectUser={setSelectedRankUserId}
         onSeasonChange={(seasonId) => {
           setSelectedSeasonId(seasonId);
           setSelectedEvent(null);
@@ -309,14 +361,14 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <button className="shrink-0 text-sm text-pit-muted transition-colors hover:text-white" onClick={onBack} type="button">
+      <div className="space-y-3 md:flex md:items-start md:justify-between md:gap-3 md:space-y-0">
+        <button className="btn-ghost h-10 w-full justify-start px-3 py-2 text-xs md:w-auto md:shrink-0" onClick={onBack} type="button">
           Back to leagues
         </button>
-        <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <span className="chip shrink-0 font-mono">{detail.league.invitecode}</span>
+        <div className="grid min-w-0 grid-cols-2 gap-2 md:ml-auto md:flex md:flex-wrap md:items-center md:justify-end">
+          <span className="chip h-10 justify-center font-mono">{detail.league.invitecode}</span>
           <select
-            className="input h-10 w-36 shrink-0 py-2 text-xs sm:w-44"
+            className="input h-10 min-w-0 py-2 text-xs md:w-44"
             value={detail.selectedseasonid}
             onChange={(event) => {
               setSelectedSeasonId(event.target.value);
@@ -329,12 +381,12 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               </option>
             ))}
           </select>
-          <button className="btn-ghost h-10 shrink-0 gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
+          <button className="btn-ghost h-10 justify-center gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
             <CalendarDays size={14} />
             +Season
           </button>
           <button
-            className="btn-primary h-10 shrink-0 gap-2 px-3 py-2 text-xs"
+            className="btn-primary h-10 justify-center gap-2 px-3 py-2 text-xs"
             onClick={() => {
               setActiveDetailTab('events');
               setEventModalOpen(true);
@@ -343,62 +395,105 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
             <Plus size={14} />
             Event
           </button>
-          <details className="relative shrink-0 [&_summary::-webkit-details-marker]:hidden">
-            <summary className="btn-ghost h-10 cursor-pointer gap-2 px-3 py-2 text-xs">
+          <div ref={manageMenuRef} className="relative col-span-2 md:col-span-1">
+            <button
+              type="button"
+              className="btn-ghost h-10 w-full cursor-pointer justify-center gap-2 px-3 py-2 text-xs md:w-auto"
+              aria-expanded={manageMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setManageMenuOpen((open) => !open)}
+            >
               <MoreVertical size={14} />
               Manage
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl">
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setPointsModalOpen(true)}>
-                <Settings size={14} />
-                Points
-              </button>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white" onClick={() => setFinalModalOpen(true)}>
-                <Trophy size={14} />
-                Final
-              </button>
-              <button
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
-                onClick={() => {
-                  setActiveDetailTab('fees');
-                  setPaymentModalOpen(true);
-                }}
-              >
-                <DollarSign size={14} />
-                Payment
-              </button>
-              <div className="my-1 h-px bg-pit-border" />
-              <button
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={detail.seasons.length <= 1 || deleteSeasonMutation.isPending}
-                onClick={() => setDeleteSeasonConfirmOpen(true)}
-              >
-                <Trash2 size={14} />
-                Delete season
-              </button>
-              <button
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={deleteLeagueMutation.isPending}
-                onClick={() => setDeleteConfirmOpen(true)}
-              >
-                <Trash2 size={14} />
-                Delete league
-              </button>
-            </div>
-          </details>
+            </button>
+            {manageMenuOpen && (
+              <div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl md:left-auto md:w-48" role="menu">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setActiveDetailTab('players');
+                  }}
+                >
+                  <Users size={14} />
+                  Players
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setPointsModalOpen(true);
+                  }}
+                >
+                  <Settings size={14} />
+                  Points
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setFinalModalOpen(true);
+                  }}
+                >
+                  <Trophy size={14} />
+                  Final
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setActiveDetailTab('fees');
+                    setPaymentModalOpen(true);
+                  }}
+                >
+                  <DollarSign size={14} />
+                  Payment
+                </button>
+                <div className="my-1 h-px bg-pit-border" />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={detail.seasons.length <= 1 || deleteSeasonMutation.isPending}
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setDeleteSeasonConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete season
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={deleteLeagueMutation.isPending}
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    setDeleteConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete league
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
-        <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-5">
+        <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-4 sm:p-5">
           <p className="eyebrow">League standings</p>
-          <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
+          <h2 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl">{detail.league.name}</h2>
           {selectedSeason && (
             <p className="mt-2 text-sm text-pit-text">
               {selectedSeason.name} runs {String(selectedSeason.begindate).slice(0, 10)} through {String(selectedSeason.enddate).slice(0, 10)}.
             </p>
           )}
-          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
             <LeagueHeroStat label="Events" value={detail.events.length} />
             <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
@@ -410,6 +505,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
             { id: 'fees', label: 'Fee Tracker' },
+            { id: 'audit', label: 'Audit Trail' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -430,7 +526,6 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
             <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={setSelectedRankUserId} />
             <div className="space-y-4">
               <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} />
-              <RankingTimeline detail={detail} />
               <FinalStackCard detail={detail} />
             </div>
           </div>
@@ -440,24 +535,45 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       {activeDetailTab === 'fees' && (
         <PaymentTracker
           detail={detail}
-          onSettings={(payload) => updateLeagueMutation.mutate(payload)}
+          onSettings={(payload) => updatePaymentSettingsMutation.mutate(payload)}
           onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
-          settingsLoading={updateLeagueMutation.isPending}
+          settingsLoading={updatePaymentSettingsMutation.isPending}
           deleteLoading={deletePaymentMutation.isPending}
         />
+      )}
+
+      {activeDetailTab === 'players' && (
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+          <LeagueMembersCard
+            detail={detail}
+            onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
+            onInviteGuest={(guestUserId, email) => inviteGuestClaimMutation.mutate({ guestUserId, email })}
+            onRemoveMember={setRemoveMemberTarget}
+            addLoading={addGuestMutation.isPending}
+            inviteLoadingUserId={inviteGuestClaimMutation.isPending ? inviteGuestClaimMutation.variables?.guestUserId : null}
+            removeLoading={removeMemberMutation.isPending}
+            error={addGuestMutation.error?.message ?? inviteGuestClaimMutation.error?.message ?? removeMemberMutation.error?.message}
+          />
+          <section className="card space-y-4">
+            <div>
+              <p className="eyebrow">Season roster</p>
+              <h3 className="text-xl font-bold text-white">Player Management</h3>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <LeagueHeroStat label="Active" value={activeMembers.length} />
+              <LeagueHeroStat label="Capacity" value={detail.league.expectedplayercount} />
+              <LeagueHeroStat label="Pending" value={detail.members.filter((member) => !member.approved).length} />
+            </div>
+            <p className="rounded-xl border border-pit-border bg-pit-bg/60 p-3 text-sm leading-6 text-pit-text">
+              Add guest players for this season, remove players from the season roster, and keep the league ledger clean. Removing a player from a season also removes that season's finishes and payment records for that player.
+            </p>
+          </section>
+        </div>
       )}
 
       {activeDetailTab === 'events' && (
         <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
           <div className="space-y-5">
-            <LeagueMembersCard
-              detail={detail}
-              onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
-              onRemoveMember={setRemoveMemberTarget}
-              addLoading={addGuestMutation.isPending}
-              removeLoading={removeMemberMutation.isPending}
-              error={addGuestMutation.error?.message ?? removeMemberMutation.error?.message}
-            />
             <section className="card space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-white">Events</h3>
@@ -470,20 +586,28 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               ) : (
                 <div className="space-y-2">
                   {detail.events.map((event) => (
-                    <button
+                    <div
                       key={event.eventid}
-                      type="button"
-                      onClick={() => setSelectedEvent(event)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
                         currentEvent?.eventid === event.eventid ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-bg/60 hover:border-pit-teal/40'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-white">{event.name}</p>
-                        <span className="text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
-                      </div>
-                      <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? event.eventdate.slice(0, 10) : 'Date TBD'}</p>
-                    </button>
+                      <button className="min-w-0 flex-1 text-left" type="button" onClick={() => setSelectedEvent(event)}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-semibold text-white">{event.name}</p>
+                          <span className="shrink-0 text-xs text-pit-muted">{event.resultcount ?? 0} logged</span>
+                        </div>
+                        <p className="mt-1 text-xs text-pit-muted">{formatLeagueEventDateTime(event)}</p>
+                      </button>
+                      <button
+                        className="btn-ghost h-8 w-8 shrink-0 p-0"
+                        type="button"
+                        title={`Edit ${event.name}`}
+                        onClick={() => setEditingEvent(event)}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -507,15 +631,22 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               </div>
             </div>
             {currentEvent ? (
-              <ResultLogger
-                detail={detail}
-                event={currentEvent}
-                onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
-                onEventFeeChange={(eventfee) => updateEventMutation.mutate({ eventId: currentEvent.eventid, eventfee })}
-                loading={resultMutation.isPending}
-                feeLoading={updateEventMutation.isPending}
-                feeError={updateEventMutation.error?.message}
-              />
+              <div className="space-y-4">
+                <EventPaymentControls
+                  detail={detail}
+                  event={currentEvent}
+                  loading={markEventPaidMutation.isPending}
+                  error={markEventPaidMutation.error?.message}
+                  onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: currentEvent.eventid, all: true })}
+                  onMarkUserPaid={(userId) => markEventPaidMutation.mutate({ eventId: currentEvent.eventid, userId })}
+                />
+                <ResultLogger
+                  detail={detail}
+                  event={currentEvent}
+                  onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
+                  loading={resultMutation.isPending}
+                />
+              </div>
             ) : (
               <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
                 Add an event to start logging finishes.
@@ -525,6 +656,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         </div>
       )}
 
+      {activeDetailTab === 'audit' && (
+        <LeagueAuditTrail detail={detail} />
+      )}
+
       <CreateEventModal
         open={eventModalOpen}
         onClose={() => setEventModalOpen(false)}
@@ -532,6 +667,17 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         nextEventNumber={detail.events.length + 1}
         loading={createEventMutation.isPending}
         error={createEventMutation.error?.message}
+      />
+      <EditEventModal
+        open={Boolean(editingEvent)}
+        event={editingEvent}
+        onClose={() => setEditingEvent(null)}
+        onSubmit={(payload) => {
+          if (!editingEvent) return;
+          updateEventMutation.mutate({ eventId: editingEvent.eventid, ...payload });
+        }}
+        loading={updateEventMutation.isPending}
+        error={updateEventMutation.error?.message}
       />
       <CreateSeasonModal
         open={seasonModalOpen}
@@ -721,36 +867,6 @@ function PlayerLeagueProfile({ detail, userId }: { detail: LeagueDetail; userId:
   );
 }
 
-function RankingTimeline({ detail }: { detail: LeagueDetail }) {
-  const topPlayers = detail.standings.slice(0, 5);
-  return (
-    <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-white">Rankings over time</h3>
-        <Trophy size={16} className="text-pit-gold" />
-      </div>
-      <div className="space-y-3">
-        {topPlayers.map((player, index) => {
-          const topPoints = Number(detail.standings[0]?.totalpoints || 0);
-          const playerPoints = Number(player.totalpoints || 0);
-          const width = topPoints ? Math.max(8, (playerPoints / topPoints) * 100) : 0;
-          return (
-            <div key={player.userid}>
-              <div className="mb-1 flex justify-between gap-2 text-xs">
-                <span className="truncate text-pit-text">#{index + 1} {player.displayname}</span>
-                <span className="font-mono text-white">{formatNumber(playerPoints)}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-pit-border">
-                <div className="h-full rounded-full bg-pit-teal" style={{ width: `${width}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function FinalStackCard({ detail }: { detail: LeagueDetail }) {
   if (!detail.league.finalenabled) {
     return (
@@ -790,20 +906,28 @@ function FinalStackCard({ detail }: { detail: LeagueDetail }) {
 function MemberLeagueView({
   detail,
   currentUserId,
+  selectedUserId,
   selectedSeason,
   onBack,
+  onSelectUser,
   onSeasonChange,
 }: {
   detail: LeagueDetail;
   currentUserId: string | null;
+  selectedUserId: string | null;
   selectedSeason?: LeagueDetail['seasons'][number];
   onBack: () => void;
+  onSelectUser: (userId: string) => void;
   onSeasonChange: (seasonId: string) => void;
 }) {
-  const member = currentUserId ? detail.members.find((item) => item.userid === currentUserId) ?? null : null;
-  const standing = currentUserId ? detail.standings.find((item) => item.userid === currentUserId) ?? null : null;
+  const viewedUserId = selectedUserId && detail.standings.some((item) => item.userid === selectedUserId)
+    ? selectedUserId
+    : currentUserId;
+  const isViewingSelf = Boolean(currentUserId && viewedUserId === currentUserId);
+  const member = viewedUserId ? detail.members.find((item) => item.userid === viewedUserId) ?? null : null;
+  const standing = viewedUserId ? detail.standings.find((item) => item.userid === viewedUserId) ?? null : null;
   const rank = standing ? detail.standings.findIndex((item) => item.userid === standing.userid) + 1 : null;
-  const userResults = currentUserId ? detail.results.filter((result) => result.userid === currentUserId) : [];
+  const userResults = viewedUserId ? detail.results.filter((result) => result.userid === viewedUserId) : [];
   const resultByEvent = new Map(userResults.map((result) => [result.eventid, result]));
   const today = todayDateString();
   const dueEvents = detail.events.filter((event) => isEventDueToDate(event, today) || resultByEvent.has(event.eventid));
@@ -817,10 +941,12 @@ function MemberLeagueView({
   );
   const playedCompletedEventCount = new Set(userResults.filter((result) => completedEventIds.has(result.eventid)).map((result) => result.eventid)).size;
   const eventsPlayedLabel = completedEventIds.size === 0 ? '0' : `${playedCompletedEventCount} of ${completedEventIds.size}`;
+  const totalPoints = Number(standing?.totalpoints || 0);
+  const bestFinish = standing?.bestfinishes.find((finish) => Number.isFinite(Number(finish))) ?? null;
   const dueEventFees = dueEvents.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
   const totalDueToDate = Number(detail.league.leaguefee || 0) + dueEventFees;
-  const totalPaid = currentUserId
-    ? detail.payments.filter((payment) => payment.userid === currentUserId).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  const totalPaid = viewedUserId
+    ? detail.payments.filter((payment) => payment.userid === viewedUserId).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
     : 0;
   const openBalance = Math.max(0, totalDueToDate - totalPaid);
 
@@ -846,16 +972,29 @@ function MemberLeagueView({
       <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
         <div className="grid gap-5 border-b border-pit-border bg-[radial-gradient(circle_at_18%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0">
-            <p className="eyebrow">My league story</p>
+            <p className="eyebrow">{isViewingSelf ? 'My league story' : 'Player journey'}</p>
             <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
             <p className="mt-2 text-sm leading-6 text-pit-text">
               {selectedSeason?.name ?? 'Current season'}{selectedSeason ? ` runs ${String(selectedSeason.begindate).slice(0, 10)} through ${String(selectedSeason.enddate).slice(0, 10)}.` : ''}
             </p>
+            {!isViewingSelf && currentUserId && (
+              <button
+                type="button"
+                className="mt-3 rounded-full border border-pit-teal/35 bg-pit-teal/10 px-3 py-1 text-xs font-semibold text-pit-teal transition hover:border-pit-teal/70 hover:bg-pit-teal/15"
+                onClick={() => onSelectUser(currentUserId)}
+              >
+                Back to my story
+              </button>
+            )}
             <div className="mt-4 grid gap-3 sm:grid-cols-4">
               <MemberStoryStat label="Current place" value={rank ? `#${rank}` : '-'} />
               <MemberStoryStat label="Avg finish" value={standing?.averagefinish ? standing.averagefinish.toFixed(1) : '-'} />
               <MemberStoryStat label="Remaining" value={remainingEvents.length} />
-              <MemberStoryStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+              <MemberStoryStat
+                label={isViewingSelf ? 'Balance due' : 'Total points'}
+                value={isViewingSelf ? formatCurrency(openBalance) : formatNumber(totalPoints)}
+                accent={isViewingSelf ? (openBalance > 0 ? 'gold' : 'teal') : 'teal'}
+              />
             </div>
           </div>
           <NextLeagueEventCard detail={detail} event={nextEvent} />
@@ -869,18 +1008,27 @@ function MemberLeagueView({
                   <p className="eyebrow">Season performance</p>
                   <h3 className="mt-1 text-lg font-bold text-white">{member?.displayname ?? 'League member'}</h3>
                 </div>
-                <span className="chip">{formatNumber(Number(standing?.totalpoints || 0))} pts</span>
+                <span className="chip">{formatNumber(totalPoints)} pts</span>
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 <MemberMoneyStat label="Events played" value={eventsPlayedLabel} />
-                <MemberMoneyStat label="Paid" value={formatCurrency(totalPaid)} accent="teal" />
-                <MemberMoneyStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+                {isViewingSelf ? (
+                  <>
+                    <MemberMoneyStat label="Paid" value={formatCurrency(totalPaid)} accent="teal" />
+                    <MemberMoneyStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+                  </>
+                ) : (
+                  <>
+                    <MemberMoneyStat label="Points" value={formatNumber(totalPoints)} accent="teal" />
+                    <MemberMoneyStat label="Best finish" value={bestFinish ? `${bestFinish}${ordinal(bestFinish)}` : '-'} accent="gold" />
+                  </>
+                )}
               </div>
             </section>
 
             <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h4 className="font-semibold text-white">My event finishes</h4>
+                <h4 className="font-semibold text-white">{isViewingSelf ? 'My event finishes' : `${member?.displayname ?? 'Player'} finishes`}</h4>
                 <Trophy size={15} className="text-pit-gold" />
               </div>
               <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -891,7 +1039,7 @@ function MemberLeagueView({
                     <div key={event.eventid} className="grid grid-cols-[minmax(0,1fr)_88px] gap-3 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-sm">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-white">{event.name}</p>
-                        <p className="mt-1 text-xs text-pit-muted">{event.eventdate ? String(event.eventdate).slice(0, 10) : 'Date TBD'}</p>
+                        <p className="mt-1 text-xs text-pit-muted">{formatLeagueEventDateTime(event)}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-pit-teal">{formatNumber(points)} pts</p>
@@ -912,25 +1060,31 @@ function MemberLeagueView({
             </div>
             <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
               {detail.standings.map((item, index) => (
-                <div
+                <button
                   key={item.userid}
-                  className={`grid grid-cols-[42px_minmax(0,1fr)_82px] items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                    item.userid === currentUserId ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-card/60'
+                  type="button"
+                  onClick={() => onSelectUser(item.userid)}
+                  className={`grid w-full grid-cols-[42px_minmax(0,1fr)_82px] items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                    item.userid === viewedUserId ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-card/60 hover:border-pit-teal/45 hover:bg-pit-card'
                   }`}
                 >
                   <span className="font-mono text-pit-teal">#{index + 1}</span>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-white">{item.displayname ?? 'Player'}</p>
+                    <p className="truncate font-semibold text-white">
+                      {item.displayname ?? 'Player'}{item.userid === currentUserId ? ' (you)' : ''}
+                    </p>
                     <p className="mt-1 text-xs text-pit-muted">{item.eventsplayed} played{item.averagefinish ? ` - avg ${item.averagefinish.toFixed(1)}` : ''}</p>
                   </div>
                   <span className="text-right font-mono text-white">{formatNumber(Number(item.totalpoints || 0))}</span>
-                </div>
+                </button>
               ))}
               {detail.standings.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">Standings will appear once finishes are logged.</p>}
             </div>
           </section>
         </div>
       </section>
+
+      <LeagueAuditTrail detail={detail} compact />
     </div>
   );
 }
@@ -968,7 +1122,7 @@ function NextLeagueEventCard({ detail, event }: { detail: LeagueDetail; event: L
           <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-lg border border-pit-border bg-pit-bg/70 p-3">
               <p className="text-xs uppercase tracking-wide text-pit-muted">Date</p>
-              <p className="mt-1 font-semibold text-white">{event.eventdate ? String(event.eventdate).slice(0, 10) : 'TBD'}</p>
+              <p className="mt-1 font-semibold text-white">{formatLeagueEventDateTime(event)}</p>
             </div>
             <div className="rounded-lg border border-pit-border bg-pit-bg/70 p-3">
               <p className="text-xs uppercase tracking-wide text-pit-muted">Fee</p>
@@ -988,19 +1142,24 @@ function NextLeagueEventCard({ detail, event }: { detail: LeagueDetail; event: L
 function LeagueMembersCard({
   detail,
   onAddGuest,
+  onInviteGuest,
   onRemoveMember,
   addLoading,
+  inviteLoadingUserId,
   removeLoading,
   error,
 }: {
   detail: LeagueDetail;
   onAddGuest: (displayname: string) => void;
+  onInviteGuest: (guestUserId: string, email: string) => void;
   onRemoveMember: (member: LeagueMember) => void;
   addLoading: boolean;
+  inviteLoadingUserId?: string | null;
   removeLoading: boolean;
   error?: string;
 }) {
   const [guestName, setGuestName] = useState('');
+  const [inviteEmails, setInviteEmails] = useState<Record<string, string>>({});
   const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
   const pendingCount = detail.members.filter((member) => !member.approved).length;
 
@@ -1009,6 +1168,11 @@ function LeagueMembersCard({
     if (!name) return;
     onAddGuest(name);
     setGuestName('');
+  };
+  const submitInvite = (member: LeagueMember) => {
+    const email = (inviteEmails[member.userid] ?? '').trim();
+    if (!email) return;
+    onInviteGuest(member.userid, email);
   };
 
   return (
@@ -1026,7 +1190,7 @@ function LeagueMembersCard({
       {detail.league.isadmin && (
         <div className="space-y-2 rounded-xl border border-pit-border bg-pit-bg/55 p-3">
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Guest player</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add player</span>
             <input
               className="input py-2"
               value={guestName}
@@ -1040,29 +1204,66 @@ function LeagueMembersCard({
           {error && <p className="text-xs text-red-300">{error}</p>}
           <button className="btn-primary w-full justify-center px-3 py-2 text-xs" disabled={addLoading || !guestName.trim()} onClick={submitGuest}>
             <UserPlus size={13} />
-            {addLoading ? 'Adding...' : 'Add guest'}
+            {addLoading ? 'Adding...' : 'Add player'}
           </button>
         </div>
       )}
 
       <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
         {approvedMembers.map((member) => (
-          <div key={member.userid} className="flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
-            <p className="min-w-0 truncate text-sm font-semibold text-white">{member.displayname ?? 'Player'}</p>
-            {member.isadmin && (
-              <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
-                <Crown size={9} className="mr-0.5" /> Admin
-              </span>
-            )}
-            {detail.league.isadmin && (
-              <button
-                className="btn-ghost h-8 w-8 shrink-0 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
-                disabled={removeLoading}
-                title={`Remove ${member.displayname ?? 'player'} from this season`}
-                onClick={() => onRemoveMember(member)}
-              >
-                <Trash2 size={13} />
-              </button>
+          <div key={member.userid} className="rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{member.displayname ?? 'Player'}</p>
+                <p className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-pit-muted">
+                  <Mail size={11} className="shrink-0 text-pit-teal" />
+                  {member.isguestuser
+                    ? member.pendinginviteemail
+                      ? `Invite pending: ${member.pendinginviteemail}`
+                      : 'Guest player'
+                    : member.emailaddress ?? 'No email on file'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {member.isadmin && (
+                  <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
+                    <Crown size={9} className="mr-0.5" /> Admin
+                  </span>
+                )}
+                {detail.league.isadmin && (
+                  <button
+                    className="btn-ghost h-8 w-8 shrink-0 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
+                    disabled={removeLoading}
+                    title={`Remove ${member.displayname ?? 'player'} from this season`}
+                    onClick={() => onRemoveMember(member)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {detail.league.isadmin && member.isguestuser && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <input
+                  className="input h-9 py-2 text-xs"
+                  type="email"
+                  value={inviteEmails[member.userid] ?? ''}
+                  onChange={(event) => setInviteEmails((current) => ({ ...current, [member.userid]: event.target.value }))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') submitInvite(member);
+                  }}
+                  placeholder="Email to claim guest"
+                />
+                <button
+                  className="btn-ghost h-9 justify-center gap-1.5 px-3 py-2 text-xs"
+                  disabled={inviteLoadingUserId === member.userid || !(inviteEmails[member.userid] ?? '').trim()}
+                  onClick={() => submitInvite(member)}
+                  type="button"
+                >
+                  <Mail size={12} />
+                  {inviteLoadingUserId === member.userid ? 'Sending...' : 'Invite'}
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -1080,19 +1281,21 @@ function PaymentTracker({
   deleteLoading,
 }: {
   detail: LeagueDetail;
-  onSettings: (payload: Pick<League, 'leaguefee' | 'pereventfee'>) => void;
+  onSettings: (payload: { leaguefee: number; seasonEventFee: number }) => void;
   onDeletePayment: (paymentId: string) => void;
   settingsLoading: boolean;
   deleteLoading: boolean;
 }) {
+  const selectedSeason = getSelectedLeagueSeason(detail);
   const [leagueFee, setLeagueFee] = useState(String(detail.league.leaguefee || 0));
-  const [perEventFee, setPerEventFee] = useState(String(detail.league.pereventfee || 0));
+  const [perEventFee, setPerEventFee] = useState(String(getSeasonEventFee(detail) || 0));
   useEffect(() => {
     setLeagueFee(String(detail.league.leaguefee || 0));
-    setPerEventFee(String(detail.league.pereventfee || 0));
-  }, [detail.league.leaguefee, detail.league.pereventfee]);
+    setPerEventFee(String(getSeasonEventFee(detail) || 0));
+  }, [detail]);
   const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
-  const eventFeesTotal = detail.events.reduce((sum, event) => sum + getLeagueEventFee(detail, event), 0);
+  const seasonEventFee = getSeasonEventFee(detail);
+  const eventFeesTotal = detail.events.length * seasonEventFee;
   const totalDuePerPlayer = Number(detail.league.leaguefee || 0) + eventFeesTotal;
   const totalPaid = detail.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const totalDue = approvedMembers.length * totalDuePerPlayer;
@@ -1103,6 +1306,9 @@ function PaymentTracker({
         <div>
           <p className="eyebrow">Payment audit</p>
           <h3 className="text-xl font-bold text-white">League Fees</h3>
+          {selectedSeason && (
+            <p className="mt-1 text-sm text-pit-muted">{selectedSeason.name} event fee applies to every event in this season.</p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="chip">{formatCurrency(totalPaid)} paid</span>
@@ -1115,30 +1321,33 @@ function PaymentTracker({
           <input className="input" inputMode="decimal" value={leagueFee} onChange={(event) => setLeagueFee(event.target.value.replace(/[^\d.]/g, ''))} />
         </label>
         <label className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Per event fee</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Season event fee</span>
           <input className="input" inputMode="decimal" value={perEventFee} onChange={(event) => setPerEventFee(event.target.value.replace(/[^\d.]/g, ''))} />
         </label>
-        <button className="btn-primary px-3 py-2 text-sm" disabled={settingsLoading} onClick={() => onSettings({ leaguefee: Number(leagueFee) || 0, pereventfee: Number(perEventFee) || 0 })}>
+        <button className="btn-primary px-3 py-2 text-sm" disabled={settingsLoading} onClick={() => onSettings({ leaguefee: Number(leagueFee) || 0, seasonEventFee: Number(perEventFee) || 0 })}>
           <Save size={14} />
           Save Fees
         </button>
       </div>
       <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
-        <div className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px] gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted">
+        <div className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px_100px] gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted">
           <span>Player</span>
           <span className="text-right">Due</span>
           <span className="text-right">Paid</span>
           <span className="text-right">Open</span>
+          <span className="text-right">Events</span>
         </div>
         {approvedMembers.map((member) => {
           const paid = detail.payments.filter((payment) => payment.userid === member.userid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
           const open = Math.max(0, totalDuePerPlayer - paid);
+          const eventsPaid = detail.events.filter((event) => getEventPaymentStatus(detail, event, member.userid).paid).length;
           return (
-            <div key={member.userid} className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px] gap-2 border-b border-pit-border/50 px-3 py-3 text-sm last:border-0">
+            <div key={member.userid} className="grid grid-cols-[minmax(0,1fr)_90px_90px_90px_100px] gap-2 border-b border-pit-border/50 px-3 py-3 text-sm last:border-0">
               <span className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</span>
               <span className="text-right text-pit-text">{formatCurrency(totalDuePerPlayer)}</span>
               <span className="text-right text-pit-teal">{formatCurrency(paid)}</span>
               <span className={`text-right font-semibold ${open ? 'text-pit-gold' : 'text-pit-muted'}`}>{formatCurrency(open)}</span>
+              <span className="text-right text-pit-text">{eventsPaid}/{detail.events.length}</span>
             </div>
           );
         })}
@@ -1163,74 +1372,184 @@ function PaymentTracker({
   );
 }
 
+function LeagueAuditTrail({ detail, compact = false }: { detail: LeagueDetail; compact?: boolean }) {
+  const rows = compact ? detail.auditlog.slice(0, 8) : detail.auditlog;
+  return (
+    <section className={`${compact ? 'rounded-xl border border-pit-border bg-pit-card p-4' : 'card'} space-y-4`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="eyebrow">Audit trail</p>
+          <h3 className="text-xl font-bold text-white">League Ledger</h3>
+        </div>
+        <span className="chip">
+          <ScrollText size={13} />
+          {detail.auditlog.length} entries
+        </span>
+      </div>
+      <div className={`${compact ? 'max-h-80' : 'max-h-[34rem]'} space-y-2 overflow-y-auto pr-1`}>
+        {rows.map((entry) => {
+          const detailText = formatAuditDetails(entry);
+          return (
+            <div key={entry.auditid} className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white">{formatAuditAction(entry.action)}</p>
+                  <p className="mt-1 text-sm leading-5 text-pit-text">{entry.summary}</p>
+                </div>
+                <span className="shrink-0 font-mono text-[11px] text-pit-muted">{formatAuditTimestamp(entry.createdat)}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-pit-border bg-pit-card/70 px-2.5 py-1 text-pit-text">
+                  By {entry.actorname ?? 'System'}
+                </span>
+                {entry.targetname && (
+                  <span className="rounded-full border border-pit-border bg-pit-card/70 px-2.5 py-1 text-pit-text">
+                    Player {entry.targetname}
+                  </span>
+                )}
+                {entry.eventname && (
+                  <span className="rounded-full border border-pit-teal/25 bg-pit-teal/10 px-2.5 py-1 text-pit-teal">
+                    {entry.eventname}
+                  </span>
+                )}
+                {entry.seasonname && (
+                  <span className="rounded-full border border-pit-border bg-pit-card/70 px-2.5 py-1 text-pit-text">
+                    {entry.seasonname}
+                  </span>
+                )}
+              </div>
+              {detailText && (
+                <p className="mt-3 rounded-lg border border-pit-border bg-pit-card/50 px-3 py-2 text-xs leading-5 text-pit-muted">
+                  {detailText}
+                </p>
+              )}
+            </div>
+          );
+        })}
+        {rows.length === 0 && (
+          <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
+            League changes will appear here as members join, payments are recorded, finishes are logged, and scoring settings change.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function EventPaymentControls({
+  detail,
+  event,
+  loading,
+  error,
+  onMarkAllPaid,
+  onMarkUserPaid,
+}: {
+  detail: LeagueDetail;
+  event: LeagueEvent;
+  loading: boolean;
+  error?: string;
+  onMarkAllPaid: () => void;
+  onMarkUserPaid: (userId: string) => void;
+}) {
+  const members = detail.members.filter((member) => member.approved && member.participating);
+  const fee = getSeasonEventFee(detail);
+  const paidCount = members.filter((member) => getEventPaymentStatus(detail, event, member.userid).paid).length;
+
+  return (
+    <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-pit-muted">Event payments</p>
+          <p className="mt-1 text-sm text-white">{formatCurrency(fee)} per player</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="chip">{paidCount}/{members.length} paid</span>
+          <button
+            type="button"
+            className="btn-primary px-3 py-2 text-xs"
+            disabled={loading || !fee || paidCount === members.length}
+            onClick={onMarkAllPaid}
+          >
+            <CheckCircle2 size={13} />
+            Mark all paid
+          </button>
+        </div>
+      </div>
+      {!fee && (
+        <p className="mt-3 rounded-lg border border-pit-border bg-pit-card/60 px-3 py-2 text-sm text-pit-text">
+          Set the season event fee in Fee Tracker before marking event payments.
+        </p>
+      )}
+      {error && <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {members.map((member) => {
+          const status = getEventPaymentStatus(detail, event, member.userid);
+          const open = Math.max(0, fee - status.amount);
+          return (
+            <div key={member.userid} className="flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-card/60 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{member.displayname ?? 'Player'}</p>
+                <p className="mt-1 text-xs text-pit-muted">{formatCurrency(status.amount)} / {formatCurrency(fee)}</p>
+              </div>
+              {status.paid ? (
+                <span className="badge border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
+                  <CheckCircle2 size={10} className="mr-1" />
+                  Paid
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-ghost shrink-0 px-3 py-1.5 text-xs"
+                  disabled={loading || !fee}
+                  onClick={() => onMarkUserPaid(member.userid)}
+                >
+                  Pay {formatCurrency(open)}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ResultLogger({
   detail,
   event,
   onLog,
-  onEventFeeChange,
   loading,
-  feeLoading,
-  feeError,
 }: {
   detail: LeagueDetail;
   event: LeagueEvent;
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
-  onEventFeeChange: (eventfee: number | null) => void;
   loading: boolean;
-  feeLoading: boolean;
-  feeError?: string;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [eventFeeDraft, setEventFeeDraft] = useState('');
   const resultByUser = new Map(detail.results.filter((result) => result.eventid === event.eventid).map((result) => [result.userid, result]));
   const approvedMembers = detail.members.filter((member) => member.approved && member.participating);
   const eventResults = detail.results.filter((result) => result.eventid === event.eventid);
-  const dnfCount = eventResults.filter((result) => result.dnf).length;
 
-  useEffect(() => {
-    setEventFeeDraft(String(getLeagueEventFee(detail, event) || ''));
-  }, [detail, event.eventid, event.eventfee]);
   useEffect(() => {
     setDrafts({});
   }, [event.eventid]);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-3">
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-end">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-pit-muted">Event fee</p>
-            <p className="mt-1 text-xs text-pit-text">Used for this event's payment audit.</p>
-          </div>
-          <input
-            className="input py-2"
-            inputMode="decimal"
-            value={eventFeeDraft}
-            onChange={(eventValue) => setEventFeeDraft(eventValue.target.value.replace(/[^\d.]/g, ''))}
-          />
-          <button
-            type="button"
-            className="btn-primary px-3 py-2 text-xs"
-            disabled={feeLoading}
-            onClick={() => onEventFeeChange(eventFeeDraft.trim() ? Number(eventFeeDraft) || 0 : null)}
-          >
-            <Save size={13} />
-            {feeLoading ? 'Saving...' : 'Save fee'}
-          </button>
-        </div>
-        {feeError && <p className="mt-2 text-xs text-red-300">{feeError}</p>}
-      </div>
       {approvedMembers.map((member) => {
         const existing = resultByUser.get(member.userid);
         const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
         const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
-        const dnfCountForMember = dnfCount - (existing?.dnf ? 1 : 0);
-        const maxPlace = Math.max(1, approvedMembers.length - dnfCountForMember);
+        const maxPlace = Math.max(1, approvedMembers.length);
         const usedPlaces = new Set(
           eventResults
             .filter((result) => result.userid !== member.userid && !result.dnf && result.placed != null)
             .map((result) => Number(result.placed))
         );
+        Object.entries(drafts).forEach(([userId, place]) => {
+          const draftPlace = Number(place);
+          if (userId !== member.userid && draftPlace) usedPlaces.add(draftPlace);
+        });
         const availablePlaces = Array.from({ length: maxPlace }, (_, index) => index + 1)
           .filter((place) => !usedPlaces.has(place));
         const selectedPlace = Number(value);
@@ -1239,28 +1558,41 @@ function ResultLogger({
           availablePlaces.sort((a, b) => a - b);
         }
         return (
-          <div key={member.userid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_100px] sm:items-center">
+          <div key={member.userid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 sm:grid-cols-[minmax(0,1fr)_120px_100px] sm:items-center">
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
               <p className="mt-1 text-xs text-pit-muted">
-                {existing ? `${existing.dnf ? 'DNF' : `${existing.placed}${ordinal(existing.placed)} place`} - ${formatNumber(totalPoints)} pts` : 'No finish logged'}
+                {existing ? `${existing.dnf ? 'DNF' : `${existing.placed}${ordinal(existing.placed)} place`} - ${formatNumber(totalPoints)} pts` : selectedPlace ? `Saving ${selectedPlace}${ordinal(selectedPlace)} place...` : 'No finish logged'}
               </p>
             </div>
             <select
               className="input py-2"
               value={value}
-              onChange={(eventValue) => setDrafts((current) => ({ ...current, [member.userid]: eventValue.target.value }))}
+              disabled={loading}
+              onChange={(eventValue) => {
+                const nextPlace = Number(eventValue.target.value);
+                if (!nextPlace) return;
+                setDrafts((current) => ({ ...current, [member.userid]: String(nextPlace) }));
+                onLog(member.userid, nextPlace, false);
+              }}
             >
-              <option value="">Place</option>
+              <option value="" disabled>Place</option>
               {availablePlaces.map((place) => (
                 <option key={place} value={place}>{place}{ordinal(place)}</option>
               ))}
             </select>
-            <button className="btn-primary px-3 py-2 text-xs" disabled={loading || !value} onClick={() => onLog(member.userid, Number(value), false)}>
-              <Save size={13} />
-              Log finish
-            </button>
-            <button className="btn-ghost px-3 py-2 text-xs" disabled={loading} onClick={() => onLog(member.userid, null, true)}>
+            <button
+              className="btn-ghost px-3 py-2 text-xs"
+              disabled={loading}
+              onClick={() => {
+                setDrafts((current) => {
+                  const next = { ...current };
+                  delete next[member.userid];
+                  return next;
+                });
+                onLog(member.userid, null, true);
+              }}
+            >
               <UserMinus size={13} />
               DNF
             </button>
@@ -1294,7 +1626,12 @@ function PointsEditorModal({
   const dnf = draft.find((rule) => rule.place === 'DNF') ?? { place: 'DNF' as const, points: 0 };
   const updateRule = (place: number | 'DNF', pointsValue: string) => {
     const nextPoints = Math.max(0, Math.round(Number(pointsValue) || 0));
-    setDraft((current) => current.map((rule) => rule.place === place ? { ...rule, points: nextPoints } : rule));
+    setDraft((current) => current.map((rule) => {
+      const matches = place === 'DNF'
+        ? rule.place === 'DNF'
+        : rule.place !== 'DNF' && Number(rule.place) === Number(place);
+      return matches ? { ...rule, place, points: nextPoints } : rule;
+    }));
   };
   const addPlace = () => {
     const maxPlace = rows.reduce((max, rule) => Math.max(max, Number(rule.place)), 0);
@@ -1310,7 +1647,15 @@ function PointsEditorModal({
       footer={(
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" disabled={loading} onClick={() => onSubmit([dnf, ...rows])}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading}
+            onClick={() => onSubmit([
+              { place: 'DNF', points: Number(dnf.points || 0) },
+              ...rows.map((rule) => ({ place: Number(rule.place), points: Number(rule.points || 0) })),
+            ])}
+          >
             {loading ? 'Saving...' : 'Save Points'}
           </button>
         </>
@@ -1547,7 +1892,7 @@ function CreateLeagueModal({
             <input className="input" inputMode="decimal" value={leaguefee} onChange={(event) => setLeaguefee(event.target.value.replace(/[^\d.]/g, ''))} />
           </label>
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Per event fee</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Season event fee</span>
             <input className="input" inputMode="decimal" value={pereventfee} onChange={(event) => setPereventfee(event.target.value.replace(/[^\d.]/g, ''))} />
           </label>
         </div>
@@ -1683,7 +2028,7 @@ function RecordPaymentModal({
   }, [detail.league.leaguefee, members, open]);
 
   const selectedMember = members.find((member) => member.userid === userid);
-  const selectedEvent = detail.events.find((event) => event.eventid === eventid) ?? detail.events[0] ?? null;
+  const seasonEventFee = getSeasonEventFee(detail);
   return (
     <Modal
       title="Record Payment"
@@ -1721,9 +2066,8 @@ function RecordPaymentModal({
                 const next = event.target.value as LeaguePaymentType;
                 setPaymenttype(next);
                 if (next === 'event') {
-                  const nextEvent = selectedEvent ?? detail.events[0] ?? null;
-                  setEventid(nextEvent?.eventid ?? '');
-                  setAmount(String(nextEvent ? getLeagueEventFee(detail, nextEvent) || '' : detail.league.pereventfee || ''));
+                  setEventid('');
+                  setAmount(String(seasonEventFee || ''));
                 } else {
                   setAmount(String(next === 'league' ? detail.league.leaguefee || '' : ''));
                 }
@@ -1752,9 +2096,12 @@ function RecordPaymentModal({
                 if (nextEvent) setAmount(String(getLeagueEventFee(detail, nextEvent) || ''));
               }}
             >
-              <option value="">No event selected</option>
+              <option value="">Apply forward through season events</option>
               {detail.events.map((event) => <option key={event.eventid} value={event.eventid}>{event.name}</option>)}
             </select>
+            <p className="mt-1 text-xs text-pit-muted">
+              Leave this on apply forward to mark the player's next unpaid events in order.
+            </p>
           </label>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1836,7 +2183,7 @@ function CreateSeasonModal({
           <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
         </label>
         <p className="text-sm leading-6 text-pit-text">
-          A season is the scoring window inside this league. Existing approved league members are added as season players, and admins can remove themselves from season play without losing admin access.
+          A season is the scoring window inside this league. New seasons start with the active roster from the most recent season, so removed players stay out unless an admin adds them back.
         </p>
       </div>
     </Modal>
@@ -1853,13 +2200,14 @@ function CreateEventModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; eventdate?: string | null; eventnumber?: number; eventcount?: number }) => void;
+  onSubmit: (data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number }) => void;
   nextEventNumber: number;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState(`Event #${nextEventNumber}`);
   const [eventdate, setEventdate] = useState('');
+  const [eventtime, setEventtime] = useState('');
   const [eventnumber, setEventnumber] = useState(String(nextEventNumber));
   const [eventcount, setEventcount] = useState('1');
   const countValue = Math.max(1, Math.min(100, Number(eventcount) || 1));
@@ -1867,6 +2215,7 @@ function CreateEventModal({
     if (!open) return;
     setName(`Event #${nextEventNumber}`);
     setEventdate('');
+    setEventtime('');
     setEventnumber(String(nextEventNumber));
     setEventcount('1');
   }, [nextEventNumber, open]);
@@ -1886,6 +2235,7 @@ function CreateEventModal({
             onClick={() => onSubmit({
               name,
               eventdate: countValue === 1 ? eventdate || null : null,
+              eventtime: countValue === 1 ? eventtime || null : null,
               eventnumber: Number(eventnumber) || nextEventNumber,
               eventcount: countValue,
             })}
@@ -1908,7 +2258,7 @@ function CreateEventModal({
           </label>
         </div>
         {countValue === 1 ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event name</span>
               <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Event name" />
@@ -1917,12 +2267,93 @@ function CreateEventModal({
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event date</span>
               <input className="input" type="date" value={eventdate} onChange={(event) => setEventdate(event.target.value)} />
             </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Start time</span>
+              <input className="input" type="time" value={eventtime} onChange={(event) => setEventtime(event.target.value)} />
+            </label>
           </div>
         ) : (
           <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
             This will create {countValue} blank events named Event #{Number(eventnumber) || nextEventNumber} through Event #{(Number(eventnumber) || nextEventNumber) + countValue - 1}.
           </div>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+function EditEventModal({
+  open,
+  event,
+  onClose,
+  onSubmit,
+  loading,
+  error,
+}: {
+  open: boolean;
+  event: LeagueEvent | null;
+  onClose: () => void;
+  onSubmit: (data: { name: string; eventdate: string | null; eventtime: string | null; eventnumber: number | null }) => void;
+  loading: boolean;
+  error?: string;
+}) {
+  const [name, setName] = useState('');
+  const [eventdate, setEventdate] = useState('');
+  const [eventtime, setEventtime] = useState('');
+  const [eventnumber, setEventnumber] = useState('');
+
+  useEffect(() => {
+    if (!open || !event) return;
+    setName(event.name);
+    setEventdate(leagueEventDate(event));
+    setEventtime(event.eventtime ? String(event.eventtime).slice(0, 5) : '');
+    setEventnumber(event.eventnumber ? String(event.eventnumber) : '');
+  }, [event, open]);
+
+  return (
+    <Modal
+      title="Edit League Event"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading || !name.trim()}
+            onClick={() => onSubmit({
+              name,
+              eventdate: eventdate || null,
+              eventtime: eventtime || null,
+              eventnumber: eventnumber.trim() ? Number(eventnumber) || null : null,
+            })}
+          >
+            {loading ? 'Saving...' : 'Save event'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event name</span>
+          <input className="input" value={name} onChange={(inputEvent) => setName(inputEvent.target.value)} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event date</span>
+            <input className="input" type="date" value={eventdate} onChange={(inputEvent) => setEventdate(inputEvent.target.value)} />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Start time</span>
+            <input className="input" type="time" value={eventtime} onChange={(inputEvent) => setEventtime(inputEvent.target.value)} />
+          </label>
+        </div>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event order</span>
+          <input className="input" inputMode="numeric" value={eventnumber} onChange={(inputEvent) => setEventnumber(inputEvent.target.value.replace(/\D/g, ''))} />
+        </label>
       </div>
     </Modal>
   );
@@ -1991,12 +2422,147 @@ function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 1
   return [{ place: 'DNF', points: 0 }, ...rounded.sort((a, b) => a.place - b.place).map(({ place, points }) => ({ place, points }))];
 }
 
+function formatAuditAction(action: string) {
+  const labels: Record<string, string> = {
+    league_created: 'League created',
+    season_created: 'Season created',
+    season_deleted: 'Season deleted',
+    season_fee_updated: 'Season fee updated',
+    season_updated: 'Season updated',
+    event_created: 'Event created',
+    events_created: 'Events created',
+    event_updated: 'Event updated',
+    member_joined: 'Member joined',
+    member_join_requested: 'Join requested',
+    guest_added: 'Guest added',
+    guest_claim_invite_sent: 'Guest claim invite sent',
+    guest_profile_claimed: 'Guest profile claimed',
+    member_removed_from_season: 'Member removed',
+    payment_added: 'Payment added',
+    payment_deleted: 'Payment deleted',
+    event_payment_marked_paid: 'Event payment marked paid',
+    event_payments_marked_paid: 'Event payments marked paid',
+    event_payments_applied: 'Event payments applied',
+    placement_logged: 'Placement logged',
+    placement_updated: 'Placement updated',
+    dnf_logged: 'DNF logged',
+    dnf_updated: 'DNF updated',
+    scoring_updated: 'Scoring updated',
+    fee_settings_updated: 'Fee settings updated',
+  };
+  return labels[action] ?? action.replace(/_/g, ' ');
+}
+
+function formatAuditTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function auditObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function auditNumber(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function formatAuditPlacement(value: unknown) {
+  const item = auditObject(value);
+  if (item.dnf) return `DNF (${formatNumber(auditNumber(item.points) + auditNumber(item.showupbonuspoints))} pts)`;
+  const placed = item.placed == null ? null : Number(item.placed);
+  const placement = placed ? `${placed}${ordinal(placed)} place` : 'No placement';
+  return `${placement} (${formatNumber(auditNumber(item.points) + auditNumber(item.showupbonuspoints))} pts)`;
+}
+
+function formatAuditDetails(entry: LeagueAuditLog) {
+  const details = auditObject(entry.details);
+  if (entry.action === 'payment_added' || entry.action === 'payment_deleted') {
+    const type = String(details.paymenttype ?? 'payment');
+    const paidAt = details.paidat ? ` on ${String(details.paidat).slice(0, 10)}` : '';
+    const note = details.note ? `, note: ${String(details.note)}` : '';
+    return `${type} payment ${formatCurrency(auditNumber(details.amount))}${paidAt}${note}`;
+  }
+  if (entry.action === 'placement_logged' || entry.action === 'placement_updated' || entry.action === 'dnf_logged' || entry.action === 'dnf_updated') {
+    const previous = details.previous ? `Previous: ${formatAuditPlacement(details.previous)}. ` : '';
+    return `${previous}Current: ${formatAuditPlacement(details.current)}.`;
+  }
+  if (entry.action === 'scoring_updated') {
+    return `${formatNumber(auditNumber(details.recalculatedResults))} logged finishes recalculated.`;
+  }
+  if (entry.action === 'fee_settings_updated') {
+    const previous = auditObject(details.previous);
+    const current = auditObject(details.current);
+    return `League fee ${formatCurrency(auditNumber(previous.leaguefee))} -> ${formatCurrency(auditNumber(current.leaguefee))}; default event fee ${formatCurrency(auditNumber(previous.pereventfee))} -> ${formatCurrency(auditNumber(current.pereventfee))}.`;
+  }
+  if (entry.action === 'season_fee_updated') {
+    const previous = auditObject(details.previous);
+    const current = auditObject(details.current);
+    return `Season event fee ${formatCurrency(auditNumber(previous.pereventfee))} -> ${formatCurrency(auditNumber(current.pereventfee))}.`;
+  }
+  if (entry.action === 'event_payment_marked_paid' || entry.action === 'event_payments_marked_paid') {
+    return `${formatNumber(auditNumber(details.playersUpdated))} player event fees marked paid at ${formatCurrency(auditNumber(details.seasonEventFee))}.`;
+  }
+  if (entry.action === 'event_payments_applied') {
+    return `${formatCurrency(auditNumber(details.amount))} applied across ${formatNumber(auditNumber(details.paymentsCreated))} event payment records.`;
+  }
+  if (entry.action === 'guest_added') {
+    return details.displayname ? `Guest name: ${String(details.displayname)}` : '';
+  }
+  if (entry.action === 'member_removed_from_season') {
+    return `${formatNumber(auditNumber(details.deletedResults))} finishes and ${formatNumber(auditNumber(details.deletedPayments))} payments removed from this season.`;
+  }
+  if (entry.action === 'league_created') {
+    return `${formatNumber(auditNumber(details.eventCount))} starting events, ${formatNumber(auditNumber(details.expectedPlayerCount))} expected players.`;
+  }
+  if (entry.action === 'season_created') {
+    return `${formatNumber(auditNumber(details.eventCount))} events created for this season.`;
+  }
+  if (entry.action === 'events_created') {
+    return `${formatNumber(auditNumber(details.eventCount))} events created starting at #${formatNumber(auditNumber(details.startNumber))}.`;
+  }
+  if (entry.action === 'event_created') {
+    return `${String(details.eventdate ?? 'Date TBD')}${details.eventtime ? ` at ${String(details.eventtime)}` : ''}.`;
+  }
+  if (entry.action === 'event_updated') {
+    return 'Event name, date, time, or order changed.';
+  }
+  return '';
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 }
 
-function getLeagueEventFee(detail: LeagueDetail, event: LeagueEvent) {
-  return event.eventfee == null ? Number(detail.league.pereventfee || 0) : Number(event.eventfee || 0);
+function getSelectedLeagueSeason(detail: LeagueDetail) {
+  return detail.seasons.find((season) => season.seasonid === detail.selectedseasonid) ?? detail.seasons[0] ?? null;
+}
+
+function getSeasonEventFee(detail: LeagueDetail) {
+  const season = getSelectedLeagueSeason(detail);
+  return Number(season?.pereventfee ?? detail.league.pereventfee ?? 0);
+}
+
+function getLeagueEventFee(detail: LeagueDetail, _event: LeagueEvent) {
+  return getSeasonEventFee(detail);
+}
+
+function getEventPaymentStatus(detail: LeagueDetail, event: LeagueEvent, userId: string) {
+  const fee = getLeagueEventFee(detail, event);
+  const amount = detail.payments
+    .filter((payment) => payment.userid === userId && payment.paymenttype === 'event' && payment.eventid === event.eventid)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  return {
+    amount,
+    paid: fee > 0 && amount + 0.001 >= fee,
+  };
 }
 
 function todayDateString() {
@@ -2009,6 +2575,25 @@ function todayDateString() {
 
 function leagueEventDate(event: LeagueEvent) {
   return event.eventdate ? String(event.eventdate).slice(0, 10) : '';
+}
+
+function formatLeagueEventTime(event: LeagueEvent) {
+  const raw = event.eventtime ? String(event.eventtime).slice(0, 5) : '';
+  const [hourValue, minute = '00'] = raw.split(':');
+  const hour = Number(hourValue);
+  if (!raw || Number.isNaN(hour)) return '';
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute.padStart(2, '0')} ${suffix}`;
+}
+
+function formatLeagueEventDateTime(event: LeagueEvent) {
+  const date = leagueEventDate(event);
+  const time = formatLeagueEventTime(event);
+  if (date && time) return `${date} at ${time}`;
+  if (date) return date;
+  if (time) return time;
+  return 'Date/time TBD';
 }
 
 function isEventDueToDate(event: LeagueEvent, today: string) {
@@ -2025,6 +2610,9 @@ function compareLeagueEvents(a: LeagueEvent, b: LeagueEvent) {
   const aDate = leagueEventDate(a) || '9999-12-31';
   const bDate = leagueEventDate(b) || '9999-12-31';
   if (aDate !== bDate) return aDate.localeCompare(bDate);
+  const aTime = a.eventtime ? String(a.eventtime).slice(0, 5) : '23:59';
+  const bTime = b.eventtime ? String(b.eventtime).slice(0, 5) : '23:59';
+  if (aTime !== bTime) return aTime.localeCompare(bTime);
   return Number(a.eventnumber ?? 9999) - Number(b.eventnumber ?? 9999);
 }
 

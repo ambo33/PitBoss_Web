@@ -941,7 +941,19 @@ groupsRouter.get('/:id/tournaments', async (req: Request, res: Response) => {
             t.createdate AS createdat, t.groupid,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND userid = $2) AS isregistered,
-            EXISTS(SELECT 1 FROM tournamentdeclines WHERE tournamentid = t.tournamentid AND userid = $2) AS isdeclined
+            EXISTS(SELECT 1 FROM tournamentdeclines WHERE tournamentid = t.tournamentid AND userid = $2) AS isdeclined,
+            CASE
+              WHEN t.userid = $2 THEN TRUE
+              WHEN EXISTS (
+                SELECT 1
+                FROM groupmembers manager
+                WHERE manager.groupid = t.groupid
+                  AND manager.userid = $2
+                  AND manager.approved = TRUE
+                  AND manager.admin = TRUE
+              ) THEN TRUE
+              ELSE FALSE
+            END AS canmanage
      FROM tournaments t
      WHERE t.groupid = $1
      ORDER BY t.createdate DESC`,

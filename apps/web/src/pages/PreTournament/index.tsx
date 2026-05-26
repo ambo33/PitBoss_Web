@@ -9,8 +9,10 @@ import BrandLockup from '../../components/BrandLockup';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
+import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
+import { isEnabledFlag } from '../../utils/flags';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
 import Payouts from './Payouts';
@@ -66,7 +68,7 @@ export default function PreTournamentPage() {
     },
   });
   const deleteTournamentMutation = useMutation({
-    mutationFn: () => api.deleteTournament(id!),
+    mutationFn: (data?: { notifyPlayers?: boolean }) => api.deleteTournament(id!, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['tournaments'] });
@@ -81,10 +83,15 @@ export default function PreTournamentPage() {
     },
   });
 
+  const canManage = tournament ? isEnabledFlag(tournament.canmanage) || tournament.ownerid === user?.guid : false;
+
+  useEffect(() => {
+    if (!canManage && tab === 'run') setTab('details');
+  }, [canManage, tab]);
+
   if (isLoading) return <Layout back="/"><LoadingSpinner className="mt-24" /></Layout>;
   if (!tournament) return <Layout back="/"><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
-  const canManage = tournament.canmanage ?? tournament.ownerid === user?.guid;
   const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const scheduleLocked = eventStarted && !user?.issuperadmin;
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
@@ -98,7 +105,7 @@ export default function PreTournamentPage() {
     { id: 'details', label: 'Details', mobileLabel: 'Details', Icon: ClipboardList },
     { id: 'players', label: 'Players', mobileLabel: 'Players', Icon: Users },
     { id: 'blinds', label: 'Blind Structure', mobileLabel: 'Blinds', Icon: Timer },
-    { id: 'run', label: 'Run Tournament', mobileLabel: 'Run', Icon: Play },
+    ...(canManage ? [{ id: 'run' as const, label: 'Run Tournament', mobileLabel: 'Run', Icon: Play }] : []),
   ];
 
   return (
@@ -106,7 +113,7 @@ export default function PreTournamentPage() {
       title={tournament.name}
       back="/"
       compactSidebar
-      hideSidebar={tab === 'run'}
+      hideSidebar={tab === 'run' && canManage}
       hideMobileNav={canManage}
       headerRight={<BrandLockup compact showSlogan={false} showWordmark={false} className="items-center gap-2" />}
       mainWidthClassName="max-w-[1800px]"
@@ -142,14 +149,13 @@ export default function PreTournamentPage() {
             totalAddons={totalAddons}
             bountyTotal={bountyTotal}
             canManage={canManage}
-            eventStarted={eventStarted}
             scheduleLocked={scheduleLocked}
             saving={updateTournamentMutation.isPending}
             deleting={deleteTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
             deleteError={deleteTournamentMutation.error?.message}
             onSave={(data) => updateTournamentMutation.mutate(data)}
-            onDelete={() => deleteTournamentMutation.mutate()}
+            onDelete={(data) => deleteTournamentMutation.mutate(data)}
             pocketAdminUrl={showPocketAdmin ? pocketAdminUrl : null}
             showTvBoard={showTvBoard}
           />
@@ -160,7 +166,7 @@ export default function PreTournamentPage() {
 
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
-      {tab === 'run' && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
+      {tab === 'run' && canManage && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
       <div className="h-20 md:hidden" />
       <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} dockToBottom={canManage} />
     </Layout>
@@ -179,7 +185,10 @@ function TournamentMobileNav({
   dockToBottom?: boolean;
 }) {
   return (
-    <nav className={`fixed inset-x-0 z-40 grid grid-cols-4 border-t border-pit-border bg-[#24252d]/96 backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}>
+    <nav
+      className={`fixed inset-x-0 z-40 grid border-t border-pit-teal/30 bg-[#122E30]/96 shadow-[0_-12px_32px_rgba(0,0,0,0.42)] backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}
+      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+    >
       {tabs.map(({ id, mobileLabel, Icon }) => {
         const active = activeTab === id;
         return (
@@ -188,11 +197,11 @@ function TournamentMobileNav({
             type="button"
             onClick={() => onTabChange(id)}
             className={`flex min-w-0 flex-col items-center gap-1 px-1 pt-2.5 pb-3 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-              active ? 'text-teal-100' : 'text-pit-muted'
+              active ? 'text-white' : 'text-teal-100/65 hover:text-white'
             }`}
           >
             <div className={`flex h-7 w-11 items-center justify-center rounded-full transition-all duration-150 ${
-              active ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.22)]' : ''
+              active ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40' : 'bg-black/15'
             }`}>
               <Icon size={18} strokeWidth={active ? 2.5 : 1.75} />
             </div>
@@ -210,7 +219,6 @@ function TournamentDetailsCard({
   totalAddons,
   bountyTotal,
   canManage,
-  eventStarted,
   scheduleLocked,
   saving,
   deleting,
@@ -226,19 +234,19 @@ function TournamentDetailsCard({
   totalAddons: number;
   bountyTotal: number;
   canManage: boolean;
-  eventStarted: boolean;
   scheduleLocked: boolean;
   saving: boolean;
   deleting: boolean;
   error?: string;
   deleteError?: string;
   onSave: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => void;
-  onDelete: () => void;
+  onDelete: (data?: { notifyPlayers?: boolean }) => void;
   pocketAdminUrl: string | null;
   showTvBoard: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [notifyOnDelete, setNotifyOnDelete] = useState(true);
   const [form, setForm] = useState(() => ({
     name: tournament.name ?? '',
     tourneydate: normalizeDate(tournament.tourneydate) ?? '',
@@ -329,6 +337,7 @@ function TournamentDetailsCard({
     && bountyMinimumRequired > estimatedBountyPool
       ? `Minimum bounty payout is too high. ${estimatedBountyEligibleCount} eligible bounties at ${formatMoney(toNumber(form.bountyminpayout))} requires ${formatMoney(bountyMinimumRequired)}, but the bounty pool is ${formatMoney(estimatedBountyPool)}.`
       : '';
+  const registeredPlayerCount = Number(tournament.playercount ?? 0);
 
   return (
     <section className="card overflow-hidden">
@@ -357,11 +366,16 @@ function TournamentDetailsCard({
               <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
                 {editing ? 'Cancel' : 'Edit Details'}
               </button>
-              {eventStarted && (
-                <button type="button" className="btn-danger text-sm" onClick={() => setConfirmDelete(true)}>
-                  Delete Tournament
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn-danger text-sm"
+                onClick={() => {
+                  setNotifyOnDelete(registeredPlayerCount > 0);
+                  setConfirmDelete(true);
+                }}
+              >
+                Delete Tournament
+              </button>
             </div>
           )}
         </div>
@@ -391,7 +405,7 @@ function TournamentDetailsCard({
                   <span className="text-sm font-medium text-pit-text">Time</span>
                   {scheduleLocked && <LockHint />}
                 </div>
-                <input className="input" type="time" value={form.tourneytime} disabled={scheduleLocked} onChange={(e) => setForm((current) => ({ ...current, tourneytime: e.target.value }))} />
+                <QuarterHourTimeSelect value={form.tourneytime} disabled={scheduleLocked} onChange={(value) => setForm((current) => ({ ...current, tourneytime: value }))} />
               </div>
             </Field>
             <Field label="Buy-in">
@@ -439,7 +453,6 @@ function TournamentDetailsCard({
                 />
                 <span>
                   <span className="block text-sm font-semibold text-white">Enable bounties</span>
-                  <span className="block text-xs text-pit-muted">Future Club feature, free during beta.</span>
                 </span>
               </label>
               {form.bountyenabled && (
@@ -603,7 +616,7 @@ function TournamentDetailsCard({
               disabled={deleting}
               onClick={() => {
                 setConfirmDelete(false);
-                onDelete();
+                onDelete({ notifyPlayers: registeredPlayerCount > 0 && notifyOnDelete });
               }}
             >
               {deleting ? 'Deleting...' : 'Delete Tournament'}
@@ -611,9 +624,31 @@ function TournamentDetailsCard({
           </>
         )}
       >
-        <p className="text-sm text-pit-text">
-          This will permanently delete <span className="font-medium text-white">{tournament.name}</span> and notify all registered player email addresses that the tournament was cancelled.
-        </p>
+        <div className="space-y-4 text-sm text-pit-text">
+          <p>
+            This will permanently delete <span className="font-medium text-white">{tournament.name}</span>.
+          </p>
+          {registeredPlayerCount > 0 ? (
+            <label className="flex items-start gap-3 rounded-xl border border-pit-border bg-pit-bg/40 p-3">
+              <input
+                className="mt-1 h-4 w-4 accent-pit-teal"
+                type="checkbox"
+                checked={notifyOnDelete}
+                onChange={(event) => setNotifyOnDelete(event.target.checked)}
+              />
+              <span>
+                <span className="block font-semibold text-white">Notify registered players</span>
+                <span className="block text-xs text-pit-muted">
+                  Send cancellation email and push alerts to {registeredPlayerCount} registered player{registeredPlayerCount === 1 ? '' : 's'}.
+                </span>
+              </span>
+            </label>
+          ) : (
+            <p className="rounded-xl border border-pit-border bg-pit-bg/40 p-3 text-xs text-pit-muted">
+              No players are registered, so no cancellation notifications will be sent.
+            </p>
+          )}
+        </div>
       </Modal>
     </section>
   );

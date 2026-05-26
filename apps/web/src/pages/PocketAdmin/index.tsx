@@ -7,6 +7,7 @@ import { api, BlindLevel, TournamentPlayer } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useAuthStore } from '../../store/auth';
 import { announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { isEnabledFlag } from '../../utils/flags';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 interface TimerTick {
@@ -58,7 +59,7 @@ export default function PocketAdminPage() {
     enabled: !!id,
   });
 
-  const canManage = tournament?.canmanage;
+  const canManage = isEnabledFlag(tournament?.canmanage);
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
   const wakeLockSupported = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
 
@@ -108,7 +109,10 @@ export default function PocketAdminPage() {
     primeTimerAudio();
     const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
     window.addEventListener('pb-audio-unlocked', syncSoundState);
-    const socket = io('/', { path: '/socket.io' });
+    const socket = io('/', {
+      path: '/socket.io',
+      auth: { token: localStorage.getItem('pb_token') ?? '' },
+    });
     socketRef.current = socket;
     const joinTournament = () => {
       socket.emit('join-tournament', id);

@@ -260,6 +260,30 @@ export async function sendGroupInviteEmail(
   });
 }
 
+export async function sendLeagueGuestClaimEmail(
+  email: string,
+  leagueName: string,
+  guestName: string,
+  claimToken: string
+): Promise<void> {
+  const claimLink = `${appUrl}/league-guest-claim?token=${encodeURIComponent(claimToken)}`;
+  await sendMail({
+    to: email,
+    subject: `Claim your ${leagueName} league profile`,
+    html: emailLayout({
+      eyebrow: 'League Profile',
+      title: `Claim ${guestName}`,
+      intro: `A league admin invited you to connect this guest player profile to your ThePokerPlanner account.`,
+      body: `
+        <p style="margin:0 0 12px;">Once claimed, this profile's league finishes, payments, and season history will belong to your account.</p>
+        <p style="margin:0;">If you do not have an account yet, create one with this email address first, then use this same link.</p>
+      `,
+      ctaHref: claimLink,
+      ctaLabel: 'Claim League Profile',
+    }),
+  });
+}
+
 export async function sendGroupPostApprovalEmail(
   email: string,
   groupName: string,

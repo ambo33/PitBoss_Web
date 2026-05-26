@@ -173,7 +173,10 @@ export default function RunTournament({
     primeTimerAudio();
     receivedInitialTimerStateRef.current = false;
 
-    const socket = io('/', { path: '/socket.io' });
+    const socket = io('/', {
+      path: '/socket.io',
+      auth: { token: localStorage.getItem('pb_token') ?? '' },
+    });
     socketRef.current = socket;
     const joinTournament = () => {
       socket.emit('join-tournament', tournamentId);

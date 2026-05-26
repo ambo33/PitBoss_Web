@@ -21,6 +21,7 @@ import { broadcastTournamentUpdate } from '../socket';
 import { BlindLevel, Tournament } from '../types';
 import { publicEmail } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { isDatabaseTrue } from '../utils/booleans';
 
 export const tournamentsRouter = Router();
 tournamentsRouter.use(requireAuth);
@@ -74,7 +75,7 @@ async function canManageTournament(tournamentId: string, userId: string): Promis
      WHERE t.tournamentid = $1`,
     [tournamentId, userId]
   );
-  return Boolean(row?.canmanage);
+  return isDatabaseTrue(row?.canmanage);
 }
 
 function validateHostPayoutStructure(payoutstructure: string | null | undefined): boolean {
@@ -346,11 +347,12 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
        JOIN groups g ON g.groupid = gm.groupid
        LEFT JOIN usermetadata um ON um.userid = u.guid
        WHERE gm.groupid = $1
-         AND gm.approved = TRUE
-         AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
-         AND COALESCE(um.isguestuser, FALSE) = FALSE
-         AND u.emailencrypted IS NOT NULL`,
-      [groupid]
+          AND gm.userid <> $2
+          AND gm.approved = TRUE
+          AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
+          AND COALESCE(um.isguestuser, FALSE) = FALSE
+          AND u.emailencrypted IS NOT NULL`,
+      [groupid, req.userId]
     );
     await Promise.allSettled(
       recipients.map((recipient) => {
@@ -717,6 +719,7 @@ tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
   if (!await canManageTournament(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  const { notifyPlayers = false } = (req.body ?? {}) as { notifyPlayers?: boolean };
 
   const tournament = await queryOne<{ name: string; tourneydate: string | Date | null; tourneytime: string | Date | null }>(
     `SELECT name, date AS tourneydate, time AS tourneytime
@@ -729,39 +732,56 @@ tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  const recipients = await query<{ emailaddress: string | null; emailencrypted: string | null }>(
-    `SELECT DISTINCT u.emailaddress, u.emailencrypted
-     FROM tournamentplayers tp
-     JOIN users u ON u.guid = tp.userid
-     LEFT JOIN usermetadata um ON um.userid = tp.userid
-     WHERE tp.tournamentid = $1
-       AND COALESCE(um.isguestuser, FALSE) = FALSE
-       AND u.emailencrypted IS NOT NULL`,
-    [req.params.id]
-  );
+  const recipients = notifyPlayers
+    ? await query<{ userid: string; emailaddress: string | null; emailencrypted: string | null }>(
+        `SELECT DISTINCT u.guid AS userid, u.emailaddress, u.emailencrypted
+         FROM tournamentplayers tp
+         JOIN tournaments t ON t.tournamentid = tp.tournamentid
+         JOIN users u ON u.guid = tp.userid
+         LEFT JOIN usermetadata um ON um.userid = tp.userid
+         LEFT JOIN groupmembers gm ON gm.groupid = t.groupid AND gm.userid = tp.userid
+         LEFT JOIN tournamentdeclines td ON td.tournamentid = tp.tournamentid AND td.userid = tp.userid
+         WHERE tp.tournamentid = $1
+           AND COALESCE(um.isguestuser, FALSE) = FALSE
+           AND td.userid IS NULL
+           AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
+           AND (u.emailencrypted IS NOT NULL OR u.emailaddress IS NOT NULL)`,
+        [req.params.id]
+      )
+    : [];
 
-  await sendTournamentNotification(req.params.id, 'tournament_cancelled', {
-    tournamentName: tournament.name,
-    tag: `tournament-${req.params.id}-cancelled`,
-  }, {
-    audience: 'participants-and-admins',
-    entityId: req.params.id,
-  });
+  let pushSent = 0;
+  if (notifyPlayers) {
+    try {
+      const pushSummary = await sendTournamentNotification(req.params.id, 'tournament_cancelled', {
+        tournamentName: tournament.name,
+        tag: `tournament-${req.params.id}-cancelled`,
+        url: '/',
+      }, {
+        audience: 'participants',
+        entityId: req.params.id,
+      });
+      pushSent = pushSummary.sent;
+    } catch (error) {
+      console.error('Failed to send tournament cancellation push notifications', error);
+    }
+  }
 
   await query(`DELETE FROM tournaments WHERE tournamentid = $1`, [req.params.id]);
 
-  await Promise.allSettled(
-    recipients.map((recipient) => {
-      const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
-      if (!email) return Promise.resolve();
-      return sendTournamentCancelledEmail(
+  const emailTargets = recipients
+    .map((recipient) => publicEmail(recipient.emailencrypted, recipient.emailaddress))
+    .filter((email): email is string => Boolean(email));
+  if (emailTargets.length > 0) {
+    await Promise.allSettled(
+      emailTargets.map((email) => sendTournamentCancelledEmail(
         email,
         tournament.name,
         tournament.tourneydate instanceof Date ? tournament.tourneydate.toISOString().slice(0, 10) : tournament.tourneydate,
         tournament.tourneytime instanceof Date ? tournament.tourneytime.toISOString().slice(11, 19) : tournament.tourneytime
-      );
-    })
-  );
+      ))
+    );
+  }
 
-  res.json({ success: true, notified: recipients.length });
+  res.json({ success: true, notified: emailTargets.length, pushSent });
 });

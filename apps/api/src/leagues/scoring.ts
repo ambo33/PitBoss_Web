@@ -3,10 +3,14 @@ export type LeagueFinalMultiplier = { place: number; multiplier: number };
 export type LeagueMemberRow = {
   userid: string;
   emailaddress?: string | null;
+  emailencrypted?: string | null;
   displayname: string | null;
   isadmin: boolean;
   approved: boolean;
   participating: boolean;
+  isguestuser?: boolean;
+  pendinginviteemail?: string | null;
+  pendinginviteencrypted?: string | null;
 };
 export type LeagueResultRow = {
   resultid?: string;
@@ -149,9 +153,11 @@ export function normalizeFinalMultipliers(value: unknown): LeagueFinalMultiplier
   return [...unique.values()].sort((a, b) => a.place - b.place);
 }
 
-export function pointsForPlace(pointsLookup: LeaguePointRule[], placed: number | null, dnf: boolean): number {
-  if (dnf || !placed) return 0;
-  const found = pointsLookup.find((rule) => Number(rule.place) === placed);
+export function pointsForPlace(pointsLookup: LeaguePointRule[], placed: number | string | null, dnf: boolean | string): number {
+  const isDnf = dnf === true || String(dnf).toLowerCase() === 'true';
+  const numericPlace = placed == null ? 0 : Number(placed);
+  if (isDnf || !Number.isFinite(numericPlace) || numericPlace <= 0) return 0;
+  const found = pointsLookup.find((rule) => Number(rule.place) === numericPlace);
   return Number(found?.points ?? 0);
 }
 

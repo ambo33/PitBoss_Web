@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Tournament } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
 import { getConfiguredBountyPool } from '../../utils/bountyMath';
+import { isEnabledFlag } from '../../utils/flags';
 
 interface Props { tournamentId: string; tournament: Tournament; }
 type PayoutMode = 'count' | 'percent';
@@ -35,7 +36,7 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   const [rakeInput, setRakeInput] = useState(String(toNumber(tournament.rake)));
   const [lastQueuedPayoutPayload, setLastQueuedPayoutPayload] = useState(() => JSON.stringify(savedPayoutConfig));
   const [rakeError, setRakeError] = useState('');
-  const canManage = tournament.canmanage ?? tournament.ownerid === user?.guid;
+  const canManage = isEnabledFlag(tournament.canmanage) || tournament.ownerid === user?.guid;
 
   const { data: players = [] } = useQuery({
     queryKey: ['players', tournamentId],

@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 
 const PRIVATE_EMAIL_DOMAIN = 'private.thepokerplanner.com';
+const LEGACY_PRIVATE_EMAIL_DOMAINS = ['private.pokerplanner.bet'];
+const GUEST_EMAIL_DOMAINS = ['guest.thepokerplanner.com', 'guest.pokerplanner.bet'];
+const INTERNAL_EMAIL_DOMAINS = [PRIVATE_EMAIL_DOMAIN, ...LEGACY_PRIVATE_EMAIL_DOMAINS, ...GUEST_EMAIL_DOMAINS];
 
 function getEncryptionKey(): Buffer {
   const material = process.env.EMAIL_ENCRYPTION_KEY || process.env.JWT_SECRET || 'dev-secret';
@@ -45,13 +48,23 @@ export function privateEmailPlaceholder(userId: string): string {
 }
 
 export function isPrivateEmailPlaceholder(email: string | null | undefined): boolean {
-  return normalizeEmail(email).endsWith(`@${PRIVATE_EMAIL_DOMAIN}`);
+  const normalized = normalizeEmail(email);
+  return [PRIVATE_EMAIL_DOMAIN, ...LEGACY_PRIVATE_EMAIL_DOMAINS].some((domain) => normalized.endsWith(`@${domain}`));
 }
 
 export function isGuestEmail(email: string | null | undefined): boolean {
-  return normalizeEmail(email).startsWith('guest+') || isPrivateEmailPlaceholder(email);
+  const normalized = normalizeEmail(email);
+  return isPrivateEmailPlaceholder(normalized)
+    || (normalized.startsWith('guest+') && GUEST_EMAIL_DOMAINS.some((domain) => normalized.endsWith(`@${domain}`)));
+}
+
+function isInternalPlaceholderEmail(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email);
+  return INTERNAL_EMAIL_DOMAINS.some((domain) => normalized.endsWith(`@${domain}`));
 }
 
 export function publicEmail(encrypted: string | null | undefined, placeholder?: string | null): string {
-  return decryptEmail(encrypted) ?? (placeholder && !isPrivateEmailPlaceholder(placeholder) ? placeholder : '');
+  const decrypted = decryptEmail(encrypted);
+  if (decrypted && !isInternalPlaceholderEmail(decrypted)) return decrypted;
+  return placeholder && !isInternalPlaceholderEmail(placeholder) ? placeholder : '';
 }

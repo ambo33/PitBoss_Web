@@ -3,6 +3,7 @@ import { queryOne } from '../db';
 import { consumeAiCredit, getAccountProfile } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { analyzePokerHand, generateAnnouncerMoment, normalizeAnnouncerPreset } from '../services/openai';
+import { isDatabaseTrue } from '../utils/booleans';
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth);
@@ -29,7 +30,7 @@ async function canManageTournament(tournamentId: string, userId: string): Promis
      WHERE t.tournamentid = $1`,
     [tournamentId, userId]
   );
-  return Boolean(row?.canmanage);
+  return isDatabaseTrue(row?.canmanage);
 }
 
 aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) => {

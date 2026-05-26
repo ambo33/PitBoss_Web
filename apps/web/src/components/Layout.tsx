@@ -193,7 +193,7 @@ export default function Layout({
         )}
 
         <div className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden ${contentMarginClass}`}>
-          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/60 bg-pit-bg/80 backdrop-blur-md ${headerPaddingClass}`}>
+          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-teal/20 bg-[#122E30] shadow-[0_10px_28px_rgba(0,0,0,0.22)] md:border-pit-border/60 md:bg-pit-bg md:shadow-none ${headerPaddingClass}`}>
             <div className="flex min-w-0 items-center gap-3">
               {back ? (
                 <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
@@ -217,7 +217,7 @@ export default function Layout({
       </div>
 
       {!hideMobileNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-border bg-[#24252d]/95 backdrop-blur-md md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-teal/30 bg-[#122E30] shadow-[0_-12px_32px_rgba(0,0,0,0.42)] md:hidden">
           {navItems.map(({ id, label, Icon }) => {
             const active = tab === id;
             const isAdmin = id === 'admin';
@@ -226,11 +226,11 @@ export default function Layout({
                 key={id}
                 onClick={() => handleNavClick(id)}
                 className={`flex-1 flex flex-col items-center gap-1 pt-3 pb-4 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-                  active && isAdmin ? 'text-red-300' : active ? 'text-pit-teal' : isAdmin ? 'text-red-300/80' : 'text-pit-muted'
+                  active && isAdmin ? 'text-red-200' : active ? 'text-white' : isAdmin ? 'text-red-200' : 'text-teal-100 hover:text-white'
                 }`}
               >
                 <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${
-                  active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : ''
+                  active && isAdmin ? 'bg-red-500/20 shadow-[0_0_18px_rgba(248,113,113,0.28)] ring-1 ring-red-300/30' : active ? 'bg-pit-teal/25 text-pit-teal shadow-[0_0_22px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40' : 'bg-[#0e2426]'
                 }`}>
                   <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
                   {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
@@ -309,9 +309,6 @@ export default function Layout({
             onChange={(event) => setFeedbackMessage(event.target.value)}
             placeholder="What happened, what feels rough, or what should we build next?"
           />
-          <p className="text-xs leading-5 text-pit-muted">
-            We include the current page and browser details so beta reports are easier to debug.
-          </p>
         </div>
       </Modal>
     </div>

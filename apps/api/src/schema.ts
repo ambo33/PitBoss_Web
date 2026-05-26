@@ -546,13 +546,22 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         name STRING(160) NOT NULL,
         begindate DATE NOT NULL,
         enddate DATE NOT NULL,
+        pereventfee DECIMAL(10,2) DEFAULT 0,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS pereventfee DECIMAL(10,2) DEFAULT 0`);
     await client.query(`
-      INSERT INTO leagueseasons (leagueid, name, begindate, enddate)
-      SELECT l.leagueid, 'Season 1', current_date(), CAST(current_date() + INTERVAL '365 days' AS DATE)
+      UPDATE leagueseasons s
+      SET pereventfee = COALESCE(l.pereventfee, 0)
+      FROM leagues l
+      WHERE l.leagueid = s.leagueid
+        AND s.pereventfee IS NULL
+    `);
+    await client.query(`
+      INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
+      SELECT l.leagueid, 'Season 1', current_date(), CAST(current_date() + INTERVAL '365 days' AS DATE), COALESCE(l.pereventfee, 0)
       FROM leagues l
       WHERE NOT EXISTS (
         SELECT 1 FROM leagueseasons s WHERE s.leagueid = l.leagueid
@@ -576,6 +585,29 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`UPDATE leaguemembers SET participating = TRUE WHERE participating IS NULL`);
     await client.query(`UPDATE leaguemembers SET emailalertsenabled = TRUE WHERE emailalertsenabled IS NULL`);
     await client.query(`UPDATE leaguemembers SET pushalertsenabled = TRUE WHERE pushalertsenabled IS NULL`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueguestclaims (
+        claimid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        guestuserid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        emailhash STRING(64) NOT NULL,
+        emailencrypted STRING,
+        tokenhash STRING(64) UNIQUE NOT NULL,
+        invitedby UUID REFERENCES users(guid) ON DELETE SET NULL,
+        claimedby UUID REFERENCES users(guid) ON DELETE SET NULL,
+        expiresat TIMESTAMPTZ NOT NULL,
+        claimedat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueguestclaims_guest
+      ON leagueguestclaims (leagueid, guestuserid, claimedat)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueguestclaims_token
+      ON leagueguestclaims (tokenhash)
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leagueseasonparticipants (
         seasonid UUID NOT NULL REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
@@ -601,6 +633,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
         name STRING(160) NOT NULL,
         eventdate DATE,
+        eventtime STRING(5),
         eventnumber INT,
         eventfee DECIMAL(10,2),
         active BOOL DEFAULT TRUE,
@@ -608,6 +641,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
+    await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventtime STRING(5)`);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventfee DECIMAL(10,2)`);
     await client.query(`
       UPDATE leagueevents e
@@ -675,6 +709,28 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leaguepayments_league
       ON leaguepayments (leagueid, userid)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueauditlogs (
+        auditid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE SET NULL,
+        eventid UUID REFERENCES leagueevents(eventid) ON DELETE SET NULL,
+        actorid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        targetuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        action STRING(80) NOT NULL,
+        summary STRING(500) NOT NULL,
+        details JSONB DEFAULT '{}',
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueauditlogs_league_created
+      ON leagueauditlogs (leagueid, createdat DESC)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueauditlogs_actor
+      ON leagueauditlogs (actorid, createdat DESC)
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leagueeventreminders (

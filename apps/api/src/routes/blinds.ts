@@ -3,6 +3,7 @@ import { query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { invalidateTimerCache } from '../socket';
 import { BlindLevel, TournamentChip } from '../types';
+import { isDatabaseTrue } from '../utils/booleans';
 
 export const blindsRouter = Router();
 blindsRouter.use(requireAuth);
@@ -38,7 +39,7 @@ async function canManageTournament(tid: string, uid: string): Promise<boolean> {
      WHERE t.tournamentid = $1`,
     [tid, uid]
   );
-  return Boolean(row?.canmanage);
+  return isDatabaseTrue(row?.canmanage);
 }
 
 blindsRouter.get('/:tid/blinds', async (req: Request, res: Response) => {

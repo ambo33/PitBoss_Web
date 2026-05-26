@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { isEnabledFlag } from '../../utils/flags';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 export default function PaymentTrackerPage() {
@@ -46,7 +47,7 @@ export default function PaymentTrackerPage() {
 
   if (loadingTournament || isLoading) return <LoadingSpinner className="mt-24" />;
 
-  if (tournamentError || !tournament?.canmanage) {
+  if (tournamentError || !tournament || !isEnabledFlag(tournament.canmanage)) {
     return (
       <div className="min-h-screen bg-pit-bg p-4 text-white">
         <div className="card mx-auto mt-16 max-w-lg text-center">

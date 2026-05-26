@@ -9,16 +9,21 @@ export function signToken(userId: string): string {
   return jwt.sign({ sub: userId }, secret, { expiresIn: jwtExpiresIn });
 }
 
-function decodeUserId(header?: string): string | null {
-  if (!header?.startsWith('Bearer ')) {
-    return null;
-  }
+export function decodeAuthToken(token?: string | null): string | null {
+  if (!token) return null;
   try {
-    const payload = jwt.verify(header.slice(7), secret) as { sub: string };
+    const payload = jwt.verify(token, secret) as { sub: string };
     return payload.sub;
   } catch {
     return null;
   }
+}
+
+function decodeUserId(header?: string): string | null {
+  if (!header?.startsWith('Bearer ')) {
+    return null;
+  }
+  return decodeAuthToken(header.slice(7));
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {

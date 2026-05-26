@@ -13,6 +13,7 @@ import PlayerLobbyPage from './pages/PlayerLobby';
 import KnockoutLobbyPage from './pages/KnockoutLobby';
 import AddonLobbyPage from './pages/AddonLobby';
 import LeagueEventLobbyPage from './pages/LeagueEventLobby';
+import LeagueGuestClaimPage from './pages/LeagueGuestClaim';
 import TvBoardPage from './pages/TvBoard';
 import TvBoardEntryPage from './pages/TvBoard/Entry';
 import PaymentTrackerPage from './pages/PaymentTracker';
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
         <Route path="/addon/:id" element={<AddonLobbyPage />} />
         <Route path="/league/:leagueId/event/:eventId" element={<RequireAuth><LeagueEventLobbyPage /></RequireAuth>} />
+        <Route path="/league-guest-claim" element={<RequireAuth><LeagueGuestClaimPage /></RequireAuth>} />
         <Route path="/tv" element={<TvBoardEntryPage />} />
         <Route path="/tv/:code" element={<TvBoardPage />} />
         <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />

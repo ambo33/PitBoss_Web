@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Trophy, UserMinus } from 'lucide-react';
@@ -27,6 +27,34 @@ export default function LeagueEventLobbyPage() {
     () => data?.results.find((result) => result.eventid === eventId && result.userid === user?.guid) ?? null,
     [data, eventId, user?.guid]
   );
+  const eventResults = useMemo(
+    () => (data?.results ?? [])
+      .filter((result) => result.eventid === eventId && !result.dnf && result.placed != null)
+      .sort((a, b) => Number(b.placed || 0) - Number(a.placed || 0)),
+    [data?.results, eventId]
+  );
+  const activePlayerCount = useMemo(
+    () => (data?.members ?? []).filter((member) => member.approved && member.participating).length,
+    [data?.members]
+  );
+  const nextOpenPlace = useMemo(() => {
+    if (myResult?.placed) return Number(myResult.placed);
+    if (!activePlayerCount) return '';
+    const usedPlaces = new Set(
+      eventResults
+        .filter((result) => result.userid !== user?.guid)
+        .map((result) => Number(result.placed || 0))
+        .filter(Boolean)
+    );
+    for (let placeValue = activePlayerCount; placeValue >= 1; placeValue -= 1) {
+      if (!usedPlaces.has(placeValue)) return String(placeValue);
+    }
+    return '';
+  }, [activePlayerCount, eventResults, myResult?.placed, user?.guid]);
+
+  useEffect(() => {
+    if (nextOpenPlace) setPlace(String(nextOpenPlace));
+  }, [nextOpenPlace]);
 
   const logMutation = useMutation({
     mutationFn: () => api.logLeagueSelfResult(leagueId!, eventId!, { placed: Number(place), dnf: false }),
@@ -91,6 +119,37 @@ export default function LeagueEventLobbyPage() {
             <UserMinus size={17} />
             {logMutation.isPending ? 'Logging...' : `Knock me out${place ? ` in ${place}${ordinal(Number(place))}` : ''}`}
           </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-pit-border bg-pit-bg/60 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-[0.16em] text-white">Knockout tracker</h2>
+            <span className="chip">{eventResults.length} out</span>
+          </div>
+          {eventResults.length === 0 ? (
+            <p className="mt-3 text-sm text-pit-text">No knockouts logged yet.</p>
+          ) : (
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              {eventResults.map((result) => {
+                const points = Number(result.points || 0) + Number(result.showupbonuspoints || 0);
+                const isMe = result.userid === user?.guid;
+                return (
+                  <div
+                    key={result.resultid ?? `${result.userid}-${result.placed}`}
+                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${
+                      isMe ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-card/65'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{result.displayname ?? 'Player'}</p>
+                      <p className="mt-1 text-xs text-pit-muted">{result.placed}{ordinal(result.placed)} place</p>
+                    </div>
+                    <span className="shrink-0 font-mono text-sm font-bold text-pit-teal">{points.toLocaleString()} pts</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <Link className="mt-5 inline-flex text-sm text-pit-muted hover:text-white" to="/">

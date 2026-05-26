@@ -79,24 +79,16 @@ export default function LoginPage() {
   }, [verifyEmail, verifyCode, queryClient, setAuth, navigate]);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-pit-bg">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.18),transparent_38%),radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_24%)]" />
-      <div className="pointer-events-none absolute inset-0 flex justify-center overflow-hidden opacity-[0.18]">
-        <img
-          src="/branding/the-poker-planner-logo-glow.png"
-          alt=""
-          aria-hidden="true"
-          className="mt-8 h-[38rem] w-[38rem] max-w-[92vw] object-contain blur-[0.2px]"
-        />
-      </div>
+    <div className="relative min-h-screen overflow-hidden bg-pit-bg text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(18,46,48,0.62)_0%,rgba(17,17,19,0.96)_42%,#111113_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-pit-teal/45" />
 
-      <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
         <Link to="/" aria-label="ThePokerPlanner home">
-          <BrandLockup compact />
+          <BrandLockup compact showSlogan={false} />
         </Link>
         <nav className="flex items-center gap-2">
           <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/landing">Overview</Link>
-          <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/pricing">Pricing</Link>
           {view !== 'reset' && (
             view === 'register' ? (
               <button className="btn-ghost px-3 py-2 text-xs sm:text-sm" type="button" onClick={() => setView('login')}>
@@ -111,9 +103,15 @@ export default function LoginPage() {
         </nav>
       </header>
 
-      <div className="relative flex min-h-[calc(100vh-88px)] flex-col items-center justify-center px-4 py-8">
-        <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-pit-border bg-pit-surface/94 shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
-          <div className="h-1 bg-[linear-gradient(90deg,#14b8a6_0%,#ffffff_52%,#14b8a6_100%)]" />
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-88px)] w-full max-w-6xl flex-col items-center justify-center px-5 pb-12 pt-4 sm:px-8 lg:px-10">
+        <div className="mb-6 hidden w-full max-w-sm sm:block">
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-pit-teal">Welcome back</p>
+          <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-white">Sign in to ThePokerPlanner</h1>
+          <p className="mt-2 text-sm leading-6 text-pit-text">Manage poker nights, groups, leagues, and alerts from one clean dashboard.</p>
+        </div>
+
+        <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-pit-surface/96 shadow-[0_24px_70px_rgba(0,0,0,0.42)]">
+          <div className="h-1 bg-pit-teal" />
           <div className="p-6">
             {view === 'login' && (
               <LoginForm

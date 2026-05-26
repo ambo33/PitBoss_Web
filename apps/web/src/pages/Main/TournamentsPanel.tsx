@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, DollarSign, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
-import { api, Group, League, Tournament } from '../../api/client';
+import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
+import { api, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
+import { isEnabledFlag } from '../../utils/flags';
 
 const SETUP_CARD_DISMISSED_KEY = 'thepokerplanner.dashboard.setup.dismissed';
 
@@ -30,14 +32,20 @@ export default function TournamentsPanel() {
     queryFn: api.getTournaments,
   });
 
-  const { data: groups = [] } = useQuery<Group[]>({
+  const { data: groups = [], isLoading: loadingGroups } = useQuery<Group[]>({
     queryKey: ['groups'],
     queryFn: api.getGroups,
   });
 
-  const { data: leagues = [] } = useQuery<League[]>({
+  const { data: leagues = [], isLoading: loadingLeagues } = useQuery<League[]>({
     queryKey: ['leagues'],
     queryFn: api.getLeagues,
+  });
+  const { data: leagueEvents = [], isLoading: loadingLeagueEvents, error: leagueScheduleError } = useQuery({
+    queryKey: ['leagues', 'schedule'],
+    queryFn: api.getLeagueSchedule,
+    enabled: leagues.length > 0,
+    retry: false,
   });
 
   const createMutation = useMutation({
@@ -53,13 +61,6 @@ export default function TournamentsPanel() {
     mutationFn: (tournament: Tournament) => (
       tournament.groupid ? api.groupRegister(tournament.tournamentid) : api.selfRegister(tournament.tournamentid)
     ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tournaments'] });
-    },
-  });
-
-  const leaveMutation = useMutation({
-    mutationFn: (tid: string) => api.leaveTournament(tid),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
@@ -82,21 +83,36 @@ export default function TournamentsPanel() {
       qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
-  const rsvpError = registerMutation.error?.message || leaveMutation.error?.message || declineMutation.error?.message;
+  const rsvpError = registerMutation.error?.message || declineMutation.error?.message;
 
   const upcoming = mine.filter((t) => {
     return isUpcomingTournament(t);
   });
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
-  const scheduleList = useMemo(
-    () => (scheduleView === 'history' ? [...history].sort(compareTournamentSchedule).reverse() : [...upcoming].sort(compareTournamentSchedule)),
-    [history, scheduleView, upcoming]
+  const leagueScheduleItems = useMemo(() => buildLeagueScheduleItems(leagueEvents), [leagueEvents]);
+  const upcomingScheduleItems = useMemo(
+    () => [
+      ...upcoming.map(tournamentToScheduleItem),
+      ...leagueScheduleItems.filter((item) => item.date && item.date >= todayInAppTimezone()),
+    ].sort(compareScheduleItems),
+    [leagueScheduleItems, upcoming]
   );
+  const historyScheduleItems = useMemo(
+    () => [
+      ...history.map(tournamentToScheduleItem),
+      ...leagueScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
+    ].sort(compareScheduleItems).reverse(),
+    [history, leagueScheduleItems]
+  );
+  const scheduleList = scheduleView === 'history' ? historyScheduleItems : upcomingScheduleItems;
   const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
   const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
   const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
   const adminGroupCount = groups.filter((group) => group.isadmin).length;
+  const loadingSchedule = loadingMine || (loadingLeagueEvents && scheduleList.length === 0);
+  const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents;
+  const showSetupCard = dashboardDataReady && !leagueScheduleError && upcomingScheduleItems.length === 0 && !setupCardDismissed;
 
   if (showCreate) {
     return (
@@ -117,12 +133,12 @@ export default function TournamentsPanel() {
         me={me}
         groups={groups}
         leagueCount={leagues.length}
-        upcomingCount={upcoming.length}
-        historyCount={history.length}
+        upcomingCount={upcomingScheduleItems.length}
+        historyCount={historyScheduleItems.length}
         registeredUpcomingCount={registeredUpcomingCount}
         adminGroupCount={adminGroupCount}
         createDisabled={hostedTournamentLimitReached}
-        setupCardDismissed={setupCardDismissed}
+        showSetupCard={showSetupCard}
         scheduleView={scheduleView}
         onScheduleViewChange={setScheduleView}
         onCreate={() => setShowCreate(true)}
@@ -144,11 +160,16 @@ export default function TournamentsPanel() {
         </p>
       )}
 
-      {(loadingMine || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
+      {(loadingSchedule || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
         <>
           {rsvpError && (
             <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
               {rsvpError}
+            </p>
+          )}
+          {leagueScheduleError && (
+            <p className="mb-3 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
+              League games could not load yet. Tournament rows are still shown.
             </p>
           )}
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -156,35 +177,31 @@ export default function TournamentsPanel() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">
                 {scheduleView === 'history' ? 'Tournament history' : 'Upcoming games'}
               </p>
-              <h2 className="mt-1 text-lg font-bold text-white">
-                {scheduleView === 'history' ? 'Past games' : 'Your schedule'}
-              </h2>
             </div>
-            {(scheduleView === 'history' ? history.length : upcoming.length) > 0 && (
+            {scheduleList.length > 0 && (
               <span className="rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-pit-text">
-                {scheduleView === 'history' ? `${history.length} history` : `${upcoming.length} upcoming`}
+                {scheduleView === 'history' ? `${scheduleList.length} history` : `${scheduleList.length} upcoming`}
               </span>
             )}
           </div>
 
-          {loadingMine ? (
+          {loadingSchedule ? (
             <LoadingSpinner className="mt-16" />
           ) : (
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {scheduleList.map((t) => (
-                <TournamentCard
-                  key={t.tournamentid}
-                  t={t}
-                  isUpcoming={scheduleView === 'upcoming'}
-                  loading={registerMutation.isPending || leaveMutation.isPending || declineMutation.isPending}
-                  onClick={() => navigate(`/tournament/${t.tournamentid}`)}
-                  onRegister={() => registerMutation.mutate(t)}
-                  onLeave={() => leaveMutation.mutate(t.tournamentid)}
-                  onDecline={() => declineMutation.mutate(t.tournamentid)}
-                />
-              ))}
-              {scheduleList.length === 0 && <EmptyState view={scheduleView} />}
-            </div>
+            <ScheduleList
+              items={scheduleList}
+              view={scheduleView}
+              loading={registerMutation.isPending || declineMutation.isPending}
+              onOpen={(item) => {
+                if (item.kind === 'tournament') {
+                  navigate(item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`);
+                  return;
+                }
+                navigate('/', { state: { tab: 'leagues' } });
+              }}
+              onRegister={(tournament) => registerMutation.mutate(tournament)}
+              onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
+            />
           )}
         </>
       )}
@@ -201,7 +218,7 @@ function DashboardOverview({
   registeredUpcomingCount,
   adminGroupCount,
   createDisabled,
-  setupCardDismissed,
+  showSetupCard,
   scheduleView,
   onScheduleViewChange,
   onCreate,
@@ -217,7 +234,7 @@ function DashboardOverview({
   registeredUpcomingCount: number;
   adminGroupCount: number;
   createDisabled: boolean;
-  setupCardDismissed: boolean;
+  showSetupCard: boolean;
   scheduleView: 'upcoming' | 'history';
   onScheduleViewChange: (view: 'upcoming' | 'history') => void;
   onCreate: () => void;
@@ -226,7 +243,6 @@ function DashboardOverview({
   onDismissSetup: () => void;
 }) {
   const firstName = getFirstName(me?.displayname);
-  const showSupportCard = upcomingCount === 0 && !setupCardDismissed;
   const setupItems = [
     { label: 'Create a host group', complete: adminGroupCount > 0 },
     { label: 'Schedule a game', complete: upcomingCount > 0 },
@@ -234,7 +250,7 @@ function DashboardOverview({
   ];
 
   return (
-    <section className={`mb-5 grid min-w-0 max-w-full gap-3 ${showSupportCard ? 'md:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+    <section className={`mb-5 grid min-w-0 max-w-full gap-3 ${showSetupCard ? 'md:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
       <div className="min-w-0 overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.16),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -278,7 +294,7 @@ function DashboardOverview({
         </div>
       </div>
 
-      {showSupportCard && (
+      {showSetupCard && (
         <div className="rounded-xl border border-pit-border bg-pit-surface/80 p-3 sm:p-4">
           <>
             <div className="flex items-start justify-between gap-3">
@@ -362,147 +378,205 @@ function DashboardStat({
   );
 }
 
-function TournamentCard({
-  t,
-  isUpcoming,
+type ScheduleItem =
+  | {
+      kind: 'tournament';
+      id: string;
+      name: string;
+      parentName?: string | null;
+      date: string | null;
+      time?: string | null;
+      cost: number;
+      canManage: boolean;
+      tournament: Tournament;
+    }
+  | {
+      kind: 'league';
+      id: string;
+      name: string;
+      parentName: string;
+      date: string | null;
+      time?: string | null;
+      cost: number;
+      canManage: boolean;
+      leagueId: string;
+    };
+
+function ScheduleList({
+  items,
+  view,
   loading,
-  onClick,
+  onOpen,
   onRegister,
-  onLeave,
   onDecline,
 }: {
-  t: Tournament;
-  isUpcoming: boolean;
+  items: ScheduleItem[];
+  view: 'upcoming' | 'history';
   loading: boolean;
-  onClick: () => void;
-  onRegister: () => void;
-  onLeave: () => void;
-  onDecline: () => void;
+  onOpen: (item: ScheduleItem) => void;
+  onRegister: (tournament: Tournament) => void;
+  onDecline: (tournament: Tournament) => void;
 }) {
-  const dateLabel = getDateKey(t.tourneydate);
-  const hasDate = !!dateLabel;
-  const buyinLabel = formatBuyinLabel(t.buyin);
-  const canOpen = !t.groupid || t.canmanage;
-  const adminActionLabel = isUpcoming ? 'Run tournament' : 'Open tournament';
-  const showAdminAction = canOpen;
-  const showRegistrationAction = isUpcoming && !!t.groupid && !canOpen;
+  if (items.length === 0) return <EmptyState view={view} />;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
+      <div className="hidden grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_9rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
+        <span>Name</span>
+        <span>Date / time</span>
+        <span>Cost</span>
+        <span>Status</span>
+        <span className="text-right">Action</span>
+      </div>
+      <div className="divide-y divide-pit-border/60">
+        {items.map((item) => (
+          <ScheduleRow
+            key={item.id}
+            item={item}
+            view={view}
+            loading={loading}
+            onOpen={() => onOpen(item)}
+            onRegister={item.kind === 'tournament' ? () => onRegister(item.tournament) : undefined}
+            onDecline={item.kind === 'tournament' ? () => onDecline(item.tournament) : undefined}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleRow({
+  item,
+  view,
+  loading,
+  onOpen,
+  onRegister,
+  onDecline,
+}: {
+  item: ScheduleItem;
+  view: 'upcoming' | 'history';
+  loading: boolean;
+  onOpen: () => void;
+  onRegister?: () => void;
+  onDecline?: () => void;
+}) {
+  const isTournament = item.kind === 'tournament';
+  const isRegistered = isTournament && Boolean(item.tournament.isregistered);
+  const isDeclined = isTournament && Boolean(item.tournament.isdeclined) && !isRegistered;
+  const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
+  const statusLabel = isTournament ? (item.canManage ? 'Host' : null) : 'League';
+  const fieldCount = isTournament ? formatFieldCount(item.tournament) : null;
 
   return (
     <div
-      onClick={canOpen ? onClick : undefined}
-      className={`${canOpen ? 'card-hover cursor-pointer' : 'card cursor-default'} group min-w-0 max-w-full overflow-hidden ${
-        t.isdeclined && !t.isregistered
-          ? 'border-red-300/35 bg-red-500/10'
-          : t.isregistered
-            ? 'border-pit-teal/45 bg-pit-teal/5'
-            : ''
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_9rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+        isDeclined
+          ? 'border-red-300/60 bg-red-500/[0.035] md:bg-red-500/10'
+          : isRegistered
+            ? 'border-pit-teal/60 bg-pit-teal/[0.035] md:bg-pit-teal/5'
+            : 'border-transparent hover:bg-white/[0.025]'
       }`}
     >
-      <div className={`mb-4 h-0.5 -mx-4 -mt-4 rounded-t-xl ${
-        t.isdeclined && !t.isregistered
-          ? 'bg-gradient-to-r from-red-300/80 via-red-400/35 to-transparent'
-          : t.isregistered
-          ? 'bg-gradient-to-r from-pit-teal via-pit-teal/45 to-transparent'
-          : 'bg-gradient-to-r from-pit-teal/60 via-pit-teal/20 to-transparent'
-      }`} />
-
-      <div className="mb-3 grid min-h-[3.6rem] grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-        <p className="line-clamp-2 min-h-[2.85rem] break-words font-bold leading-snug text-white">{t.name}</p>
-        <div className="flex min-w-[4.5rem] shrink-0 flex-col items-end gap-1.5">
-          {t.isregistered && (
-            <span className="inline-flex h-6 items-center gap-1 rounded-full border border-pit-teal/40 bg-pit-teal/15 px-2 text-[11px] font-semibold text-pit-teal">
-              <CheckCircle2 size={12} strokeWidth={2.5} />
-              Registered
-            </span>
-          )}
-          <span className={`flex h-6 items-center gap-0.5 text-sm font-bold text-pit-gold ${t.isregistered ? '' : 'pt-0.5'}`}>
-            {Number(t.buyin) > 0 && <DollarSign size={13} strokeWidth={2.5} />}
-            {buyinLabel}
+      <div className="col-start-1 row-start-1 min-w-0 md:col-auto md:row-auto">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            className="min-w-0 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
+            onClick={onOpen}
+          >
+            {item.name}
+          </button>
+          <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] sm:inline-flex ${
+            isTournament ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal' : 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
+          }`}>
+            {isTournament ? 'Tournament' : 'League'}
           </span>
         </div>
-      </div>
-
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {t.groupname && (
-          <span className="chip">
-            <Users size={10} />
-            {t.groupname}
-          </span>
-        )}
-        {hasDate && (
-          <span className="chip">
-            <Calendar size={10} />
-            {dateLabel}
-          </span>
-        )}
-        {t.tourneytime && (
-          <span className="chip">
-            <Clock size={10} />
-            {formatTime12Hour(t.tourneytime)}
-          </span>
+        {item.parentName && (
+          <p className="mt-1 truncate text-xs text-pit-muted">{item.parentName}</p>
         )}
       </div>
 
-      <div className="flex items-center gap-3 border-t border-pit-border/60 pt-2.5">
-        <span className="flex items-center gap-1 text-xs text-pit-text">
-          <Users size={11} />
-          {t.playercount ?? 0} registered
+      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-pit-text md:col-auto md:row-auto md:block md:space-y-1 md:text-xs">
+        <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
+          <Calendar size={11} />
+          {item.date ?? 'Date TBD'}
         </span>
-        {(t.checkedincount ?? 0) > 0 && (
-          <span className="text-xs font-medium text-pit-teal">{t.checkedincount} checked in</span>
+        {item.time && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
+            <Clock size={11} />
+            {formatTime12Hour(item.time)}
+          </span>
+        )}
+        {isTournament && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:hidden">
+            <Users size={11} />
+            {fieldCount}
+          </span>
         )}
       </div>
 
-      {(showAdminAction || showRegistrationAction) && (
-        <div className="mt-3 border-t border-pit-border/60 pt-3">
-          {showAdminAction ? (
+      <div className="col-start-2 row-start-1 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold md:col-auto md:row-auto md:justify-self-auto md:text-left">
+        {formatCostLabel(item.cost)}
+      </div>
+
+      <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
+        {statusLabel && (
+          <span className={`inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${
+            item.kind === 'league'
+              ? 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
+              : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal'
+          }`}>
+            {statusLabel}
+          </span>
+        )}
+        {fieldCount && (
+          <span className="inline-flex h-7 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 text-xs font-semibold text-pit-text">
+            <Users size={12} />
+            {fieldCount}
+          </span>
+        )}
+      </div>
+
+      <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
+        {showRsvp ? (
+          <>
             <button
               type="button"
-              className="btn-primary w-full gap-2"
-              onClick={(event) => {
-                event.stopPropagation();
-                onClick();
-              }}
+              className={`inline-flex h-8 w-10 items-center justify-center rounded-full border text-xs font-semibold transition md:h-9 md:min-w-14 md:px-3 ${
+                isRegistered
+                  ? 'border-pit-teal/55 bg-pit-teal/20 text-pit-teal shadow-inner'
+                  : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'
+              }`}
+              disabled={loading || isRegistered}
+              onClick={onRegister}
+              aria-label={`Can attend ${item.name}`}
+              title="Can attend"
             >
-              {isUpcoming && <PlayCircle size={15} />}
-              {adminActionLabel}
+              <CheckCircle2 size={16} />
             </button>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                className={t.isregistered ? 'btn-ghost w-full sm:col-span-2' : 'btn-primary w-full'}
-                disabled={loading}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (t.isregistered) {
-                    onLeave();
-                    return;
-                  }
-                  onRegister();
-                }}
-              >
-                {t.isregistered ? 'Leave tournament' : 'Register'}
-              </button>
-              {!t.isregistered && (
-                <button
-                  type="button"
-                  className={`btn-ghost w-full border-red-300/25 text-red-200 hover:border-red-300/45 hover:text-red-100 ${
-                    t.isdeclined ? 'bg-red-400/20 shadow-inner ring-1 ring-red-300/25' : ''
-                  }`}
-                  disabled={loading || t.isdeclined}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDecline();
-                  }}
-                >
-                  Can't go
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+            <button
+              type="button"
+              className={`inline-flex h-8 w-10 items-center justify-center rounded-full border text-xs font-semibold transition md:h-9 md:min-w-14 md:px-3 ${
+                isDeclined
+                  ? 'border-red-300/55 bg-red-400/20 text-red-100 shadow-inner'
+                  : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
+              }`}
+              disabled={loading || isDeclined}
+              onClick={onDecline}
+              aria-label={`Cannot attend ${item.name}`}
+              title="Cannot attend"
+            >
+              <X size={16} />
+            </button>
+          </>
+        ) : (
+          <button type="button" className={item.canManage && isTournament ? 'btn-primary gap-2 px-3 py-2 text-xs' : 'btn-ghost px-3 py-2 text-xs'} onClick={onOpen}>
+            {item.canManage && isTournament && view === 'upcoming' && <PlayCircle size={14} />}
+            {item.canManage && isTournament ? (view === 'upcoming' ? 'Run' : 'Open') : 'View'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -514,19 +588,25 @@ function EmptyState({ view }: { view: 'upcoming' | 'history' }) {
         <Trophy size={21} className="text-pit-muted" />
       </div>
       <div className="text-center">
-        <p className="font-semibold text-white">{view === 'history' ? 'No history yet' : 'No tournaments yet'}</p>
+        <p className="font-semibold text-white">{view === 'history' ? 'No history yet' : 'No upcoming games yet'}</p>
         <p className="mt-1 text-sm text-pit-muted">
-          {view === 'history' ? 'Completed and past-dated tournaments will appear here.' : 'Create one from the command center when you are ready.'}
+          {view === 'history' ? 'Completed and past-dated games will appear here.' : 'Tournaments and league events will land here once they are scheduled.'}
         </p>
       </div>
     </div>
   );
 }
 
-function formatBuyinLabel(value: unknown) {
+function formatCostLabel(value: unknown) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount) || amount <= 0) return 'FREE';
-  return amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2);
+  return `$${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+}
+
+function formatFieldCount(tournament: Tournament) {
+  const registered = Math.max(0, Number(tournament.playercount ?? 0));
+  const cap = Math.max(0, Number(tournament.maxplayers ?? 0));
+  return cap > 0 ? `${registered}/${cap}` : String(registered);
 }
 
 function CreateTournamentComposer({
@@ -682,7 +762,9 @@ function CreateTournamentComposer({
                 <input className="input text-lg" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Date"><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} required /></Field>
-                  <Field label="Time"><input className="input" type="time" value={form.tourneytime} onChange={set('tourneytime')} required /></Field>
+                  <Field label="Time">
+                    <QuarterHourTimeSelect value={form.tourneytime} onChange={(value) => setForm((current) => ({ ...current, tourneytime: value }))} required />
+                  </Field>
                 </div>
                 <Field label="Group">
                   <select className="input" value={form.groupid} onChange={set('groupid')} required>
@@ -905,13 +987,47 @@ function getDateKey(value: string | null | undefined): string | null {
   return value.slice(0, 10);
 }
 
-function compareTournamentSchedule(a: Tournament, b: Tournament) {
-  return getTournamentScheduleSortValue(a) - getTournamentScheduleSortValue(b);
+function tournamentToScheduleItem(tournament: Tournament): ScheduleItem {
+  return {
+    kind: 'tournament',
+    id: `tournament-${tournament.tournamentid}`,
+    name: tournament.name,
+    parentName: tournament.groupname,
+    date: getDateKey(tournament.tourneydate),
+    time: tournament.tourneytime,
+    cost: Number(tournament.buyin ?? 0),
+    canManage: isEnabledFlag(tournament.canmanage),
+    tournament,
+  };
 }
 
-function getTournamentScheduleSortValue(tournament: Tournament) {
-  const date = getDateKey(tournament.tourneydate) ?? '9999-12-31';
-  const time = tournament.tourneytime || '23:59';
+function buildLeagueScheduleItems(events: LeagueScheduleEvent[]): ScheduleItem[] {
+  return events
+    .filter((event) => Boolean(event.eventdate))
+    .map(leagueEventToScheduleItem);
+}
+
+function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
+  return {
+    kind: 'league',
+    id: `league-${event.leagueid}-${event.eventid}`,
+    name: event.name,
+    parentName: event.leaguename,
+    date: getDateKey(event.eventdate),
+    time: event.eventtime ?? null,
+    cost: Number(event.eventfee ?? 0),
+    canManage: Boolean(event.isadmin),
+    leagueId: event.leagueid,
+  };
+}
+
+function compareScheduleItems(a: ScheduleItem, b: ScheduleItem) {
+  return getScheduleSortValue(a) - getScheduleSortValue(b);
+}
+
+function getScheduleSortValue(item: ScheduleItem) {
+  const date = item.date ?? '9999-12-31';
+  const time = item.time || '23:59';
   return new Date(`${date}T${time}`).getTime();
 }
 

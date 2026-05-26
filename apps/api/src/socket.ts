@@ -1,9 +1,11 @@
 import { Server as HttpServer } from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { query, queryOne } from './db';
 import { getClientUrl } from './config';
 import { BlindLevel, TimerState } from './types';
 import { sendTournamentNotification } from './lib/server/notifications/notificationService';
+import { decodeAuthToken } from './middleware/auth';
+import { isDatabaseTrue } from './utils/booleans';
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 const timerState = new Map<string, TimerState>();
@@ -23,6 +25,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-start', async ({ tournamentId }: { tournamentId: string }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = await loadTimerState(tournamentId);
       if (state.running || state.blinds.length === 0) return;
       state.running = true;
@@ -32,6 +35,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-pause', async ({ tournamentId }: { tournamentId: string }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId);
       if (!state) return;
       state.running = false;
@@ -41,6 +45,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-next', async ({ tournamentId }: { tournamentId: string }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const previousLevel = state.currentlevel;
       advanceLevel(state);
@@ -50,6 +55,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-prev', async ({ tournamentId }: { tournamentId: string }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const previousLevel = state.currentlevel;
       const previousBlind = getPreviousBlind(state);
@@ -63,6 +69,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-adjust', async ({ tournamentId, deltaSeconds }: { tournamentId: string; deltaSeconds: number }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const maxSeconds = Math.max((getCurrentBlind(state)?.minutes ?? 20) * 60, 60);
       state.remainingsecs = Math.min(Math.max(state.remainingsecs + Number(deltaSeconds || 0), 0), maxSeconds);
@@ -71,6 +78,7 @@ export function initSocket(httpServer: HttpServer): void {
     });
 
     socket.on('timer-level', async ({ tournamentId, level }: { tournamentId: string; level: number }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const targetBlind = state.blinds.find((blind) => blind.level === Number(level));
       if (!targetBlind) return;
@@ -84,6 +92,47 @@ export function initSocket(httpServer: HttpServer): void {
       if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
   });
+}
+
+function getSocketUserId(socket: Socket): string | null {
+  const token = socket.handshake.auth?.token;
+  if (typeof token !== 'string') return null;
+  return decodeAuthToken(token.startsWith('Bearer ') ? token.slice(7) : token);
+}
+
+async function canControlTournamentTimer(
+  socket: Socket,
+  tournamentId: string | undefined
+): Promise<boolean> {
+  if (!tournamentId) return false;
+  const userId = getSocketUserId(socket);
+  if (!userId) {
+    socket.emit('timer-control-denied', { error: 'Unauthorized' });
+    return false;
+  }
+
+  const row = await queryOne<{ canmanage: boolean }>(
+    `SELECT CASE
+        WHEN COALESCE(um.issuperadmin, FALSE) = TRUE THEN TRUE
+        WHEN t.userid = $2 THEN TRUE
+        WHEN t.groupid IS NOT NULL AND EXISTS (
+          SELECT 1
+          FROM groupmembers gm
+          WHERE gm.groupid = t.groupid
+            AND gm.userid = $2
+            AND gm.approved = TRUE
+            AND gm.admin = TRUE
+        ) THEN TRUE
+        ELSE FALSE
+      END AS canmanage
+     FROM tournaments t
+     LEFT JOIN usermetadata um ON um.userid = $2
+     WHERE t.tournamentid = $1`,
+    [tournamentId, userId]
+  );
+  if (isDatabaseTrue(row?.canmanage)) return true;
+  socket.emit('timer-control-denied', { error: 'Only tournament admins can control the timer.' });
+  return false;
 }
 
 function startInterval(tournamentId: string): void {
