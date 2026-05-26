@@ -5,6 +5,8 @@ import { getAppUrl } from '../config';
 const resendApiKey = process.env.RESEND_API_KEY;
 const from = process.env.EMAIL_FROM ?? 'ThePokerPlanner <noreply@thepokerplanner.com>';
 const appUrl = getAppUrl();
+const appBaseUrl = appUrl.replace(/\/$/, '');
+const emailHeaderUrl = `${appBaseUrl}/email-header.jpg`;
 
 type EmailPayload = {
   to: string;
@@ -128,9 +130,8 @@ function emailLayout({
             <td align="center">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;border:1px solid #2a2c35;border-radius:18px;background:#17181f;overflow:hidden;">
                 <tr>
-                  <td style="padding:26px 28px 18px;border-bottom:1px solid #2a2c35;">
-                    <div style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#ffffff;">ThePokerPlanner</div>
-                    <div style="margin-top:4px;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#8d93a5;">Run Better Poker Nights</div>
+                  <td style="border-bottom:1px solid #2a2c35;background:#050708;">
+                    <img src="${emailHeaderUrl}" alt="ThePokerPlanner.com - Run Better Poker Nights" width="620" style="display:block;width:100%;max-width:620px;height:auto;border:0;line-height:100%;outline:none;text-decoration:none;">
                   </td>
                 </tr>
                 <tr>

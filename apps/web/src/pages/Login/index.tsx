@@ -81,8 +81,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen overflow-hidden bg-pit-bg">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.18),transparent_38%),radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_24%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-10">
-        <div className="mx-auto mt-10 h-[42rem] w-[42rem] max-w-full rounded-full border border-pit-teal/40" />
+      <div className="pointer-events-none absolute inset-0 flex justify-center overflow-hidden opacity-[0.18]">
+        <img
+          src="/branding/the-poker-planner-logo-glow.png"
+          alt=""
+          aria-hidden="true"
+          className="mt-8 h-[38rem] w-[38rem] max-w-[92vw] object-contain blur-[0.2px]"
+        />
       </div>
 
       <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
