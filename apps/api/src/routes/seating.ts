@@ -29,6 +29,42 @@ async function canManageSeating(tid: string, uid: string): Promise<boolean> {
   return await isOwner(tid, uid) || await isGroupAdmin(tid, uid);
 }
 
+type SeatAssignment = { userid: string; tablenumber: number; seat: number };
+
+function buildBalancedAssignments(players: Array<{ userid: string }>, seatsPerTable: number): SeatAssignment[] {
+  const numTables = Math.max(1, Math.ceil(players.length / seatsPerTable));
+  return players.map((player, index) => ({
+    userid: player.userid,
+    tablenumber: Number((index % numTables) + 1),
+    seat: Math.floor(index / numTables) + 1,
+  }));
+}
+
+async function notifySeatAssignments(
+  tournamentId: string,
+  assignments: SeatAssignment[],
+  action: 'assign' | 'reseat'
+) {
+  const batchId = `${Date.now()}`;
+  const pushResults = await Promise.all(assignments.map((assignment) =>
+    sendTournamentNotification(tournamentId, 'seat_assignment', {
+      tableNumber: assignment.tablenumber,
+      seatNumber: assignment.seat,
+      ...(action === 'reseat'
+        ? {
+            title: 'New seat assignment',
+            body: `You were re-seated at Table ${assignment.tablenumber}, Seat ${assignment.seat}.`,
+          }
+        : {}),
+      tag: `tournament-${tournamentId}-seat-assignment-${assignment.userid}-${batchId}`,
+    }, {
+      targetUserIds: [assignment.userid],
+      entityId: `${tournamentId}:${assignment.userid}:${batchId}`,
+    })
+  ));
+  return pushResults.reduce((sum, result) => sum + result.sent, 0);
+}
+
 seatingRouter.get('/:tid/seating', async (req: Request, res: Response) => {
   const rows = await query<SeatingAssignment>(
     `SELECT CAST(ts."Table" AS INT) AS tablenumber, ts.seat, u.guid AS userid, u.emailaddress,
@@ -66,26 +102,7 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
     res.status(400).json({ error: 'No eligible players to seat' }); return;
   }
 
-  const seatedRows = await query<{ userid: string; tablenumber: number; seat: number }>(
-    `SELECT ts.userid, CAST(ts."Table" AS INT) AS tablenumber, CAST(ts.seat AS INT) AS seat
-     FROM tournamentseating ts
-     JOIN tournamentplayers tp ON tp.tournamentid = ts.tournamentid AND tp.userid = ts.userid
-     WHERE ts.tournamentid = $1
-       AND tp.checkedin = TRUE
-       AND tp.placed IS NULL`,
-    [req.params.tid]
-  );
-  const alreadySeated = new Set(seatedRows.map((row) => row.userid));
-  const playersToSeat = assignMode === 'remaining'
-    ? players.filter((player) => !alreadySeated.has(player.userid))
-    : players;
-
-  if (playersToSeat.length === 0) {
-    res.json({ assigned: 0 });
-    return;
-  }
-
-  const shuffled = [...playersToSeat];
+  const shuffled = [...players];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -94,13 +111,7 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
   if (assignMode === 'all') {
     await query(`DELETE FROM tournamentseating WHERE tournamentid = $1`, [req.params.tid]);
 
-    const numTables = Math.max(1, Math.ceil(shuffled.length / seatsPerTable));
-
-    const assignments = shuffled.map((p, i) => ({
-      userid: p.userid,
-      tablenumber: Number((i % numTables) + 1),
-      seat: Math.floor(i / numTables) + 1,
-    }));
+    const assignments = buildBalancedAssignments(shuffled, seatsPerTable);
 
     for (const a of assignments) {
       await query(
@@ -111,41 +122,14 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
     }
 
     broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'assign-seats' });
-    const pushResults = await Promise.all(assignments.map((assignment) =>
-      sendTournamentNotification(req.params.tid, 'seat_assignment', {
-        tableNumber: assignment.tablenumber,
-        seatNumber: assignment.seat,
-      }, {
-        targetUserIds: [assignment.userid],
-        entityId: `${req.params.tid}:${assignment.userid}`,
-      })
-    ));
-    const pushSent = pushResults.reduce((sum, result) => sum + result.sent, 0);
+    const pushSent = await notifySeatAssignments(req.params.tid, assignments, 'assign');
     res.json({ assigned: assignments.length, pushSent });
     return;
   }
 
-  const tableMap = new Map<number, Set<number>>();
-  for (const row of seatedRows) {
-    const table = Number(row.tablenumber);
-    const seat = Number(row.seat);
-    if (!tableMap.has(table)) tableMap.set(table, new Set());
-    tableMap.get(table)!.add(seat);
-  }
+  await query(`DELETE FROM tournamentseating WHERE tournamentid = $1`, [req.params.tid]);
 
-  const assignments: Array<{ userid: string; tablenumber: number; seat: number }> = [];
-  for (const player of shuffled) {
-    const openTable = [...tableMap.entries()]
-      .filter(([, seats]) => seats.size < seatsPerTable)
-      .sort((a, b) => a[1].size - b[1].size || a[0] - b[0])[0];
-    const tableNumber = openTable?.[0] ?? (Math.max(0, ...tableMap.keys()) + 1);
-    if (!tableMap.has(tableNumber)) tableMap.set(tableNumber, new Set());
-    const occupiedSeats = tableMap.get(tableNumber)!;
-    let seat = 1;
-    while (occupiedSeats.has(seat)) seat += 1;
-    occupiedSeats.add(seat);
-    assignments.push({ userid: player.userid, tablenumber: tableNumber, seat });
-  }
+  const assignments = buildBalancedAssignments(shuffled, seatsPerTable);
 
   for (const a of assignments) {
     await query(
@@ -156,16 +140,7 @@ seatingRouter.post('/:tid/seating/assign', async (req: Request, res: Response) =
   }
 
   broadcastTournamentUpdate(req.params.tid, { players: true, seating: true, source: 'assign-seats' });
-  const pushResults = await Promise.all(assignments.map((assignment) =>
-    sendTournamentNotification(req.params.tid, 'seat_assignment', {
-      tableNumber: assignment.tablenumber,
-      seatNumber: assignment.seat,
-    }, {
-      targetUserIds: [assignment.userid],
-      entityId: `${req.params.tid}:${assignment.userid}`,
-    })
-  ));
-  const pushSent = pushResults.reduce((sum, result) => sum + result.sent, 0);
+  const pushSent = await notifySeatAssignments(req.params.tid, assignments, 'reseat');
   res.json({ assigned: assignments.length, pushSent });
 });
 

@@ -746,45 +746,24 @@ export default function RunTournament({
   );
   const seatingValidationMessage = useMemo(() => {
     const maxPerTable = Math.max(2, Math.floor(Number(seatingMaxPerTable) || 2));
-    const hasExistingSeats = seatedPlayers.length > 0;
-    const playersToSeat = hasExistingSeats
-      ? checkedInRoster.filter((player) => player.tablenumber == null || player.seat == null)
-      : checkedInRoster;
+    const playersToSeat = checkedInRoster;
 
     if (playersToSeat.length === 0) return null;
 
-    let tableSizes: number[];
-    if (!hasExistingSeats) {
-      const playerCount = playersToSeat.length;
-      const tableCount = Math.max(1, Math.ceil(playerCount / maxPerTable));
-      tableSizes = Array.from({ length: tableCount }, (_, tableIndex) => {
-        const base = Math.floor(playerCount / tableCount);
-        const extra = tableIndex < playerCount % tableCount ? 1 : 0;
-        return base + extra;
-      });
-    } else {
-      const tableMap = new Map<number, number>();
-      for (const player of seatedPlayers) {
-        const table = Number(player.tablenumber ?? 0);
-        if (!table) continue;
-        tableMap.set(table, (tableMap.get(table) ?? 0) + 1);
-      }
-      for (const _player of playersToSeat) {
-        const openTable = [...tableMap.entries()]
-          .filter(([, count]) => count < maxPerTable)
-          .sort((a, b) => a[1] - b[1] || a[0] - b[0])[0];
-        const tableNumber = openTable?.[0] ?? (Math.max(0, ...tableMap.keys()) + 1);
-        tableMap.set(tableNumber, (tableMap.get(tableNumber) ?? 0) + 1);
-      }
-      tableSizes = [...tableMap.values()];
-    }
+    const playerCount = playersToSeat.length;
+    const tableCount = Math.max(1, Math.ceil(playerCount / maxPerTable));
+    const tableSizes = Array.from({ length: tableCount }, (_, tableIndex) => {
+      const base = Math.floor(playerCount / tableCount);
+      const extra = tableIndex < playerCount % tableCount ? 1 : 0;
+      return base + extra;
+    });
 
     const seatedCount = tableSizes.reduce((sum, count) => sum + count, 0);
     if (seatedCount > 1 && tableSizes.some((count) => count === 1)) {
       return 'Invalid table size. One player would be stranded alone.';
     }
     return null;
-  }, [checkedInRoster, seatedPlayers, seatingMaxPerTable]);
+  }, [checkedInRoster, seatingMaxPerTable]);
   const isPreStart = !timerState?.running && displayedLevel === 1 && secs === (currentBlind?.minutes ?? 0) * 60;
   const showSeatingBoard = tvMode
     ? tournament.tvdisplaymode === 'seating' || isPreStart
