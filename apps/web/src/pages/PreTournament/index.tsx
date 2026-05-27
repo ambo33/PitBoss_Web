@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Lock, Play, Timer, Users } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
@@ -22,8 +22,12 @@ type Tab = 'details' | 'players' | 'blinds' | 'run';
 
 export default function PreTournamentPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('details');
+  const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
+    ? location.state.tab
+    : undefined;
+  const [tab, setTab] = useState<Tab>(requestedTab === 'run' ? 'run' : 'details');
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
@@ -89,8 +93,8 @@ export default function PreTournamentPage() {
     if (!canManage && tab === 'run') setTab('details');
   }, [canManage, tab]);
 
-  if (isLoading) return <Layout back="/"><LoadingSpinner className="mt-24" /></Layout>;
-  if (!tournament) return <Layout back="/"><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
+  if (isLoading) return <Layout back="/" hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
+  if (!tournament) return <Layout back="/" hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const scheduleLocked = eventStarted && !user?.issuperadmin;

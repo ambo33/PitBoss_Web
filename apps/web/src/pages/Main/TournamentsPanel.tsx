@@ -150,6 +150,7 @@ export default function TournamentsPanel({
   const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
   const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
   const adminGroupCount = groups.filter((group) => group.isadmin).length;
+  const hostableGroups = useMemo(() => groups.filter((group) => group.isadmin && group.approved), [groups]);
   const loadingSchedule = loadingMine || (loadingLeagueEvents && scheduleList.length === 0);
   const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents;
   const showSetupCard = dashboardDataReady && !leagueScheduleError && upcomingScheduleItems.length === 0 && !setupCardDismissed;
@@ -170,7 +171,7 @@ export default function TournamentsPanel({
   if (showCreate) {
     return (
       <CreateTournamentComposer
-        groups={groups}
+        groups={hostableGroups}
         me={me}
         onBack={() => setShowCreate(false)}
         onSubmit={(data) => createMutation.mutate(data)}
@@ -250,7 +251,10 @@ export default function TournamentsPanel({
               loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending}
               onOpen={(item) => {
                 if (item.kind === 'tournament') {
-                  navigate(item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`);
+                  navigate(
+                    item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`,
+                    item.canManage ? { state: { tab: 'run' } } : undefined
+                  );
                   return;
                 }
                 navigate('/', { state: { tab: 'leagues', leagueId: item.leagueId } });
@@ -813,7 +817,8 @@ function CreateTournamentComposer({
   const rebuysActive = Number(form.rebuyprice) > 0 || Number(form.rebuychips) > 0;
   const rebuyCutoffComplete = !rebuysActive || Number(form.rebuylastlevel) > 0;
   const maxPlayersComplete = form.maxplayersmode === 'unlimited' || (form.maxplayersmode === 'capped' && Number(form.maxplayers) > 0);
-  const cashDetailsComplete = !isCashGame || Boolean(form.stakeslabel.trim());
+  const cashRangeComplete = !isCashGame || !form.minbuyin || !form.maxbuyin || Number(form.maxbuyin) >= Number(form.minbuyin);
+  const cashDetailsComplete = !isCashGame || (Boolean(form.stakeslabel.trim()) && cashRangeComplete);
   const inviteComplete = form.visibility !== 'invite_only' || form.inviteUserIds.length > 0;
   const canAdvance = step === 0 ? basicsComplete : step === 1 ? (isCashGame ? cashDetailsComplete : maxPlayersComplete && rebuyCutoffComplete) : step === 2 ? inviteComplete : true;
   const selectedStructure = savedStructures.find((structure) => structure.id === form.savedstructureid);
@@ -902,12 +907,17 @@ function CreateTournamentComposer({
                 </div>
                 <Field label="Group">
                   <select className="input" value={form.groupid} onChange={set('groupid')} required>
-                    <option value="">Choose a group</option>
+                    <option value="">{groups.length > 0 ? 'Choose a group' : 'No admin groups available'}</option>
                     {groups.map((group) => (
                       <option key={group.groupid} value={group.groupid}>{group.name}</option>
                     ))}
                   </select>
                 </Field>
+                {groups.length === 0 && (
+                  <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
+                    You can only host games for groups where you are an admin.
+                  </p>
+                )}
                 {!basicsComplete && (
                   <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
                     {isCashGame ? 'Add a title and group before continuing.' : 'Add a tournament name, date, time, and group before continuing.'}
@@ -932,11 +942,11 @@ function CreateTournamentComposer({
                     <input className="input" type="number" min="0" step="0.01" placeholder="Optional" value={form.maxbuyin} onChange={set('maxbuyin')} />
                   </Field>
                   <Field label="Notes" className="sm:col-span-2">
-                    <textarea className="input min-h-24 resize-y" placeholder="Optional house notes, location details, or reminders." value={form.cashnotes} onChange={set('cashnotes')} />
+                    <textarea className="input min-h-24 resize-none" placeholder="Optional house notes, location details, or reminders." value={form.cashnotes} onChange={set('cashnotes')} />
                   </Field>
                   {!cashDetailsComplete && (
                     <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
-                      Add a stakes label before continuing.
+                      {cashRangeComplete ? 'Add a stakes label before continuing.' : 'Max buy-in cannot be lower than min buy-in.'}
                     </p>
                   )}
                 </div>

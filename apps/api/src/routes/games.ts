@@ -249,28 +249,35 @@ gamesRouter.post('/', async (req: Request, res: Response) => {
 
       await client.query('COMMIT');
 
-      if (alertUsers) {
-        const recipients = visibility === 'invite_only'
-          ? validInviteUserIds.filter((userId) => userId !== req.userId)
-          : (await query<{ userid: string }>(
-              `SELECT userid
-               FROM groupmembers
-               WHERE groupid = $1
-                 AND approved = TRUE
-                 AND userid <> $2`,
-              [groupid, req.userId]
-            )).map((row) => row.userid);
-        void notifyGameCreated({
-          gameId,
-          groupId: groupid,
-          gameTitle: title,
-          gameType: gametype,
-          recipientUserIds: recipients,
-          channels: ['email', 'push'],
-        });
-      }
-
       res.status(201).json({ gameid: gameId, id: gameId });
+
+      if (alertUsers) {
+        const creatorId = req.userId!;
+        void (async () => {
+          try {
+            const recipients = visibility === 'invite_only'
+              ? validInviteUserIds.filter((userId) => userId !== creatorId)
+              : (await query<{ userid: string }>(
+                  `SELECT userid
+                   FROM groupmembers
+                   WHERE groupid = $1
+                     AND approved = TRUE
+                     AND userid <> $2`,
+                  [groupid, creatorId]
+                )).map((row) => row.userid);
+            await notifyGameCreated({
+              gameId,
+              groupId: groupid,
+              gameTitle: title,
+              gameType: gametype,
+              recipientUserIds: recipients,
+              channels: ['email', 'push'],
+            });
+          } catch (notifyErr) {
+            console.warn('Game notification failed after create', notifyErr);
+          }
+        })();
+      }
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
