@@ -1,16 +1,18 @@
 import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ImageIcon, LogOut, Music4, Phone, Shield, Trash2, Upload, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
+import { Bot, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
 import GroupsPanel from './GroupsPanel';
 import LeaguesPanel from './LeaguesPanel';
-import TournamentsPanel from './TournamentsPanel';
+import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import Modal from '../../components/Modal';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
+
+type MainView = 'command' | 'profile' | 'admin';
 
 export default function MainPage() {
   const location = useLocation();
@@ -20,7 +22,14 @@ export default function MainPage() {
   const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
     ? location.state.tab as NavTab
     : undefined;
-  const [tab, setTab] = useState<NavTab>(requestedTab ?? 'tournaments');
+  const requestedLeagueId = location.state && typeof location.state === 'object' && 'leagueId' in location.state
+    ? String(location.state.leagueId ?? '')
+    : '';
+  const [view, setView] = useState<MainView>(requestedTab === 'profile' || requestedTab === 'admin' ? requestedTab : 'command');
+  const [commandSection, setCommandSection] = useState<CommandCenterSection>(sectionFromTab(requestedTab));
+  const [commandDetailOpen, setCommandDetailOpen] = useState(false);
+  const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
+  const [leagueDeepLinkId, setLeagueDeepLinkId] = useState<string | undefined>(requestedLeagueId || undefined);
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
 
   useLayoutEffect(() => {
@@ -46,13 +55,21 @@ export default function MainPage() {
   });
 
   useEffect(() => {
-    if (requestedTab && requestedTab !== tab) {
-      setTab(requestedTab);
+    if (requestedLeagueId) {
+      setLeagueDeepLinkId(requestedLeagueId);
+    }
+    if (requestedTab) {
+      if (requestedTab === 'profile' || requestedTab === 'admin') {
+        setView(requestedTab);
+      } else {
+        setView('command');
+        setCommandSection(sectionFromTab(requestedTab));
+      }
     }
     if (requestedTab) {
       navigate(location.pathname, { replace: true, state: null });
     }
-  }, [location.pathname, navigate, requestedTab]);
+  }, [location.pathname, navigate, requestedLeagueId, requestedTab]);
 
   useEffect(() => {
     if (user && user.onboardingcomplete === false) {
@@ -82,29 +99,174 @@ export default function MainPage() {
     });
   }, [currentProfile, updateUser]);
 
+  const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
+    if (nextSection !== 'leagues') {
+      setLeagueDeepLinkId(undefined);
+    }
+    setCommandDetailOpen(false);
+    setView('command');
+    setCommandSection(nextSection);
+  };
+
+  const currentTab: NavTab = view === 'command'
+    ? commandSection === 'groups'
+      ? 'groups'
+      : commandSection === 'leagues'
+        ? 'leagues'
+        : 'tournaments'
+    : view;
+
   return (
     <>
       <Layout
-        tab={tab}
-        onTabChange={setTab}
-        compactSidebar
-        mainWidthClassName={tab === 'admin' ? 'max-w-7xl' : 'max-w-5xl'}
+        tab={currentTab}
+        hideSidebar
+        hideMobileNav
+        hideFeedback={createTournamentOpen}
+        headerRight={
+          <CommandCenterMenu
+            onHome={() => setView('command')}
+            onProfile={() => setView('profile')}
+            onAdmin={() => setView('admin')}
+          />
+        }
+        mainWidthClassName={view === 'admin' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-5xl'}
       >
-        {tab === 'tournaments' && <TournamentsPanel />}
-        {tab === 'groups'      && <GroupsPanel />}
-        {tab === 'leagues'     && <LeaguesPanel />}
-        {tab === 'profile'     && <ProfilePanel />}
-        {tab === 'admin'       && <AdminPanel />}
+        {view === 'command' && (
+          <TournamentsPanel
+            section={commandSection}
+            onSectionChange={handleCommandSectionChange}
+            hideDashboard={commandDetailOpen}
+            onCreateFlowChange={setCreateTournamentOpen}
+            renderSection={(section) => (
+              section === 'groups'
+                ? <GroupsPanel onDetailStateChange={setCommandDetailOpen} />
+                : <LeaguesPanel initialLeagueId={leagueDeepLinkId} onDetailStateChange={setCommandDetailOpen} />
+            )}
+          />
+        )}
+        {view === 'profile' && <ProfilePanel />}
+        {view === 'admin' && <AdminPanel />}
       </Layout>
       <OnboardingTour
         open={showTour}
         onClose={() => completeTourMutation.mutate()}
         onGoToGroups={() => {
-          setTab('groups');
+          setView('command');
+          setCommandSection('groups');
+          setCommandDetailOpen(false);
           completeTourMutation.mutate();
         }}
       />
     </>
+  );
+}
+
+function sectionFromTab(tab?: NavTab): CommandCenterSection {
+  if (tab === 'groups') return 'groups';
+  if (tab === 'leagues') return 'leagues';
+  return 'upcoming';
+}
+
+function CommandCenterMenu({
+  onHome,
+  onProfile,
+  onAdmin,
+}: {
+  onHome: () => void;
+  onProfile: () => void;
+  onAdmin: () => void;
+}) {
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  function handleLogout() {
+    queryClient.clear();
+    logout();
+    navigate('/landing', { replace: true });
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+        onClick={() => setOpen((value) => !value)}
+        aria-label="Open account menu"
+        aria-expanded={open}
+      >
+        <Menu size={20} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-pit-border bg-pit-card py-1 shadow-2xl">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onHome();
+            }}
+          >
+            <Home size={15} />
+            Command Center
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onProfile();
+            }}
+          >
+            <User size={15} />
+            Profile
+          </button>
+          {user?.issuperadmin && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
+              onClick={() => {
+                setOpen(false);
+                onAdmin();
+              }}
+            >
+              <Shield size={15} />
+              Admin
+            </button>
+          )}
+          <div className="my-1 border-t border-pit-border" />
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300"
+            onClick={handleLogout}
+          >
+            <LogOut size={15} />
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -269,17 +269,17 @@ export async function sendLeagueGuestClaimEmail(
   const claimLink = `${appUrl}/league-guest-claim?token=${encodeURIComponent(claimToken)}`;
   await sendMail({
     to: email,
-    subject: `Claim your ${leagueName} league profile`,
+    subject: `Claim your ${leagueName} league spot`,
     html: emailLayout({
       eyebrow: 'League Profile',
       title: `Claim ${guestName}`,
-      intro: `A league admin invited you to connect this guest player profile to your ThePokerPlanner account.`,
+      intro: `A league admin invited you to connect this league player spot to your ThePokerPlanner account.`,
       body: `
-        <p style="margin:0 0 12px;">Once claimed, this profile's league finishes, payments, and season history will belong to your account.</p>
+        <p style="margin:0 0 12px;">Once claimed, this spot's league finishes, payments, and season history will belong to your account.</p>
         <p style="margin:0;">If you do not have an account yet, create one with this email address first, then use this same link.</p>
       `,
       ctaHref: claimLink,
-      ctaLabel: 'Claim League Profile',
+      ctaLabel: 'Claim League Spot',
     }),
   });
 }

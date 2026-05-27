@@ -95,6 +95,8 @@ export const api = {
     post<{ id: string; success: boolean; status?: 'pending' | 'approved' }>(`/groups/${groupId}/posts`, data),
   moderateGroupPost: (groupId: string, postId: string, status: 'approved' | 'rejected') =>
     put<{ success: boolean; id: string; status: string }>(`/groups/${groupId}/posts/${postId}/moderate`, { status }),
+  deleteGroupPost: (groupId: string, postId: string) =>
+    del<{ success: boolean; id: string }>(`/groups/${groupId}/posts/${postId}`),
   voteGroupPoll: (groupId: string, postId: string, optionId: string) =>
     post<{ success: boolean }>(`/groups/${groupId}/posts/${postId}/vote`, { optionid: optionId }),
   commentOnGroupPost: (groupId: string, postId: string, message: string) =>
@@ -107,6 +109,22 @@ export const api = {
     post<{ award: GroupCoinAward }>(`/groups/${groupId}/coins/${coinId}/awards`, data),
   updateGroupNotificationPreferences: (groupId: string, data: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
     put<{ success: boolean; preferences: Partial<GroupMember> }>(`/groups/${groupId}/notification-preferences`, data),
+
+  // Games
+  createGame: (data: CreateGameRequest) =>
+    post<{ id: string; gameid: string }>('/games', data),
+  getGroupGames: (groupId: string) =>
+    get<GameListItem[]>(`/games/group/${groupId}`),
+  getGame: (gameId: string) =>
+    get<GameDetail>(`/games/${gameId}`),
+  updateGame: (gameId: string, data: Partial<Pick<GameRecord, 'title' | 'status' | 'startsat'>> & { cash?: Partial<CashGameDetails> }) =>
+    patch<GameDetail>(`/games/${gameId}`, data),
+  addCashGamePlayer: (gameId: string, userid: string) =>
+    post<GameDetail>(`/games/${gameId}/players`, { userid }),
+  updateCashGamePlayer: (gameId: string, userId: string, data: Partial<Pick<CashGamePlayer, 'status' | 'buyintotal' | 'addontotal' | 'cashouttotal'>>) =>
+    put<GameDetail>(`/games/${gameId}/players/${userId}`, data),
+  removeCashGamePlayer: (gameId: string, userId: string) =>
+    del<GameDetail>(`/games/${gameId}/players/${userId}`),
 
   // Leagues
   getLeagues: () => get<League[]>('/leagues'),
@@ -127,6 +145,10 @@ export const api = {
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname, seasonid }),
   inviteLeagueGuestClaim: (id: string, guestUserId: string, email: string) =>
     post<{ success: boolean; email: string }>(`/leagues/${id}/members/${guestUserId}/claim-invite`, { email }),
+  inviteLeagueSpotTakeover: (id: string, userId: string, email: string, seasonid?: string | null) =>
+    post<{ success: boolean; email: string }>(`/leagues/${id}/members/${userId}/takeover-invite`, { email, seasonid }),
+  updateLeagueMemberAdmin: (id: string, userId: string, isadmin: boolean) =>
+    patch<{ success: boolean; userid: string; isadmin: boolean }>(`/leagues/${id}/members/${userId}/admin`, { isadmin }),
   claimLeagueGuest: (token: string) =>
     post<{ success: boolean; leagueid: string; leaguename: string }>(`/leagues/guest-claims/${encodeURIComponent(token)}/claim`),
   removeLeagueMember: (id: string, userId: string, seasonid?: string | null) =>
@@ -144,6 +166,8 @@ export const api = {
     post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
   updateLeagueEvent: (id: string, eventId: string, data: { name?: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number | null; eventfee?: number | null }) =>
     patch<{ event: LeagueEvent }>(`/leagues/${id}/events/${eventId}`, data),
+  rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus) =>
+    put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status }),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
   logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>
@@ -274,6 +298,12 @@ export interface Group {
   aiannouncerclassicmode?: boolean;
   postapprovalrequired?: boolean;
   membercount?: number; isadmin?: boolean; approved?: boolean;
+  pendingpostcount?: number;
+  postcount?: number;
+  nexttournamentid?: string | null;
+  nexttournamentname?: string | null;
+  nexttournamentdate?: string | null;
+  nexttournamenttime?: string | null;
 }
 export type TrackingMode = 'standard' | 'player';
 export type AnnouncerPreset =
@@ -354,6 +384,85 @@ export interface GroupCoinAward {
   id: string; groupid: string; coinid: string; userid: string;
   displayname?: string; note?: string | null; createdat: string;
 }
+export type GameType = 'tournament' | 'cash';
+export type GameVisibility = 'group_public' | 'invite_only';
+export type GameStatus = 'scheduled' | 'active' | 'completed' | 'cancelled';
+export type CashGamePlayerStatus = 'interested' | 'seated' | 'cashed_out' | 'removed';
+export interface CreateGameRequest {
+  groupid: string;
+  gametype: GameType;
+  title: string;
+  startsat?: string | null;
+  visibility: GameVisibility;
+  inviteUserIds?: string[];
+  alertUsers?: boolean;
+  cash?: {
+    stakeslabel: string;
+    seatsavailable?: number | null;
+    minbuyin?: number | null;
+    maxbuyin?: number | null;
+    notes?: string | null;
+  };
+}
+export interface GameRecord {
+  id: string;
+  groupid: string;
+  createdbyuserid: string;
+  gametype: GameType;
+  title: string;
+  status: GameStatus;
+  visibility: GameVisibility;
+  startsat?: string | null;
+  tournamentid?: string | null;
+  groupname?: string;
+  canmanage?: boolean;
+  createdat: string;
+  updatedat: string;
+}
+export interface GameListItem extends GameRecord {
+  stakeslabel?: string | null;
+  seatsavailable?: number | null;
+  playercount?: number;
+}
+export interface CashGameDetails {
+  gameid: string;
+  stakeslabel: string;
+  minbuyin?: number | null;
+  maxbuyin?: number | null;
+  seatsavailable?: number | null;
+  notes?: string | null;
+  updatedat?: string;
+}
+export interface CashGamePlayer {
+  id: string;
+  gameid: string;
+  userid: string;
+  displayname?: string | null;
+  displaynamesnapshot?: string | null;
+  status: CashGamePlayerStatus;
+  buyintotal: number;
+  addontotal: number;
+  cashouttotal: number;
+  createdat: string;
+  updatedat: string;
+}
+export interface CashGameLedgerEvent {
+  id: string;
+  gameid: string;
+  userid?: string | null;
+  displayname?: string | null;
+  eventtype: 'buy_in' | 'add_on' | 'cash_out' | 'status_change' | 'removed';
+  amount?: number | null;
+  createdbyuserid?: string | null;
+  createdat: string;
+}
+export interface GameDetail {
+  game: GameRecord;
+  cashdetails?: CashGameDetails | null;
+  players: CashGamePlayer[];
+  members: GroupMember[];
+  ledger: CashGameLedgerEvent[];
+}
 export interface LeaguePointRule {
   place: number | 'DNF';
   points: number;
@@ -418,6 +527,18 @@ export interface LeagueEvent {
   active: boolean;
   createdat: string;
 }
+export type LeagueEventRsvpStatus = 'going' | 'not_going';
+export interface LeagueEventRsvp {
+  rsvpid: string;
+  eventid: string;
+  leagueid: string;
+  userid: string;
+  displayname?: string | null;
+  emailaddress?: string | null;
+  status: LeagueEventRsvpStatus | string;
+  createdat: string;
+  updatedat: string;
+}
 export interface LeagueScheduleEvent {
   leagueid: string;
   leaguename: string;
@@ -428,6 +549,8 @@ export interface LeagueScheduleEvent {
   eventnumber?: number | null;
   eventfee?: number | null;
   isadmin?: boolean;
+  participating?: boolean;
+  rsvpstatus?: LeagueEventRsvpStatus | string | null;
 }
 export interface LeagueResult {
   resultid: string;
@@ -502,6 +625,7 @@ export interface LeagueDetail {
   events: LeagueEvent[];
   results: LeagueResult[];
   payments: LeaguePayment[];
+  rsvps: LeagueEventRsvp[];
   auditlog: LeagueAuditLog[];
   standings: LeagueStanding[];
   finalstacks: LeagueFinalStack[];

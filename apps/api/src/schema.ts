@@ -595,11 +595,13 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         tokenhash STRING(64) UNIQUE NOT NULL,
         invitedby UUID REFERENCES users(guid) ON DELETE SET NULL,
         claimedby UUID REFERENCES users(guid) ON DELETE SET NULL,
+        seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
         expiresat TIMESTAMPTZ NOT NULL,
         claimedat TIMESTAMPTZ,
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
+    await client.query(`ALTER TABLE leagueguestclaims ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueguestclaims_guest
       ON leagueguestclaims (leagueid, guestuserid, claimedat)
@@ -655,6 +657,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       WHERE e.seasonid IS NULL
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueeventrsvps (
+        rsvpid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        status STRING(20) NOT NULL DEFAULT 'going',
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (eventid, userid)
+      )
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS leagueresults (
         resultid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,
@@ -701,6 +715,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueevents_league
       ON leagueevents (leagueid, eventnumber)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueeventrsvps_event
+      ON leagueeventrsvps (eventid, status)
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueresults_league
@@ -794,6 +812,88 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_notificationlog_entity
       ON notificationlog (entitytype, entityid, type)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS games (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,
+        createdbyuserid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        gametype STRING(20) NOT NULL CHECK (gametype IN ('tournament', 'cash')),
+        title STRING(160) NOT NULL,
+        status STRING(20) NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'active', 'completed', 'cancelled')),
+        visibility STRING(24) NOT NULL DEFAULT 'group_public' CHECK (visibility IN ('group_public', 'invite_only')),
+        startsat TIMESTAMPTZ,
+        tournamentid UUID REFERENCES tournaments(tournamentid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_games_group_status
+      ON games (groupid, status, startsat)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_games_visibility
+      ON games (visibility, groupid)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cashgamedetails (
+        gameid UUID PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+        stakeslabel STRING(80) NOT NULL,
+        minbuyin DECIMAL(12,2),
+        maxbuyin DECIMAL(12,2),
+        seatsavailable INT,
+        notes STRING(1000),
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gameinvitations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gameid UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        invitedbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (gameid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_gameinvitations_user
+      ON gameinvitations (userid, gameid)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cashgameplayers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gameid UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        displaynamesnapshot STRING(160),
+        status STRING(24) NOT NULL DEFAULT 'interested' CHECK (status IN ('interested', 'seated', 'cashed_out', 'removed')),
+        buyintotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+        addontotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+        cashouttotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (gameid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_cashgameplayers_game
+      ON cashgameplayers (gameid, status)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cashgameledgerevents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gameid UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        userid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        eventtype STRING(40) NOT NULL CHECK (eventtype IN ('buy_in', 'add_on', 'cash_out', 'status_change', 'removed')),
+        amount DECIMAL(12,2),
+        createdbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_cashgameledgerevents_game
+      ON cashgameledgerevents (gameid, createdat DESC)
     `);
     await client.query(`
       ALTER TABLE groupcoins

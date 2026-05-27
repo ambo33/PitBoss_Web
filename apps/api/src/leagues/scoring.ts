@@ -191,7 +191,11 @@ export function buildStandings(members: LeagueMemberRow[], results: LeagueResult
         bestfinishes: scoredFinishes,
       };
     })
-    .sort((a, b) => b.totalpoints - a.totalpoints || b.scoredpoints - a.scoredpoints || (a.averagefinish ?? 999) - (b.averagefinish ?? 999));
+    .sort((a, b) =>
+      b.scoredpoints - a.scoredpoints
+      || (a.averagefinish ?? 999) - (b.averagefinish ?? 999)
+      || String(a.displayname ?? '').localeCompare(String(b.displayname ?? ''))
+    );
 }
 
 export function buildFinalStacks(standings: ReturnType<typeof buildStandings>, league: SerializedLeagueForFinals) {
@@ -203,14 +207,14 @@ export function buildFinalStacks(standings: ReturnType<typeof buildStandings>, l
     const place = index + 1;
     const multiplier = multiplierByPlace.get(place) ?? 0;
     const multiplierChips = Math.round(standing.scoredpoints * multiplier);
-    const roundedChips = Math.round(multiplierChips / rounding) * rounding;
-    const startingstack = roundedChips + standing.showupbonus;
+    const rawStartingStack = multiplierChips + standing.showupbonus;
+    const startingstack = Math.ceil(rawStartingStack / rounding) * rounding;
     return {
       ...standing,
       place,
       multiplier,
       multiplierchips: multiplierChips,
-      roundedchips: roundedChips,
+      roundedchips: startingstack,
       startingstack,
       bbstostart: Math.round(startingstack / bigBlind),
     };

@@ -19,6 +19,7 @@ interface Props {
   compactSidebar?: boolean;
   hideSidebar?: boolean;
   hideMobileNav?: boolean;
+  hideFeedback?: boolean;
   headerRight?: React.ReactNode;
   mainWidthClassName?: string;
 }
@@ -40,6 +41,7 @@ export default function Layout({
   compactSidebar = false,
   hideSidebar = false,
   hideMobileNav = false,
+  hideFeedback = false,
   headerRight,
   mainWidthClassName = 'max-w-5xl',
 }: Props) {
@@ -201,7 +203,7 @@ export default function Layout({
                   <span className="hidden sm:inline">Back</span>
                 </Link>
               ) : (
-                <div className="md:hidden">
+                <div className={hideSidebar ? 'block' : 'md:hidden'}>
                   <BrandLockup compact showSlogan={false} className="items-center gap-2" />
                 </div>
               )}
@@ -242,11 +244,11 @@ export default function Layout({
         </nav>
       )}
 
-      {user && (
+      {user && !hideFeedback && (
         <button
           type="button"
           onClick={openFeedback}
-          className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-full border border-pit-border bg-pit-card px-3 py-2 text-xs font-semibold text-pit-text shadow-2xl transition-colors hover:border-pit-teal/50 hover:text-white md:bottom-5"
+          className={`fixed right-4 z-30 flex items-center gap-2 rounded-full border border-pit-border bg-pit-card px-3 py-2 text-xs font-semibold text-pit-text shadow-2xl transition-colors hover:border-pit-teal/50 hover:text-white md:bottom-5 ${hideMobileNav ? 'bottom-5' : 'bottom-24'}`}
         >
           <MessageSquare size={14} />
           Feedback

@@ -28,7 +28,7 @@ export default function LeagueGuestClaimPage() {
             </div>
             <div>
               <p className="eyebrow">League profile</p>
-              <h1 className="text-2xl font-black text-white">Claim guest player</h1>
+              <h1 className="text-2xl font-black text-white">Claim league spot</h1>
             </div>
           </div>
 
@@ -40,11 +40,11 @@ export default function LeagueGuestClaimPage() {
           ) : claimMutation.isSuccess ? (
             <div className="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100">
               <CheckCircle2 className="mb-2 text-emerald-200" size={18} />
-              Your league guest profile is now connected to your account.
+              This league spot is now connected to your account.
             </div>
           ) : (
             <p className="mt-5 text-sm leading-6 text-pit-text">
-              This connects the guest player&apos;s league finishes, payments, and season history to the account you are signed into.
+              This connects the league spot&apos;s finishes, payments, and season history to the account you are signed into.
             </p>
           )}
 
@@ -62,7 +62,7 @@ export default function LeagueGuestClaimPage() {
                 onClick={() => claimMutation.mutate()}
                 type="button"
               >
-                {claimMutation.isPending ? 'Claiming...' : 'Claim profile'}
+                {claimMutation.isPending ? 'Claiming...' : 'Claim spot'}
               </button>
             )}
             <Link className="btn-ghost justify-center px-4 py-2" to="/">

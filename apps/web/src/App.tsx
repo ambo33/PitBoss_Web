@@ -18,6 +18,7 @@ import TvBoardPage from './pages/TvBoard';
 import TvBoardEntryPage from './pages/TvBoard/Entry';
 import PaymentTrackerPage from './pages/PaymentTracker';
 import PocketAdminPage from './pages/PocketAdmin';
+import CashGameAdminPage from './pages/CashGameAdmin';
 import JoinGroupPage from './pages/JoinGroup';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/tv/:code" element={<TvBoardPage />} />
         <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />
         <Route path="/pocket-admin/:id" element={<RequireAuth><PocketAdminPage /></RequireAuth>} />
+        <Route path="/cash-games/:id/admin" element={<RequireAuth><RouteErrorBoundary title="Cash game page error"><CashGameAdminPage /></RouteErrorBoundary></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

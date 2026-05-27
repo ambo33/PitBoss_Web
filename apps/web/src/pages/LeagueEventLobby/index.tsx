@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Trophy, UserMinus } from 'lucide-react';
+import { CheckCircle2, Trophy, UserMinus, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api } from '../../api/client';
@@ -26,6 +26,10 @@ export default function LeagueEventLobbyPage() {
   const myResult = useMemo(
     () => data?.results.find((result) => result.eventid === eventId && result.userid === user?.guid) ?? null,
     [data, eventId, user?.guid]
+  );
+  const myRsvp = useMemo(
+    () => data?.rsvps.find((rsvp) => rsvp.eventid === eventId && rsvp.userid === user?.guid) ?? null,
+    [data?.rsvps, eventId, user?.guid]
   );
   const eventResults = useMemo(
     () => (data?.results ?? [])
@@ -58,6 +62,10 @@ export default function LeagueEventLobbyPage() {
 
   const logMutation = useMutation({
     mutationFn: () => api.logLeagueSelfResult(leagueId!, eventId!, { placed: Number(place), dnf: false }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', leagueId] }),
+  });
+  const rsvpMutation = useMutation({
+    mutationFn: (status: 'going' | 'not_going') => api.rsvpLeagueEvent(leagueId!, eventId!, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', leagueId] }),
   });
 
@@ -93,9 +101,43 @@ export default function LeagueEventLobbyPage() {
           </div>
         )}
 
+        <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/60 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">RSVP</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost'}`}
+              disabled={rsvpMutation.isPending}
+              onClick={() => rsvpMutation.mutate('going')}
+            >
+              <CheckCircle2 size={16} />
+              Going
+            </button>
+            <button
+              type="button"
+              className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
+              disabled={rsvpMutation.isPending}
+              onClick={() => rsvpMutation.mutate('not_going')}
+            >
+              <XCircle size={16} />
+              Can't go
+            </button>
+          </div>
+          {myRsvp && (
+            <p className="mt-2 text-xs text-pit-muted">
+              Saved as {myRsvp.status === 'going' ? 'going' : "can't go"}.
+            </p>
+          )}
+        </div>
+
         {logMutation.error && (
           <p className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300">
             {logMutation.error.message}
+          </p>
+        )}
+        {rsvpMutation.error && (
+          <p className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300">
+            {rsvpMutation.error.message}
           </p>
         )}
 

@@ -153,7 +153,13 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
             COALESCE(g.postapprovalrequired, TRUE) AS postapprovalrequired,
             gm.admin AS isadmin, gm.approved,
-            (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount
+            (SELECT count(*) FROM groupmembers WHERE groupid = g.groupid AND approved = TRUE) AS membercount,
+            (SELECT count(*) FROM groupposts gp WHERE gp.groupid = g.groupid AND COALESCE(gp.active, TRUE) = TRUE AND COALESCE(gp.status, 'approved') = 'pending') AS pendingpostcount,
+            (SELECT count(*) FROM groupposts gp WHERE gp.groupid = g.groupid AND COALESCE(gp.active, TRUE) = TRUE AND COALESCE(gp.status, 'approved') = 'approved') AS postcount,
+            (SELECT t.tournamentid FROM tournaments t WHERE t.groupid = g.groupid AND t.date IS NOT NULL AND t.date >= current_date ORDER BY t.date ASC, t.time ASC NULLS LAST LIMIT 1) AS nexttournamentid,
+            (SELECT t.name FROM tournaments t WHERE t.groupid = g.groupid AND t.date IS NOT NULL AND t.date >= current_date ORDER BY t.date ASC, t.time ASC NULLS LAST LIMIT 1) AS nexttournamentname,
+            (SELECT t.date FROM tournaments t WHERE t.groupid = g.groupid AND t.date IS NOT NULL AND t.date >= current_date ORDER BY t.date ASC, t.time ASC NULLS LAST LIMIT 1) AS nexttournamentdate,
+            (SELECT t.time FROM tournaments t WHERE t.groupid = g.groupid AND t.date IS NOT NULL AND t.date >= current_date ORDER BY t.date ASC, t.time ASC NULLS LAST LIMIT 1) AS nexttournamenttime
      FROM groups g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $1
      WHERE g.active = TRUE
@@ -735,6 +741,26 @@ groupsRouter.put('/:id/posts/:postId/moderate', async (req: Request, res: Respon
     });
   }
   res.json({ success: true, id: row.id, status });
+});
+
+groupsRouter.delete('/:id/posts/:postId', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+  const row = await queryOne<{ id: string }>(
+    `UPDATE groupposts
+     SET active = FALSE,
+         status = CASE WHEN COALESCE(status, 'approved') = 'pending' THEN 'rejected' ELSE status END
+     WHERE groupid = $1 AND id = $2 AND COALESCE(active, TRUE) = TRUE
+     RETURNING id`,
+    [req.params.id, req.params.postId]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Post not found' });
+    return;
+  }
+  res.json({ success: true, id: row.id });
 });
 
 groupsRouter.post('/:id/posts/:postId/vote', async (req: Request, res: Response) => {

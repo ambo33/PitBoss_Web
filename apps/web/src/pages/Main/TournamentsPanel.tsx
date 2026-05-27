@@ -2,18 +2,36 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
-import { api, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
+import { api, CreateGameRequest, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
 import { isEnabledFlag } from '../../utils/flags';
 
 const SETUP_CARD_DISMISSED_KEY = 'thepokerplanner.dashboard.setup.dismissed';
 
-export default function TournamentsPanel() {
+export type CommandCenterSection = 'upcoming' | 'groups' | 'history' | 'leagues';
+
+interface TournamentsPanelProps {
+  section?: CommandCenterSection;
+  onSectionChange?: (section: CommandCenterSection) => void;
+  renderSection?: (section: Extract<CommandCenterSection, 'groups' | 'leagues'>) => React.ReactNode;
+  hideDashboard?: boolean;
+  onCreateFlowChange?: (open: boolean) => void;
+}
+
+export default function TournamentsPanel({
+  section,
+  onSectionChange,
+  renderSection,
+  hideDashboard = false,
+  onCreateFlowChange,
+}: TournamentsPanelProps = {}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [scheduleView, setScheduleView] = useState<'upcoming' | 'history'>('upcoming');
+  const [localSection, setLocalSection] = useState<CommandCenterSection>('upcoming');
+  const activeSection = section ?? localSection;
+  const scheduleView = activeSection === 'history' ? 'history' : 'upcoming';
   const [setupCardDismissed, setSetupCardDismissed] = useState(() => {
     try {
       return localStorage.getItem(SETUP_CARD_DISMISSED_KEY) === 'true';
@@ -57,6 +75,15 @@ export default function TournamentsPanel() {
     },
   });
 
+  const createGameMutation = useMutation({
+    mutationFn: (data: CreateGameRequest) => api.createGame(data),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['games'] });
+      setShowCreate(false);
+      navigate(`/cash-games/${res.gameid}/admin`);
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: (tournament: Tournament) => (
       tournament.groupid ? api.groupRegister(tournament.tournamentid) : api.selfRegister(tournament.tournamentid)
@@ -83,7 +110,20 @@ export default function TournamentsPanel() {
       qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
-  const rsvpError = registerMutation.error?.message || declineMutation.error?.message;
+  const leagueRsvpMutation = useMutation({
+    mutationFn: ({ leagueId, eventId, status }: { leagueId: string; eventId: string; status: 'going' | 'not_going' }) =>
+      api.rsvpLeagueEvent(leagueId, eventId, status),
+    onSuccess: (_result, variables) => {
+      qc.setQueryData<LeagueScheduleEvent[]>(['leagues', 'schedule'], (current) => (
+        current?.map((event) => event.leagueid === variables.leagueId && event.eventid === variables.eventId
+          ? { ...event, rsvpstatus: variables.status }
+          : event
+        )
+      ));
+      qc.invalidateQueries({ queryKey: ['leagues', 'schedule'] });
+    },
+  });
+  const rsvpError = registerMutation.error?.message || declineMutation.error?.message || leagueRsvpMutation.error?.message;
 
   const upcoming = mine.filter((t) => {
     return isUpcomingTournament(t);
@@ -113,6 +153,19 @@ export default function TournamentsPanel() {
   const loadingSchedule = loadingMine || (loadingLeagueEvents && scheduleList.length === 0);
   const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents;
   const showSetupCard = dashboardDataReady && !leagueScheduleError && upcomingScheduleItems.length === 0 && !setupCardDismissed;
+  const externalSection = activeSection === 'groups' || activeSection === 'leagues'
+    ? renderSection?.(activeSection)
+    : null;
+
+  useEffect(() => {
+    onCreateFlowChange?.(showCreate);
+    return () => onCreateFlowChange?.(false);
+  }, [onCreateFlowChange, showCreate]);
+
+  function changeSection(nextSection: CommandCenterSection) {
+    setLocalSection(nextSection);
+    onSectionChange?.(nextSection);
+  }
 
   if (showCreate) {
     return (
@@ -121,46 +174,49 @@ export default function TournamentsPanel() {
         me={me}
         onBack={() => setShowCreate(false)}
         onSubmit={(data) => createMutation.mutate(data)}
-        loading={createMutation.isPending}
-        error={createMutation.error?.message}
+        onSubmitCash={(data) => createGameMutation.mutate(data)}
+        loading={createMutation.isPending || createGameMutation.isPending}
+        error={createMutation.error?.message || createGameMutation.error?.message}
       />
     );
   }
 
   return (
     <>
-      <DashboardOverview
-        me={me}
-        groups={groups}
-        leagueCount={leagues.length}
-        upcomingCount={upcomingScheduleItems.length}
-        historyCount={historyScheduleItems.length}
-        registeredUpcomingCount={registeredUpcomingCount}
-        adminGroupCount={adminGroupCount}
-        createDisabled={hostedTournamentLimitReached}
-        showSetupCard={showSetupCard}
-        scheduleView={scheduleView}
-        onScheduleViewChange={setScheduleView}
-        onCreate={() => setShowCreate(true)}
-        onOpenGroups={() => navigate('/', { state: { tab: 'groups' } })}
-        onOpenLeagues={() => navigate('/', { state: { tab: 'leagues' } })}
-        onDismissSetup={() => {
-          setSetupCardDismissed(true);
-          try {
-            localStorage.setItem(SETUP_CARD_DISMISSED_KEY, 'true');
-          } catch {
-            // Best effort only. The visible state still dismisses for this session.
-          }
-        }}
-      />
+      {!hideDashboard && (
+        <DashboardOverview
+          me={me}
+          groups={groups}
+          leagueCount={leagues.length}
+          upcomingCount={upcomingScheduleItems.length}
+          historyCount={historyScheduleItems.length}
+          registeredUpcomingCount={registeredUpcomingCount}
+          adminGroupCount={adminGroupCount}
+          createDisabled={false}
+          showSetupCard={showSetupCard}
+          activeSection={activeSection}
+          onSectionChange={changeSection}
+          onCreate={() => setShowCreate(true)}
+          onDismissSetup={() => {
+            setSetupCardDismissed(true);
+            try {
+              localStorage.setItem(SETUP_CARD_DISMISSED_KEY, 'true');
+            } catch {
+              // Best effort only. The visible state still dismisses for this session.
+            }
+          }}
+        />
+      )}
 
-      {hostedTournamentLimitReached && (
+      {!hideDashboard && hostedTournamentLimitReached && (
         <p className="mb-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-200">
           Host tier can host 1 upcoming tournament at a time. Move this event into history or upgrade to Club or Pro to host more.
         </p>
       )}
 
-      {(loadingSchedule || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
+      {externalSection ? (
+        <div className="min-w-0">{externalSection}</div>
+      ) : (loadingSchedule || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
         <>
           {rsvpError && (
             <p className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
@@ -191,16 +247,17 @@ export default function TournamentsPanel() {
             <ScheduleList
               items={scheduleList}
               view={scheduleView}
-              loading={registerMutation.isPending || declineMutation.isPending}
+              loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending}
               onOpen={(item) => {
                 if (item.kind === 'tournament') {
                   navigate(item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`);
                   return;
                 }
-                navigate('/', { state: { tab: 'leagues' } });
+                navigate('/', { state: { tab: 'leagues', leagueId: item.leagueId } });
               }}
               onRegister={(tournament) => registerMutation.mutate(tournament)}
               onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
+              onLeagueRsvp={(item, status) => leagueRsvpMutation.mutate({ leagueId: item.leagueId, eventId: item.eventId, status })}
             />
           )}
         </>
@@ -219,11 +276,9 @@ function DashboardOverview({
   adminGroupCount,
   createDisabled,
   showSetupCard,
-  scheduleView,
-  onScheduleViewChange,
+  activeSection,
+  onSectionChange,
   onCreate,
-  onOpenGroups,
-  onOpenLeagues,
   onDismissSetup,
 }: {
   me?: Awaited<ReturnType<typeof api.me>>;
@@ -235,11 +290,9 @@ function DashboardOverview({
   adminGroupCount: number;
   createDisabled: boolean;
   showSetupCard: boolean;
-  scheduleView: 'upcoming' | 'history';
-  onScheduleViewChange: (view: 'upcoming' | 'history') => void;
+  activeSection: CommandCenterSection;
+  onSectionChange: (section: CommandCenterSection) => void;
   onCreate: () => void;
-  onOpenGroups: () => void;
-  onOpenLeagues: () => void;
   onDismissSetup: () => void;
 }) {
   const firstName = getFirstName(me?.displayname);
@@ -269,10 +322,10 @@ function DashboardOverview({
         </div>
 
         <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 max-[380px]:grid-cols-1 sm:grid-cols-4">
-          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={scheduleView === 'upcoming'} onClick={() => onScheduleViewChange('upcoming')} />
-          <DashboardStat icon={Users} label="Groups" value={groups.length} onClick={onOpenGroups} />
-          <DashboardStat icon={Medal} label="History" value={historyCount} active={scheduleView === 'history'} onClick={() => onScheduleViewChange('history')} />
-          <DashboardStat icon={ListOrdered} label="Leagues" value={leagueCount} onClick={onOpenLeagues} />
+          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={activeSection === 'upcoming'} onClick={() => onSectionChange('upcoming')} />
+          <DashboardStat icon={Users} label="Groups" value={groups.length} active={activeSection === 'groups'} onClick={() => onSectionChange('groups')} />
+          <DashboardStat icon={Medal} label="History" value={historyCount} active={activeSection === 'history'} onClick={() => onSectionChange('history')} />
+          <DashboardStat icon={ListOrdered} label="Leagues" value={leagueCount} active={activeSection === 'leagues'} onClick={() => onSectionChange('leagues')} />
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -284,10 +337,10 @@ function DashboardOverview({
               disabled={createDisabled}
               title={createDisabled ? 'Host tier can host 1 upcoming tournament at a time.' : undefined}
             >
-              Create tournament
+              + Host Game
             </button>
           ) : (
-            <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={onOpenGroups}>
+            <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => onSectionChange('groups')}>
               Set up group
             </button>
           )}
@@ -400,6 +453,9 @@ type ScheduleItem =
       cost: number;
       canManage: boolean;
       leagueId: string;
+      eventId: string;
+      isParticipant: boolean;
+      rsvpStatus?: string | null;
     };
 
 function ScheduleList({
@@ -409,6 +465,7 @@ function ScheduleList({
   onOpen,
   onRegister,
   onDecline,
+  onLeagueRsvp,
 }: {
   items: ScheduleItem[];
   view: 'upcoming' | 'history';
@@ -416,12 +473,13 @@ function ScheduleList({
   onOpen: (item: ScheduleItem) => void;
   onRegister: (tournament: Tournament) => void;
   onDecline: (tournament: Tournament) => void;
+  onLeagueRsvp: (item: Extract<ScheduleItem, { kind: 'league' }>, status: 'going' | 'not_going') => void;
 }) {
   if (items.length === 0) return <EmptyState view={view} />;
 
   return (
     <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
-      <div className="hidden grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_9rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
+      <div className="hidden grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
         <span>Name</span>
         <span>Date / time</span>
         <span>Cost</span>
@@ -438,6 +496,7 @@ function ScheduleList({
             onOpen={() => onOpen(item)}
             onRegister={item.kind === 'tournament' ? () => onRegister(item.tournament) : undefined}
             onDecline={item.kind === 'tournament' ? () => onDecline(item.tournament) : undefined}
+            onLeagueRsvp={item.kind === 'league' ? (status) => onLeagueRsvp(item, status) : undefined}
           />
         ))}
       </div>
@@ -452,6 +511,7 @@ function ScheduleRow({
   onOpen,
   onRegister,
   onDecline,
+  onLeagueRsvp,
 }: {
   item: ScheduleItem;
   view: 'upcoming' | 'history';
@@ -459,17 +519,24 @@ function ScheduleRow({
   onOpen: () => void;
   onRegister?: () => void;
   onDecline?: () => void;
+  onLeagueRsvp?: (status: 'going' | 'not_going') => void;
 }) {
   const isTournament = item.kind === 'tournament';
-  const isRegistered = isTournament && Boolean(item.tournament.isregistered);
-  const isDeclined = isTournament && Boolean(item.tournament.isdeclined) && !isRegistered;
+  const isLeague = item.kind === 'league';
+  const isRegistered = isTournament
+    ? Boolean(item.tournament.isregistered)
+    : isLeague && item.rsvpStatus === 'going';
+  const isDeclined = isTournament
+    ? Boolean(item.tournament.isdeclined) && !isRegistered
+    : isLeague && item.rsvpStatus === 'not_going';
   const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
+  const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant;
   const statusLabel = isTournament ? (item.canManage ? 'Host' : null) : 'League';
   const fieldCount = isTournament ? formatFieldCount(item.tournament) : null;
 
   return (
     <div
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_9rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.45fr)_8.5rem_6.5rem_9rem_10.75rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
         isDeclined
           ? 'border-red-300/60 bg-red-500/[0.035] md:bg-red-500/10'
           : isRegistered
@@ -539,7 +606,7 @@ function ScheduleRow({
       </div>
 
       <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
-        {showRsvp ? (
+        {showRsvp || showLeagueRsvp ? (
           <>
             <button
               type="button"
@@ -549,7 +616,7 @@ function ScheduleRow({
                   : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'
               }`}
               disabled={loading || isRegistered}
-              onClick={onRegister}
+              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('going') : onRegister}
               aria-label={`Can attend ${item.name}`}
               title="Can attend"
             >
@@ -563,12 +630,17 @@ function ScheduleRow({
                   : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
               }`}
               disabled={loading || isDeclined}
-              onClick={onDecline}
+              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('not_going') : onDecline}
               aria-label={`Cannot attend ${item.name}`}
               title="Cannot attend"
             >
               <X size={16} />
             </button>
+            {showLeagueRsvp && (
+              <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={onOpen}>
+                View
+              </button>
+            )}
           </>
         ) : (
           <button type="button" className={item.canManage && isTournament ? 'btn-primary gap-2 px-3 py-2 text-xs' : 'btn-ghost px-3 py-2 text-xs'} onClick={onOpen}>
@@ -614,6 +686,7 @@ function CreateTournamentComposer({
   me,
   onBack,
   onSubmit,
+  onSubmitCash,
   loading,
   error,
 }: {
@@ -621,12 +694,14 @@ function CreateTournamentComposer({
   me?: Awaited<ReturnType<typeof api.me>>;
   onBack: () => void;
   onSubmit: (data: Partial<Tournament>) => void;
+  onSubmitCash: (data: CreateGameRequest) => void;
   loading: boolean;
   error?: string;
 }) {
   const steps = ['Basics', 'Game', 'Options', 'Review'] as const;
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
+    gametype: 'tournament' as 'tournament' | 'cash',
     name: '',
     tourneydate: '',
     tourneytime: '',
@@ -644,6 +719,13 @@ function CreateTournamentComposer({
     groupid: '',
     savedstructureid: '',
     notifygroup: true,
+    visibility: 'group_public' as 'group_public' | 'invite_only',
+    inviteUserIds: [] as string[],
+    stakeslabel: '',
+    seatsavailable: '',
+    minbuyin: '',
+    maxbuyin: '',
+    cashnotes: '',
   });
 
   const selectedGroup = useMemo(
@@ -658,6 +740,12 @@ function CreateTournamentComposer({
     queryFn: () => api.getGroupBlindStructures(form.groupid),
     enabled: Boolean(form.groupid),
   });
+  const { data: selectedGroupDetail } = useQuery({
+    queryKey: ['group', form.groupid, 'members'],
+    queryFn: () => api.getGroup(form.groupid),
+    enabled: Boolean(form.groupid),
+  });
+  const inviteMembers = (selectedGroupDetail?.members ?? []).filter((member) => member.approved);
 
   useEffect(() => {
     setForm((current) => ({
@@ -665,10 +753,11 @@ function CreateTournamentComposer({
       playerselftracking: canUseClubFeatures && selectedGroup?.defaulttrackingmode === 'player',
       notifygroup: Boolean(selectedGroup),
       savedstructureid: '',
+      inviteUserIds: [],
     }));
   }, [canUseClubFeatures, selectedGroup?.defaulttrackingmode, selectedGroup?.groupid]);
 
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((current) => ({
       ...current,
       [key]:
@@ -679,6 +768,26 @@ function CreateTournamentComposer({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (form.gametype === 'cash') {
+      const startsat = form.tourneydate ? `${form.tourneydate}T${form.tourneytime || '00:00'}` : null;
+      onSubmitCash({
+        groupid: form.groupid,
+        gametype: 'cash',
+        title: form.name.trim(),
+        startsat,
+        visibility: form.visibility,
+        inviteUserIds: form.visibility === 'invite_only' ? form.inviteUserIds : [],
+        alertUsers: Boolean(form.notifygroup),
+        cash: {
+          stakeslabel: form.stakeslabel.trim(),
+          seatsavailable: form.seatsavailable ? Number(form.seatsavailable) : null,
+          minbuyin: form.minbuyin ? Number(form.minbuyin) : null,
+          maxbuyin: form.maxbuyin ? Number(form.maxbuyin) : null,
+          notes: form.cashnotes.trim() || null,
+        },
+      });
+      return;
+    }
     onSubmit({
       name: form.name.trim(),
       tourneydate: form.tourneydate || undefined,
@@ -699,17 +808,22 @@ function CreateTournamentComposer({
     });
   }
 
-  const basicsComplete = Boolean(form.name.trim() && form.tourneydate && form.tourneytime && form.groupid);
+  const isCashGame = form.gametype === 'cash';
+  const basicsComplete = Boolean(form.name.trim() && form.groupid && (isCashGame || (form.tourneydate && form.tourneytime)));
   const rebuysActive = Number(form.rebuyprice) > 0 || Number(form.rebuychips) > 0;
   const rebuyCutoffComplete = !rebuysActive || Number(form.rebuylastlevel) > 0;
   const maxPlayersComplete = form.maxplayersmode === 'unlimited' || (form.maxplayersmode === 'capped' && Number(form.maxplayers) > 0);
-  const canAdvance = step === 0 ? basicsComplete : step === 1 ? maxPlayersComplete && rebuyCutoffComplete : true;
+  const cashDetailsComplete = !isCashGame || Boolean(form.stakeslabel.trim());
+  const inviteComplete = form.visibility !== 'invite_only' || form.inviteUserIds.length > 0;
+  const canAdvance = step === 0 ? basicsComplete : step === 1 ? (isCashGame ? cashDetailsComplete : maxPlayersComplete && rebuyCutoffComplete) : step === 2 ? inviteComplete : true;
   const selectedStructure = savedStructures.find((structure) => structure.id === form.savedstructureid);
   const maxPlayersReview = form.maxplayersmode === 'unlimited' ? 'Unlimited' : form.maxplayers;
   const canOpenStep = (targetStep: number) => {
     if (targetStep <= step) return true;
     if (targetStep >= 1 && !basicsComplete) return false;
-    if (targetStep >= 2 && !maxPlayersComplete) return false;
+    if (targetStep >= 2 && !isCashGame && !maxPlayersComplete) return false;
+    if (targetStep >= 2 && isCashGame && !cashDetailsComplete) return false;
+    if (targetStep >= 3 && !inviteComplete) return false;
     return true;
   };
 
@@ -749,21 +863,41 @@ function CreateTournamentComposer({
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-teal">Step {step + 1} of {steps.length}</p>
             <h2 className="text-xl font-semibold text-white">{steps[step]}</h2>
             <p className="text-sm text-pit-muted">
-              {step === 0 && 'Name it, schedule it, and connect it to a group.'}
-              {step === 1 && 'Set the buy-in, field size, rebuys, and add-ons.'}
-              {step === 2 && 'Choose tracking, blind structure, registration, and notifications.'}
-              {step === 3 && 'Confirm the tournament details before creating it.'}
+              {step === 0 && 'Choose what you are hosting and connect it to a group.'}
+              {step === 1 && (isCashGame ? 'Add the simple cash-game details.' : 'Set the buy-in, field size, rebuys, and add-ons.')}
+              {step === 2 && (isCashGame ? 'Choose who can see it and whether to alert them.' : 'Choose tracking, blind structure, registration, and notifications.')}
+              {step === 3 && 'Confirm the game details before creating it.'}
             </p>
           </div>
 
           <div className="mt-5">
             {step === 0 && (
               <div className="space-y-4">
-                <input className="input text-lg" placeholder="Tournament name" value={form.name} onChange={set('name')} required />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { value: 'tournament', label: 'Tournament', description: 'Clock, blinds, seating, results.' },
+                    { value: 'cash', label: 'Cash Game', description: 'Stakes, seats, buy-ins, cash-outs.' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setForm((current) => ({ ...current, gametype: option.value as 'tournament' | 'cash' }))}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        form.gametype === option.value
+                          ? 'border-pit-teal bg-pit-teal/15 text-white'
+                          : 'border-pit-border bg-pit-bg text-pit-text hover:border-pit-teal/40'
+                      }`}
+                    >
+                      <span className="font-semibold">{option.label}</span>
+                      <span className="mt-1 block text-xs text-pit-muted">{option.description}</span>
+                    </button>
+                  ))}
+                </div>
+                <input className="input text-lg" placeholder={isCashGame ? 'Cash game title' : 'Tournament name'} value={form.name} onChange={set('name')} required />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Date"><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} required /></Field>
+                  <Field label={isCashGame ? 'Date (optional)' : 'Date'}><input className="input" type="date" value={form.tourneydate} onChange={set('tourneydate')} required={!isCashGame} /></Field>
                   <Field label="Time">
-                    <QuarterHourTimeSelect value={form.tourneytime} onChange={(value) => setForm((current) => ({ ...current, tourneytime: value }))} required />
+                    <QuarterHourTimeSelect value={form.tourneytime} onChange={(value) => setForm((current) => ({ ...current, tourneytime: value }))} required={!isCashGame} />
                   </Field>
                 </div>
                 <Field label="Group">
@@ -776,13 +910,37 @@ function CreateTournamentComposer({
                 </Field>
                 {!basicsComplete && (
                   <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
-                    Add a tournament name, date, time, and group before continuing.
+                    {isCashGame ? 'Add a title and group before continuing.' : 'Add a tournament name, date, time, and group before continuing.'}
                   </p>
                 )}
               </div>
             )}
 
             {step === 1 && (
+              isCashGame ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Stakes">
+                    <input className="input" placeholder="$1/$2, $2/$5, etc." value={form.stakeslabel} onChange={set('stakeslabel')} required />
+                  </Field>
+                  <Field label="Seats available">
+                    <input className="input" type="number" min="1" step="1" placeholder="Optional" value={form.seatsavailable} onChange={set('seatsavailable')} />
+                  </Field>
+                  <Field label="Min buy-in">
+                    <input className="input" type="number" min="0" step="0.01" placeholder="Optional" value={form.minbuyin} onChange={set('minbuyin')} />
+                  </Field>
+                  <Field label="Max buy-in">
+                    <input className="input" type="number" min="0" step="0.01" placeholder="Optional" value={form.maxbuyin} onChange={set('maxbuyin')} />
+                  </Field>
+                  <Field label="Notes" className="sm:col-span-2">
+                    <textarea className="input min-h-24 resize-y" placeholder="Optional house notes, location details, or reminders." value={form.cashnotes} onChange={set('cashnotes')} />
+                  </Field>
+                  {!cashDetailsComplete && (
+                    <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100 sm:col-span-2">
+                      Add a stakes label before continuing.
+                    </p>
+                  )}
+                </div>
+              ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Buy-in"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.buyin} onChange={set('buyin')} /></Field>
                 <Field label="Rake"><input className="input" type="number" placeholder="0.00" min="0" step="0.01" value={form.rake} onChange={set('rake')} /></Field>
@@ -845,9 +1003,57 @@ function CreateTournamentComposer({
                   </p>
                 )}
               </div>
+              )
             )}
 
             {step === 2 && (
+              isCashGame ? (
+              <div className="space-y-3">
+                <Field label="Visibility">
+                  <select className="input" value={form.visibility} onChange={set('visibility')}>
+                    <option value="group_public">Public to group</option>
+                    <option value="invite_only">Invite only</option>
+                  </select>
+                </Field>
+                {form.visibility === 'invite_only' && (
+                  <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                    <p className="text-sm font-semibold text-white">Invite group members</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {inviteMembers.map((member) => {
+                        const checked = form.inviteUserIds.includes(member.userid);
+                        return (
+                          <label key={member.userid} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-pit-teal bg-pit-teal/10 text-white' : 'border-pit-border text-pit-text'}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => setForm((current) => ({
+                                ...current,
+                                inviteUserIds: event.target.checked
+                                  ? [...current.inviteUserIds, member.userid]
+                                  : current.inviteUserIds.filter((id) => id !== member.userid),
+                              }))}
+                            />
+                            <span>{member.displayname || member.emailaddress || 'Player'}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {!inviteComplete && (
+                      <p className="mt-3 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
+                        Pick at least one invited member.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <ToggleRow
+                  checked={form.notifygroup}
+                  onChange={set('notifygroup')}
+                  title="Alert eligible users"
+                  description={form.visibility === 'invite_only' ? 'Send email and push hooks to invited members.' : 'Send email and push hooks to group members.'}
+                  icon={<Bell size={16} />}
+                />
+              </div>
+              ) : (
               <div className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Stats tracking">
@@ -885,19 +1091,32 @@ function CreateTournamentComposer({
                   icon={<Bell size={16} />}
                 />
               </div>
+              )
             )}
 
             {step === 3 && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <ReviewItem label="Tournament" value={form.name || 'Untitled'} />
+                <ReviewItem label="Game type" value={isCashGame ? 'Cash Game' : 'Tournament'} />
+                <ReviewItem label={isCashGame ? 'Cash game' : 'Tournament'} value={form.name || 'Untitled'} />
                 <ReviewItem label="Group" value={selectedGroupName || 'Private'} />
                 <ReviewItem label="Date and time" value={`${form.tourneydate || 'Date TBD'} ${form.tourneytime || ''}`.trim()} />
-                <ReviewItem label="Buy-in" value={`$${Number(form.buyin || 0).toFixed(2)}`} />
-                <ReviewItem label="Max players" value={maxPlayersReview || 'Not set'} />
-                <ReviewItem label="Rebuys" value={rebuysActive ? `Through level ${form.rebuylastlevel || 'not set'}` : 'Not enabled'} />
-                <ReviewItem label="Tracking" value={form.playerselftracking ? 'Player tracked stats' : 'Standard'} />
-                <ReviewItem label="Blind structure" value={selectedStructure?.name || 'Calculator after creation'} />
-                <ReviewItem label="Notifications" value={form.groupid && form.notifygroup ? 'Email group members' : 'No group email'} />
+                {isCashGame ? (
+                  <>
+                    <ReviewItem label="Stakes" value={form.stakeslabel || 'Not set'} />
+                    <ReviewItem label="Seats" value={form.seatsavailable || 'Open'} />
+                    <ReviewItem label="Visibility" value={form.visibility === 'invite_only' ? `${form.inviteUserIds.length} invited` : 'Public to group'} />
+                    <ReviewItem label="Notifications" value={form.notifygroup ? 'Alert users' : 'Create silently'} />
+                  </>
+                ) : (
+                  <>
+                    <ReviewItem label="Buy-in" value={`$${Number(form.buyin || 0).toFixed(2)}`} />
+                    <ReviewItem label="Max players" value={maxPlayersReview || 'Not set'} />
+                    <ReviewItem label="Rebuys" value={rebuysActive ? `Through level ${form.rebuylastlevel || 'not set'}` : 'Not enabled'} />
+                    <ReviewItem label="Tracking" value={form.playerselftracking ? 'Player tracked stats' : 'Standard'} />
+                    <ReviewItem label="Blind structure" value={selectedStructure?.name || 'Calculator after creation'} />
+                    <ReviewItem label="Notifications" value={form.groupid && form.notifygroup ? 'Email group members' : 'No group email'} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -913,8 +1132,8 @@ function CreateTournamentComposer({
                 Next <ChevronRight size={15} />
               </button>
             ) : (
-              <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading || !basicsComplete || !maxPlayersComplete}>
-                {loading ? 'Creating...' : 'Create tournament'}
+              <button type="submit" className="btn-primary px-4 py-2.5" disabled={loading || !basicsComplete || (isCashGame ? !cashDetailsComplete || !inviteComplete : !maxPlayersComplete)}>
+                {loading ? 'Creating...' : '+ Host Game'}
               </button>
             )}
           </div>
@@ -1018,6 +1237,9 @@ function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
     cost: Number(event.eventfee ?? 0),
     canManage: Boolean(event.isadmin),
     leagueId: event.leagueid,
+    eventId: event.eventid,
+    isParticipant: Boolean(event.participating),
+    rsvpStatus: event.rsvpstatus ?? null,
   };
 }
 

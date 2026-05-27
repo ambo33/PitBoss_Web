@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Upload, Vote } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Upload, Vote } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, AnnouncerPreset, Group, GroupCoin, GroupMember, Tournament } from '../../api/client';
+import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -17,7 +17,7 @@ import {
   DEFAULT_ONE_MINUTE_ANNOUNCEMENT,
 } from '../../utils/timerAudio';
 
-export default function GroupsPanel() {
+export default function GroupsPanel({ onDetailStateChange }: { onDetailStateChange?: (open: boolean) => void }) {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -39,6 +39,11 @@ export default function GroupsPanel() {
   });
   const hostedGroupCount = groups.filter((group) => group.isadmin).length;
   const hostedGroupLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedGroupCount >= 1;
+
+  useEffect(() => {
+    onDetailStateChange?.(Boolean(selected));
+    return () => onDetailStateChange?.(false);
+  }, [onDetailStateChange, selected]);
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
@@ -71,10 +76,10 @@ export default function GroupsPanel() {
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {groups.map(g => (
-          <GroupCard key={g.groupid} group={g} onClick={() => setSelected(g)} />
-        ))}
+      <div>
+        {groups.length > 0 && (
+          <GroupList groups={groups} onSelect={setSelected} />
+        )}
         {groups.length === 0 && <GroupEmptyState onJoin={() => setShowJoin(true)} onCreate={() => setShowCreate(true)} />}
       </div>
 
@@ -90,32 +95,121 @@ export default function GroupsPanel() {
   );
 }
 
-function GroupCard({ group: g, onClick }: { group: Group; onClick: () => void }) {
+function GroupList({ groups, onSelect }: { groups: Group[]; onSelect: (group: Group) => void }) {
   return (
-    <div onClick={onClick} className="card-hover">
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-pit-teal/10 border border-pit-teal/20 flex items-center justify-center shrink-0">
-            <Users size={16} className="text-pit-teal" />
-          </div>
-          <p className="font-bold text-white leading-tight">{g.name}</p>
+    <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
+      <div className="hidden grid-cols-[minmax(0,1.4fr)_8rem_9rem_minmax(0,1.1fr)_7rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
+        <span>Group</span>
+        <span>Members</span>
+        <span>Posts</span>
+        <span>Next game</span>
+        <span className="text-right">Action</span>
+      </div>
+      <div className="divide-y divide-pit-border/60">
+        {groups.map((group) => (
+          <GroupListRow key={group.groupid} group={group} onClick={() => onSelect(group)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GroupListRow({ group: g, onClick }: { group: Group; onClick: () => void }) {
+  const pendingPosts = Number(g.pendingpostcount ?? 0);
+  const postCount = Number(g.postcount ?? 0);
+  const postLabel = g.isadmin && pendingPosts > 0
+    ? `${pendingPosts} pending`
+    : `${postCount} post${postCount === 1 ? '' : 's'}`;
+  const nextGameLabel = g.nexttournamentname ? g.nexttournamentname : 'No game scheduled';
+  const nextGameDate = formatGroupDate(g.nexttournamentdate);
+  const nextGameTime = formatGroupTime(g.nexttournamenttime);
+
+  return (
+    <button type="button" onClick={onClick} className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2.5 text-left transition md:grid-cols-[minmax(0,1.4fr)_8rem_9rem_minmax(0,1.1fr)_7rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+      g.isadmin ? 'border-pit-gold/60 bg-pit-gold/[0.035]' : 'border-transparent hover:bg-white/[0.025]'
+    }`}>
+      <div className="col-start-1 row-start-1 min-w-0 md:col-auto md:row-auto">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold text-white transition group-hover:text-pit-teal md:text-base">
+            {g.name}
+          </span>
+          {g.isadmin && (
+            <span className="hidden shrink-0 rounded-full border border-pit-gold/35 bg-pit-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-pit-gold sm:inline-flex">
+              <Crown size={10} className="mr-1" />
+              Admin
+            </span>
+          )}
         </div>
+        <p className="mt-1 font-mono text-[11px] tracking-widest text-pit-muted">{g.invitecode}</p>
+      </div>
+
+      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-pit-text md:col-auto md:row-auto">
+        <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
+          <Users size={11} />
+          {g.membercount ?? 0}
+        </span>
         {g.isadmin && (
-          <span className="badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold">
-            <Crown size={9} className="mr-0.5" /> Admin
+          <span className="inline-flex items-center gap-1 rounded-full border border-pit-gold/25 bg-pit-gold/10 px-1.5 py-0.5 text-pit-gold md:hidden">
+            <Crown size={10} />
+            Admin
           </span>
         )}
       </div>
 
-      <div className="flex items-center justify-between pt-2.5 border-t border-pit-border/60">
-        <span className="chip">
-          <Users size={10} />
-          {g.membercount ?? 0} members
+      <div className="col-start-2 row-start-1 justify-self-end whitespace-nowrap text-right text-xs font-semibold md:col-auto md:row-auto md:justify-self-auto md:text-left">
+        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 ${
+          g.isadmin && pendingPosts > 0
+            ? 'border-red-300/30 bg-red-400/10 text-red-200'
+            : 'border-pit-border bg-white/5 text-pit-text'
+        }`}>
+          <MessageSquare size={12} />
+          {postLabel}
         </span>
-        <span className="font-mono text-[11px] text-pit-muted tracking-widest">{g.invitecode}</span>
       </div>
-    </div>
+
+      <div className="col-span-2 row-start-3 min-w-0 text-xs text-pit-text md:col-auto md:row-auto">
+        <p className="truncate font-semibold text-white md:text-pit-text">{nextGameLabel}</p>
+        {g.nexttournamentname && (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-pit-muted">
+            {nextGameDate && (
+              <span className="inline-flex items-center gap-1">
+                <Calendar size={11} />
+                {nextGameDate}
+              </span>
+            )}
+            {nextGameTime && (
+              <span className="inline-flex items-center gap-1">
+                <Clock size={11} />
+                {nextGameTime}
+              </span>
+            )}
+          </p>
+        )}
+      </div>
+
+      <div className="col-start-2 row-start-2 flex justify-end md:col-auto md:row-auto">
+        <span className="rounded-lg border border-pit-border bg-pit-card px-3 py-2 text-xs font-semibold text-pit-text transition group-hover:border-pit-teal/40 group-hover:text-white">
+          Open
+        </span>
+      </div>
+    </button>
   );
+}
+
+function formatGroupDate(value?: string | null) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
+function formatGroupTime(value?: string | null) {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return String(value);
+  const hours24 = Number(match[1]);
+  const minutes = match[2];
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${minutes} ${period}`;
 }
 
 function GroupEmptyState({ onJoin, onCreate }: { onJoin: () => void; onCreate: () => void }) {
@@ -345,6 +439,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [awardUserId, setAwardUserId] = useState('');
   const [awardNote, setAwardNote] = useState('');
   const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
+  const [deletePostTarget, setDeletePostTarget] = useState<GroupPost | null>(null);
 
   const { data } = useQuery({
     queryKey: ['group', group.groupid],
@@ -360,6 +455,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const { data: groupTournaments = [], isLoading: loadingTourneys } = useQuery({
     queryKey: ['group', group.groupid, 'tournaments'],
     queryFn: () => api.getGroupTournaments(group.groupid),
+    enabled: detailTab === 'history',
+  });
+  const { data: groupGames = [], isLoading: loadingGames } = useQuery({
+    queryKey: ['group', group.groupid, 'games'],
+    queryFn: () => api.getGroupGames(group.groupid),
     enabled: detailTab === 'history',
   });
   const { data: savedStructures = [], isLoading: loadingStructures } = useQuery({
@@ -505,6 +605,13 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     mutationFn: ({ postId, status }: { postId: string; status: 'approved' | 'rejected' }) =>
       api.moderateGroupPost(group.groupid, postId, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] }),
+  });
+  const deletePostMutation = useMutation({
+    mutationFn: (postId: string) => api.deleteGroupPost(group.groupid, postId),
+    onSuccess: () => {
+      setDeletePostTarget(null);
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] });
+    },
   });
   const voteMutation = useMutation({
     mutationFn: ({ postId, optionId }: { postId: string; optionId: string }) => api.voteGroupPoll(group.groupid, postId, optionId),
@@ -654,11 +761,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
         <div className="min-w-0">
           <button
             type="button"
-            className="mb-3 flex items-center gap-1.5 text-sm font-medium text-pit-muted transition-colors hover:text-white"
+            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white"
             onClick={onBack}
           >
             <ArrowLeft size={15} />
-            Groups
+            Back to Groups
           </button>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-2xl font-bold text-white">{effectiveGroup.name}</h2>
@@ -694,18 +801,18 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       </div>
 
       <div className="space-y-4">
-        <div className="-mx-4 overflow-x-auto border-b border-pit-border px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-w-max">
+        <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max gap-2 rounded-xl border border-pit-border bg-pit-bg/55 p-1">
             {detailTabs.map((t) => {
               const Icon = groupTabIcon(t);
               return (
                 <button
                   key={t}
                   onClick={() => setDetailTab(t)}
-                  className={`flex items-center gap-1.5 border-b-2 -mb-px px-4 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors duration-150 ${
                     detailTab === t
-                      ? 'border-pit-teal text-white'
-                      : 'border-transparent text-pit-muted hover:text-pit-text'
+                      ? 'border-pit-teal bg-pit-teal/15 text-white'
+                      : 'border-transparent bg-transparent text-pit-muted hover:border-pit-teal/35 hover:bg-pit-card/70 hover:text-pit-text'
                   }`}
                 >
                   <Icon size={13} />
@@ -1051,7 +1158,17 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                           <p className="text-sm font-semibold text-white">{post.displayname ?? 'Member'}</p>
                           <p className="text-xs text-pit-muted">{new Date(post.createdat).toLocaleString()}</p>
                         </div>
-                        <span className="badge border-yellow-300/30 bg-yellow-300/10 text-yellow-100">Pending</span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="badge border-yellow-300/30 bg-yellow-300/10 text-yellow-100">Pending</span>
+                          <button
+                            type="button"
+                            className="btn-ghost h-8 w-8 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
+                            title="Delete post"
+                            onClick={() => setDeletePostTarget(post)}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                       <p className="whitespace-pre-wrap text-sm leading-6 text-pit-text">{post.message}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -1144,7 +1261,19 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                           <p className="text-sm font-semibold text-white">{post.displayname ?? 'Group admin'}</p>
                           <p className="text-xs text-pit-muted">{new Date(post.createdat).toLocaleString()}</p>
                         </div>
-                        <span className="chip">{post.posttype === 'poll' ? <Vote size={11} /> : <MessageSquare size={11} />}{post.posttype}</span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="chip">{post.posttype === 'poll' ? <Vote size={11} /> : <MessageSquare size={11} />}{post.posttype}</span>
+                          {group.isadmin && (
+                            <button
+                              type="button"
+                              className="btn-ghost h-8 w-8 p-0 text-red-300 hover:border-red-400/40 hover:text-red-200"
+                              title="Delete post"
+                              onClick={() => setDeletePostTarget(post)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="whitespace-pre-wrap text-sm leading-6 text-pit-text">{post.message}</p>
                       {post.posttype === 'poll' && (
@@ -1448,17 +1577,37 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 {registerMutation.error?.message || declineMutation.error?.message}
               </p>
             )}
-            {loadingTourneys
+            {loadingTourneys || loadingGames
               ? <LoadingSpinner className="py-8" />
-              : groupTournaments.length === 0
+              : groupTournaments.length === 0 && groupGames.length === 0
                 ? (
                   <div className="flex flex-col items-center py-10 gap-3 text-center">
                     <Trophy size={28} className="text-pit-muted" />
-                    <p className="text-pit-muted text-sm">No tournament history for this group yet.</p>
+                    <p className="text-pit-muted text-sm">No games for this group yet.</p>
                   </div>
                 )
                 : (
                   <div className="space-y-2">
+                    {groupGames.map((game: GameListItem) => (
+                      <div key={game.id} className="flex items-center justify-between gap-3 rounded-xl border border-pit-border bg-pit-bg p-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-white">{game.title}</p>
+                            <span className="chip border-pit-teal/25 text-pit-teal">{game.gametype === 'cash' ? 'Cash Game' : 'Tournament'}</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-pit-muted">
+                            {game.startsat ? new Date(game.startsat).toLocaleString() : 'No start time'} · {game.stakeslabel ?? game.status}
+                            {typeof game.playercount !== 'undefined' ? ` · ${game.playercount} players` : ''}
+                          </p>
+                        </div>
+                        <button
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-pit-muted transition-all hover:bg-pit-surface hover:text-white"
+                          onClick={() => navigate(`/cash-games/${game.id}/admin`)}
+                        >
+                          <ExternalLink size={13} />
+                        </button>
+                      </div>
+                    ))}
                     {groupTournaments.map((t: Tournament & { isregistered: boolean; isdeclined?: boolean }) => (
                       <div key={t.tournamentid}
                         className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
@@ -1559,6 +1708,21 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
         requireLabel="Group name"
         onClose={() => setDeleteGroupConfirmOpen(false)}
         onConfirm={() => deleteGroupMutation.mutate()}
+      />
+      <ConfirmDialog
+        open={Boolean(deletePostTarget)}
+        title="Delete post?"
+        message={(
+          <>
+            Delete this group post from <span className="font-semibold text-white">{effectiveGroup.name}</span>? Replies and poll votes will be hidden with it.
+          </>
+        )}
+        confirmLabel="Delete post"
+        loading={deletePostMutation.isPending}
+        onClose={() => setDeletePostTarget(null)}
+        onConfirm={() => {
+          if (deletePostTarget) deletePostMutation.mutate(deletePostTarget.id);
+        }}
       />
     </div>
   );
