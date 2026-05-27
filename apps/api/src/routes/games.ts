@@ -130,26 +130,30 @@ async function loadGameDetail(gameId: string, userId: string) {
   const players = game.gametype === 'cash'
     ? await query(
         `SELECT cgp.id, cgp.gameid, cgp.userid,
-                COALESCE(NULLIF(u.displayname, ''), cgp.displaynamesnapshot, u.emailaddress, 'Player') AS displayname,
+                COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), cgp.displaynamesnapshot, u.emailaddress, 'Player') AS displayname,
                 cgp.displaynamesnapshot, cgp.status, cgp.buyintotal, cgp.addontotal, cgp.cashouttotal,
                 cgp.createdat, cgp.updatedat
          FROM cashgameplayers cgp
          JOIN users u ON u.guid = cgp.userid
+         LEFT JOIN usermetadata m ON m.userid = u.guid
          WHERE cgp.gameid = $1
            AND cgp.status <> 'removed'
-         ORDER BY lower(COALESCE(NULLIF(u.displayname, ''), cgp.displaynamesnapshot, u.emailaddress, 'Player')) ASC`,
+         ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), cgp.displaynamesnapshot, u.emailaddress, 'Player')) ASC`,
         [gameId]
       )
     : [];
 
   const members = game.isgroupadmin
     ? await query(
-        `SELECT gm.userid, COALESCE(NULLIF(u.displayname, ''), u.emailaddress, 'Player') AS displayname, gm.admin AS isadmin, gm.approved
+        `SELECT gm.userid,
+                COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress, 'Player') AS displayname,
+                u.emailaddress, gm.admin AS isadmin, gm.approved
          FROM groupmembers gm
          JOIN users u ON u.guid = gm.userid
+         LEFT JOIN usermetadata m ON m.userid = u.guid
          WHERE gm.groupid = $1
            AND gm.approved = TRUE
-         ORDER BY lower(COALESCE(NULLIF(u.displayname, ''), u.emailaddress, 'Player')) ASC`,
+         ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress, 'Player')) ASC`,
         [game.groupid]
       )
     : [];
@@ -157,10 +161,11 @@ async function loadGameDetail(gameId: string, userId: string) {
   const ledger = game.isgroupadmin && game.gametype === 'cash'
     ? await query(
         `SELECT cgle.id, cgle.gameid, cgle.userid,
-                COALESCE(NULLIF(u.displayname, ''), u.emailaddress, 'Player') AS displayname,
+                COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress, 'Player') AS displayname,
                 cgle.eventtype, cgle.amount, cgle.createdbyuserid, cgle.createdat
          FROM cashgameledgerevents cgle
          LEFT JOIN users u ON u.guid = cgle.userid
+         LEFT JOIN usermetadata m ON m.userid = u.guid
          WHERE cgle.gameid = $1
          ORDER BY cgle.createdat DESC
          LIMIT 50`,
@@ -405,7 +410,10 @@ gamesRouter.post('/:id/players', async (req: Request, res: Response) => {
   if (valid.length !== 1) { res.status(400).json({ error: 'Player must belong to the group.' }); return; }
 
   const member = await queryOne<{ displayname: string | null }>(
-    `SELECT COALESCE(NULLIF(displayname, ''), emailaddress, 'Player') AS displayname FROM users WHERE guid = $1`,
+    `SELECT COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress, 'Player') AS displayname
+     FROM users u
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE u.guid = $1`,
     [userid]
   );
 
