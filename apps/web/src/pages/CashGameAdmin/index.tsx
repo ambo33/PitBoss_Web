@@ -20,6 +20,8 @@ export default function CashGameAdminPage() {
     queryKey: ['game', id],
     queryFn: () => api.getGame(id!),
     enabled: Boolean(id),
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['game', id] });
@@ -238,11 +240,11 @@ export default function CashGameAdminPage() {
           )}
         </section>
 
-        {canManage && data.ledger.length > 0 && (
+        {canManage && (data.ledger?.length ?? 0) > 0 && (
           <section className="rounded-2xl border border-pit-border bg-pit-surface p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Recent activity</p>
             <div className="mt-3 space-y-2">
-              {data.ledger.slice(0, 8).map((event) => (
+              {(data.ledger ?? []).slice(0, 8).map((event) => (
                 <div key={event.id} className="flex items-center justify-between gap-3 rounded-lg border border-pit-border bg-pit-bg px-3 py-2 text-sm">
                   <span>{event.displayname ?? 'Player'} · {event.eventtype.replace('_', ' ')}</span>
                   <span className="text-pit-muted">{event.amount == null ? '' : money(event.amount)}</span>

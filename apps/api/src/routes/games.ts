@@ -317,9 +317,15 @@ gamesRouter.get('/group/:groupId', async (req: Request, res: Response) => {
 });
 
 gamesRouter.get('/:id', async (req: Request, res: Response) => {
-  const detail = await loadGameDetail(req.params.id, req.userId!);
-  if (!detail) { res.status(404).json({ error: 'Game not found' }); return; }
-  res.json(detail);
+  try {
+    const detail = await loadGameDetail(req.params.id, req.userId!);
+    if (!detail) { res.status(404).json({ error: 'Game not found' }); return; }
+    res.json(detail);
+  } catch (err) {
+    console.error('Cash game detail load failed', err);
+    const message = err instanceof Error ? err.message : 'Could not load game.';
+    res.status(500).json({ error: message });
+  }
 });
 
 gamesRouter.patch('/:id', async (req: Request, res: Response) => {

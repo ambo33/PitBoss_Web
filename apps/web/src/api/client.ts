@@ -1,4 +1,5 @@
 const BASE = '/api';
+const REQUEST_TIMEOUT_MS = 20_000;
 
 function getToken(): string | null {
   return localStorage.getItem('pb_token');
@@ -6,14 +7,22 @@ function getToken(): string | null {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    signal: options.signal ?? controller.signal,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
-  });
+  }).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Request timed out. Please refresh and try again.');
+    }
+    throw error;
+  }).finally(() => window.clearTimeout(timeout));
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error ?? 'Request failed');
