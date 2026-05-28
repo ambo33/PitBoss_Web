@@ -145,7 +145,7 @@ export default function MainPage() {
             )}
           />
         )}
-        {view === 'profile' && <ProfilePanel />}
+        {view === 'profile' && <ProfilePanel onReturn={() => setView('command')} />}
         {view === 'admin' && <AdminPanel />}
       </Layout>
       <OnboardingTour
@@ -368,7 +368,7 @@ function OnboardingTour({
   );
 }
 
-function ProfilePanel() {
+function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const { user, logout, updateUser } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -378,6 +378,7 @@ function ProfilePanel() {
   const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsOptIn, setSmsOptIn] = useState(false);
+  const [tableNickname, setTableNickname] = useState('');
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['me'],
@@ -399,6 +400,7 @@ function ProfilePanel() {
     });
     setPhoneNumber(profile.phonenumber ?? '');
     setSmsOptIn(Boolean(profile.smsoptedin));
+    setTableNickname(profile.displayname === profile.emailaddress ? '' : profile.displayname ?? '');
   }, [profile, updateUser]);
 
   const updateProfileMutation = useMutation({
@@ -512,6 +514,11 @@ function ProfilePanel() {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
+      <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={onReturn}>
+        <Home size={15} />
+        Return to Command Center
+      </button>
+
       <div className="card flex flex-col items-center gap-4 py-8 text-center">
         <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-pit-teal/30 bg-pit-teal/15 text-3xl font-bold text-pit-teal">
           {avatarImage ? (
@@ -557,6 +564,34 @@ function ProfilePanel() {
             value={profile?.canuseclubfeatures ? 'Enabled' : 'Locked'}
             accent={profile?.canuseclubfeatures}
           />
+        </div>
+      </section>
+
+      <section className="card space-y-4">
+        <div className="flex items-center gap-3">
+          <User size={18} className="text-pit-teal" />
+          <div>
+            <h3 className="font-semibold text-white">Table Nickname</h3>
+            <p className="text-sm text-pit-muted">This is the name shown in groups, tournaments, leagues, and cash games.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <input
+            className="input"
+            type="text"
+            maxLength={80}
+            placeholder="Name shown at the table"
+            value={tableNickname}
+            onChange={(event) => setTableNickname(event.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={updateProfileMutation.isPending || !tableNickname.trim() || tableNickname.trim() === displayName}
+            onClick={() => updateProfileMutation.mutate({ displayname: tableNickname.trim() })}
+          >
+            Save Nickname
+          </button>
         </div>
       </section>
 

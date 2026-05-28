@@ -1,17 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { pool, query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
-import { notifyGameCreated } from '../services/gameNotifications';
+import { notifyGameCancelled, notifyGameCreated } from '../services/gameNotifications';
 
 type GameType = 'tournament' | 'cash';
 type GameVisibility = 'group_public' | 'invite_only';
 type GameStatus = 'scheduled' | 'active' | 'completed' | 'cancelled';
 type CashPlayerStatus = 'interested' | 'seated' | 'cashed_out' | 'removed';
+type GameRsvpStatus = 'going' | 'not_going';
 
 const GAME_TYPES = new Set<GameType>(['tournament', 'cash']);
 const VISIBILITIES = new Set<GameVisibility>(['group_public', 'invite_only']);
 const GAME_STATUSES = new Set<GameStatus>(['scheduled', 'active', 'completed', 'cancelled']);
 const PLAYER_STATUSES = new Set<CashPlayerStatus>(['interested', 'seated', 'cashed_out', 'removed']);
+const GAME_RSVP_STATUSES = new Set<GameRsvpStatus>(['going', 'not_going']);
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -312,7 +314,9 @@ gamesRouter.get('/', async (req: Request, res: Response) => {
             g.startsat, g.tournamentid, g.createdat, g.updatedat, gr.name AS groupname,
             cg.stakeslabel, cg.minbuyin, cg.maxbuyin, cg.seatsavailable,
             COALESCE(gm.admin, FALSE) AS canmanage,
-            (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount
+            (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount,
+            EXISTS (SELECT 1 FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.userid = $1 AND cgp.status <> 'removed') AS isregistered,
+            (SELECT gi.rsvpstatus FROM gameinvitations gi WHERE gi.gameid = g.id AND gi.userid = $1 LIMIT 1) AS rsvpstatus
      FROM games g
      JOIN groups gr ON gr.groupid = g.groupid
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $1 AND gm.approved = TRUE
@@ -339,7 +343,9 @@ gamesRouter.get('/group/:groupId', async (req: Request, res: Response) => {
     `SELECT g.id, g.groupid, g.createdbyuserid, g.gametype, g.title, g.status, g.visibility,
             g.startsat, g.tournamentid, g.createdat, g.updatedat, cg.stakeslabel, cg.seatsavailable,
             COALESCE(gm.admin, FALSE) AS canmanage,
-            (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount
+            (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount,
+            EXISTS (SELECT 1 FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.userid = $2 AND cgp.status <> 'removed') AS isregistered,
+            (SELECT gi.rsvpstatus FROM gameinvitations gi WHERE gi.gameid = g.id AND gi.userid = $2 LIMIT 1) AS rsvpstatus
      FROM games g
      JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $2 AND gm.approved = TRUE
      LEFT JOIN cashgamedetails cg ON cg.gameid = g.id
@@ -349,6 +355,7 @@ gamesRouter.get('/group/:groupId', async (req: Request, res: Response) => {
          OR g.visibility = 'group_public'
          OR EXISTS (SELECT 1 FROM gameinvitations gi WHERE gi.gameid = g.id AND gi.userid = $2)
        )
+       AND g.status <> 'cancelled'
      ORDER BY COALESCE(g.startsat, g.createdat) DESC`,
     [groupId, req.userId]
   );
@@ -365,6 +372,68 @@ gamesRouter.get('/:id', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Could not load game.';
     res.status(500).json({ error: message });
   }
+});
+
+gamesRouter.put('/:id/rsvp', async (req: Request, res: Response) => {
+  const detail = await loadGameDetail(req.params.id, req.userId!);
+  if (!detail) { res.status(404).json({ error: 'Game not found' }); return; }
+  if (detail.game.gametype !== 'cash') { res.status(400).json({ error: 'Only cash games can RSVP here.' }); return; }
+  if (detail.game.status === 'completed' || detail.game.status === 'cancelled') {
+    res.status(400).json({ error: 'This cash game is no longer taking RSVPs.' });
+    return;
+  }
+
+  const status = cleanText((req.body as { status?: unknown }).status, 20) as GameRsvpStatus;
+  if (!GAME_RSVP_STATUSES.has(status)) {
+    res.status(400).json({ error: 'Invalid RSVP status.' });
+    return;
+  }
+
+  const member = await queryOne<{ displayname: string | null }>(
+    `SELECT COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress, 'Player') AS displayname
+     FROM users u
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE u.guid = $1`,
+    [req.userId]
+  );
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO gameinvitations (gameid, userid, invitedbyuserid, rsvpstatus, updatedat)
+       VALUES ($1, $2, NULL, $3, now())
+       ON CONFLICT (gameid, userid)
+       DO UPDATE SET rsvpstatus = $3, updatedat = now()`,
+      [req.params.id, req.userId, status]
+    );
+    if (status === 'going') {
+      await client.query(
+        `INSERT INTO cashgameplayers (gameid, userid, displaynamesnapshot, status)
+         VALUES ($1, $2, $3, 'interested')
+         ON CONFLICT (gameid, userid)
+         DO UPDATE SET status = CASE WHEN cashgameplayers.status = 'removed' THEN 'interested' ELSE cashgameplayers.status END,
+                       displaynamesnapshot = COALESCE(cashgameplayers.displaynamesnapshot, $3),
+                       updatedat = now()`,
+        [req.params.id, req.userId, member?.displayname ?? 'Player']
+      );
+    } else {
+      await client.query(
+        `UPDATE cashgameplayers
+         SET status = 'removed', updatedat = now()
+         WHERE gameid = $1 AND userid = $2`,
+        [req.params.id, req.userId]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json(await loadGameDetail(req.params.id, req.userId!));
 });
 
 gamesRouter.patch('/:id', async (req: Request, res: Response) => {
@@ -430,6 +499,42 @@ gamesRouter.patch('/:id', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Could not update game.';
     res.status(400).json({ error: message });
   }
+});
+
+gamesRouter.delete('/:id', async (req: Request, res: Response) => {
+  const detail = await loadGameDetail(req.params.id, req.userId!);
+  if (!detail) { res.status(404).json({ error: 'Game not found' }); return; }
+  if (!detail.game.canmanage) { res.status(403).json({ error: 'Only group admins can delete this game.' }); return; }
+
+  await query(
+    `UPDATE games
+     SET status = 'cancelled', updatedat = now()
+     WHERE id = $1`,
+    [req.params.id]
+  );
+
+  const recipients = (await query<{ userid: string }>(
+    `SELECT DISTINCT userid
+     FROM cashgameplayers
+     WHERE gameid = $1
+       AND status <> 'removed'
+       AND userid <> $2`,
+    [req.params.id, req.userId]
+  )).map((row) => row.userid);
+
+  if (recipients.length > 0) {
+    void notifyGameCancelled({
+      gameId: req.params.id,
+      groupId: detail.game.groupid,
+      gameTitle: detail.game.title,
+      groupName: detail.game.groupname,
+      startsAt: detail.game.startsat,
+      recipientUserIds: recipients,
+      channels: ['email', 'push'],
+    }).catch((err) => console.warn('Game cancellation notification failed after delete', err));
+  }
+
+  res.json({ success: true, notified: recipients.length });
 });
 
 gamesRouter.post('/:id/players', async (req: Request, res: Response) => {

@@ -127,7 +127,25 @@ export default function TournamentsPanel({
       qc.invalidateQueries({ queryKey: ['leagues', 'schedule'] });
     },
   });
-  const rsvpError = registerMutation.error?.message || declineMutation.error?.message || leagueRsvpMutation.error?.message;
+  const cashRsvpMutation = useMutation({
+    mutationFn: ({ gameId, status }: { gameId: string; status: 'going' | 'not_going' }) =>
+      api.rsvpCashGame(gameId, status),
+    onSuccess: (_result, variables) => {
+      qc.setQueryData<GameListItem[]>(['games'], (current) => (
+        current?.map((game) => game.id === variables.gameId
+          ? {
+              ...game,
+              rsvpstatus: variables.status,
+              isregistered: variables.status === 'going',
+              playercount: Math.max(0, Number(game.playercount ?? 0) + (variables.status === 'going' && !game.isregistered ? 1 : variables.status === 'not_going' && game.isregistered ? -1 : 0)),
+            }
+          : game
+        )
+      ));
+      qc.invalidateQueries({ queryKey: ['games'] });
+    },
+  });
+  const rsvpError = registerMutation.error?.message || declineMutation.error?.message || leagueRsvpMutation.error?.message || cashRsvpMutation.error?.message;
 
   const upcoming = mine.filter((t) => {
     return isUpcomingTournament(t);
@@ -140,7 +158,7 @@ export default function TournamentsPanel({
     () => [
       ...upcoming.map(tournamentToScheduleItem),
       ...leagueScheduleItems.filter((item) => item.date && item.date >= todayInAppTimezone()),
-      ...gameScheduleItems.filter((item) => !item.date || item.date >= todayInAppTimezone()),
+      ...gameScheduleItems.filter((item) => item.game.status !== 'completed' && item.game.status !== 'cancelled' && (!item.date || item.date >= todayInAppTimezone())),
     ].sort(compareScheduleItems),
     [gameScheduleItems, leagueScheduleItems, upcoming]
   );
@@ -148,7 +166,7 @@ export default function TournamentsPanel({
     () => [
       ...history.map(tournamentToScheduleItem),
       ...leagueScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
-      ...gameScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
+      ...gameScheduleItems.filter((item) => item.game.status === 'completed' || item.game.status === 'cancelled' || (item.date && item.date < todayInAppTimezone())),
     ].sort(compareScheduleItems).reverse(),
     [gameScheduleItems, history, leagueScheduleItems]
   );
@@ -255,7 +273,7 @@ export default function TournamentsPanel({
             <ScheduleList
               items={scheduleList}
               view={scheduleView}
-              loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending}
+              loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending || cashRsvpMutation.isPending}
               onOpen={(item) => {
                 if (item.kind === 'tournament') {
                   navigate(
@@ -273,6 +291,7 @@ export default function TournamentsPanel({
               onRegister={(tournament) => registerMutation.mutate(tournament)}
               onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
               onLeagueRsvp={(item, status) => leagueRsvpMutation.mutate({ leagueId: item.leagueId, eventId: item.eventId, status })}
+              onCashRsvp={(item, status) => cashRsvpMutation.mutate({ gameId: item.game.id, status })}
             />
           )}
         </>
@@ -481,6 +500,8 @@ type ScheduleItem =
       time?: string | null;
       cost: number;
       canManage: boolean;
+      isRegistered?: boolean;
+      rsvpStatus?: string | null;
       game: GameListItem;
     };
 
@@ -492,6 +513,7 @@ function ScheduleList({
   onRegister,
   onDecline,
   onLeagueRsvp,
+  onCashRsvp,
 }: {
   items: ScheduleItem[];
   view: 'upcoming' | 'history';
@@ -500,6 +522,7 @@ function ScheduleList({
   onRegister: (tournament: Tournament) => void;
   onDecline: (tournament: Tournament) => void;
   onLeagueRsvp: (item: Extract<ScheduleItem, { kind: 'league' }>, status: 'going' | 'not_going') => void;
+  onCashRsvp: (item: Extract<ScheduleItem, { kind: 'cash' }>, status: 'going' | 'not_going') => void;
 }) {
   if (items.length === 0) return <EmptyState view={view} />;
 
@@ -523,6 +546,7 @@ function ScheduleList({
             onRegister={item.kind === 'tournament' ? () => onRegister(item.tournament) : undefined}
             onDecline={item.kind === 'tournament' ? () => onDecline(item.tournament) : undefined}
             onLeagueRsvp={item.kind === 'league' ? (status) => onLeagueRsvp(item, status) : undefined}
+            onCashRsvp={item.kind === 'cash' ? (status) => onCashRsvp(item, status) : undefined}
           />
         ))}
       </div>
@@ -538,6 +562,7 @@ function ScheduleRow({
   onRegister,
   onDecline,
   onLeagueRsvp,
+  onCashRsvp,
 }: {
   item: ScheduleItem;
   view: 'upcoming' | 'history';
@@ -546,20 +571,36 @@ function ScheduleRow({
   onRegister?: () => void;
   onDecline?: () => void;
   onLeagueRsvp?: (status: 'going' | 'not_going') => void;
+  onCashRsvp?: (status: 'going' | 'not_going') => void;
 }) {
   const isTournament = item.kind === 'tournament';
   const isLeague = item.kind === 'league';
   const isCash = item.kind === 'cash';
   const isRegistered = isTournament
     ? Boolean(item.tournament.isregistered)
-    : isLeague && item.rsvpStatus === 'going';
+    : isLeague
+      ? item.rsvpStatus === 'going'
+      : Boolean(item.isRegistered) || item.rsvpStatus === 'going';
   const isDeclined = isTournament
     ? Boolean(item.tournament.isdeclined) && !isRegistered
-    : isLeague && item.rsvpStatus === 'not_going';
+    : isLeague
+      ? item.rsvpStatus === 'not_going'
+      : item.rsvpStatus === 'not_going';
   const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
   const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant;
+  const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
   const statusLabel = isTournament ? (item.canManage ? 'Host' : null) : isCash ? (item.canManage ? 'Host' : 'Cash') : 'League';
   const fieldCount = isTournament ? formatFieldCount(item.tournament) : isCash ? formatCashGameCount(item.game) : null;
+  const typePillClass = isCash
+    ? 'border-[#F5B84B]/45 bg-[#F5B84B]/12 text-[#F5B84B]'
+    : isLeague
+      ? 'border-[#8B5CF6]/45 bg-[#8B5CF6]/12 text-[#A78BFA]'
+      : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal';
+  const statusPillClass = isCash
+    ? 'border-[#F5B84B]/45 bg-[#F5B84B]/12 text-[#F5B84B]'
+    : isLeague
+      ? 'border-[#8B5CF6]/45 bg-[#8B5CF6]/12 text-[#A78BFA]'
+      : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
 
   return (
     <div
@@ -580,9 +621,7 @@ function ScheduleRow({
           >
             {item.name}
           </button>
-          <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] sm:inline-flex ${
-            isTournament || isCash ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal' : 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
-          }`}>
+          <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] sm:inline-flex ${typePillClass}`}>
             {isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League'}
           </span>
         </div>
@@ -616,11 +655,7 @@ function ScheduleRow({
 
       <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
         {statusLabel && (
-          <span className={`inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${
-            item.kind === 'league'
-              ? 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
-              : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal'
-          }`}>
+          <span className={`inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${statusPillClass}`}>
             {statusLabel}
           </span>
         )}
@@ -633,7 +668,7 @@ function ScheduleRow({
       </div>
 
       <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
-        {showRsvp || showLeagueRsvp ? (
+        {showRsvp || showLeagueRsvp || showCashRsvp ? (
           <>
             <button
               type="button"
@@ -643,7 +678,7 @@ function ScheduleRow({
                   : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'
               }`}
               disabled={loading || isRegistered}
-              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('going') : onRegister}
+              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('going') : showCashRsvp ? () => onCashRsvp?.('going') : onRegister}
               aria-label={`Can attend ${item.name}`}
               title="Can attend"
             >
@@ -657,7 +692,7 @@ function ScheduleRow({
                   : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
               }`}
               disabled={loading || isDeclined}
-              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('not_going') : onDecline}
+              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('not_going') : showCashRsvp ? () => onCashRsvp?.('not_going') : onDecline}
               aria-label={`Cannot attend ${item.name}`}
               title="Cannot attend"
             >
@@ -1253,7 +1288,7 @@ function tournamentToScheduleItem(tournament: Tournament): ScheduleItem {
   };
 }
 
-function gameToScheduleItem(game: GameListItem): ScheduleItem {
+function gameToScheduleItem(game: GameListItem): Extract<ScheduleItem, { kind: 'cash' }> {
   const startsAt = splitDateTime(game.startsat);
   return {
     kind: 'cash',
@@ -1264,6 +1299,8 @@ function gameToScheduleItem(game: GameListItem): ScheduleItem {
     time: startsAt.time,
     cost: Number(game.minbuyin ?? 0),
     canManage: isEnabledFlag(game.canmanage),
+    isRegistered: Boolean(game.isregistered),
+    rsvpStatus: game.rsvpstatus ?? null,
     game,
   };
 }

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Banknote, CheckCircle2, MinusCircle, Plus, ReceiptText, UserPlus } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, Edit3, MinusCircle, Plus, ReceiptText, Trash2, UserPlus } from 'lucide-react';
 import { api, CashGamePlayer, CashGamePlayerStatus } from '../../api/client';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -15,6 +15,17 @@ export default function CashGameAdminPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [removeTarget, setRemoveTarget] = useState<CashGamePlayer | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    startsat: '',
+    stakeslabel: '',
+    seatsavailable: '',
+    minbuyin: '',
+    maxbuyin: '',
+    notes: '',
+  });
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['game', id],
@@ -48,6 +59,30 @@ export default function CashGameAdminPage() {
     mutationFn: (status: 'active' | 'completed' | 'cancelled') => api.updateGame(id!, { status }),
     onSuccess: invalidate,
   });
+  const saveGameMutation = useMutation({
+    mutationFn: () => api.updateGame(id!, {
+      title: editForm.title.trim(),
+      startsat: editForm.startsat ? new Date(editForm.startsat).toISOString() : null,
+      cash: {
+        stakeslabel: editForm.stakeslabel.trim(),
+        seatsavailable: editForm.seatsavailable ? Number(editForm.seatsavailable) : null,
+        minbuyin: editForm.minbuyin ? Number(editForm.minbuyin) : null,
+        maxbuyin: editForm.maxbuyin ? Number(editForm.maxbuyin) : null,
+        notes: editForm.notes.trim() || null,
+      },
+    }),
+    onSuccess: () => {
+      setEditOpen(false);
+      invalidate();
+    },
+  });
+  const deleteGameMutation = useMutation({
+    mutationFn: () => api.deleteGame(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['games'] });
+      navigate('/');
+    },
+  });
 
   const players = data?.players ?? [];
   const availableMembers = useMemo(() => {
@@ -68,6 +103,19 @@ export default function CashGameAdminPage() {
   const seats = Number(data?.cashdetails?.seatsavailable ?? 0);
   const openSeats = seats > 0 ? Math.max(0, seats - players.filter((player) => player.status !== 'cashed_out').length) : null;
   const canManage = Boolean(data?.game.canmanage);
+
+  useEffect(() => {
+    if (!data) return;
+    setEditForm({
+      title: data.game.title ?? '',
+      startsat: toLocalDateTimeInput(data.game.startsat),
+      stakeslabel: data.cashdetails?.stakeslabel ?? '',
+      seatsavailable: data.cashdetails?.seatsavailable == null ? '' : String(data.cashdetails.seatsavailable),
+      minbuyin: data.cashdetails?.minbuyin == null ? '' : String(data.cashdetails.minbuyin),
+      maxbuyin: data.cashdetails?.maxbuyin == null ? '' : String(data.cashdetails.maxbuyin),
+      notes: data.cashdetails?.notes ?? '',
+    });
+  }, [data]);
 
   function money(value: unknown) {
     const amount = Number(value ?? 0);
@@ -111,14 +159,26 @@ export default function CashGameAdminPage() {
             Back
           </button>
           <div className="flex flex-wrap items-center gap-2">
-            {canManage && data.game.status !== 'active' && (
+            {canManage && (
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs" onClick={() => setEditOpen((open) => !open)}>
+                <Edit3 size={14} />
+                Edit
+              </button>
+            )}
+            {canManage && data.game.status === 'scheduled' && (
               <button className="btn-ghost px-3 py-2 text-xs" onClick={() => updateGameMutation.mutate('active')}>
                 Mark active
               </button>
             )}
-            {canManage && data.game.status !== 'completed' && (
+            {canManage && data.game.status === 'active' && (
               <button className="btn-ghost px-3 py-2 text-xs" onClick={() => updateGameMutation.mutate('completed')}>
                 Complete
+              </button>
+            )}
+            {canManage && (
+              <button className="btn-ghost gap-2 px-3 py-2 text-xs text-red-200" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={14} />
+                Delete
               </button>
             )}
           </div>
@@ -143,18 +203,55 @@ export default function CashGameAdminPage() {
           </div>
         </section>
 
+        {canManage && editOpen && (
+          <section className="rounded-2xl border border-pit-border bg-pit-surface p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">Game details</p>
+              <h2 className="text-xl font-semibold">Edit cash game</h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Title">
+                <input className="input" value={editForm.title} onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))} />
+              </Field>
+              <Field label="Starts at">
+                <input className="input" type="datetime-local" value={editForm.startsat} onChange={(event) => setEditForm((current) => ({ ...current, startsat: event.target.value }))} />
+              </Field>
+              <Field label="Stakes">
+                <input className="input" value={editForm.stakeslabel} onChange={(event) => setEditForm((current) => ({ ...current, stakeslabel: event.target.value }))} />
+              </Field>
+              <Field label="Seats available">
+                <input className="input" type="number" min="1" step="1" value={editForm.seatsavailable} onChange={(event) => setEditForm((current) => ({ ...current, seatsavailable: event.target.value }))} />
+              </Field>
+              <Field label="Min buy-in">
+                <input className="input" type="number" min="0" step="0.01" value={editForm.minbuyin} onChange={(event) => setEditForm((current) => ({ ...current, minbuyin: event.target.value }))} />
+              </Field>
+              <Field label="Max buy-in">
+                <input className="input" type="number" min="0" step="0.01" value={editForm.maxbuyin} onChange={(event) => setEditForm((current) => ({ ...current, maxbuyin: event.target.value }))} />
+              </Field>
+              <Field label="Notes" className="sm:col-span-2">
+                <textarea className="input min-h-24 resize-none" value={editForm.notes} onChange={(event) => setEditForm((current) => ({ ...current, notes: event.target.value }))} />
+              </Field>
+            </div>
+            {saveGameMutation.error && (
+              <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+                {saveGameMutation.error.message}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button className="btn-ghost px-4 py-2" type="button" onClick={() => setEditOpen(false)}>Cancel</button>
+              <button className="btn-primary px-4 py-2" type="button" disabled={saveGameMutation.isPending || !editForm.title.trim() || !editForm.stakeslabel.trim()} onClick={() => saveGameMutation.mutate()}>
+                {saveGameMutation.isPending ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </section>
+        )}
+
         <div className="grid gap-3 md:grid-cols-4">
           <StatCard icon={Banknote} label="Buy-ins" value={money(totals.buyIns)} />
           <StatCard icon={Plus} label="Add-ons/top-ups" value={money(totals.addOns)} />
           <StatCard icon={ReceiptText} label="Cash-outs" value={money(totals.cashOuts)} />
           <StatCard icon={CheckCircle2} label="On table" value={money(totals.onTable)} highlight />
         </div>
-
-        {!canManage && (
-          <div className="rounded-xl border border-pit-border bg-pit-surface p-4 text-sm text-pit-text">
-            This cash game is visible to you, but only group admins can manage buy-ins, add-ons/top-ups, and cash-outs.
-          </div>
-        )}
 
         {canManage && (
           <section className="rounded-2xl border border-pit-border bg-pit-surface p-4">
@@ -267,7 +364,38 @@ export default function CashGameAdminPage() {
           <p>Remove <span className="font-semibold text-white">{removeTarget.displayname ?? 'this player'}</span> from this cash game ledger?</p>
         ) : null}
       />
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete cash game?"
+        confirmLabel="Delete game"
+        tone="danger"
+        loading={deleteGameMutation.isPending}
+        onConfirm={() => deleteGameMutation.mutate()}
+        message={(
+          <p>
+            Delete <span className="font-semibold text-white">{data.game.title}</span>? Registered players will be notified by email and push when available.
+          </p>
+        )}
+      />
     </div>
+  );
+}
+
+function toLocalDateTimeInput(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16);
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function Field({ label, className = '', children }: { label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <label className={`space-y-2 ${className}`.trim()}>
+      <span className="text-sm font-medium text-pit-text">{label}</span>
+      {children}
+    </label>
   );
 }
 

@@ -618,7 +618,9 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           <h2 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl">{detail.league.name}</h2>
           {selectedSeason && (
             <p className="mt-2 text-sm text-pit-text">
-              {selectedSeason.name} runs {String(selectedSeason.begindate).slice(0, 10)} through {String(selectedSeason.enddate).slice(0, 10)}.
+              <strong className="font-semibold text-white">{selectedSeason.name}</strong> runs{' '}
+              <strong className="font-semibold text-white">{String(selectedSeason.begindate).slice(0, 10)}</strong> through{' '}
+              <strong className="font-semibold text-white">{String(selectedSeason.enddate).slice(0, 10)}</strong>.
             </p>
           )}
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1343,7 +1345,13 @@ function MemberLeagueView({
             <p className="eyebrow">{isViewingSelf ? 'My league story' : 'Player journey'}</p>
             <h2 className="mt-1 text-3xl font-black text-white">{detail.league.name}</h2>
             <p className="mt-2 text-sm leading-6 text-pit-text">
-              {selectedSeason?.name ?? 'Current season'}{selectedSeason ? ` runs ${String(selectedSeason.begindate).slice(0, 10)} through ${String(selectedSeason.enddate).slice(0, 10)}.` : ''}
+              <strong className="font-semibold text-white">{selectedSeason?.name ?? 'Current season'}</strong>
+              {selectedSeason && (
+                <>
+                  {' '}runs <strong className="font-semibold text-white">{String(selectedSeason.begindate).slice(0, 10)}</strong> through{' '}
+                  <strong className="font-semibold text-white">{String(selectedSeason.enddate).slice(0, 10)}</strong>.
+                </>
+              )}
             </p>
             {!isViewingSelf && currentUserId && (
               <button

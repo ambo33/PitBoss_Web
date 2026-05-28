@@ -101,6 +101,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
   const [handText, setHandText] = useState('');
   const [handAnalysis, setHandAnalysis] = useState('');
+  const [showBlindStructure, setShowBlindStructure] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['public-lobby', id, guestUserId, user?.guid],
@@ -437,51 +438,66 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
         {timer?.blinds && timer.blinds.length > 0 && (
           <section className="card space-y-2 p-3">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Blind Structure</h2>
-              <span className="text-xs text-pit-muted">{timer.blinds.length} levels</span>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-pit-border">
-              <div className="grid grid-cols-[40px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-pit-muted">
-                <span>Lvl</span>
-                <span>Blinds</span>
-                <span>Time</span>
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Blind Structure</h2>
+                <p className="text-xs text-pit-muted">
+                  {timer.blinds.length} levels
+                  {timer?.currentlevel ? ` - current level ${timer.currentlevel}` : ''}
+                </p>
               </div>
-              <div className="max-h-64 overflow-y-auto">
-                {timer.blinds
-                  .map((blind) => ({
-                    ...blind,
-                    level: Number(blind.level),
-                    smallblind: Number(blind.smallblind),
-                    bigblind: Number(blind.bigblind),
-                    ante: Number(blind.ante),
-                    minutes: Number(blind.minutes),
-                  }))
-                  .sort((a, b) => a.level - b.level)
-                  .map((blind) => {
-                    const isCurrent = blind.level === timer.currentlevel;
-                    const isNext = nextBlind?.level === blind.level;
-                    const breakRow = isBreakLevel(blind);
-                    return (
-                      <div
-                        key={`${blind.level}-${blind.smallblind}-${blind.bigblind}`}
-                        className={`grid grid-cols-[40px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-xs leading-tight ${
-                          isCurrent
-                            ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
-                            : isNext
-                              ? 'border-pit-border bg-pit-surface/70 text-white'
-                              : 'border-pit-border bg-pit-bg/30 text-pit-text'
-                        }`}
-                      >
-                        <span className="font-semibold">{blind.level}</span>
-                        <span>
-                          {breakRow ? (blind.label || 'Break') : `${blind.smallblind.toLocaleString()} / ${blind.bigblind.toLocaleString()}${blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}`}
-                        </span>
-                        <span>{blind.minutes}:00</span>
-                      </div>
-                    );
-                  })}
-              </div>
+              <button
+                type="button"
+                className="rounded-full border border-pit-border bg-pit-surface/70 px-3 py-1.5 text-xs font-semibold text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+                onClick={() => setShowBlindStructure((current) => !current)}
+                aria-expanded={showBlindStructure}
+              >
+                {showBlindStructure ? 'Hide' : 'Show'}
+              </button>
             </div>
+            {showBlindStructure && (
+              <div className="overflow-hidden rounded-lg border border-pit-border">
+                <div className="grid grid-cols-[40px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-pit-muted">
+                  <span>Lvl</span>
+                  <span>Blinds</span>
+                  <span>Time</span>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {timer.blinds
+                    .map((blind) => ({
+                      ...blind,
+                      level: Number(blind.level),
+                      smallblind: Number(blind.smallblind),
+                      bigblind: Number(blind.bigblind),
+                      ante: Number(blind.ante),
+                      minutes: Number(blind.minutes),
+                    }))
+                    .sort((a, b) => a.level - b.level)
+                    .map((blind) => {
+                      const isCurrent = blind.level === timer.currentlevel;
+                      const isNext = nextBlind?.level === blind.level;
+                      const breakRow = isBreakLevel(blind);
+                      return (
+                        <div
+                          key={`${blind.level}-${blind.smallblind}-${blind.bigblind}`}
+                          className={`grid grid-cols-[40px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-xs leading-tight ${
+                            isCurrent
+                              ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
+                              : isNext
+                                ? 'border-pit-border bg-pit-surface/70 text-white'
+                                : 'border-pit-border bg-pit-bg/30 text-pit-text'
+                          }`}
+                        >
+                          <span className="font-semibold">{blind.level}</span>
+                          <span>
+                            {breakRow ? (blind.label || 'Break') : `${blind.smallblind.toLocaleString()} / ${blind.bigblind.toLocaleString()}${blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}`}
+                          </span>
+                          <span>{blind.minutes}:00</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -706,14 +722,6 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
             )}
             {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
             {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
-          </section>
-        ) : !checkInMode && !entry?.checkedin ? (
-          <section className="card p-3">
-            <h2 className="text-base font-semibold text-white">{entry?.displayname ?? entry?.emailaddress ?? 'Player'}</h2>
-            <CoinBadgeStrip coins={entry?.awardedcoins} size="md" limit={8} className="mt-2" />
-            <p className="mt-2 text-sm text-pit-text">
-              You are registered, but not checked in yet. Please see the host to pay and scan the check-in QR.
-            </p>
           </section>
         ) : entry?.checkedin ? (
           <section className="card space-y-3 p-3">

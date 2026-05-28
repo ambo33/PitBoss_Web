@@ -165,7 +165,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     smsoptedin?: boolean;
   };
 
-  const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim() : undefined;
+  const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim().slice(0, 80) : undefined;
   const normalizedPhoneNumber = normalizePhoneNumber(phonenumber);
   const normalizedAudioData = typeof checkinaudiodata === 'string' ? checkinaudiodata.trim() : undefined;
   const normalizedAudioFilename = typeof checkinaudiofilename === 'string' ? checkinaudiofilename.trim().slice(0, 255) : undefined;
@@ -206,7 +206,17 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
       return;
     }
   }
+  if (displayname !== undefined && !normalizedDisplayName) {
+    res.status(400).json({ error: 'Table nickname is required.' });
+    return;
+  }
 
+  await query(
+    `INSERT INTO usermetadata (userid)
+     VALUES ($1)
+     ON CONFLICT (userid) DO NOTHING`,
+    [req.userId]
+  );
   await query(
     `UPDATE usermetadata
      SET nickname = COALESCE($2::STRING, nickname),

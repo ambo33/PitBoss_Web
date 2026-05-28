@@ -14,6 +14,7 @@ interface Props {
   children: React.ReactNode;
   title?: string;
   back?: string;
+  backLabel?: string;
   tab?: NavTab;
   onTabChange?: (tab: NavTab) => void;
   compactSidebar?: boolean;
@@ -36,6 +37,7 @@ export default function Layout({
   children,
   title,
   back,
+  backLabel,
   tab,
   onTabChange,
   compactSidebar = false,
@@ -198,9 +200,14 @@ export default function Layout({
           <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-teal/20 bg-[#122E30] shadow-[0_10px_28px_rgba(0,0,0,0.22)] md:border-pit-border/60 md:bg-pit-bg md:shadow-none ${headerPaddingClass}`}>
             <div className="flex min-w-0 items-center gap-3">
               {back ? (
-                <Link to={back} className="flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white">
+                <Link
+                  to={back}
+                  className={backLabel
+                    ? 'inline-flex shrink-0 items-center gap-1 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 to-[#122E30] px-3 py-2 text-xs font-semibold text-pit-teal transition hover:border-pit-teal/70 hover:text-white'
+                    : 'flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white'}
+                >
                   <ChevronLeft size={18} />
-                  <span className="hidden sm:inline">Back</span>
+                  <span className={backLabel ? '' : 'hidden sm:inline'}>{backLabel ?? 'Back'}</span>
                 </Link>
               ) : (
                 <div className={hideSidebar ? 'block' : 'md:hidden'}>

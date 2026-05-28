@@ -853,10 +853,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         gameid UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
         userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
         invitedbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        rsvpstatus STRING(20) CHECK (rsvpstatus IN ('going', 'not_going')),
         createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
         UNIQUE (gameid, userid)
       )
     `);
+    await client.query(`ALTER TABLE gameinvitations ADD COLUMN IF NOT EXISTS rsvpstatus STRING(20)`);
+    await client.query(`ALTER TABLE gameinvitations ADD COLUMN IF NOT EXISTS updatedat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_gameinvitations_user
       ON gameinvitations (userid, gameid)

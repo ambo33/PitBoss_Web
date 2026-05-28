@@ -130,6 +130,10 @@ export const api = {
     get<GameDetail>(`/games/${gameId}`),
   updateGame: (gameId: string, data: Partial<Pick<GameRecord, 'title' | 'status' | 'startsat'>> & { cash?: Partial<CashGameDetails> }) =>
     patch<GameDetail>(`/games/${gameId}`, data),
+  deleteGame: (gameId: string) =>
+    del<{ success: boolean; notified: number }>(`/games/${gameId}`),
+  rsvpCashGame: (gameId: string, status: CashGameRsvpStatus) =>
+    put<GameDetail>(`/games/${gameId}/rsvp`, { status }),
   addCashGamePlayer: (gameId: string, userid: string) =>
     post<GameDetail>(`/games/${gameId}/players`, { userid }),
   updateCashGamePlayer: (gameId: string, userId: string, data: Partial<Pick<CashGamePlayer, 'status' | 'buyintotal' | 'addontotal' | 'cashouttotal'>>) =>
@@ -399,6 +403,7 @@ export type GameType = 'tournament' | 'cash';
 export type GameVisibility = 'group_public' | 'invite_only';
 export type GameStatus = 'scheduled' | 'active' | 'completed' | 'cancelled';
 export type CashGamePlayerStatus = 'interested' | 'seated' | 'cashed_out' | 'removed';
+export type CashGameRsvpStatus = 'going' | 'not_going';
 export interface CreateGameRequest {
   groupid: string;
   gametype: GameType;
@@ -436,6 +441,8 @@ export interface GameListItem extends GameRecord {
   maxbuyin?: number | null;
   seatsavailable?: number | null;
   playercount?: number;
+  isregistered?: boolean;
+  rsvpstatus?: CashGameRsvpStatus | string | null;
 }
 export interface CashGameDetails {
   gameid: string;

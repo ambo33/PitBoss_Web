@@ -367,6 +367,30 @@ export async function sendGameCreatedEmail(
   });
 }
 
+export async function sendGameCancelledEmail(
+  email: string,
+  gameTitle: string,
+  groupName: string | null,
+  startsAt?: string | null
+): Promise<void> {
+  const startsAtText = startsAt ? formatTournamentWhen(startsAt.slice(0, 10), startsAt.slice(11, 16)) : null;
+  await sendMail({
+    to: email,
+    subject: `${gameTitle} has been cancelled`,
+    html: emailLayout({
+      eyebrow: 'Game Cancelled',
+      title: `${gameTitle} has been cancelled`,
+      intro: groupName ? `${groupName} cancelled this game.` : 'This game has been cancelled.',
+      body: `
+        ${startsAtText ? `<p style="margin:0 0 12px;"><strong style="color:#ffffff;">Original time:</strong> ${escapeHtml(startsAtText)}</p>` : ''}
+        <p style="margin:0;">No action is needed. You will not receive more reminders for this game.</p>
+      `,
+      ctaHref: appUrl,
+      ctaLabel: 'Open ThePokerPlanner',
+    }),
+  });
+}
+
 export async function sendTournamentReminderEmail(
   email: string,
   tournamentId: string,

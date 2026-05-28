@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Lock, Play, Timer, Users } from 'lucide-react';
+import { ClipboardList, Home, Lock, LogOut, Menu, Play, Shield, Timer, User, Users } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
-import BrandLockup from '../../components/BrandLockup';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
@@ -116,11 +115,11 @@ export default function PreTournamentPage() {
     <Layout
       title={tournament.name}
       back="/"
-      compactSidebar
-      hideSidebar={tab === 'run' && canManage}
-      hideMobileNav={canManage}
-      headerRight={<BrandLockup compact showSlogan={false} showWordmark={false} className="items-center gap-2" />}
-      mainWidthClassName="max-w-[1800px]"
+      backLabel="Return to Command Center"
+      hideSidebar
+      hideMobileNav
+      headerRight={<TournamentAccountMenu />}
+      mainWidthClassName="max-w-7xl"
     >
       <div className="relative z-10 mb-5 mt-2 hidden border-b border-pit-border md:block md:mt-3">
         <div className="flex gap-1">
@@ -172,8 +171,84 @@ export default function PreTournamentPage() {
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
       {tab === 'run' && canManage && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
       <div className="h-20 md:hidden" />
-      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} dockToBottom={canManage} />
+      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} dockToBottom />
     </Layout>
+  );
+}
+
+function TournamentAccountMenu() {
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  function goHome(state?: unknown) {
+    setOpen(false);
+    if (state) {
+      navigate('/', { state });
+    } else {
+      navigate('/');
+    }
+  }
+
+  function handleLogout() {
+    queryClient.clear();
+    logout();
+    navigate('/landing', { replace: true });
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+        onClick={() => setOpen((value) => !value)}
+        aria-label="Open account menu"
+        aria-expanded={open}
+      >
+        <Menu size={20} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-xl border border-pit-border bg-pit-card py-1 shadow-2xl">
+          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white" onClick={() => goHome()}>
+            <Home size={15} />
+            Command Center
+          </button>
+          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white" onClick={() => goHome({ tab: 'profile' })}>
+            <User size={15} />
+            Profile
+          </button>
+          {user?.issuperadmin && (
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100" onClick={() => goHome({ tab: 'admin' })}>
+              <Shield size={15} />
+              Admin
+            </button>
+          )}
+          <div className="my-1 border-t border-pit-border" />
+          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300" onClick={handleLogout}>
+            <LogOut size={15} />
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -344,19 +419,20 @@ function TournamentDetailsCard({
   const registeredPlayerCount = Number(tournament.playercount ?? 0);
 
   return (
-    <section className="card overflow-hidden">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-2">
-          <h2 className="text-2xl font-semibold text-white">{tournament.name}</h2>
+    <section className="card overflow-hidden p-4">
+      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="eyebrow">Tournament details</p>
+          <h2 className="mt-1 truncate text-xl font-bold text-white sm:text-2xl">{tournament.name}</h2>
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-3 lg:w-auto lg:items-end">
+        <div className="flex w-full min-w-0 flex-col gap-2 lg:w-auto lg:items-end">
           {pocketAdminUrl && (
-            <div className="flex w-full min-w-0 items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/50 px-3 py-2 lg:w-auto">
+            <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-2 lg:w-auto">
               <div className="inline-block rounded-md bg-white p-1">
-                <QRCodeSVG value={pocketAdminUrl} size={52} />
+                <QRCodeSVG value={pocketAdminUrl} size={42} />
               </div>
               <a
-                className="min-w-0 text-sm font-medium text-pit-teal hover:text-pit-teal/80"
+                className="min-w-0 text-xs font-semibold text-pit-teal hover:text-pit-teal/80"
                 href={pocketAdminUrl}
                 target="_blank"
                 rel="noreferrer"
@@ -367,12 +443,12 @@ function TournamentDetailsCard({
           )}
           {canManage && (
             <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-              <button type="button" className="btn-ghost text-sm" onClick={() => editing ? setEditing(false) : startEditing()}>
+              <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => editing ? setEditing(false) : startEditing()}>
                 {editing ? 'Cancel' : 'Edit Details'}
               </button>
               <button
                 type="button"
-                className="btn-danger text-sm"
+                className="btn-danger px-3 py-2 text-xs"
                 onClick={() => {
                   setNotifyOnDelete(registeredPlayerCount > 0);
                   setConfirmDelete(true);
@@ -558,43 +634,40 @@ function TournamentDetailsCard({
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
-          <Row label="Date" value={normalizeDate(tournament.tourneydate) ?? 'TBD'} />
-          <Row label="Time" value={normalizeTime(tournament.tourneytime) ?? 'TBD'} />
-          <Row label="Buy-in" value={formatMoney(tournament.buyin)} />
-          <Row label="Rake" value={formatMoney(toNumber(tournament.rake))} />
-          <Row label="Max players" value={tournament.maxplayers || 'Unlimited'} />
-          <Row
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <DetailTile label="Date" value={normalizeDate(tournament.tourneydate) ?? 'TBD'} />
+          <DetailTile label="Time" value={normalizeTime(tournament.tourneytime) ?? 'TBD'} />
+          <DetailTile label="Buy-in" value={formatMoney(tournament.buyin)} accent />
+          <DetailTile label="Max players" value={tournament.maxplayers || 'Unlimited'} />
+          <DetailTile label="Rake" value={formatMoney(toNumber(tournament.rake))} />
+          <DetailTile
             label="Rebuy"
             value={tournament.rebuyprice > 0
-              ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips${tournament.rebuylastlevel ? ` through level ${tournament.rebuylastlevel}` : ''}`
+              ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips${tournament.rebuylastlevel ? ` through L${tournament.rebuylastlevel}` : ''}`
               : 'Not enabled'}
           />
-          <Row
+          <DetailTile label="Rebuys taken" value={totalRebuys} />
+          <DetailTile
             label="Add-on"
             value={tournament.addonprice > 0 ? `${formatMoney(tournament.addonprice)} / ${tournament.addonchips} chips` : 'Not enabled'}
           />
-          <Row label="Rebuys taken" value={totalRebuys} />
-          <Row label="Add-ons taken" value={totalAddons} />
-          <Row
+          <DetailTile label="Add-ons taken" value={totalAddons} />
+          <DetailTile
             label="Bounties"
+            className="sm:col-span-2 xl:col-span-3"
             value={tournament.bountyenabled
               ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Manual'} - ${formatBountyPool(tournament, bountyTotal)}${formatBountyStart(tournament)}${formatBountyMinimum(tournament)}`
               : 'Not enabled'}
           />
           {showTvBoard && (
-            <Row
+            <DetailTile
               label="TV board"
+              className="sm:col-span-2 xl:col-span-1"
               value={
-                <div className="text-right space-y-2">
-                  <div className="font-mono tracking-[0.2em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</div>
+                <div className="space-y-1">
+                  <div className="font-mono tracking-[0.18em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</div>
                   {tournament.tvdisplaycode ? (
-                    <a
-                      className="text-xs text-pit-teal hover:text-pit-teal/80"
-                      href={`/tv/${tournament.tvdisplaycode}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a className="text-xs text-pit-teal hover:text-pit-teal/80" href={`/tv/${tournament.tvdisplaycode}`} target="_blank" rel="noreferrer">
                       Open TV board
                     </a>
                   ) : (
@@ -658,11 +731,21 @@ function TournamentDetailsCard({
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailTile({
+  label,
+  value,
+  accent = false,
+  className = '',
+}: {
+  label: string;
+  value: React.ReactNode;
+  accent?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="flex items-center justify-between border-t border-pit-border/40 pt-3 text-sm first:border-0 first:pt-0">
-      <span className="text-pit-muted">{label}</span>
-      <span className="font-medium text-white">{value}</span>
+    <div className={`min-w-0 rounded-xl border border-pit-border bg-pit-bg/40 px-3 py-2.5 ${className}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">{label}</div>
+      <div className={`mt-1 min-w-0 break-words text-sm font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</div>
     </div>
   );
 }
