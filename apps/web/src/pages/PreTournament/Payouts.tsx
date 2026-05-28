@@ -72,8 +72,12 @@ export default function Payouts({ tournamentId, tournament }: Props) {
 
   const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const registeredCount = players.length;
-  const payoutFieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
-  const payoutFieldLabel = enteredFieldCount > 0 ? 'entered' : 'registered';
+  const placementFieldSize = registeredCount;
+  const payoutFieldSize = enteredFieldCount;
+  const payoutFieldLabel = payoutFieldSize === 1 ? 'entered player' : 'entered players';
+  const registeredPlaceLimit = placementFieldSize > 0 ? placementFieldSize : 1;
+  const maxCountPlaces = Math.max(1, canUseClubFeatures ? registeredPlaceLimit : Math.min(registeredPlaceLimit, 3));
+  const countDropdownValue = String(clamp(payoutConfig.value, 1, maxCountPlaces));
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const grossPot = (toNumber(tournament.buyin) * enteredFieldCount)
@@ -88,8 +92,8 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   const rakeTooHigh = toNumber(rakeInput) > grossPot;
 
   const places = useMemo(
-    () => resolvePaidPlaces(payoutConfig, payoutFieldSize),
-    [payoutConfig, payoutFieldSize]
+    () => resolvePaidPlaces(payoutConfig, placementFieldSize),
+    [payoutConfig, placementFieldSize]
   );
 
   useEffect(() => {
@@ -118,10 +122,17 @@ export default function Payouts({ tournamentId, tournament }: Props) {
       ? payoutConfig.value
       : mode === 'percent'
         ? 25
-        : Math.max(1, places);
+        : clamp(places, 1, maxCountPlaces);
     const nextConfig = normalizePayoutConfig({ mode, value: nextValue });
     setPayoutConfig(nextConfig);
     setSelectionInput(String(nextConfig.value));
+  }
+
+  function handlePayTopChange(raw: string) {
+    if (!canManage) return;
+    const nextValue = clamp(Number(raw), 1, maxCountPlaces);
+    setPayoutConfig({ mode: 'count', value: nextValue });
+    setSelectionInput(String(nextValue));
   }
 
   function handleSelectionInputChange(raw: string) {
@@ -153,9 +164,9 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   return (
       <div className="space-y-4">
       <div className="card space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-3">
           <h3 className="font-semibold text-white">Payout Structure</h3>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2">
             <div className="flex rounded-lg border border-pit-border bg-pit-surface/70 p-1">
               <button
                 type="button"
@@ -176,17 +187,30 @@ export default function Payouts({ tournamentId, tournament }: Props) {
             </div>
             <label className="flex items-center gap-2 text-sm text-pit-text">
               <span>{payoutConfig.mode === 'count' ? 'Pay Top' : 'Pay'}</span>
-              <input
-                className="input w-24"
-                type="number"
-                min="1"
-                max={payoutConfig.mode === 'percent' ? '100' : !canUseClubFeatures ? '3' : undefined}
-                step="1"
-                value={selectionInput}
-                onChange={(e) => handleSelectionInputChange(e.target.value)}
-                onBlur={handleSelectionInputBlur}
-                disabled={!canManage}
-              />
+              {payoutConfig.mode === 'count' ? (
+                <select
+                  className="input w-24"
+                  value={countDropdownValue}
+                  onChange={(e) => handlePayTopChange(e.target.value)}
+                  disabled={!canManage || maxCountPlaces <= 0}
+                >
+                  {Array.from({ length: maxCountPlaces }, (_, index) => index + 1).map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input w-24"
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={selectionInput}
+                  onChange={(e) => handleSelectionInputChange(e.target.value)}
+                  onBlur={handleSelectionInputBlur}
+                  disabled={!canManage}
+                />
+              )}
               <span>{payoutConfig.mode === 'percent' ? '% of Field' : 'Players'}</span>
             </label>
           </div>
@@ -194,17 +218,20 @@ export default function Payouts({ tournamentId, tournament }: Props) {
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-pit-text">
           {payoutConfig.mode === 'percent' ? (
-            payoutFieldSize > 0 ? (
-              <span className="chip">{selectionInput || payoutConfig.value}% of {payoutFieldSize} {payoutFieldLabel} pays {places}</span>
+            placementFieldSize > 0 ? (
+              <span className="chip">{selectionInput || payoutConfig.value}% of {placementFieldSize} registered pays {places}</span>
             ) : (
               <span className="chip">{selectionInput || payoutConfig.value}% will update from the field once players register</span>
             )
           ) : (
             <span className="chip">
               Paying {places} player{places === 1 ? '' : 's'}
-              {payoutFieldSize > 0 ? ` from ${payoutFieldSize} ${payoutFieldLabel}` : ''}
+              {placementFieldSize > 0 ? ` from ${placementFieldSize} registered` : ''}
             </span>
           )}
+          <span className="chip">
+            Payout pool from {payoutFieldSize} {payoutFieldLabel}
+          </span>
           {canManage && payoutStructureMutation.isPending && <span className="text-pit-muted">Saving...</span>}
           {canManage && payoutStructureMutation.error && <span className="text-red-400">{payoutStructureMutation.error.message}</span>}
         </div>

@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Menu, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
+import BrandLockup from '../../components/BrandLockup';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { featureFlags } from '../../features';
@@ -70,6 +71,7 @@ export default function RunTournament({
   const [timerState, setTimerState] = useState<TimerState | null>(null);
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [showPlayerActions, setShowPlayerActions] = useState(false);
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
@@ -771,6 +773,8 @@ export default function RunTournament({
   const showSeatingBoard = tvMode
     ? tournament.tvdisplaymode === 'seating' || isPreStart
     : showAdminControls && tournament.tvdisplaymode === 'seating';
+  const rebuysEnabled = toNumber(tournament.rebuyprice) > 0;
+  const addonsEnabled = toNumber(tournament.addonprice) > 0;
 
   return (
     <div className="space-y-4">
@@ -782,73 +786,99 @@ export default function RunTournament({
             : 'p-0'
         }`}
       >
-        <div className={`flex flex-wrap items-center justify-between gap-2 ${displayMode ? 'min-h-0' : ''}`}>
-          {showAdminControls ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className="input py-1.5 pr-8 text-sm"
-                style={{ width: `${playerSelectWidth}px` }}
-                value={selectedPlayer?.userid ?? ''}
-                onChange={(event) => setSelectedPlayerId(event.target.value)}
-              >
-                {actionablePlayers.length === 0 ? (
-                  <option value="">No active players</option>
-                ) : (
-                  actionablePlayers.map((player) => (
-                    <option key={player.userid} value={player.userid}>
-                      {playerNameWithMedals(player)}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button
-                type="button"
-                className="btn-ghost px-3 py-1.5 text-xs"
-                onClick={() => selectedPlayer && checkinMutation.mutate(selectedPlayer.userid)}
-                disabled={!selectedPlayer || checkinMutation.isPending}
-              >
-                {selectedPlayer?.checkedin ? 'Undo Check-In' : 'Check In'}
-              </button>
-              {canUseClubFeatures ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn-ghost px-3 py-1.5 text-xs"
-                    onClick={() => selectedPlayer && rebuyMutation.mutate(selectedPlayer.userid)}
-                    disabled={!selectedPlayer || !selectedPlayer.checkedin || rebuyMutation.isPending}
+        {showAdminControls ? (
+          <section className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5">
+                  <select
+                    className="input min-w-0 py-1.5 pr-8 text-sm"
+                    style={{ width: `${playerSelectWidth}px`, maxWidth: 'min(68vw, 320px)' }}
+                    value={selectedPlayer?.userid ?? ''}
+                    onChange={(event) => {
+                      setSelectedPlayerId(event.target.value);
+                      setShowPlayerActions(false);
+                    }}
                   >
-                    Rebuy
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost px-3 py-1.5 text-xs"
-                    onClick={() => selectedPlayer && addonMutation.mutate(selectedPlayer.userid)}
-                    disabled={!selectedPlayer || selectedPlayer.addedon || addonMutation.isPending}
-                  >
-                    {selectedPlayer?.addedon ? 'Add-On Used' : 'Add-On'}
-                  </button>
-                </>
-              ) : null}
-              <button
-                type="button"
-                className="btn-danger px-3 py-1.5 text-xs"
-                onClick={() => selectedPlayer && knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1) })}
-                disabled={!selectedPlayer || !selectedPlayer.checkedin || selectedPlayer.placed != null || knockMutation.isPending}
-              >
-                Knockout
-              </button>
-            </div>
-          ) : (
-            <div />
-          )}
+                    {actionablePlayers.length === 0 ? (
+                      <option value="">No active players</option>
+                    ) : (
+                      actionablePlayers.map((player) => (
+                        <option key={player.userid} value={player.userid}>
+                          {playerNameWithMedals(player)}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
+                      onClick={() => setShowPlayerActions((current) => !current)}
+                      disabled={!selectedPlayer}
+                      aria-expanded={showPlayerActions}
+                    >
+                      Actions
+                      <ChevronDown size={14} />
+                    </button>
+                    {showPlayerActions && selectedPlayer && (
+                      <div className="absolute right-0 z-30 mt-2 w-48 rounded-xl border border-pit-border bg-pit-card p-2 shadow-2xl">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => {
+                            checkinMutation.mutate(selectedPlayer.userid);
+                            setShowPlayerActions(false);
+                          }}
+                          disabled={checkinMutation.isPending || selectedPlayer.placed != null}
+                        >
+                          {selectedPlayer.checkedin ? 'Check out' : 'Check in'}
+                        </button>
+                        {canUseClubFeatures && rebuysEnabled && (
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => {
+                              rebuyMutation.mutate(selectedPlayer.userid);
+                              setShowPlayerActions(false);
+                            }}
+                            disabled={!selectedPlayer.checkedin || rebuyMutation.isPending}
+                          >
+                            Rebuy
+                          </button>
+                        )}
+                        {canUseClubFeatures && addonsEnabled && (
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => {
+                              addonMutation.mutate(selectedPlayer.userid);
+                              setShowPlayerActions(false);
+                            }}
+                            disabled={selectedPlayer.addedon || addonMutation.isPending}
+                          >
+                            {selectedPlayer.addedon ? 'Add-On Used' : 'Add-On'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => {
+                            knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1) });
+                            setShowPlayerActions(false);
+                          }}
+                          disabled={!selectedPlayer.checkedin || selectedPlayer.placed != null || knockMutation.isPending}
+                        >
+                          Knockout
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-          {(showAdminControls || displayMode) && (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {showAdminControls && (
-                <div className="flex items-center rounded-lg border border-pit-border bg-pit-bg/60 p-1">
+                <div className="flex items-center rounded-xl border border-pit-border bg-pit-bg/65 p-1">
                   <button
                     type="button"
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold ${((tournament.tvdisplaymode ?? 'timer') === 'timer') ? 'bg-pit-teal text-white' : 'text-pit-muted hover:text-white'}`}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${((tournament.tvdisplaymode ?? 'timer') === 'timer') ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
                     disabled={tvOptionsMutation.isPending}
                     onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'timer' })}
                   >
@@ -856,65 +886,69 @@ export default function RunTournament({
                   </button>
                   <button
                     type="button"
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold ${tournament.tvdisplaymode === 'seating' ? 'bg-pit-teal text-white' : 'text-pit-muted hover:text-white'}`}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${tournament.tvdisplaymode === 'seating' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
                     disabled={tvOptionsMutation.isPending}
                     onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'seating' })}
                   >
                     Seat Chart
                   </button>
                 </div>
-              )}
-              {showAdminControls && featureFlags.tvBoard && tournament.tvdisplaycode && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-sm text-white hover:border-pit-muted hover:bg-pit-surface/70"
-                    onClick={() => setShowTvMenu((current) => !current)}
-                    aria-expanded={showTvMenu}
-                    aria-label="TV board options"
-                  >
-                    <span className="mr-2 text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
-                    <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
-                    <Menu size={15} className="text-pit-muted" />
-                  </button>
-                  {showTvMenu && (
-                    <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 text-left shadow-2xl">
-                      <a
-                        className="mb-2 block rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-xs font-medium text-pit-teal hover:text-pit-teal/80"
-                        href={`/tv/${tournament.tvdisplaycode}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open TV board
-                      </a>
-                      <TvMenuToggle
-                        label="Greeting Display"
-                        enabled={tournament.tvgreetingdisplayenabled ?? true}
-                        disabled={tvOptionsMutation.isPending}
-                        onClick={() => tvOptionsMutation.mutate({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
-                      />
-                      <TvMenuToggle
-                        label="Greeting Audio"
-                        enabled={tournament.tvgreetingaudioenabled ?? true}
-                        disabled={tvOptionsMutation.isPending}
-                        onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
-                      />
-                      <TvMenuToggle
-                        label="Player Lobby QR"
-                        enabled={tournament.tvshowknockoutqrenabled ?? true}
-                        disabled={tvOptionsMutation.isPending}
-                        onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
-                      />
-                      <p className="mt-2 text-[11px] leading-4 text-pit-muted">
-                        TV view follows the Timer or Seat Chart control above.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                {featureFlags.tvBoard && tournament.tvdisplaycode && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 px-3 py-2 text-sm text-white hover:border-pit-teal/70 hover:bg-pit-surface/70"
+                      onClick={() => setShowTvMenu((current) => !current)}
+                      aria-expanded={showTvMenu}
+                      aria-label="TV board options"
+                    >
+                      <span className="text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
+                      <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
+                      <Menu size={15} className="text-pit-muted" />
+                    </button>
+                    {showTvMenu && (
+                      <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 text-left shadow-2xl">
+                        <a
+                          className="mb-2 block rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-xs font-medium text-pit-teal hover:text-pit-teal/80"
+                          href={`/tv/${tournament.tvdisplaycode}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open TV board
+                        </a>
+                        <TvMenuToggle
+                          label="Greeting Display"
+                          enabled={tournament.tvgreetingdisplayenabled ?? true}
+                          disabled={tvOptionsMutation.isPending}
+                          onClick={() => tvOptionsMutation.mutate({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
+                        />
+                        <TvMenuToggle
+                          label="Greeting Audio"
+                          enabled={tournament.tvgreetingaudioenabled ?? true}
+                          disabled={tvOptionsMutation.isPending}
+                          onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
+                        />
+                        <TvMenuToggle
+                          label="Player Lobby QR"
+                          enabled={tournament.tvshowknockoutqrenabled ?? true}
+                          disabled={tvOptionsMutation.isPending}
+                          onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
+                        />
+                        <p className="mt-2 text-[11px] leading-4 text-pit-muted">
+                          TV view follows the Timer or Seat Chart control above.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+          </section>
+        ) : displayMode ? (
+          <div className="flex justify-end">
+            <BrandLockup compact showSlogan={false} className="items-center gap-2" />
+          </div>
+        ) : null}
 
         {currentBlind ? (
           <>
@@ -966,12 +1000,6 @@ export default function RunTournament({
                   registeredPlayers={seatingRoster}
                   welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
                   fullWidth
-                  canToggleCheckin={showAdminControls}
-                  checkinPendingUserId={checkinMutation.isPending ? checkinMutation.variables ?? null : null}
-                  onToggleCheckin={(player) => {
-                    setSelectedPlayerId(player.userid);
-                    checkinMutation.mutate(player.userid);
-                  }}
                 />
               </div>
             ) : (
@@ -1454,18 +1482,12 @@ function TvSeatingBoard({
   registeredPlayers,
   welcomeMessage,
   fullWidth = false,
-  canToggleCheckin = false,
-  checkinPendingUserId = null,
-  onToggleCheckin,
 }: {
   seatedPlayers: TournamentPlayer[];
   checkedInPlayers: TournamentPlayer[];
   registeredPlayers: TournamentPlayer[];
   welcomeMessage: string;
   fullWidth?: boolean;
-  canToggleCheckin?: boolean;
-  checkinPendingUserId?: string | null;
-  onToggleCheckin?: (player: TournamentPlayer) => void;
 }) {
   const hasAssignments = seatedPlayers.length > 0;
   const checkedInIds = new Set(checkedInPlayers.map((player) => player.userid));
@@ -1497,20 +1519,14 @@ function TvSeatingBoard({
         <div className={`grid overflow-y-auto pr-1 ${fullWidth ? 'max-h-[70vh] grid-cols-4 gap-2 xl:grid-cols-5 2xl:grid-cols-6' : 'max-h-[32rem] grid-cols-2 gap-1.5 xl:grid-cols-3 2xl:grid-cols-4'}`}>
           {roster.map((player) => {
             const checkedIn = checkedInIds.has(player.userid) || Boolean(player.checkedin);
-            const tileIsPending = checkinPendingUserId === player.userid;
-            const TileElement = canToggleCheckin ? 'button' : 'div';
             return (
-            <TileElement
+            <div
               key={player.userid}
-              type={canToggleCheckin ? 'button' : undefined}
-              disabled={canToggleCheckin ? tileIsPending : undefined}
-              onClick={canToggleCheckin ? () => onToggleCheckin?.(player) : undefined}
-              title={canToggleCheckin ? `${checkedIn ? 'Undo check-in for' : 'Check in'} ${player.displayname ?? player.emailaddress}` : undefined}
               className={`flex min-w-0 items-center rounded-lg border text-left transition ${
                 checkedIn
                   ? 'border-emerald-400/45 bg-emerald-400/12 text-white'
                   : 'border-pit-border bg-pit-bg/45 text-pit-muted'
-              } ${canToggleCheckin ? 'cursor-pointer hover:border-yellow-200/55 hover:bg-yellow-200/10 focus:outline-none focus:ring-2 focus:ring-yellow-200/40 disabled:cursor-wait disabled:opacity-60' : ''} ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
+              } ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
             >
               {checkedIn ? (
                 <CheckCircle2 className={`shrink-0 text-emerald-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
@@ -1533,7 +1549,7 @@ function TvSeatingBoard({
                   </p>
                 ) : null}
               </div>
-            </TileElement>
+            </div>
           );})}
         </div>
       )}

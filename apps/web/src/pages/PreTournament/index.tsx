@@ -113,37 +113,36 @@ export default function PreTournamentPage() {
 
   return (
     <Layout
-      title={tournament.name}
       back="/"
       backLabel="Return to Command Center"
       hideSidebar
       hideMobileNav
-      headerRight={<TournamentAccountMenu />}
+      headerRight={(
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="hidden min-w-0 gap-1 rounded-2xl border border-pit-border bg-pit-card/80 p-1 shadow-[0_12px_28px_rgba(0,0,0,0.16)] md:flex">
+            {tabs.map((currentTab) => {
+              const Icon = currentTab.Icon;
+              return (
+                <button
+                  key={currentTab.id}
+                  className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] font-semibold transition sm:text-sm lg:min-w-32 lg:justify-start ${
+                    tab === currentTab.id
+                      ? 'bg-pit-teal/20 text-white shadow-[0_0_22px_rgba(20,184,166,0.2)] ring-1 ring-pit-teal/35'
+                      : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
+                  }`}
+                  onClick={() => setTab(currentTab.id)}
+                >
+                  <Icon size={15} className="shrink-0" />
+                  <span className="hidden md:inline">{currentTab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <TournamentAccountMenu />
+        </div>
+      )}
       mainWidthClassName="max-w-7xl"
     >
-      <div className="relative z-10 mb-5 mt-2 hidden border-b border-pit-border md:block md:mt-3">
-        <div className="flex gap-1">
-          {tabs.map((currentTab) => {
-            const Icon = currentTab.Icon;
-            return (
-            <button
-              key={currentTab.id}
-              className={`flex min-w-0 items-center justify-center gap-1.5 border-b-2 px-1.5 py-3 text-[11px] font-semibold transition-colors sm:px-3 sm:text-sm md:min-w-36 md:justify-start ${
-                tab === currentTab.id
-                  ? 'border-pit-teal text-white'
-                  : 'border-transparent text-pit-muted hover:text-pit-text'
-              }`}
-              onClick={() => setTab(currentTab.id)}
-            >
-              <Icon size={15} className="shrink-0" />
-              <span className="truncate md:hidden">{currentTab.mobileLabel}</span>
-              <span className="hidden md:inline">{currentTab.label}</span>
-            </button>
-          );
-          })}
-        </div>
-      </div>
-
       {tab === 'details' && (
         <div className="space-y-4">
           <TournamentDetailsCard
