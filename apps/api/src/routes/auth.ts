@@ -26,12 +26,18 @@ function normalizePhoneNumber(value: unknown): string | null | undefined {
 }
 
 authRouter.post('/register', async (req: Request, res: Response) => {
-  const { email, password, displayname, acceptterms } = req.body as {
-    email: string; password: string; displayname?: string; acceptterms?: boolean;
+  const { email, password, displayname, name, acceptterms } = req.body as {
+    email: string; password: string; displayname?: string; name?: string; acceptterms?: boolean;
   };
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !password) { res.status(400).json({ error: 'Email and password required' }); return; }
   if (acceptterms !== true) { res.status(400).json({ error: 'You must agree to the Terms of Service to create an account.' }); return; }
+  const normalizedName = String(name ?? '').trim().slice(0, 160);
+  const normalizedDisplayName = String(displayname ?? '').trim().slice(0, 80);
+  if (!normalizedName || !normalizedDisplayName) {
+    res.status(400).json({ error: 'Name and table nickname are required.' });
+    return;
+  }
 
   const emailhash = hashEmail(normalizedEmail);
   const existing = await queryOne('SELECT guid FROM users WHERE emailhash = $1', [emailhash]);
@@ -49,9 +55,9 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   if (!row) { res.status(500).json({ error: 'Failed to create user' }); return; }
 
   await query(
-    `INSERT INTO usermetadata (userid, nickname, tierid, issuperadmin, hostedtournamentcount, termsacceptedat)
-     VALUES ($1, $2, 1, FALSE, 0, now())`,
-    [row.guid, displayname ?? normalizedEmail.split('@')[0]]
+    `INSERT INTO usermetadata (userid, fullname, nickname, tierid, issuperadmin, hostedtournamentcount, termsacceptedat)
+     VALUES ($1, $2, $3, 1, FALSE, 0, now())`,
+    [row.guid, normalizedName, normalizedDisplayName]
   );
   await syncSuperAdminByEmail(row.guid);
 
@@ -152,7 +158,8 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
-  const { displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin } = req.body as {
+  const { name, displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin } = req.body as {
+    name?: string;
     displayname?: string;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
@@ -165,6 +172,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     smsoptedin?: boolean;
   };
 
+  const normalizedName = typeof name === 'string' ? name.trim().slice(0, 160) : undefined;
   const normalizedDisplayName = typeof displayname === 'string' ? displayname.trim().slice(0, 80) : undefined;
   const normalizedPhoneNumber = normalizePhoneNumber(phonenumber);
   const normalizedAudioData = typeof checkinaudiodata === 'string' ? checkinaudiodata.trim() : undefined;
@@ -210,6 +218,10 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Table nickname is required.' });
     return;
   }
+  if (name !== undefined && !normalizedName) {
+    res.status(400).json({ error: 'Name is required.' });
+    return;
+  }
 
   await query(
     `INSERT INTO usermetadata (userid)
@@ -219,7 +231,8 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
   );
   await query(
     `UPDATE usermetadata
-     SET nickname = COALESCE($2::STRING, nickname),
+     SET fullname = COALESCE($13::STRING, fullname),
+         nickname = COALESCE($2::STRING, nickname),
          checkinaudiodata = CASE
            WHEN $5::BOOL = TRUE THEN NULL
            WHEN $3::STRING IS NOT NULL THEN $3::STRING
@@ -268,6 +281,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
       normalizedPhoneNumber,
       phonenumber === null || String(phonenumber ?? '').trim() === '',
       smsoptedin === undefined ? null : smsoptedin === true,
+      normalizedName ?? null,
     ]
   );
 
@@ -287,6 +301,8 @@ async function selectAuthProfile(userId: string) {
     emailaddress: string;
     emailencrypted?: string | null;
     emailverified: boolean;
+    fullname?: string | null;
+    tablename?: string | null;
     displayname: string;
     tierid: number;
     accounttier: string;
@@ -309,7 +325,9 @@ async function selectAuthProfile(userId: string) {
     smsoptedin?: boolean;
   }>(
     `SELECT u.guid, u.emailaddress, u.emailencrypted, u.emailverified,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            NULLIF(trim(coalesce(m.fullname, '')), '') AS fullname,
+            NULLIF(trim(coalesce(m.nickname, '')), '') AS tablename,
+            COALESCE(NULLIF(trim(coalesce(m.nickname, '')), ''), NULLIF(trim(coalesce(m.fullname, '')), ''), NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             ${sqlResolveTierId('m')} AS tierid,
             ${sqlResolveTierKey('m')} AS accounttier,
             COALESCE(m.issuperadmin, FALSE) AS issuperadmin,

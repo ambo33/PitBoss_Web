@@ -17,8 +17,20 @@ import {
   DEFAULT_ONE_MINUTE_ANNOUNCEMENT,
 } from '../../utils/timerAudio';
 
-export default function GroupsPanel({ onDetailStateChange }: { onDetailStateChange?: (open: boolean) => void }) {
+type GroupOpenRequest = { groupId: string; token: number } | null;
+
+export default function GroupsPanel({
+  onDetailStateChange,
+  createRequestId = 0,
+  openGroupRequest = null,
+}: {
+  onDetailStateChange?: (open: boolean) => void;
+  createRequestId?: number;
+  openGroupRequest?: GroupOpenRequest;
+}) {
   const qc = useQueryClient();
+  const lastCreateRequestRef = useRef(createRequestId);
+  const lastOpenRequestRef = useRef(openGroupRequest?.token ?? 0);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [selected, setSelected] = useState<Group | null>(null);
@@ -39,6 +51,23 @@ export default function GroupsPanel({ onDetailStateChange }: { onDetailStateChan
   });
   const hostedGroupCount = groups.filter((group) => group.isadmin).length;
   const hostedGroupLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedGroupCount >= 1;
+
+  useEffect(() => {
+    if (!createRequestId || createRequestId === lastCreateRequestRef.current) return;
+    lastCreateRequestRef.current = createRequestId;
+    setSelected(null);
+    setShowCreate(true);
+  }, [createRequestId]);
+
+  useEffect(() => {
+    if (!openGroupRequest || openGroupRequest.token === lastOpenRequestRef.current || groups.length === 0) return;
+    lastOpenRequestRef.current = openGroupRequest.token;
+    const requestedGroup = groups.find((group) => group.groupid === openGroupRequest.groupId);
+    if (requestedGroup) {
+      setShowCreate(false);
+      setSelected(requestedGroup);
+    }
+  }, [groups, openGroupRequest]);
 
   useEffect(() => {
     onDetailStateChange?.(Boolean(selected));

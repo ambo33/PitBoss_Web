@@ -258,6 +258,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       qc.invalidateQueries({ queryKey: ['leagues'] });
     },
   });
+  const addAdminMutation = useMutation({
+    mutationFn: (email: string) => api.addLeagueAdmin(league.leagueid, email),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
   const inviteSpotTakeoverMutation = useMutation({
     mutationFn: ({ userId, email }: { userId: string; email: string }) =>
       api.inviteLeagueSpotTakeover(league.leagueid, userId, email, data?.selectedseasonid ?? selectedSeasonId),
@@ -321,7 +328,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     },
   });
   const updateLeagueMutation = useMutation({
-    mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+    mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible'>>) =>
       api.updateLeague(league.leagueid, payload),
     onSuccess: async () => {
       await Promise.all([
@@ -334,8 +341,8 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     },
   });
   const updateNamesMutation = useMutation({
-    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string }) => {
-      await api.updateLeague(league.leagueid, { name: payload.leagueName });
+    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean }) => {
+      await api.updateLeague(league.leagueid, { name: payload.leagueName, memberledgervisible: payload.memberledgervisible });
       if (payload.seasonId && payload.seasonName) {
         await api.updateLeagueSeason(league.leagueid, payload.seasonId, { name: payload.seasonName });
       }
@@ -676,14 +683,16 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         <LeagueMembersCard
           detail={detail}
           onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
+          onAddAdmin={(email) => addAdminMutation.mutate(email)}
           onInviteTakeover={(userId, email) => inviteSpotTakeoverMutation.mutate({ userId, email })}
           onToggleAdmin={(userId, isadmin) => updateMemberAdminMutation.mutate({ userId, isadmin })}
           onRemoveMember={setRemoveMemberTarget}
           addLoading={addGuestMutation.isPending}
+          addAdminLoading={addAdminMutation.isPending}
           inviteLoadingUserId={inviteSpotTakeoverMutation.isPending ? inviteSpotTakeoverMutation.variables?.userId : null}
           adminLoadingUserId={updateMemberAdminMutation.isPending ? updateMemberAdminMutation.variables?.userId : null}
           removeLoading={removeMemberMutation.isPending}
-          error={addGuestMutation.error?.message ?? inviteSpotTakeoverMutation.error?.message ?? updateMemberAdminMutation.error?.message ?? removeMemberMutation.error?.message}
+          error={addGuestMutation.error?.message ?? addAdminMutation.error?.message ?? inviteSpotTakeoverMutation.error?.message ?? updateMemberAdminMutation.error?.message ?? removeMemberMutation.error?.message}
         />
       )}
 
@@ -1301,7 +1310,7 @@ function MemberLeagueView({
     return result ? !result.dnf : isEventDueToDate(event, today);
   });
   const remainingEvents = detail.events.filter((event) => !resultByEvent.has(event.eventid) && isEventRemaining(event, today));
-  const nextEvent = [...remainingEvents].sort(compareLeagueEvents)[0] ?? null;
+  const nextEvent = detail.events.filter((event) => isEventRemaining(event, today)).sort(compareLeagueEvents)[0] ?? null;
   const resultEventIds = new Set(detail.results.map((result) => result.eventid));
   const completedEventIds = new Set(
     detail.events
@@ -1318,6 +1327,7 @@ function MemberLeagueView({
     ? detail.payments.filter((payment) => payment.userid === viewedUserId).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
     : 0;
   const openBalance = Math.max(0, totalDueToDate - totalPaid);
+  const canViewLeagueLedger = Boolean(detail.league.memberledgervisible);
 
   return (
     <div className="space-y-5">
@@ -1460,7 +1470,7 @@ function MemberLeagueView({
         </div>
       </section>
 
-      <LeagueAuditTrail detail={detail} compact />
+      {canViewLeagueLedger && <LeagueAuditTrail detail={detail} compact />}
     </div>
   );
 }
@@ -1508,7 +1518,7 @@ function NextLeagueEventCard({ detail, event }: { detail: LeagueDetail; event: L
         </div>
       ) : (
         <p className="rounded-lg border border-pit-border bg-pit-bg/70 p-3 text-sm leading-6 text-pit-text">
-          No remaining events are scheduled for you in this season.
+          No upcoming events are scheduled in this season.
         </p>
       )}
     </div>
@@ -1518,10 +1528,12 @@ function NextLeagueEventCard({ detail, event }: { detail: LeagueDetail; event: L
 function LeagueMembersCard({
   detail,
   onAddGuest,
+  onAddAdmin,
   onInviteTakeover,
   onToggleAdmin,
   onRemoveMember,
   addLoading,
+  addAdminLoading,
   inviteLoadingUserId,
   adminLoadingUserId,
   removeLoading,
@@ -1529,20 +1541,26 @@ function LeagueMembersCard({
 }: {
   detail: LeagueDetail;
   onAddGuest: (displayname: string) => void;
+  onAddAdmin: (email: string) => void;
   onInviteTakeover: (userId: string, email: string) => void;
   onToggleAdmin: (userId: string, isadmin: boolean) => void;
   onRemoveMember: (member: LeagueMember) => void;
   addLoading: boolean;
+  addAdminLoading: boolean;
   inviteLoadingUserId?: string | null;
   adminLoadingUserId?: string | null;
   removeLoading: boolean;
   error?: string;
 }) {
   const [guestName, setGuestName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
   const [takeoverEmails, setTakeoverEmails] = useState<Record<string, string>>({});
   const approvedMembers = detail.members
     .filter((member) => member.approved && member.participating)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
+  const leagueAdmins = detail.members
+    .filter((member) => member.approved && member.isadmin)
+    .sort((a, b) => Number(b.userid === detail.league.ownerid) - Number(a.userid === detail.league.ownerid) || String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const pendingCount = detail.members.filter((member) => !member.approved).length;
 
   const submitGuest = () => {
@@ -1555,6 +1573,12 @@ function LeagueMembersCard({
     const email = (takeoverEmails[member.userid] ?? '').trim();
     if (!email) return;
     onInviteTakeover(member.userid, email);
+  };
+  const submitAdmin = () => {
+    const email = adminEmail.trim();
+    if (!email) return;
+    onAddAdmin(email);
+    setAdminEmail('');
   };
 
   return (
@@ -1571,32 +1595,88 @@ function LeagueMembersCard({
       </div>
 
       {detail.league.isadmin && (
-        <div className="grid gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3 lg:grid-cols-[minmax(260px,420px)_auto_minmax(0,1fr)] lg:items-end">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add player</span>
-            <input
-              className="input py-2"
-              value={guestName}
-              onChange={(event) => setGuestName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') submitGuest();
-              }}
-              placeholder="Player name"
-            />
-          </label>
-          <button className="btn-primary justify-center px-4 py-2 text-sm" disabled={addLoading || !guestName.trim()} onClick={submitGuest}>
-            <UserPlus size={13} />
-            {addLoading ? 'Adding...' : 'Add player'}
-          </button>
-          {error ? (
-            <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>
-          ) : (
-            <p className="text-sm leading-6 text-pit-muted">
-              Removing a player from this season also removes that season's finishes and payment records for that player.
-            </p>
-          )}
+        <div className="grid gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add player</span>
+              <input
+                className="input py-2"
+                value={guestName}
+                onChange={(event) => setGuestName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') submitGuest();
+                }}
+                placeholder="Player name"
+              />
+            </label>
+            <button className="btn-primary justify-center px-4 py-2 text-sm" disabled={addLoading || !guestName.trim()} onClick={submitGuest}>
+              <UserPlus size={13} />
+              {addLoading ? 'Adding...' : 'Add player'}
+            </button>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add league admin</span>
+              <input
+                className="input py-2"
+                type="email"
+                value={adminEmail}
+                onChange={(event) => setAdminEmail(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') submitAdmin();
+                }}
+                placeholder="Registered email"
+              />
+            </label>
+            <button className="btn-ghost justify-center gap-2 px-4 py-2 text-sm" disabled={addAdminLoading || !adminEmail.trim()} onClick={submitAdmin}>
+              <Crown size={13} />
+              {addAdminLoading ? 'Adding...' : 'Add admin'}
+            </button>
+          </div>
+          <div className="xl:col-span-2">
+            {error ? (
+              <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>
+            ) : (
+              <p className="text-sm leading-6 text-pit-muted">
+                League admins can manage seasons, events, fees, and players. They do not have to be active players in the season roster.
+              </p>
+            )}
+          </div>
         </div>
       )}
+
+      <div className="rounded-xl border border-pit-border bg-pit-bg/45 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="eyebrow">League admins</p>
+            <p className="text-sm text-pit-muted">People who can manage this league.</p>
+          </div>
+          <span className="chip">{leagueAdmins.length} admins</span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {leagueAdmins.map((member) => (
+            <div key={member.userid} className="flex items-center justify-between gap-3 rounded-lg border border-pit-border bg-pit-card/70 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{member.displayname ?? 'League admin'}</p>
+                <p className="truncate text-xs text-pit-muted">
+                  {member.userid === detail.league.ownerid ? 'Owner' : member.participating ? 'Admin and player' : 'Admin only'}
+                </p>
+              </div>
+              {member.userid !== detail.league.ownerid && detail.league.isadmin && (
+                <button
+                  type="button"
+                  className="btn-ghost h-8 w-8 shrink-0 p-0 text-pit-gold hover:border-pit-gold/40 hover:text-yellow-100"
+                  disabled={adminLoadingUserId === member.userid}
+                  onClick={() => onToggleAdmin(member.userid, false)}
+                  title={`Remove ${member.displayname ?? 'admin'} as league admin`}
+                >
+                  <Crown size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="grid max-h-[62vh] gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {approvedMembers.map((member) => (
@@ -2641,16 +2721,18 @@ function LeagueSettingsModal({
   loading: boolean;
   error?: string;
   onClose: () => void;
-  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string }) => void;
+  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean }) => void;
 }) {
   const [leagueName, setLeagueName] = useState(league.name);
   const [seasonName, setSeasonName] = useState(season?.name ?? '');
+  const [memberLedgerVisible, setMemberLedgerVisible] = useState(Boolean(league.memberledgervisible));
 
   useEffect(() => {
     if (!open) return;
     setLeagueName(league.name);
     setSeasonName(season?.name ?? '');
-  }, [league.name, open, season?.name]);
+    setMemberLedgerVisible(Boolean(league.memberledgervisible));
+  }, [league.memberledgervisible, league.name, open, season?.name]);
 
   const canSave = leagueName.trim().length > 0 && (!season || seasonName.trim().length > 0);
 
@@ -2670,6 +2752,7 @@ function LeagueSettingsModal({
               leagueName: leagueName.trim(),
               seasonId: season?.seasonid ?? null,
               seasonName: season ? seasonName.trim() : undefined,
+              memberledgervisible: memberLedgerVisible,
             })}
           >
             {loading ? 'Saving...' : 'Save Settings'}
@@ -2692,6 +2775,20 @@ function LeagueSettingsModal({
             disabled={!season}
             placeholder={season ? 'Season name' : 'No season selected'}
           />
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-pit-teal"
+            checked={memberLedgerVisible}
+            onChange={(event) => setMemberLedgerVisible(event.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-semibold text-white">Show league ledger to members</span>
+            <span className="mt-1 block text-xs leading-5 text-pit-text">
+              Admins always see the audit ledger. Turn this on only if regular league members should see league changes, payments, and placement updates.
+            </span>
+          </span>
         </label>
       </div>
     </Modal>

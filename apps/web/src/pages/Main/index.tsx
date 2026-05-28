@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User, Users, Trophy, Timer, QrCode, MessageSquare } from 'lucide-react';
+import { Bot, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
@@ -9,7 +9,6 @@ import GroupsPanel from './GroupsPanel';
 import LeaguesPanel from './LeaguesPanel';
 import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
-import Modal from '../../components/Modal';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
 
 type MainView = 'command' | 'profile' | 'admin';
@@ -29,6 +28,9 @@ export default function MainPage() {
   const [commandSection, setCommandSection] = useState<CommandCenterSection>(sectionFromTab(requestedTab));
   const [commandDetailOpen, setCommandDetailOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
+  const [createGameRequestId, setCreateGameRequestId] = useState(0);
+  const [groupCreateRequestId, setGroupCreateRequestId] = useState(0);
+  const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; token: number } | null>(null);
   const [leagueDeepLinkId, setLeagueDeepLinkId] = useState<string | undefined>(requestedLeagueId || undefined);
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
 
@@ -97,6 +99,7 @@ export default function MainPage() {
       hasavatarimage: currentProfile.hasavatarimage ?? false,
       onboardingcomplete: currentProfile.onboardingcomplete,
     });
+    setShowTour(currentProfile.onboardingcomplete === false);
   }, [currentProfile, updateUser]);
 
   const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
@@ -106,6 +109,27 @@ export default function MainPage() {
     setCommandDetailOpen(false);
     setView('command');
     setCommandSection(nextSection);
+  };
+
+  const startGroupCreate = () => {
+    setView('command');
+    setCommandSection('groups');
+    setCommandDetailOpen(false);
+    setGroupCreateRequestId((value) => value + 1);
+  };
+
+  const startGroupInvite = (groupId: string) => {
+    setView('command');
+    setCommandSection('groups');
+    setCommandDetailOpen(false);
+    setGroupOpenRequest({ groupId, token: Date.now() });
+  };
+
+  const startGameCreate = () => {
+    setView('command');
+    setCommandSection('upcoming');
+    setCommandDetailOpen(false);
+    setCreateGameRequestId((value) => value + 1);
   };
 
   const currentTab: NavTab = view === 'command'
@@ -138,9 +162,21 @@ export default function MainPage() {
             onSectionChange={handleCommandSectionChange}
             hideDashboard={commandDetailOpen}
             onCreateFlowChange={setCreateTournamentOpen}
+            onboardingActive={showTour}
+            createGameRequestId={createGameRequestId}
+            onStartGroupCreate={startGroupCreate}
+            onStartGroupInvite={startGroupInvite}
+            onStartFirstGame={startGameCreate}
+            onCompleteOnboarding={() => completeTourMutation.mutate()}
             renderSection={(section) => (
               section === 'groups'
-                ? <GroupsPanel onDetailStateChange={setCommandDetailOpen} />
+                ? (
+                  <GroupsPanel
+                    onDetailStateChange={setCommandDetailOpen}
+                    createRequestId={groupCreateRequestId}
+                    openGroupRequest={groupOpenRequest}
+                  />
+                )
                 : <LeaguesPanel initialLeagueId={leagueDeepLinkId} onDetailStateChange={setCommandDetailOpen} />
             )}
           />
@@ -148,16 +184,6 @@ export default function MainPage() {
         {view === 'profile' && <ProfilePanel onReturn={() => setView('command')} />}
         {view === 'admin' && <AdminPanel />}
       </Layout>
-      <OnboardingTour
-        open={showTour}
-        onClose={() => completeTourMutation.mutate()}
-        onGoToGroups={() => {
-          setView('command');
-          setCommandSection('groups');
-          setCommandDetailOpen(false);
-          completeTourMutation.mutate();
-        }}
-      />
     </>
   );
 }
@@ -270,104 +296,6 @@ function CommandCenterMenu({
   );
 }
 
-const onboardingSlides = [
-  {
-    title: 'Start with a group',
-    body: 'Groups are your home base. Create one, set the join code, and invite the people who play with you.',
-    icon: Users,
-  },
-  {
-    title: 'Invite your players',
-    body: 'Share the invite link or code so members can join once, then future tournaments are easy to announce.',
-    icon: QrCode,
-  },
-  {
-    title: 'Create the tournament',
-    body: 'Use the guided creator to set the name, schedule, buy-in, rebuys, add-ons, tracking, and group email alerts.',
-    icon: Trophy,
-  },
-  {
-    title: 'Build the structure',
-    body: 'Pick a saved blind structure or use the calculator after creation. The TV board and run screen use it immediately.',
-    icon: Timer,
-  },
-  {
-    title: 'Send feedback',
-    body: 'This is beta. Use the Feedback button for bugs, rough edges, and feature ideas while you run real games.',
-    icon: MessageSquare,
-  },
-];
-
-function OnboardingTour({
-  open,
-  onClose,
-  onGoToGroups,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onGoToGroups: () => void;
-}) {
-  const [slide, setSlide] = useState(0);
-  const current = onboardingSlides[slide];
-  const Icon = current.icon;
-  const isLast = slide === onboardingSlides.length - 1;
-
-  return (
-    <Modal
-      title="Welcome to ThePokerPlanner"
-      open={open}
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Skip
-          </button>
-          <div className="flex gap-2">
-            {slide > 0 && (
-              <button type="button" className="btn-ghost" onClick={() => setSlide((value) => value - 1)}>
-                Back
-              </button>
-            )}
-            {isLast ? (
-              <button type="button" className="btn-primary" onClick={onGoToGroups}>
-                Create a group
-              </button>
-            ) : (
-              <button type="button" className="btn-primary" onClick={() => setSlide((value) => value + 1)}>
-                Next
-              </button>
-            )}
-          </div>
-        </>
-      }
-    >
-      <div className="space-y-5 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-pit-teal/30 bg-pit-teal/15 text-pit-teal">
-          <Icon size={30} />
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-pit-teal">
-            {slide + 1} of {onboardingSlides.length}
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-white">{current.title}</h3>
-          <p className="mt-3 text-sm leading-6 text-pit-text">{current.body}</p>
-        </div>
-        <div className="flex justify-center gap-1.5">
-          {onboardingSlides.map((item, index) => (
-            <button
-              key={item.title}
-              type="button"
-              onClick={() => setSlide(index)}
-              className={`h-2 rounded-full transition-all ${index === slide ? 'w-8 bg-pit-teal' : 'w-2 bg-pit-border'}`}
-              aria-label={`Go to slide ${index + 1}`}
-            />
-          ))}
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const { user, logout, updateUser } = useAuthStore();
   const navigate = useNavigate();
@@ -378,6 +306,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsOptIn, setSmsOptIn] = useState(false);
+  const [profileName, setProfileName] = useState('');
   const [tableNickname, setTableNickname] = useState('');
 
   const { data: profile, isLoading } = useQuery({
@@ -388,6 +317,8 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   useEffect(() => {
     if (!profile) return;
     updateUser({
+      fullname: profile.fullname ?? null,
+      tablename: profile.tablename ?? null,
       displayname: profile.displayname,
       emailaddress: profile.emailaddress,
       avatarimagedata: profile.avatarimagedata ?? null,
@@ -400,7 +331,8 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
     });
     setPhoneNumber(profile.phonenumber ?? '');
     setSmsOptIn(Boolean(profile.smsoptedin));
-    setTableNickname(profile.displayname === profile.emailaddress ? '' : profile.displayname ?? '');
+    setProfileName(profile.fullname ?? '');
+    setTableNickname(profile.tablename ?? (profile.displayname === profile.emailaddress ? '' : profile.displayname ?? ''));
   }, [profile, updateUser]);
 
   const updateProfileMutation = useMutation({
@@ -408,6 +340,8 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
     onSuccess: (updated, variables) => {
       queryClient.setQueryData(['me'], updated);
       updateUser({
+        fullname: updated.fullname ?? null,
+        tablename: updated.tablename ?? null,
         displayname: updated.displayname,
         emailaddress: updated.emailaddress,
         avatarimagedata: updated.avatarimagedata ?? null,
@@ -419,6 +353,8 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
       });
       setPhoneNumber(updated.phonenumber ?? '');
       setSmsOptIn(Boolean(updated.smsoptedin));
+      setProfileName(updated.fullname ?? '');
+      setTableNickname(updated.tablename ?? (updated.displayname === updated.emailaddress ? '' : updated.displayname ?? ''));
       if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
         setMediaSuccess(variables.clearcheckinaudio ? 'Check-in clip removed.' : 'Check-in clip saved.');
       } else if ('avatarimagedata' in variables || variables.clearavatarimage) {
@@ -571,26 +507,47 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
         <div className="flex items-center gap-3">
           <User size={18} className="text-pit-teal" />
           <div>
-            <h3 className="font-semibold text-white">Table Nickname</h3>
-            <p className="text-sm text-pit-muted">This is the name shown in groups, tournaments, leagues, and cash games.</p>
+            <h3 className="font-semibold text-white">Name & Table Nickname</h3>
+            <p className="text-sm text-pit-muted">Leagues can show your real name with your table nickname beside it.</p>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <input
-            className="input"
-            type="text"
-            maxLength={80}
-            placeholder="Name shown at the table"
-            value={tableNickname}
-            onChange={(event) => setTableNickname(event.target.value)}
-          />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Name</span>
+            <input
+              className="input"
+              type="text"
+              maxLength={160}
+              placeholder="Eric A"
+              value={profileName}
+              onChange={(event) => setProfileName(event.target.value)}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Table Nickname</span>
+            <input
+              className="input"
+              type="text"
+              maxLength={80}
+              placeholder="ambo"
+              value={tableNickname}
+              onChange={(event) => setTableNickname(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end">
           <button
             type="button"
             className="btn-primary"
-            disabled={updateProfileMutation.isPending || !tableNickname.trim() || tableNickname.trim() === displayName}
-            onClick={() => updateProfileMutation.mutate({ displayname: tableNickname.trim() })}
+            disabled={
+              updateProfileMutation.isPending
+              || !profileName.trim()
+              || !tableNickname.trim()
+              || (profileName.trim() === (profile?.fullname ?? '') && tableNickname.trim() === (profile?.tablename ?? profile?.displayname ?? ''))
+            }
+            onClick={() => updateProfileMutation.mutate({ name: profileName.trim(), displayname: tableNickname.trim() })}
           >
-            Save Nickname
+            Save Profile
           </button>
         </div>
       </section>

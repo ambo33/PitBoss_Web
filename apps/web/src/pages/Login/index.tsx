@@ -223,6 +223,7 @@ function LoginForm({
 
 function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => void; onSwitch: (v: View) => void }) {
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [displayname, setDisplayname] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -240,10 +241,14 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
       setError('You must agree to the Terms of Service to create an account.');
       return;
     }
+    if (!name.trim() || !displayname.trim()) {
+      setError('Name and table nickname are required.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      await api.register({ email, password, displayname, acceptterms: acceptTerms });
+      await api.register({ email, password, name: name.trim(), displayname: displayname.trim(), acceptterms: acceptTerms });
       onSuccess(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -256,7 +261,8 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
     <form onSubmit={submit} className="space-y-3">
       <h2 className="mb-5 text-xl font-bold text-white">Create account</h2>
       {error && <ErrorBanner msg={error} />}
-      <input className="input" type="text" placeholder="Display name" value={displayname} onChange={(e) => setDisplayname(e.target.value)} autoFocus />
+      <input className="input" type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+      <input className="input" type="text" placeholder="Table nickname" value={displayname} onChange={(e) => setDisplayname(e.target.value)} required />
       <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       <input className="input" type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />

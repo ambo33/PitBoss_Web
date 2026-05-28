@@ -42,7 +42,7 @@ const del = <T>(path: string, body?: unknown) =>
 
 export const api = {
   // Auth
-  register: (data: { email: string; password: string; displayname?: string; acceptterms?: boolean }) =>
+  register: (data: { email: string; password: string; name: string; displayname: string; acceptterms?: boolean }) =>
     post('/auth/register', data),
   verifyEmail: (data: { email: string; pin: string }) =>
     post<{ token: string }>('/auth/verify-email', data),
@@ -53,6 +53,7 @@ export const api = {
     post('/auth/reset-password', data),
   me: () => get<AuthProfile>('/auth/me'),
   updateMe: (data: {
+    name?: string;
     displayname?: string;
     phonenumber?: string | null;
     smsoptedin?: boolean;
@@ -146,7 +147,7 @@ export const api = {
   getLeagueSchedule: () => get<LeagueScheduleEvent[]>('/leagues/schedule'),
   createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[]; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string }) =>
     post<{ leagueid: string; invitecode: string; seasonid: string }>('/leagues', data),
-  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) =>
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible'>>) =>
     patch<{ league: League; recalculatedResults?: number }>(`/leagues/${id}`, data),
   deleteLeague: (id: string) =>
     del<{ success: boolean }>(`/leagues/${id}`),
@@ -158,6 +159,8 @@ export const api = {
     post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
   addLeagueGuest: (id: string, displayname: string, seasonid?: string | null) =>
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname, seasonid }),
+  addLeagueAdmin: (id: string, email: string) =>
+    post<{ member: LeagueMember }>(`/leagues/${id}/admins`, { email }),
   inviteLeagueGuestClaim: (id: string, guestUserId: string, email: string) =>
     post<{ success: boolean; email: string }>(`/leagues/${id}/members/${guestUserId}/claim-invite`, { email }),
   inviteLeagueSpotTakeover: (id: string, userId: string, email: string, seasonid?: string | null) =>
@@ -507,6 +510,7 @@ export interface League {
   finalmultiplierlookup: LeagueFinalMultiplier[];
   finalchiprounding: number;
   finalstartingbigblind: number;
+  memberledgervisible: boolean;
   active: boolean;
   createdat: string;
   isadmin?: boolean;
@@ -658,6 +662,8 @@ export interface PlayerCoinBadge {
 export interface AuthProfile {
   guid: string;
   emailaddress: string;
+  fullname?: string | null;
+  tablename?: string | null;
   displayname: string;
   tierid?: number;
   accounttier?: AccountTier;

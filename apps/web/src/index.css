@@ -14,6 +14,31 @@
 
   body { @apply bg-pit-bg text-white font-sans antialiased; }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(20, 184, 166, 0.34) rgba(16, 17, 22, 0.72);
+  }
+
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(16, 17, 22, 0.72);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(20, 184, 166, 0.62), rgba(91, 96, 120, 0.42));
+    border: 2px solid rgba(16, 17, 22, 0.88);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(20, 184, 166, 0.82), rgba(91, 96, 120, 0.58));
+  }
+
   @media (display-mode: standalone) {
     body {
       padding-top: env(safe-area-inset-top);

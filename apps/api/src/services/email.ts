@@ -239,23 +239,27 @@ export async function sendGroupInviteEmail(
   email: string,
   groupName: string,
   inviteCode: string,
-  note?: string
+  note?: string,
+  hasAccount = true
 ): Promise<void> {
   const joinLink = `${appUrl}/join/${encodeURIComponent(inviteCode)}`;
+  const createAccountLink = `${appUrl}/login?mode=register&invite=${encodeURIComponent(inviteCode)}`;
   await sendMail({
     to: email,
     subject: `You're invited to join ${groupName} on ThePokerPlanner`,
     html: emailLayout({
       eyebrow: 'Group Invite',
       title: `Join ${groupName}`,
-      intro: 'You were invited to join a ThePokerPlanner group.',
+      intro: hasAccount
+        ? 'You were invited to join a ThePokerPlanner group.'
+        : 'You were invited to join a ThePokerPlanner group. Create your account first and the invite will continue automatically.',
       body: `
         <p style="margin:0 0 12px;">Join code: <strong style="color:#ffffff;letter-spacing:0.12em;">${escapeHtml(inviteCode)}</strong></p>
         ${note ? `<p style="margin:0 0 12px;border-left:3px solid #13adad;padding-left:12px;">${escapeHtml(note)}</p>` : ''}
-        <p style="margin:0;">If you need an account, create one first and the group join will continue automatically.</p>
+        <p style="margin:0;">${hasAccount ? 'Sign in and we will add the group to your account.' : 'After email verification, we will bring you back to accept this group invite.'}</p>
       `,
-      ctaHref: joinLink,
-      ctaLabel: 'Join Group',
+      ctaHref: hasAccount ? joinLink : createAccountLink,
+      ctaLabel: hasAccount ? 'Join Group' : 'Create Account & Join',
     }),
   });
 }
@@ -264,22 +268,29 @@ export async function sendLeagueGuestClaimEmail(
   email: string,
   leagueName: string,
   guestName: string,
-  claimToken: string
+  claimToken: string,
+  hasAccount = true
 ): Promise<void> {
   const claimLink = `${appUrl}/league-guest-claim?token=${encodeURIComponent(claimToken)}`;
+  const authLink = `${appUrl}/login?${new URLSearchParams({
+    ...(hasAccount ? {} : { mode: 'register' }),
+    next: `/league-guest-claim?token=${claimToken}`,
+  }).toString()}`;
   await sendMail({
     to: email,
     subject: `Claim your ${leagueName} league spot`,
     html: emailLayout({
       eyebrow: 'League Profile',
       title: `Claim ${guestName}`,
-      intro: `A league admin invited you to connect this league player spot to your ThePokerPlanner account.`,
+      intro: hasAccount
+        ? 'A league admin invited you to connect this league player spot to your ThePokerPlanner account.'
+        : 'A league admin invited you to create an account and connect this league player spot to it.',
       body: `
         <p style="margin:0 0 12px;">Once claimed, this spot's league finishes, payments, and season history will belong to your account.</p>
-        <p style="margin:0;">If you do not have an account yet, create one with this email address first, then use this same link.</p>
+        <p style="margin:0;">${hasAccount ? 'Sign in with this email address to claim the spot.' : 'Create your account with this email address, verify it, and we will bring you back to claim the spot.'}</p>
       `,
-      ctaHref: claimLink,
-      ctaLabel: 'Claim League Spot',
+      ctaHref: hasAccount ? claimLink : authLink,
+      ctaLabel: hasAccount ? 'Claim League Spot' : 'Create Account & Claim',
     }),
   });
 }

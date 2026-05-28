@@ -5,7 +5,7 @@ import { requireAuth } from '../middleware/auth';
 import { getAppUrl } from '../config';
 import { BlindLevel, Group, GroupCoin, GroupCoinAward, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
 import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
-import { publicEmail } from '../privacy';
+import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
 import { sendGroupNotification } from '../lib/server/notifications/notificationService';
 
 export const groupsRouter = Router();
@@ -996,7 +996,7 @@ groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
   if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
 
   const { email, phone, note } = req.body as { email?: string; phone?: string; note?: string };
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const normalizedPhone = phone?.trim();
   const trimmedNote = note?.trim();
 
@@ -1013,7 +1013,11 @@ groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
 
   const joinLink = `${getAppUrl()}/join/${encodeURIComponent(group.invitecode)}`;
   if (normalizedEmail) {
-    await sendGroupInviteEmail(normalizedEmail, group.name, group.invitecode, trimmedNote);
+    const existingUser = await queryOne<{ guid: string }>(
+      `SELECT guid FROM users WHERE emailhash = $1 AND emailverified = TRUE LIMIT 1`,
+      [hashEmail(normalizedEmail)]
+    );
+    await sendGroupInviteEmail(normalizedEmail, group.name, group.invitecode, trimmedNote, Boolean(existingUser));
   }
 
   const baseMessage = `Join my ThePokerPlanner group "${group.name}" with code ${group.invitecode}: ${joinLink}`;

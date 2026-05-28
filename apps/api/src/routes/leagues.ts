@@ -38,6 +38,7 @@ type LeagueRow = {
   finalmultiplierlookup: LeagueFinalMultiplier[] | string | null;
   finalchiprounding: number;
   finalstartingbigblind: number;
+  memberledgervisible: boolean;
   active: boolean;
   createdat: string;
   isadmin?: boolean;
@@ -119,6 +120,25 @@ function generateInviteCode(length = 6): string {
 
 function normalizeInviteCode(value: string | undefined): string {
   return (value ?? '').trim().toUpperCase();
+}
+
+function leagueDisplayNameSql(metaAlias = 'm', userAlias = 'u') {
+  const fullName = `NULLIF(trim(coalesce(${metaAlias}.fullname, '')), '')`;
+  const nickname = `NULLIF(trim(coalesce(${metaAlias}.nickname, '')), '')`;
+  const legacyName = `NULLIF(trim(concat(coalesce(${metaAlias}.firstname, ''), ' ', coalesce(${metaAlias}.lastname, ''))), '')`;
+  return `COALESCE(
+    CASE
+      WHEN ${fullName} IS NOT NULL
+       AND ${nickname} IS NOT NULL
+       AND lower(${fullName}) <> lower(${nickname})
+      THEN concat(${fullName}, ' (', ${nickname}, ')')
+      ELSE NULL
+    END,
+    ${fullName},
+    ${nickname},
+    ${legacyName},
+    ${userAlias}.emailaddress
+  )`;
 }
 
 function isoDate(value: unknown, fallback: string): string {
@@ -215,6 +235,7 @@ function serializeLeague(row: LeagueRow) {
         ? JSON.parse(row.finalmultiplierlookup) as LeagueFinalMultiplier[]
         : row.finalmultiplierlookup
     ),
+    memberledgervisible: Boolean(row.memberledgervisible),
   };
 }
 
@@ -327,7 +348,7 @@ async function addApprovedMembersToSeason(client: PoolClient, leagueId: string, 
     `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
      SELECT $2, lm.leagueid, lm.userid, TRUE
      FROM leaguemembers lm
-     WHERE lm.leagueid = $1 AND lm.approved = TRUE
+     WHERE lm.leagueid = $1 AND lm.approved = TRUE AND COALESCE(lm.participating, TRUE) = TRUE
      ON CONFLICT (seasonid, userid) DO NOTHING`,
     [leagueId, seasonId]
   );
@@ -349,7 +370,7 @@ async function getLeagueForUser(leagueId: string, userId: string) {
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
             l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
-            l.active, l.createdat,
+            l.memberledgervisible, l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
             (SELECT count(*)
              FROM leagueseasons s
@@ -388,7 +409,7 @@ leaguesRouter.get('/', async (req: Request, res: Response) => {
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
             l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
-            l.active, l.createdat,
+            l.memberledgervisible, l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
             (SELECT count(*)
              FROM leagueseasons s
@@ -507,6 +528,7 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
     finalmultiplierlookup?: unknown;
     finalchiprounding?: number;
     finalstartingbigblind?: number;
+    memberledgervisible?: boolean;
   };
   const current = await getLeagueForUser(req.params.id, req.userId!);
   if (!current) {
@@ -528,6 +550,7 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
   const finalMultipliers = body.finalmultiplierlookup == null ? normalizeFinalMultipliers(current.finalmultiplierlookup) : normalizeFinalMultipliers(body.finalmultiplierlookup);
   const finalChipRounding = body.finalchiprounding == null ? Number(current.finalchiprounding || 100) : Math.max(1, Math.round(Number(body.finalchiprounding)));
   const finalStartingBigBlind = body.finalstartingbigblind == null ? Number(current.finalstartingbigblind || 100) : Math.max(1, Math.round(Number(body.finalstartingbigblind)));
+  const memberLedgerVisible = body.memberledgervisible == null ? Boolean(current.memberledgervisible) : Boolean(body.memberledgervisible);
 
   const client = await pool.connect();
   try {
@@ -546,11 +569,12 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
            finalenabled = $10,
            finalmultiplierlookup = $11,
            finalchiprounding = $12,
-           finalstartingbigblind = $13
+           finalstartingbigblind = $13,
+           memberledgervisible = $14
        WHERE leagueid = $1
        RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints,
                  bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup,
-                 finalchiprounding, finalstartingbigblind, active, createdat`,
+                 finalchiprounding, finalstartingbigblind, memberledgervisible, active, createdat`,
       [
         req.params.id,
         name,
@@ -565,6 +589,7 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
         JSON.stringify(finalMultipliers),
         finalChipRounding,
         finalStartingBigBlind,
+        memberLedgerVisible,
       ]
     );
     if (body.pointslookup != null || body.showupbonuspoints != null) {
@@ -616,6 +641,18 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
             leaguefee: leagueFee,
             pereventfee: perEventFee,
           },
+        },
+      });
+    }
+    if (body.memberledgervisible != null && memberLedgerVisible !== Boolean(current.memberledgervisible)) {
+      await recordLeagueAudit(client, {
+        leagueId: req.params.id,
+        actorId: req.userId,
+        action: 'ledger_visibility_updated',
+        summary: memberLedgerVisible ? 'League ledger was made visible to members.' : 'League ledger was hidden from members.',
+        details: {
+          previous: { memberledgervisible: Boolean(current.memberledgervisible) },
+          current: { memberledgervisible: memberLedgerVisible },
         },
       });
     }
@@ -1038,6 +1075,80 @@ leaguesRouter.post('/:id/members/guest', async (req: Request, res: Response) => 
   }
 });
 
+leaguesRouter.post('/:id/admins', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const normalizedEmail = normalizeEmail((req.body as { email?: string }).email);
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    res.status(400).json({ error: 'A valid registered email address is required.' });
+    return;
+  }
+
+  const user = await queryOne<{
+    userid: string;
+    emailaddress: string | null;
+    emailencrypted: string | null;
+    displayname: string | null;
+  }>(
+    `SELECT u.guid AS userid, u.emailaddress, u.emailencrypted, ${leagueDisplayNameSql('m', 'u')} AS displayname
+     FROM users u
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE u.emailhash = $1`,
+    [hashEmail(normalizedEmail)]
+  );
+  if (!user) {
+    res.status(404).json({ error: 'No registered user found for that email.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO leaguemembers (leagueid, userid, admin, approved, participating, emailalertsenabled, pushalertsenabled)
+       VALUES ($1, $2, TRUE, TRUE, FALSE, TRUE, TRUE)
+       ON CONFLICT (leagueid, userid) DO UPDATE
+       SET admin = TRUE,
+           approved = TRUE,
+           emailalertsenabled = TRUE,
+           pushalertsenabled = TRUE`,
+      [req.params.id, user.userid]
+    );
+    await recordLeagueAudit(client, {
+      leagueId: req.params.id,
+      actorId: req.userId,
+      targetUserId: user.userid,
+      action: 'league_admin_added',
+      summary: 'League admin was added.',
+      details: {
+        email: normalizedEmail,
+        memberName: user.displayname,
+      },
+    });
+    await client.query('COMMIT');
+    res.status(201).json({
+      member: {
+        userid: user.userid,
+        emailaddress: publicEmail(user.emailencrypted, user.emailaddress),
+        displayname: user.displayname === user.emailaddress
+          ? publicEmail(user.emailencrypted, user.emailaddress)
+          : user.displayname,
+        isadmin: true,
+        approved: true,
+        participating: false,
+        isguestuser: false,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
 leaguesRouter.post('/:id/members/:guestUserId/claim-invite', async (req: Request, res: Response) => {
   if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'League admin required.' });
@@ -1075,6 +1186,10 @@ leaguesRouter.post('/:id/members/:guestUserId/claim-invite', async (req: Request
     res.status(400).json({ error: 'Only guest players can be claimed.' });
     return;
   }
+  const inviteHasAccount = Boolean(await queryOne<{ guid: string }>(
+    `SELECT guid FROM users WHERE emailhash = $1 AND emailverified = TRUE LIMIT 1`,
+    [hashEmail(normalizedEmail)]
+  ));
 
   const token = createClaimToken();
   const tokenHash = hashClaimToken(token);
@@ -1115,7 +1230,7 @@ leaguesRouter.post('/:id/members/:guestUserId/claim-invite', async (req: Request
     client.release();
   }
 
-  await sendLeagueGuestClaimEmail(normalizedEmail, league.name, guest.displayname ?? 'Guest player', token);
+  await sendLeagueGuestClaimEmail(normalizedEmail, league.name, guest.displayname ?? 'Guest player', token, inviteHasAccount);
   res.status(201).json({ success: true, email: normalizedEmail });
 });
 
@@ -1158,6 +1273,10 @@ leaguesRouter.post('/:id/members/:userId/takeover-invite', async (req: Request, 
     res.status(404).json({ error: 'Season player not found.' });
     return;
   }
+  const inviteHasAccount = Boolean(await queryOne<{ guid: string }>(
+    `SELECT guid FROM users WHERE emailhash = $1 AND emailverified = TRUE LIMIT 1`,
+    [hashEmail(normalizedEmail)]
+  ));
 
   const token = createClaimToken();
   const tokenHash = hashClaimToken(token);
@@ -1201,7 +1320,7 @@ leaguesRouter.post('/:id/members/:userId/takeover-invite', async (req: Request, 
     client.release();
   }
 
-  await sendLeagueGuestClaimEmail(normalizedEmail, league.name, member.displayname ?? 'League player', token);
+  await sendLeagueGuestClaimEmail(normalizedEmail, league.name, member.displayname ?? 'League player', token, inviteHasAccount);
   res.status(201).json({ success: true, email: normalizedEmail });
 });
 
@@ -1608,13 +1727,13 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
      SELECT $2, lm.leagueid, lm.userid, TRUE
      FROM leaguemembers lm
-     WHERE lm.leagueid = $1 AND lm.approved = TRUE
+     WHERE lm.leagueid = $1 AND lm.approved = TRUE AND COALESCE(lm.participating, TRUE) = TRUE
      ON CONFLICT (seasonid, userid) DO NOTHING`,
     [league.leagueid, selectedSeason.seasonid]
   );
   const memberRows = await query<LeagueMemberRow>(
     `SELECT u.guid AS userid, u.emailaddress, u.emailencrypted,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname,
             lm.admin AS isadmin, lm.approved, COALESCE(lsp.participating, FALSE) AS participating,
             COALESCE(m.isguestuser, FALSE) AS isguestuser,
             (
@@ -1632,7 +1751,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN leagueseasonparticipants lsp ON lsp.seasonid = $2 AND lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
      WHERE lm.leagueid = $1 AND (lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)
-     ORDER BY lm.admin DESC, lm.approved DESC, lower(COALESCE(m.nickname, u.emailaddress)) ASC`,
+     ORDER BY lm.admin DESC, lm.approved DESC, lower(${leagueDisplayNameSql('m', 'u')}) ASC`,
     [league.leagueid, selectedSeason.seasonid]
   );
   const members = memberRows.map((member) => {
@@ -1664,7 +1783,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   );
   const results = await query<LeagueResultRow>(
     `SELECT r.resultid, r.eventid, r.leagueid, r.userid,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname,
             r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
      FROM leagueresults r
      JOIN leagueevents e ON e.eventid = r.eventid
@@ -1675,7 +1794,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   );
   const payments = await query<LeaguePaymentRow>(
     `SELECT p.paymentid, p.leagueid, p.seasonid, p.userid,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname,
             p.eventid, e.name AS eventname, p.paymenttype, CAST(p.amount AS DECIMAL) AS amount,
             p.paidat, p.note, p.recordedby, p.createdat
      FROM leaguepayments p
@@ -1688,7 +1807,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   );
   const rsvps = await query<LeagueEventRsvpRow>(
     `SELECT r.rsvpid, r.eventid, r.leagueid, r.userid,
-            COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname,
             u.emailaddress, u.emailencrypted,
             r.status, r.createdat, r.updatedat
      FROM leagueeventrsvps r
@@ -1707,13 +1826,9 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
             a.eventid,
             e.name AS eventname,
             a.actorid,
-            COALESCE(NULLIF(trim(coalesce(am.nickname, '')), ''),
-                     NULLIF(trim(concat(coalesce(am.firstname, ''), ' ', coalesce(am.lastname, ''))), ''),
-                     au.emailaddress) AS actorname,
+            ${leagueDisplayNameSql('am', 'au')} AS actorname,
             a.targetuserid,
-            COALESCE(NULLIF(trim(coalesce(tm.nickname, '')), ''),
-                     NULLIF(trim(concat(coalesce(tm.firstname, ''), ' ', coalesce(tm.lastname, ''))), ''),
-                     tu.emailaddress) AS targetname,
+            ${leagueDisplayNameSql('tm', 'tu')} AS targetname,
             a.action,
             a.summary,
             a.details,
@@ -1745,6 +1860,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   });
   const standings = buildStandings(members, normalizedResults, Number(league.bestfinishcount || 7));
 
+  const canViewLeagueLedger = Boolean(league.isadmin || league.memberledgervisible);
+
   res.json({
     league,
     seasons: seasons.map(serializeSeason),
@@ -1763,7 +1880,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
         displayname: rsvp.displayname === rsvp.emailaddress && visibleEmail ? visibleEmail : rsvp.displayname,
       };
     }),
-    auditlog: auditlog.map(serializeLeagueAudit),
+    auditlog: canViewLeagueLedger ? auditlog.map(serializeLeagueAudit) : [],
     standings,
     finalstacks: buildFinalStacks(standings, league),
   });

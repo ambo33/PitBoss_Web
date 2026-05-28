@@ -4,6 +4,8 @@ import { persist } from 'zustand/middleware';
 interface AuthUser {
   guid: string;
   emailaddress: string;
+  fullname?: string | null;
+  tablename?: string | null;
   displayname: string;
   tierid?: number;
   accounttier?: 'host' | 'club' | 'pro';

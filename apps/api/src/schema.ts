@@ -131,6 +131,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS fullname STRING(160)
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS accounttier STRING DEFAULT 'free'
     `);
     await client.query(`
@@ -510,6 +514,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         finalmultiplierlookup JSONB DEFAULT '[]',
         finalchiprounding INT DEFAULT 100,
         finalstartingbigblind INT DEFAULT 100,
+        memberledgervisible BOOL DEFAULT FALSE,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
@@ -528,6 +533,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalmultiplierlookup JSONB DEFAULT '[]'`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalchiprounding INT DEFAULT 100`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS finalstartingbigblind INT DEFAULT 100`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS memberledgervisible BOOL DEFAULT FALSE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
@@ -539,6 +545,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`UPDATE leagues SET finalmultiplierlookup = '[]' WHERE finalmultiplierlookup IS NULL`);
     await client.query(`UPDATE leagues SET finalchiprounding = 100 WHERE finalchiprounding IS NULL`);
     await client.query(`UPDATE leagues SET finalstartingbigblind = 100 WHERE finalstartingbigblind IS NULL`);
+    await client.query(`UPDATE leagues SET memberledgervisible = FALSE WHERE memberledgervisible IS NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS leagueseasons (
         seasonid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
