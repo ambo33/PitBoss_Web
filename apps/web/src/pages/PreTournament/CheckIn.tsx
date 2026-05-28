@@ -187,24 +187,15 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
         <section className="card mb-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-white">Arrival Check-In</h3>
-            <div className="flex rounded-lg border border-pit-border bg-pit-bg p-1">
+            {canUseClubFeatures && tournament.addonprice > 0 && tournament.addonchips > 0 && (
               <button
                 type="button"
-                onClick={() => setQrView('checkin')}
-                className={qrView === 'checkin' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-ghost border-transparent px-3 py-1.5 text-xs'}
+                onClick={() => setQrView((current) => current === 'addon' ? 'checkin' : 'addon')}
+                className="btn-ghost px-3 py-1.5 text-xs"
               >
-                Check-In QR
+                {qrView === 'addon' ? 'Show check-in' : 'Add-On QR'}
               </button>
-              {canUseClubFeatures && tournament.addonprice > 0 && tournament.addonchips > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setQrView('addon')}
-                  className={qrView === 'addon' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-ghost border-transparent px-3 py-1.5 text-xs'}
-                >
-                  Add-On QR
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">

@@ -1192,7 +1192,10 @@ export default function RunTournament({
                 </div>
 
                 <div className="grid gap-2 xl:grid-cols-1">
-                  <div className={`grid gap-2 ${displayMode ? 'grid-cols-3' : 'sm:grid-cols-3'}`}>
+                  <div
+                    className={`grid gap-2 ${displayMode ? 'grid-cols-3' : ''}`}
+                    style={displayMode ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}
+                  >
                     {summaryStats.map((stat) => {
                       const canAdjustRebuys = showAdminControls && !canUseClubFeatures && stat.label === 'Rebuys';
                       const canAdjustAddons = showAdminControls && !canUseClubFeatures && stat.label === 'Add-Ons';

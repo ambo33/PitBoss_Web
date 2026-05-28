@@ -654,7 +654,7 @@ function TournamentDetailsCard({
           <DetailTile label="Add-ons taken" value={totalAddons} />
           <DetailTile
             label="Bounties"
-            className="sm:col-span-2 xl:col-span-3"
+            className="sm:col-span-2 xl:col-span-2"
             value={tournament.bountyenabled
               ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Manual'} - ${formatBountyPool(tournament, bountyTotal)}${formatBountyStart(tournament)}${formatBountyMinimum(tournament)}`
               : 'Not enabled'}
