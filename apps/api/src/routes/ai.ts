@@ -40,7 +40,7 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
   }
 
   const body = req.body as {
-    eventtype?: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+    eventtype?: 'tournament_start' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
     currentlevel?: number;
     previouslevel?: number | null;
     previouslevelstartedat?: string | null;
@@ -59,6 +59,12 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     breakminutes?: number | null;
     rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
     rebuyclosed?: boolean;
+    prizepool?: number | null;
+    playercount?: number | null;
+    rebuyenabled?: boolean;
+    rebuyamount?: number | null;
+    addonenabled?: boolean;
+    addonamount?: number | null;
   };
 
   const tournament = await queryOne<{
@@ -143,6 +149,12 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     totalRebuys: Number(tournament.totalrebuys ?? 0),
     totalAddons,
     addOnPercent: checkedInPlayers > 0 ? Math.round((totalAddons / checkedInPlayers) * 100) : 0,
+    prizePool: body.prizepool == null ? null : Number(body.prizepool),
+    playerCount: body.playercount == null ? null : Number(body.playercount),
+    rebuyEnabled: body.rebuyenabled == null ? null : Boolean(body.rebuyenabled),
+    rebuyAmount: body.rebuyamount == null ? null : Number(body.rebuyamount),
+    addonEnabled: body.addonenabled == null ? null : Boolean(body.addonenabled),
+    addonAmount: body.addonamount == null ? null : Number(body.addonamount),
   });
   if (shouldChargeOwner && result.aiEnabled) {
     await consumeAiCredit(tournament.ownerid);

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool, query, queryOne } from '../db';
-import { getAccountProfile } from '../account';
+import { consumeAiCredit, getAccountProfile } from '../account';
 import { isFeatureEnabled } from '../features';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { isTvBoardAvailable } from '../schedule';
@@ -10,7 +10,7 @@ import { broadcastTournamentUpdate } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
-import { generateVoicePreview } from '../services/openai';
+import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
@@ -37,6 +37,122 @@ publicRouter.post('/ai-voice-preview', async (req: Request, res: Response) => {
     console.error('Voice preview failed', err instanceof Error ? err.message : err);
     res.status(503).json({ error: 'Voice preview is unavailable right now.' });
   }
+});
+
+publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => {
+  const normalizedCode = String(req.params.code ?? '').trim();
+  if (!normalizedCode) {
+    res.status(400).json({ error: 'TV code required' });
+    return;
+  }
+
+  const body = req.body as {
+    eventtype?: 'knockout' | 'rebuy' | 'addon' | 'checkin';
+    currentlevel?: number;
+    smallblind?: number;
+    bigblind?: number;
+    ante?: number;
+    knockedoutplayername?: string;
+    knockedoutbyname?: string | null;
+    placement?: number | null;
+    prizeamount?: number | null;
+    bountyamount?: number | null;
+    bountyclaimedbyname?: string | null;
+    playername?: string | null;
+  };
+  const eventType = body.eventtype ?? 'knockout';
+  if (!['knockout', 'rebuy', 'addon', 'checkin'].includes(eventType)) {
+    res.status(400).json({ error: 'This TV announcer event is not supported.' });
+    return;
+  }
+
+  const tournament = await queryOne<{
+    tournamentid: string;
+    name: string;
+    groupname: string | null;
+    ownerid: string;
+    tourneydate: string | null;
+    aiannouncerpreset: string | null;
+    aiannouncerenabled: boolean | null;
+    aiannouncercustomprompt: string | null;
+    aiannouncerclassicmode: boolean | null;
+    checkedincount: number;
+    remainingplayers: number;
+    totalrebuys: number;
+    totaladdons: number;
+  }>(
+    `SELECT t.tournamentid, t.name, t.userid AS ownerid, t.date AS tourneydate, g.name AS groupname,
+            COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
+            COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
+            g.aiannouncercustomprompt,
+            COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
+            CAST(COALESCE(sum(CASE WHEN COALESCE(tp.checkedin, FALSE) = TRUE OR tp.placed IS NOT NULL THEN 1 ELSE 0 END), 0) AS INT) AS checkedincount,
+            CAST(COALESCE(sum(CASE WHEN COALESCE(tp.checkedin, FALSE) = TRUE AND tp.placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS remainingplayers,
+            CAST(COALESCE(sum(COALESCE(tp.rebuys, 0)), 0) + COALESCE(t.genericrebuys, 0) AS INT) AS totalrebuys,
+            CAST(COALESCE(sum(CASE WHEN ${truthySql('tp.addedon')} THEN 1 ELSE 0 END), 0) + COALESCE(t.genericaddons, 0) AS INT) AS totaladdons
+     FROM tournaments t
+     LEFT JOIN groups g ON g.groupid = t.groupid
+     LEFT JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid
+     WHERE t.tvdisplaycode = $1
+     GROUP BY t.tournamentid, t.name, t.userid, t.date, g.name, g.aiannouncerpreset, g.aiannouncerenabled, g.aiannouncercustomprompt, g.aiannouncerclassicmode, t.genericrebuys, t.genericaddons`,
+    [normalizedCode]
+  );
+  if (!tournament) {
+    res.status(404).json({ error: 'TV board not found' });
+    return;
+  }
+  if (!isFeatureEnabled('tvBoard') || !isTvBoardAvailable(tournament.tourneydate ?? undefined)) {
+    res.status(403).json({ error: 'TV board is not available for this tournament.' });
+    return;
+  }
+  if (!tournament.aiannouncerenabled) {
+    res.status(409).json({ error: 'Voice announcer is not enabled for this group.' });
+    return;
+  }
+
+  const ownerProfile = await getAccountProfile(tournament.ownerid);
+  if (!ownerProfile?.canuseclubfeatures) {
+    res.status(403).json({ error: 'Voice director is available on Club and Pro tiers.' });
+    return;
+  }
+  const shouldChargeOwner = !ownerProfile.issuperadmin;
+  if (shouldChargeOwner && ownerProfile.aicreditsremaining <= 0) {
+    res.status(402).json({ error: 'No voice credits remaining for this host.' });
+    return;
+  }
+
+  const checkedInPlayers = Number(tournament.checkedincount ?? 0);
+  const totalAddons = Number(tournament.totaladdons ?? 0);
+  const result = await generateAnnouncerMoment({
+    preset: normalizeAnnouncerPreset(tournament.aiannouncerpreset),
+    customPrompt: tournament.aiannouncercustomprompt,
+    classicMode: Boolean(tournament.aiannouncerclassicmode),
+    tournamentName: tournament.name,
+    groupName: tournament.groupname,
+    eventType,
+    currentLevel: Number(body.currentlevel ?? 1),
+    smallBlind: Number(body.smallblind ?? 0),
+    bigBlind: Number(body.bigblind ?? 0),
+    ante: Number(body.ante ?? 0),
+    knockedOutPlayerName: body.knockedoutplayername ? String(body.knockedoutplayername).trim().slice(0, 80) : null,
+    knockedOutByName: body.knockedoutbyname ? String(body.knockedoutbyname).trim().slice(0, 80) : null,
+    placement: body.placement == null ? null : Number(body.placement),
+    prizeAmount: body.prizeamount == null ? null : Number(body.prizeamount),
+    bountyAmount: body.bountyamount == null ? null : Number(body.bountyamount),
+    bountyClaimedByName: body.bountyclaimedbyname ? String(body.bountyclaimedbyname).trim().slice(0, 80) : null,
+    playerName: body.playername ? String(body.playername).trim().slice(0, 80) : null,
+    remainingPlayers: Number(tournament.remainingplayers ?? 0),
+    checkedInPlayers,
+    knockedOutDuringPriorLevel: 0,
+    totalRebuys: Number(tournament.totalrebuys ?? 0),
+    totalAddons,
+    addOnPercent: checkedInPlayers > 0 ? Math.round((totalAddons / checkedInPlayers) * 100) : 0,
+  });
+  if (shouldChargeOwner && result.aiEnabled) {
+    await consumeAiCredit(tournament.ownerid);
+  }
+
+  res.json(result);
 });
 
 publicRouter.get('/tv/:code', async (req: Request, res: Response) => {

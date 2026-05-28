@@ -204,6 +204,8 @@ export const api = {
     get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
   getPublicTvBoard: (code: string) =>
     get<PublicTvBoardResponse>(`/public/tv/${encodeURIComponent(code)}`),
+  generatePublicTvAnnouncerMoment: (code: string, data: AnnouncerMomentRequest) =>
+    post<AnnouncerMomentResponse>(`/public/tv/${encodeURIComponent(code)}/announcer`, data),
   lobbySelfCheckin: (id: string) =>
     post<{ success: boolean }>(`/public/tournaments/${id}/checkin/self`),
   lobbyGuestCheckin: (id: string, data: { displayname?: string; guestUserId?: string }) =>
@@ -770,7 +772,7 @@ export interface PublicKnockoutResponse {
 }
 
 export interface AnnouncerMomentRequest {
-  eventtype: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+  eventtype: 'tournament_start' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentlevel: number;
   previouslevel?: number | null;
   previouslevelstartedat?: string | null;
@@ -789,6 +791,12 @@ export interface AnnouncerMomentRequest {
   breakminutes?: number | null;
   rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
   rebuyclosed?: boolean;
+  prizepool?: number | null;
+  playercount?: number | null;
+  rebuyenabled?: boolean;
+  rebuyamount?: number | null;
+  addonenabled?: boolean;
+  addonamount?: number | null;
 }
 
 export interface AnnouncerMomentResponse {

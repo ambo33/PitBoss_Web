@@ -18,7 +18,7 @@ interface AnnouncerContext {
   classicMode?: boolean | null;
   tournamentName: string;
   groupName?: string | null;
-  eventType: 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+  eventType: 'tournament_start' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentLevel: number;
   previousLevel?: number | null;
   smallBlind?: number;
@@ -42,6 +42,12 @@ interface AnnouncerContext {
   totalRebuys: number;
   totalAddons: number;
   addOnPercent: number;
+  prizePool?: number | null;
+  playerCount?: number | null;
+  rebuyEnabled?: boolean | null;
+  rebuyAmount?: number | null;
+  addonEnabled?: boolean | null;
+  addonAmount?: number | null;
 }
 
 interface HandAnalysisContext {
@@ -232,6 +238,7 @@ export function normalizeAnnouncerPreset(value: string | null | undefined): Anno
 
 export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean; preset?: AnnouncerPreset; voice?: string }> {
   const preset = sanitizePreset(context.preset);
+  const isTournamentStart = context.eventType === 'tournament_start';
   const isKnockout = context.eventType === 'knockout';
   const isCheckin = context.eventType === 'checkin';
   if (context.classicMode) {
@@ -242,7 +249,24 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
     const speech = await createSpeech(text, preset);
     return { text, ...speech, aiEnabled: true, preset, voice: presetVoices[preset] };
   }
-  const prompt = isKnockout
+  const prompt = isTournamentStart
+    ? [
+        'Write one opening announcement for the start of a poker tournament.',
+        `Style preset: ${presetInstructions[preset]}`,
+        context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+        'Rules: 45 to 75 words. Welcome the players, state the field size, current prize pool, whether re-buys and add-ons are available, first blinds, and wish everyone good luck. This only plays at tournament start, so make it complete but not bloated. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        `Tournament: ${context.tournamentName}`,
+        context.groupName ? `Group: ${context.groupName}` : '',
+        `Players in field: ${getAnnouncedPlayerCount(context)}`,
+        `Current prize pool: ${formatMoneyForSpeech(context.prizePool)}`,
+        formatAvailabilityFact('Re-buys', context.rebuyEnabled, context.rebuyAmount),
+        formatAvailabilityFact('Add-ons', context.addonEnabled, context.addonAmount),
+        `First level: ${context.currentLevel}`,
+        `Small blind: ${context.smallBlind ?? 0}`,
+        `Big blind: ${context.bigBlind ?? 0}`,
+        `Ante: ${context.ante ?? 0}`,
+      ].filter(Boolean).join('\n')
+    : isKnockout
     ? [
         'Write one very short poker knockout announcement.',
         `Style preset: ${presetInstructions[preset]}`,
@@ -268,6 +292,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
         'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        context.eventType === 'five_minute_warning' || context.eventType === 'one_minute_warning' ? 'This is a clock warning. Keep it direct and do not mention tournament name, prize pool, field movement, rebuys, add-ons, or player counts unless this is a rebuy cutoff warning.' : '',
         context.rebuyCutoffWarning ? 'This is a rebuy cutoff warning. Keep it direct and mention the rebuy deadline only.' : '',
         context.isBreak ? 'This level is a break. Announce the break note and duration. Do not mention blinds.' : '',
         context.rebuyClosed ? 'Rebuys just closed. Say that re-buys are officially closed.' : '',
@@ -304,6 +329,7 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
 function buildClassicAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
+  if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
   if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
   if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
@@ -322,6 +348,7 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   const blinds = `small blind is ${smallBlind}, big blind is ${bigBlind}`;
+  if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
   if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
   if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
@@ -336,10 +363,10 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
     return `${player} has been eliminated${placement}${by}.${prize}${bounty}`;
   }
   if (context.eventType === 'five_minute_warning') {
-    return `Five minutes remain in level ${context.currentLevel}. ${blinds}, with ${context.remainingPlayers} players still in the hunt.`;
+    return `Five minutes remain in level ${context.currentLevel}.`;
   }
   if (context.eventType === 'one_minute_warning') {
-    return `One minute left in level ${context.currentLevel}. ${blinds}. Finish the hand and get ready for the next level.`;
+    return `One minute left in level ${context.currentLevel}. Finish the hand and get ready.`;
   }
   if (context.eventType === 'checkin') return `Welcome, ${context.playerName || 'player'}. Good luck.`;
   const priorLosses = Number(context.knockedOutDuringPriorLevel ?? 0);
@@ -347,6 +374,40 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
     ? `Last level claimed ${priorLosses} player${priorLosses === 1 ? '' : 's'}`
     : 'The field is still battling';
   return `Level ${context.currentLevel} is live. ${blinds}. ${context.rebuyClosed ? 'Re-buys are officially closed. ' : ''}${action}, with ${context.remainingPlayers} players remaining.`;
+}
+
+function buildTournamentStartScript(context: AnnouncerContext): string {
+  const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
+  const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
+  const fieldCount = getAnnouncedPlayerCount(context);
+  const prizePool = formatMoneyForSpeech(context.prizePool);
+  const rebuy = formatAvailabilitySentence('Re-buys', context.rebuyEnabled, context.rebuyAmount);
+  const addon = formatAvailabilitySentence('Add-ons', context.addonEnabled, context.addonAmount);
+  return `Welcome to ${context.tournamentName}. We have ${fieldCount} player${fieldCount === 1 ? '' : 's'} in the field and a current prize pool of ${prizePool}. ${rebuy} ${addon} Level one starts now: small blind is ${smallBlind}, big blind is ${bigBlind}. Good luck, players.`;
+}
+
+function formatAvailabilityFact(label: string, enabled: boolean | null | undefined, amount: number | null | undefined): string {
+  if (!enabled) return `${label}: not available`;
+  const numericAmount = Number(amount ?? 0);
+  return `${label}: available${numericAmount > 0 ? ` for ${formatMoneyForSpeech(numericAmount)}` : ''}`;
+}
+
+function formatAvailabilitySentence(label: string, enabled: boolean | null | undefined, amount: number | null | undefined): string {
+  if (!enabled) return `${label} are not available.`;
+  const numericAmount = Number(amount ?? 0);
+  return `${label} are available${numericAmount > 0 ? ` for ${formatMoneyForSpeech(numericAmount)}` : ''}.`;
+}
+
+function formatMoneyForSpeech(value: number | null | undefined): string {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return '$0';
+  return `$${numericValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function getAnnouncedPlayerCount(context: AnnouncerContext): number {
+  const explicitCount = Number(context.playerCount ?? 0);
+  if (Number.isFinite(explicitCount) && explicitCount > 0) return explicitCount;
+  return Number(context.checkedInPlayers || context.remainingPlayers || 0);
 }
 
 function ordinal(value: number): string {

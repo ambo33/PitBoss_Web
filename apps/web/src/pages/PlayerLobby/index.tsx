@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Brain, Volume2 } from 'lucide-react';
+import { Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
@@ -36,39 +36,6 @@ function buildAnnouncementTokens(state: TimerState, blind?: BlindLevel) {
   };
 }
 
-type CoachingSection = { label: string; body: string };
-
-const HAND_REVIEW_PROMPTS = [
-  'Positions and stack sizes',
-  'Hole cards and board',
-  'Pot size and bet sequence',
-  'Reads or payout pressure',
-];
-
-function appendHandReviewPrompt(current: string, prompt: string) {
-  const line = `${prompt}: `;
-  if (current.includes(line)) return current;
-  return `${current.trim()}${current.trim() ? '\n' : ''}${line}`;
-}
-
-function parseCoachingAnalysis(text: string): CoachingSection[] {
-  const labels = ['Verdict', 'Key Factors', 'Recommended Line', 'Questions', 'Coaching Takeaway'];
-  const sections: CoachingSection[] = [];
-  for (const label of labels) {
-    const start = text.search(new RegExp(`(^|\\n)${label}:`, 'i'));
-    if (start === -1) continue;
-    const contentStart = text.indexOf(':', start) + 1;
-    const nextStarts = labels
-      .filter((nextLabel) => nextLabel !== label)
-      .map((nextLabel) => text.slice(contentStart).search(new RegExp(`\\n${nextLabel}:`, 'i')))
-      .filter((index) => index >= 0);
-    const end = nextStarts.length ? contentStart + Math.min(...nextStarts) : text.length;
-    const body = text.slice(contentStart, end).trim();
-    if (body) sections.push({ label, body });
-  }
-  return sections.length ? sections : [{ label: 'Coaching Review', body: text.trim() }];
-}
-
 function coinOptionSuffix(coins?: PlayerCoinBadge[] | null) {
   const total = coins?.reduce((sum, coin) => sum + Number(coin.count ?? 0), 0) ?? 0;
   return total > 0 ? ` - ${total} coin${total === 1 ? '' : 's'}` : '';
@@ -99,8 +66,6 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     return localStorage.getItem(guestStorageKey(id)) ?? '';
   });
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
-  const [handText, setHandText] = useState('');
-  const [handAnalysis, setHandAnalysis] = useState('');
   const [showBlindStructure, setShowBlindStructure] = useState(false);
 
   const { data, isLoading, error } = useQuery({
@@ -208,16 +173,6 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
       setKnockedOutByUserId('');
     },
-  });
-  const handAnalysisMutation = useMutation({
-    mutationFn: () => api.analyzeHand(id!, {
-      hand: handText,
-      blindlevel: timer?.currentlevel,
-      smallblind: currentBlind?.smallblind,
-      bigblind: currentBlind?.bigblind,
-      ante: currentBlind?.ante,
-    }),
-    onSuccess: (result) => setHandAnalysis(result.analysis),
   });
 
   useEffect(() => {
@@ -391,14 +346,9 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     Number(field.bountytotal ?? 0),
     Number(field.knockedoutcount ?? 0) > 0 || Number(field.bountyclaimed ?? 0) > 0
   );
-  const bountyRemaining = tournament.bountyenabled ? Number(field.bountyremaining ?? 0) : 0;
   const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0) - bountyTotal, 0);
   const stats = [
     { label: 'Players Left', value: field.activecount },
-    ...(field.checkedincount > 0 ? [{ label: 'Checked In', value: field.checkedincount }] : []),
-    ...(tournament.rebuyprice > 0 ? [{ label: 'Rebuys', value: field.totalrebuys }] : []),
-    ...(tournament.addonprice > 0 ? [{ label: 'Add-Ons', value: field.totaladdons }] : []),
-    ...(tournament.bountyenabled ? [{ label: 'Bounties Left', value: formatMoney(bountyRemaining), accent: true }] : []),
     { label: 'Prize Pool', value: formatMoney(prizePool), accent: true },
   ];
   const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), field.checkedincount > 0 ? field.checkedincount : field.registeredcount);
@@ -410,7 +360,6 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const displayIdentity = entry?.displayname ?? entry?.emailaddress ?? user?.displayname ?? user?.emailaddress ?? (guestUserId ? 'Guest Player' : null);
   const registeredStatus = entry ? 'Registered' : 'Not registered';
   const checkInStatus = entry?.checkedin ? 'Checked in' : entry ? 'Not checked in' : 'Check-in required';
-  const coachingSections = parseCoachingAnalysis(handAnalysis);
 
   return (
     <div className="min-h-screen bg-pit-bg p-3 text-white">
@@ -534,10 +483,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
         )}
 
         <section className="card space-y-3 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Payout Structure</h2>
-            <span className="text-xs font-medium text-pit-muted">{field.activecount} remaining</span>
-          </div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Payout Structure</h2>
 
           <div className="grid gap-2 grid-cols-2">
             {stats.map((stat) => (
@@ -557,55 +503,6 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
             ))}
           </div>
         </section>
-
-        {!checkInMode && (
-          <section className="card space-y-3 p-3">
-            <div className="flex items-center gap-2">
-              <Brain size={16} className="text-pit-teal" />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Hand Review</h2>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {HAND_REVIEW_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  className="rounded-lg border border-pit-border bg-pit-bg/60 px-2 py-2 text-left text-xs font-medium text-pit-text transition-colors hover:border-pit-teal/50 hover:text-white"
-                  onClick={() => setHandText((current) => appendHandReviewPrompt(current, prompt))}
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-            <textarea
-              className="input min-h-28"
-              value={handText}
-              onChange={(event) => setHandText(event.target.value)}
-              placeholder="Describe the prior hand. Include the decision point, positions, stacks, pot size, board, bet sizes, and what felt close."
-            />
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={handAnalysisMutation.isPending || !handText.trim()}
-              onClick={() => handAnalysisMutation.mutate()}
-            >
-              <Brain size={14} />
-              {handAnalysisMutation.isPending ? 'Reviewing...' : 'Run Coaching Review'}
-            </button>
-            {handAnalysisMutation.error && (
-              <p className="text-sm text-red-400">{handAnalysisMutation.error.message}</p>
-            )}
-            {handAnalysis && (
-              <div className="space-y-2 rounded-xl border border-pit-teal/25 bg-pit-bg/70 p-3">
-                {coachingSections.map((section) => (
-                  <div key={section.label} className="rounded-lg border border-pit-border/80 bg-pit-surface/60 px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pit-teal">{section.label}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-pit-text">{section.body}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
 
         {checkInMode && !entry ? (
           <div className="grid gap-4">

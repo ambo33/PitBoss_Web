@@ -84,6 +84,7 @@ export default function RunTournament({
   });
   const receivedInitialTimerStateRef = useRef(false);
   const lastRunningRef = useRef<boolean | null>(null);
+  const tournamentIntroAnnouncedRef = useRef(false);
   const levelStartedAtRef = useRef<string | null>(null);
   const announcementTemplatesRef = useRef({
     fiveMinute: tournament.speechfiveminutemessage,
@@ -435,7 +436,13 @@ export default function RunTournament({
 
     if (lastRunningRef.current !== state.running) {
       if (!initial && lastRunningRef.current != null) {
-        announceTimerStatus(state.running ? 'resume' : 'pause');
+        const blind = getStateBlind(state);
+        if (state.running && shouldAnnounceTournamentStart(state, blind)) {
+          tournamentIntroAnnouncedRef.current = true;
+          announceTournamentStart(state, blind);
+        } else {
+          announceTimerStatus(state.running ? 'resume' : 'pause');
+        }
       }
       lastRunningRef.current = state.running;
     }
@@ -520,26 +527,69 @@ export default function RunTournament({
       return;
     }
 
-    if (isRebuyCutoffWarning) {
-      api.generateAnnouncerMoment(tournamentId, {
-        eventtype,
-        currentlevel: Number(state.currentlevel),
-        smallblind: Number(blind?.smallblind ?? 0),
-        bigblind: Number(blind?.bigblind ?? 0),
-        ante: Number(blind?.ante ?? 0),
-        rebuycutoffwarning: eventtype,
-      }).then((result) => {
-        if (result.aiEnabled && result.audioBase64) {
-          playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
-        } else {
-          fallback();
-        }
-      }).catch(() => fallback());
+    api.generateAnnouncerMoment(tournamentId, {
+      eventtype,
+      currentlevel: Number(state.currentlevel),
+      smallblind: Number(blind?.smallblind ?? 0),
+      bigblind: Number(blind?.bigblind ?? 0),
+      ante: Number(blind?.ante ?? 0),
+      rebuycutoffwarning: isRebuyCutoffWarning ? eventtype : null,
+    }).then((result) => {
+      if (result.aiEnabled && result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+      } else {
+        fallback();
+      }
+    }).catch(() => fallback());
+  }
+
+  function shouldAnnounceTournamentStart(state: TimerState, blind: BlindLevel | undefined): boolean {
+    if (tournamentIntroAnnouncedRef.current || !state.running || !blind || isBreakBlind(blind)) return false;
+    const firstBlind = [...state.blinds].sort((a, b) => Number(a.level) - Number(b.level))[0];
+    if (!firstBlind || Number(state.currentlevel) !== Number(firstBlind.level)) return false;
+    const fullLevelSeconds = Number(firstBlind.minutes ?? blind.minutes ?? 0) * 60;
+    if (fullLevelSeconds <= 0) return true;
+    return Number(state.remainingsecs ?? 0) >= Math.max(fullLevelSeconds - 3, 0);
+  }
+
+  function announceTournamentStart(state: TimerState, blind: BlindLevel | undefined) {
+    const playerCount = fieldSize;
+    const prizePool = totalPot;
+    const rebuyEnabled = toNumber(tournament.rebuyprice) > 0;
+    const addonEnabled = toNumber(tournament.addonprice) > 0;
+    const fallback = () => {
+      const smallBlind = Number(blind?.smallblind ?? 0).toLocaleString();
+      const bigBlind = Number(blind?.bigblind ?? 0).toLocaleString();
+      const prize = prizePool > 0 ? `The current prize pool is ${formatMoney(prizePool)}.` : 'The current prize pool is still being built.';
+      const rebuy = rebuyEnabled ? `Re-buys are available for ${formatMoney(toNumber(tournament.rebuyprice))}.` : 'There are no re-buys tonight.';
+      const addon = addonEnabled ? `Add-ons are available for ${formatMoney(toNumber(tournament.addonprice))}.` : 'There are no add-ons tonight.';
+      announceMessage(`Welcome to ${tournament.name}. We have ${playerCount} player${playerCount === 1 ? '' : 's'} in the field. ${prize} ${rebuy} ${addon} Level one starts now: small blind is ${smallBlind}, big blind is ${bigBlind}. Good luck, players.`);
+    };
+
+    if (!tournament.aiannouncerenabled) {
+      fallback();
       return;
     }
 
-    const preset = normalizeAnnouncerPreset(tournament.aiannouncerpreset);
-    playStoredSpeech(`/sounds/announcer-static/${preset.replace(/_/g, '-')}-${eventtype.replace(/_/g, '-')}.mp3`, fallback);
+    api.generateAnnouncerMoment(tournamentId, {
+      eventtype: 'tournament_start',
+      currentlevel: Number(state.currentlevel),
+      smallblind: Number(blind?.smallblind ?? 0),
+      bigblind: Number(blind?.bigblind ?? 0),
+      ante: Number(blind?.ante ?? 0),
+      prizepool: prizePool,
+      playercount: playerCount,
+      rebuyenabled: rebuyEnabled,
+      rebuyamount: toNumber(tournament.rebuyprice),
+      addonenabled: addonEnabled,
+      addonamount: toNumber(tournament.addonprice),
+    }).then((result) => {
+      if (result.aiEnabled && result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+      } else {
+        fallback();
+      }
+    }).catch(() => fallback());
   }
 
   function announceAiOrTemplate(
@@ -587,7 +637,7 @@ export default function RunTournament({
     if (!tournament.aiannouncerenabled) return;
     const state = timerState;
     const blind = state ? getStateBlind(state) : currentBlind;
-    api.generateAnnouncerMoment(tournamentId, {
+    const data = {
       eventtype: 'knockout',
       currentlevel: Number(state?.currentlevel ?? effectiveLevel),
       smallblind: Number(blind?.smallblind ?? 0),
@@ -599,7 +649,12 @@ export default function RunTournament({
       prizeamount: player.placed != null && player.placed <= payoutPlaces ? toNumber(payouts[player.placed - 1]) : null,
       bountyamount: tournament.bountyenabled && isBountyPlacementEligible(tournament, player.placed) ? toNumber(player.bountyamount) : null,
       bountyclaimedbyname: player.bountyclaimedbyname ?? player.knockedoutbyname ?? null,
-    }).then((result) => {
+    } as const;
+    const request = tvMode && tournament.tvdisplaycode
+      ? api.generatePublicTvAnnouncerMoment(tournament.tvdisplaycode, data)
+      : api.generateAnnouncerMoment(tournamentId, data);
+
+    request.then((result) => {
       if (result.aiEnabled && result.audioBase64) {
         playGeneratedSpeech(result.audioBase64, result.mimeType);
       }
@@ -1537,21 +1592,42 @@ function TvSeatingBoard({
         }`}>
           {roster.map((player) => {
             const checkedIn = checkedInIds.has(player.userid) || Boolean(player.checkedin);
+            const showFloatingCoins = tvMode && (player.awardedcoins?.length ?? 0) > 0;
+            const denseTvCard = tvMode && !compactRegistered;
+            const cardSpacing = compactRegistered
+              ? `gap-1.5 px-2 py-1 ${showFloatingCoins ? 'pr-9' : ''}`
+              : denseTvCard
+                ? `gap-1.5 px-2 py-1.5 ${showFloatingCoins ? 'pr-12' : ''}`
+                : fullWidth
+                  ? `gap-2 px-2.5 py-2 ${showFloatingCoins ? 'pr-16' : ''}`
+                  : `gap-2 px-2 py-1.5 ${showFloatingCoins ? 'pr-12' : ''}`;
+            const statusIconSize = compactRegistered ? 'h-3.5 w-3.5' : denseTvCard ? 'h-4 w-4' : fullWidth ? 'h-5 w-5' : 'h-4 w-4';
+            const avatarSize = compactRegistered ? 'h-5 w-5 text-[9px]' : denseTvCard ? 'h-7 w-7 text-[10px]' : fullWidth ? 'h-9 w-9 text-xs' : 'h-7 w-7 text-[11px]';
+            const nameSize = compactRegistered ? 'text-xs xl:text-sm' : denseTvCard ? 'text-sm xl:text-base leading-tight' : fullWidth ? 'text-base xl:text-lg' : 'text-sm';
+            const assignmentSize = denseTvCard ? 'text-xs leading-tight' : fullWidth ? 'text-xs xl:text-sm' : 'text-xs';
             return (
             <div
               key={player.userid}
-              className={`flex min-w-0 items-center rounded-lg border text-left transition ${
+              className={`relative flex min-w-0 items-center rounded-lg border text-left transition ${
                 checkedIn
                   ? 'border-emerald-400/45 bg-emerald-400/12 text-white'
                   : 'border-pit-border bg-pit-bg/45 text-pit-muted'
-              } ${compactRegistered ? 'gap-1.5 px-2 py-1' : fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
+              } ${cardSpacing}`}
             >
-              {checkedIn ? (
-                <CheckCircle2 className={`shrink-0 text-emerald-300 ${compactRegistered ? 'h-3.5 w-3.5' : fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
-              ) : (
-                <XCircle className={`shrink-0 text-red-300 ${compactRegistered ? 'h-3.5 w-3.5' : fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
+              {showFloatingCoins && (
+                <CoinBadgeStrip
+                  coins={player.awardedcoins}
+                  size="xs"
+                  limit={compactRegistered ? 2 : fullWidth ? 4 : 3}
+                  className="absolute right-1.5 top-1.5 flex-nowrap gap-0.5"
+                />
               )}
-              <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${compactRegistered ? 'h-5 w-5 text-[9px]' : fullWidth ? 'h-9 w-9 text-xs' : 'h-7 w-7 text-[11px]'}`}>
+              {checkedIn ? (
+                <CheckCircle2 className={`shrink-0 text-emerald-300 ${statusIconSize}`} />
+              ) : (
+                <XCircle className={`shrink-0 text-red-300 ${statusIconSize}`} />
+              )}
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${avatarSize}`}>
                 {player.avatarimagedata ? (
                   <img src={player.avatarimagedata} alt={player.displayname ?? player.emailaddress} className="h-full w-full object-cover" />
                 ) : (
@@ -1559,10 +1635,10 @@ function TvSeatingBoard({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${compactRegistered ? 'text-xs xl:text-sm' : fullWidth ? 'text-base xl:text-lg' : 'text-sm'}`}>{playerNameWithMedals(player)}</p>
-                {!compactRegistered && <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />}
+                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${nameSize}`}>{playerNameWithMedals(player)}</p>
+                {!compactRegistered && !showFloatingCoins && <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />}
                 {hasAssignments ? (
-                  <p className={`${fullWidth ? 'text-xs xl:text-sm' : 'text-xs'} font-medium ${checkedIn ? 'text-yellow-200' : 'text-pit-muted'}`}>
+                  <p className={`${assignmentSize} font-medium ${checkedIn ? 'text-yellow-200' : 'text-pit-muted'}`}>
                     Table {player.tablenumber} Seat {player.seat}
                   </p>
                 ) : null}

@@ -1,14 +1,16 @@
 import type { PlayerCoinBadge } from '../api/client';
 
-type CoinBadgeStripSize = 'sm' | 'md' | 'lg';
+type CoinBadgeStripSize = 'xs' | 'sm' | 'md' | 'lg';
 
 const sizeClasses: Record<CoinBadgeStripSize, string> = {
+  xs: 'h-4 w-4',
   sm: 'h-6 w-6',
   md: 'h-8 w-8',
   lg: 'h-12 w-12',
 };
 
 const countClasses: Record<CoinBadgeStripSize, string> = {
+  xs: 'text-[7px] px-0.5 leading-3',
   sm: 'text-[8px] px-1',
   md: 'text-[9px] px-1',
   lg: 'text-[10px] px-1.5',
