@@ -950,7 +950,7 @@ export default function RunTournament({
                 )}
               </div>
           </section>
-        ) : displayMode ? (
+        ) : displayMode && !tvMode ? (
           <div className="flex justify-end">
             <BrandLockup compact showSlogan={false} className="items-center gap-2" />
           </div>
@@ -1506,18 +1506,20 @@ function TvSeatingBoard({
 
   return (
     <div className={`rounded-xl border border-yellow-200/35 bg-yellow-200/10 ${fullWidth ? 'px-5 py-5' : 'px-3 py-3'}`}>
-      <div className={`${fullWidth ? 'mb-4' : 'mb-2'} flex items-center justify-between gap-3`}>
-        <div>
-          {!hasAssignments && (
-            <p className={`${fullWidth ? 'mb-2 text-2xl xl:text-3xl' : 'mb-1 text-base xl:text-lg'} font-semibold text-yellow-200`}>{welcomeMessage}</p>
-          )}
+      <div className={`${fullWidth ? 'mb-4' : 'mb-2'} flex items-center ${compactRegistered ? 'justify-center text-center' : 'justify-between'} gap-3`}>
+        <div className={compactRegistered ? 'mx-auto' : ''}>
           <h3 className={`${fullWidth ? 'text-4xl xl:text-5xl' : 'text-xl'} font-semibold uppercase tracking-[0.2em] text-white`}>
             {hasAssignments ? 'Table Assignments' : 'Registered Players'}
           </h3>
+          {!hasAssignments && (
+            <p className={`${fullWidth ? 'mt-2 text-2xl xl:text-3xl' : 'mt-1 text-base xl:text-lg'} font-semibold text-yellow-200`}>{welcomeMessage}</p>
+          )}
         </div>
-        <span className="rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
-          {checkedInRosterLabel(checkedInIds.size, roster.length)}
-        </span>
+        {!compactRegistered && (
+          <span className="rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
+            {checkedInRosterLabel(checkedInIds.size, roster.length)}
+          </span>
+        )}
       </div>
 
       {roster.length === 0 ? (

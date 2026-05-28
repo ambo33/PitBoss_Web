@@ -116,6 +116,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const activePlayers = data?.activePlayers ?? [];
   const checkInMode = mode === 'checkin';
   const [knockedOutByUserId, setKnockedOutByUserId] = useState('');
+  const autoCheckinAttemptRef = useRef('');
 
   useEffect(() => {
     announcementTemplatesRef.current = {
@@ -218,6 +219,37 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     }),
     onSuccess: (result) => setHandAnalysis(result.analysis),
   });
+
+  useEffect(() => {
+    if (!checkInMode || !id || isLoading || !data) return;
+    if (entry?.checkedin || entry?.placed != null) return;
+    if (selfCheckinMutation.isPending || guestRecheckinMutation.isPending) return;
+
+    const autoKey = `${id}:${user?.guid ?? guestUserId ?? 'anonymous'}`;
+    if (autoCheckinAttemptRef.current === autoKey) return;
+
+    if (token) {
+      autoCheckinAttemptRef.current = autoKey;
+      selfCheckinMutation.mutate();
+      return;
+    }
+
+    if (guestUserId && entry) {
+      autoCheckinAttemptRef.current = autoKey;
+      guestRecheckinMutation.mutate();
+    }
+  }, [
+    checkInMode,
+    data,
+    entry,
+    guestRecheckinMutation,
+    guestUserId,
+    id,
+    isLoading,
+    selfCheckinMutation,
+    token,
+    user?.guid,
+  ]);
 
   useEffect(() => {
     if (!id) return;
@@ -579,7 +611,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           <div className="grid gap-4">
             <section className="card space-y-3 p-3">
               <div>
-                <h2 className="text-base font-semibold text-white">Check In</h2>
+                <h2 className="text-base font-semibold text-white">Check-In Link</h2>
               </div>
 
               <>
@@ -587,21 +619,40 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
                   <p className="text-sm font-semibold text-white">Use your account</p>
                   <p className="mt-1 text-sm text-pit-text">
                     {token
-                      ? 'You are signed in. Tap below to register and check in, then we will send you to your player lobby.'
+                      ? selfCheckinMutation.error
+                        ? 'We could not finish check-in automatically. Try again below or see the host.'
+                        : 'You are signed in. We are registering and checking you in automatically.'
                       : 'Sign in first, then your registration and check-in will finish here automatically.'}
                   </p>
-                  <button
-                    type="button"
-                    className="btn-primary mt-4"
-                    onClick={handleSelfCheckin}
-                    disabled={selfCheckinMutation.isPending}
-                  >
-                    {token
-                      ? selfCheckinMutation.isPending ? 'Checking in...' : 'Register + Check In'
-                      : 'Sign In to Check In'}
-                  </button>
+                  {!token && (
+                    <button
+                      type="button"
+                      className="btn-primary mt-4"
+                      onClick={handleSelfCheckin}
+                      disabled={selfCheckinMutation.isPending}
+                    >
+                      Sign In to Check In
+                    </button>
+                  )}
+                  {token && (
+                    <div className="mt-4 rounded-lg border border-pit-teal/30 bg-pit-teal/10 px-3 py-2 text-sm font-semibold text-pit-teal">
+                      {selfCheckinMutation.isPending ? 'Checking you in...' : selfCheckinMutation.error ? 'Check-in needs another try.' : 'Check-in in progress...'}
+                    </div>
+                  )}
                   {selfCheckinMutation.error && (
-                    <p className="mt-3 text-sm text-red-400">{selfCheckinMutation.error.message}</p>
+                    <>
+                      <p className="mt-3 text-sm text-red-400">{selfCheckinMutation.error.message}</p>
+                      {token && (
+                        <button
+                          type="button"
+                          className="btn-primary mt-3"
+                          onClick={handleSelfCheckin}
+                          disabled={selfCheckinMutation.isPending}
+                        >
+                          Try Check-In Again
+                        </button>
+                      )}
+                    </>
                     )}
                 </div>
 
@@ -698,30 +749,42 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           </section>
         ) : checkInMode && !entry?.checkedin ? (
           <section className="card space-y-3 p-3">
-            <p className="text-sm text-pit-text">You are registered, but not currently checked in.</p>
-            {token ? (
+            <h2 className="text-base font-semibold text-white">Checking you in</h2>
+            <p className="text-sm text-pit-text">
+              {selfCheckinMutation.error || guestRecheckinMutation.error
+                ? 'We could not finish check-in automatically. Try again or see the host.'
+                : 'This host check-in link is confirming your seat automatically.'}
+            </p>
+            {(token || guestUserId) && !(selfCheckinMutation.error || guestRecheckinMutation.error) && (
+              <div className="rounded-lg border border-pit-teal/30 bg-pit-teal/10 px-3 py-2 text-sm font-semibold text-pit-teal">
+                {selfCheckinMutation.isPending || guestRecheckinMutation.isPending ? 'Checking you in...' : 'Check-in in progress...'}
+              </div>
+            )}
+            {!token && !guestUserId && (
+              <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Check In</button>
+            )}
+            {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
+            {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
+            {token && selfCheckinMutation.error && (
               <button
                 type="button"
                 className="btn-primary"
                 onClick={handleSelfCheckin}
                 disabled={selfCheckinMutation.isPending}
               >
-                {selfCheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+                Try Check-In Again
               </button>
-            ) : guestUserId ? (
+            )}
+            {guestUserId && guestRecheckinMutation.error && (
               <button
                 type="button"
                 className="btn-primary"
                 onClick={handleGuestRecheckin}
                 disabled={guestRecheckinMutation.isPending}
               >
-                {guestRecheckinMutation.isPending ? 'Checking in...' : 'Check In Again'}
+                Try Check-In Again
               </button>
-            ) : (
-              <button type="button" className="btn-primary" onClick={handleSignIn}>Sign In to Check In</button>
             )}
-            {selfCheckinMutation.error && <p className="text-sm text-red-400">{selfCheckinMutation.error.message}</p>}
-            {guestRecheckinMutation.error && <p className="text-sm text-red-400">{guestRecheckinMutation.error.message}</p>}
           </section>
         ) : entry?.checkedin ? (
           <section className="card space-y-3 p-3">
