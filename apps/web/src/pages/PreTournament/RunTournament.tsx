@@ -777,7 +777,13 @@ export default function RunTournament({
   const addonsEnabled = toNumber(tournament.addonprice) > 0;
 
   return (
-    <div className="space-y-4">
+    <div
+      className={`space-y-4 ${
+        displayMode
+          ? ''
+          : '-mx-4 -mb-24 -mt-4 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_12%_5%,rgba(20,184,166,0.22),transparent_36%),radial-gradient(circle_at_86%_7%,rgba(139,92,246,0.15),transparent_34%),linear-gradient(to_bottom,rgba(18,46,48,0.74)_0%,rgba(13,18,24,0.9)_48%,#050609_88%,#050609_100%)] px-4 pb-24 pt-4 sm:-mx-6 sm:px-6 md:-mt-6 md:pt-6 lg:-mx-8 lg:px-8'
+      }`}
+    >
       <div
         ref={screenRef}
         className={`relative overflow-hidden space-y-3 ${
@@ -1000,6 +1006,7 @@ export default function RunTournament({
                   registeredPlayers={seatingRoster}
                   welcomeMessage={tournament.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'}
                   fullWidth
+                  tvMode={tvMode}
                 />
               </div>
             ) : (
@@ -1482,14 +1489,17 @@ function TvSeatingBoard({
   registeredPlayers,
   welcomeMessage,
   fullWidth = false,
+  tvMode = false,
 }: {
   seatedPlayers: TournamentPlayer[];
   checkedInPlayers: TournamentPlayer[];
   registeredPlayers: TournamentPlayer[];
   welcomeMessage: string;
   fullWidth?: boolean;
+  tvMode?: boolean;
 }) {
   const hasAssignments = seatedPlayers.length > 0;
+  const compactRegistered = tvMode && !hasAssignments;
   const checkedInIds = new Set(checkedInPlayers.map((player) => player.userid));
   const assignmentByUserId = new Map(seatedPlayers.map((player) => [player.userid, player]));
   const roster = registeredPlayers.map((player) => assignmentByUserId.get(player.userid) ?? player);
@@ -1516,7 +1526,13 @@ function TvSeatingBoard({
           <p className="mt-2 text-sm text-pit-text">Players will appear here as they register.</p>
         </div>
       ) : (
-        <div className={`grid overflow-y-auto pr-1 ${fullWidth ? 'max-h-[70vh] grid-cols-4 gap-2 xl:grid-cols-5 2xl:grid-cols-6' : 'max-h-[32rem] grid-cols-2 gap-1.5 xl:grid-cols-3 2xl:grid-cols-4'}`}>
+        <div className={`grid overflow-y-auto pr-1 ${
+          compactRegistered
+            ? 'max-h-[70vh] grid-cols-5 gap-1.5'
+            : fullWidth
+              ? 'max-h-[70vh] grid-cols-4 gap-2 xl:grid-cols-5 2xl:grid-cols-6'
+              : 'max-h-[32rem] grid-cols-2 gap-1.5 xl:grid-cols-3 2xl:grid-cols-4'
+        }`}>
           {roster.map((player) => {
             const checkedIn = checkedInIds.has(player.userid) || Boolean(player.checkedin);
             return (
@@ -1526,14 +1542,14 @@ function TvSeatingBoard({
                 checkedIn
                   ? 'border-emerald-400/45 bg-emerald-400/12 text-white'
                   : 'border-pit-border bg-pit-bg/45 text-pit-muted'
-              } ${fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
+              } ${compactRegistered ? 'gap-1.5 px-2 py-1' : fullWidth ? 'gap-2 px-2.5 py-2' : 'gap-2 px-2 py-1.5'}`}
             >
               {checkedIn ? (
-                <CheckCircle2 className={`shrink-0 text-emerald-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
+                <CheckCircle2 className={`shrink-0 text-emerald-300 ${compactRegistered ? 'h-3.5 w-3.5' : fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
               ) : (
-                <XCircle className={`shrink-0 text-red-300 ${fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
+                <XCircle className={`shrink-0 text-red-300 ${compactRegistered ? 'h-3.5 w-3.5' : fullWidth ? 'h-5 w-5' : 'h-4 w-4'}`} />
               )}
-              <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${fullWidth ? 'h-9 w-9 text-xs' : 'h-7 w-7 text-[11px]'}`}>
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-pit-surface font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${compactRegistered ? 'h-5 w-5 text-[9px]' : fullWidth ? 'h-9 w-9 text-xs' : 'h-7 w-7 text-[11px]'}`}>
                 {player.avatarimagedata ? (
                   <img src={player.avatarimagedata} alt={player.displayname ?? player.emailaddress} className="h-full w-full object-cover" />
                 ) : (
@@ -1541,8 +1557,8 @@ function TvSeatingBoard({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${fullWidth ? 'text-base xl:text-lg' : 'text-sm'}`}>{playerNameWithMedals(player)}</p>
-                <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />
+                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${compactRegistered ? 'text-xs xl:text-sm' : fullWidth ? 'text-base xl:text-lg' : 'text-sm'}`}>{playerNameWithMedals(player)}</p>
+                {!compactRegistered && <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />}
                 {hasAssignments ? (
                   <p className={`${fullWidth ? 'text-xs xl:text-sm' : 'text-xs'} font-medium ${checkedIn ? 'text-yellow-200' : 'text-pit-muted'}`}>
                     Table {player.tablenumber} Seat {player.seat}

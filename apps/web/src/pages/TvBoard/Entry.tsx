@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function TvBoardEntryPage() {
@@ -10,6 +10,12 @@ export default function TvBoardEntryPage() {
     if (normalized.length !== 6) return;
     navigate(`/tv/${normalized}`);
   }
+
+  useEffect(() => {
+    if (code.length === 6) {
+      navigate(`/tv/${code}`);
+    }
+  }, [code, navigate]);
 
   return (
     <div className="min-h-screen bg-pit-bg px-4 py-8 text-white">
@@ -30,14 +36,7 @@ export default function TvBoardEntryPage() {
               if (event.key === 'Enter') submit();
             }}
           />
-          <button
-            type="button"
-            className="btn-primary w-full justify-center"
-            disabled={code.length !== 6}
-            onClick={submit}
-          >
-            Open Board
-          </button>
+          <p className="text-xs text-pit-muted">The board opens automatically once all 6 digits are entered.</p>
         </div>
       </div>
     </div>

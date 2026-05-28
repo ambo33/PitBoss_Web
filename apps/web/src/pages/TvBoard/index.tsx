@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import RunTournament from '../PreTournament/RunTournament';
@@ -29,6 +29,12 @@ export default function TvBoardPage() {
           <p className="mt-2 text-sm text-pit-text">
             {error instanceof Error ? error.message : 'This tournament display could not be loaded.'}
           </p>
+          <Link
+            to="/tv"
+            className="mt-5 inline-flex items-center justify-center rounded-xl border border-pit-teal/45 bg-pit-teal/15 px-4 py-2 text-sm font-semibold text-pit-teal transition hover:border-pit-teal/70 hover:bg-pit-teal/20 hover:text-white"
+          >
+            Enter a different TV code
+          </Link>
         </div>
       </div>
     );
