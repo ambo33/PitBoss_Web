@@ -122,6 +122,8 @@ export const api = {
   // Games
   createGame: (data: CreateGameRequest) =>
     post<{ id: string; gameid: string }>('/games', data),
+  getGames: () =>
+    get<GameListItem[]>('/games'),
   getGroupGames: (groupId: string) =>
     get<GameListItem[]>(`/games/group/${groupId}`),
   getGame: (gameId: string) =>
@@ -430,6 +432,8 @@ export interface GameRecord {
 }
 export interface GameListItem extends GameRecord {
   stakeslabel?: string | null;
+  minbuyin?: number | null;
+  maxbuyin?: number | null;
   seatsavailable?: number | null;
   playercount?: number;
 }

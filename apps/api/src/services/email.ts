@@ -335,6 +335,38 @@ export async function sendTournamentPostedEmail(
   });
 }
 
+export async function sendGameCreatedEmail(
+  email: string,
+  gameId: string,
+  gameTitle: string,
+  groupName: string | null,
+  gameType: 'tournament' | 'cash',
+  startsAt?: string | null,
+  stakesLabel?: string | null
+): Promise<void> {
+  const link = gameType === 'cash'
+    ? `${appUrl}/cash-games/${encodeURIComponent(gameId)}/admin`
+    : appUrl;
+  const startsAtText = startsAt ? formatTournamentWhen(startsAt.slice(0, 10), startsAt.slice(11, 16)) : 'Date and time TBD';
+  const typeLabel = gameType === 'cash' ? 'Cash Game' : 'Game';
+  await sendMail({
+    to: email,
+    subject: `${gameTitle} is open`,
+    html: emailLayout({
+      eyebrow: `New ${typeLabel}`,
+      title: gameTitle,
+      intro: groupName ? `${groupName} posted a new ${typeLabel.toLowerCase()}.` : `A new ${typeLabel.toLowerCase()} was posted.`,
+      body: `
+        <p style="margin:0 0 12px;"><strong style="color:#ffffff;">When:</strong> ${escapeHtml(startsAtText)}</p>
+        ${stakesLabel ? `<p style="margin:0 0 12px;"><strong style="color:#ffffff;">Stakes:</strong> ${escapeHtml(stakesLabel)}</p>` : ''}
+        <p style="margin:0;">Open ThePokerPlanner to view the game details.</p>
+      `,
+      ctaHref: link,
+      ctaLabel: gameType === 'cash' ? 'Open Cash Game' : 'Open Game',
+    }),
+  });
+}
+
 export async function sendTournamentReminderEmail(
   email: string,
   tournamentId: string,

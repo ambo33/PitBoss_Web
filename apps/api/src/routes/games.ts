@@ -260,6 +260,14 @@ gamesRouter.post('/', async (req: Request, res: Response) => {
         const creatorId = req.userId!;
         void (async () => {
           try {
+            const gameMeta = await queryOne<{ groupname: string | null; stakeslabel: string | null }>(
+              `SELECT gr.name AS groupname, cg.stakeslabel
+               FROM games g
+               JOIN groups gr ON gr.groupid = g.groupid
+               LEFT JOIN cashgamedetails cg ON cg.gameid = g.id
+               WHERE g.id = $1`,
+              [gameId]
+            );
             const recipients = visibility === 'invite_only'
               ? validInviteUserIds.filter((userId) => userId !== creatorId)
               : (await query<{ userid: string }>(
@@ -275,6 +283,9 @@ gamesRouter.post('/', async (req: Request, res: Response) => {
               groupId: groupid,
               gameTitle: title,
               gameType: gametype,
+              groupName: gameMeta?.groupname ?? null,
+              startsAt: startsat,
+              stakesLabel: gameMeta?.stakeslabel ?? null,
               recipientUserIds: recipients,
               channels: ['email', 'push'],
             });
@@ -293,6 +304,29 @@ gamesRouter.post('/', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Could not create game.';
     res.status(400).json({ error: message });
   }
+});
+
+gamesRouter.get('/', async (req: Request, res: Response) => {
+  const rows = await query(
+    `SELECT g.id, g.groupid, g.createdbyuserid, g.gametype, g.title, g.status, g.visibility,
+            g.startsat, g.tournamentid, g.createdat, g.updatedat, gr.name AS groupname,
+            cg.stakeslabel, cg.minbuyin, cg.maxbuyin, cg.seatsavailable,
+            COALESCE(gm.admin, FALSE) AS canmanage,
+            (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount
+     FROM games g
+     JOIN groups gr ON gr.groupid = g.groupid
+     JOIN groupmembers gm ON gm.groupid = g.groupid AND gm.userid = $1 AND gm.approved = TRUE
+     LEFT JOIN cashgamedetails cg ON cg.gameid = g.id
+     WHERE (
+       gm.admin = TRUE
+       OR g.visibility = 'group_public'
+       OR EXISTS (SELECT 1 FROM gameinvitations gi WHERE gi.gameid = g.id AND gi.userid = $1)
+     )
+       AND g.status <> 'cancelled'
+     ORDER BY COALESCE(g.startsat, g.createdat) ASC`,
+    [req.userId]
+  );
+  res.json(rows);
 });
 
 gamesRouter.get('/group/:groupId', async (req: Request, res: Response) => {

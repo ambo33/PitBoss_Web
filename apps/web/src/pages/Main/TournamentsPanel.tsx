@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
-import { api, CreateGameRequest, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
+import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
 import { isEnabledFlag } from '../../utils/flags';
@@ -58,6 +58,10 @@ export default function TournamentsPanel({
   const { data: leagues = [], isLoading: loadingLeagues } = useQuery<League[]>({
     queryKey: ['leagues'],
     queryFn: api.getLeagues,
+  });
+  const { data: games = [], isLoading: loadingGames } = useQuery<GameListItem[]>({
+    queryKey: ['games'],
+    queryFn: api.getGames,
   });
   const { data: leagueEvents = [], isLoading: loadingLeagueEvents, error: leagueScheduleError } = useQuery({
     queryKey: ['leagues', 'schedule'],
@@ -131,19 +135,22 @@ export default function TournamentsPanel({
 
   const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
   const leagueScheduleItems = useMemo(() => buildLeagueScheduleItems(leagueEvents), [leagueEvents]);
+  const gameScheduleItems = useMemo(() => games.map(gameToScheduleItem), [games]);
   const upcomingScheduleItems = useMemo(
     () => [
       ...upcoming.map(tournamentToScheduleItem),
       ...leagueScheduleItems.filter((item) => item.date && item.date >= todayInAppTimezone()),
+      ...gameScheduleItems.filter((item) => !item.date || item.date >= todayInAppTimezone()),
     ].sort(compareScheduleItems),
-    [leagueScheduleItems, upcoming]
+    [gameScheduleItems, leagueScheduleItems, upcoming]
   );
   const historyScheduleItems = useMemo(
     () => [
       ...history.map(tournamentToScheduleItem),
       ...leagueScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
+      ...gameScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
     ].sort(compareScheduleItems).reverse(),
-    [history, leagueScheduleItems]
+    [gameScheduleItems, history, leagueScheduleItems]
   );
   const scheduleList = scheduleView === 'history' ? historyScheduleItems : upcomingScheduleItems;
   const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
@@ -151,8 +158,8 @@ export default function TournamentsPanel({
   const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
   const adminGroupCount = groups.filter((group) => group.isadmin).length;
   const hostableGroups = useMemo(() => groups.filter((group) => group.isadmin && group.approved), [groups]);
-  const loadingSchedule = loadingMine || (loadingLeagueEvents && scheduleList.length === 0);
-  const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents;
+  const loadingSchedule = loadingMine || loadingGames || (loadingLeagueEvents && scheduleList.length === 0);
+  const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents && !loadingGames;
   const showSetupCard = dashboardDataReady && !leagueScheduleError && upcomingScheduleItems.length === 0 && !setupCardDismissed;
   const externalSection = activeSection === 'groups' || activeSection === 'leagues'
     ? renderSection?.(activeSection)
@@ -255,6 +262,10 @@ export default function TournamentsPanel({
                     item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`,
                     item.canManage ? { state: { tab: 'run' } } : undefined
                   );
+                  return;
+                }
+                if (item.kind === 'cash') {
+                  navigate(`/cash-games/${item.game.id}/admin`);
                   return;
                 }
                 navigate('/', { state: { tab: 'leagues', leagueId: item.leagueId } });
@@ -460,6 +471,17 @@ type ScheduleItem =
       eventId: string;
       isParticipant: boolean;
       rsvpStatus?: string | null;
+    }
+  | {
+      kind: 'cash';
+      id: string;
+      name: string;
+      parentName?: string | null;
+      date: string | null;
+      time?: string | null;
+      cost: number;
+      canManage: boolean;
+      game: GameListItem;
     };
 
 function ScheduleList({
@@ -527,6 +549,7 @@ function ScheduleRow({
 }) {
   const isTournament = item.kind === 'tournament';
   const isLeague = item.kind === 'league';
+  const isCash = item.kind === 'cash';
   const isRegistered = isTournament
     ? Boolean(item.tournament.isregistered)
     : isLeague && item.rsvpStatus === 'going';
@@ -535,8 +558,8 @@ function ScheduleRow({
     : isLeague && item.rsvpStatus === 'not_going';
   const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
   const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant;
-  const statusLabel = isTournament ? (item.canManage ? 'Host' : null) : 'League';
-  const fieldCount = isTournament ? formatFieldCount(item.tournament) : null;
+  const statusLabel = isTournament ? (item.canManage ? 'Host' : null) : isCash ? (item.canManage ? 'Host' : 'Cash') : 'League';
+  const fieldCount = isTournament ? formatFieldCount(item.tournament) : isCash ? formatCashGameCount(item.game) : null;
 
   return (
     <div
@@ -558,9 +581,9 @@ function ScheduleRow({
             {item.name}
           </button>
           <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] sm:inline-flex ${
-            isTournament ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal' : 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
+            isTournament || isCash ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal' : 'border-pit-gold/35 bg-pit-gold/10 text-pit-gold'
           }`}>
-            {isTournament ? 'Tournament' : 'League'}
+            {isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League'}
           </span>
         </div>
         {item.parentName && (
@@ -579,7 +602,7 @@ function ScheduleRow({
             {formatTime12Hour(item.time)}
           </span>
         )}
-        {isTournament && (
+        {(isTournament || isCash) && (
           <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:hidden">
             <Users size={11} />
             {fieldCount}
@@ -1230,10 +1253,34 @@ function tournamentToScheduleItem(tournament: Tournament): ScheduleItem {
   };
 }
 
+function gameToScheduleItem(game: GameListItem): ScheduleItem {
+  const startsAt = splitDateTime(game.startsat);
+  return {
+    kind: 'cash',
+    id: `cash-${game.id}`,
+    name: game.title,
+    parentName: game.groupname,
+    date: startsAt.date,
+    time: startsAt.time,
+    cost: Number(game.minbuyin ?? 0),
+    canManage: isEnabledFlag(game.canmanage),
+    game,
+  };
+}
+
 function buildLeagueScheduleItems(events: LeagueScheduleEvent[]): ScheduleItem[] {
   return events
     .filter((event) => Boolean(event.eventdate))
     .map(leagueEventToScheduleItem);
+}
+
+function splitDateTime(value: string | null | undefined): { date: string | null; time: string | null } {
+  if (!value) return { date: null, time: null };
+  const text = String(value);
+  return {
+    date: text.slice(0, 10),
+    time: text.length >= 16 ? text.slice(11, 16) : null,
+  };
 }
 
 function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
@@ -1261,6 +1308,12 @@ function getScheduleSortValue(item: ScheduleItem) {
   const date = item.date ?? '9999-12-31';
   const time = item.time || '23:59';
   return new Date(`${date}T${time}`).getTime();
+}
+
+function formatCashGameCount(game: GameListItem): string {
+  const seated = Number(game.playercount ?? 0);
+  const seats = Number(game.seatsavailable ?? 0);
+  return seats > 0 ? `${seated}/${seats}` : String(seated);
 }
 
 function getFirstName(value: string | null | undefined) {
