@@ -10,6 +10,7 @@ import LeaguesPanel from './LeaguesPanel';
 import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
+import PwaPushPrompt from '../../components/PwaPushPrompt';
 
 type MainView = 'command' | 'profile' | 'admin';
 
@@ -156,6 +157,7 @@ export default function MainPage() {
         }
         mainWidthClassName={view === 'admin' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-5xl'}
       >
+        <PwaPushPrompt />
         {view === 'command' && (
           <TournamentsPanel
             section={commandSection}
