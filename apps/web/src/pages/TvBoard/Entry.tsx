@@ -36,7 +36,6 @@ export default function TvBoardEntryPage() {
               if (event.key === 'Enter') submit();
             }}
           />
-          <p className="text-xs text-pit-muted">The board opens automatically once all 6 digits are entered.</p>
         </div>
       </div>
     </div>

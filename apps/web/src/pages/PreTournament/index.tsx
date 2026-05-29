@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Home, Lock, LogOut, Menu, Play, Shield, Timer, User, Users } from 'lucide-react';
+import { ClipboardList, Home, Lock, LogOut, Menu, Pencil, Play, Settings, Shield, Timer, Trash2, User, Users } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
@@ -325,6 +325,8 @@ function TournamentDetailsCard({
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [notifyOnDelete, setNotifyOnDelete] = useState(true);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [form, setForm] = useState(() => ({
     name: tournament.name ?? '',
     tourneydate: normalizeDate(tournament.tourneydate) ?? '',
@@ -367,6 +369,22 @@ function TournamentDetailsCard({
     });
     setEditing(true);
   }
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!actionsMenuRef.current?.contains(event.target as Node)) setActionsOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setActionsOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [actionsOpen]);
 
   function saveDetails() {
     if (bountyMinimumError) return;
@@ -441,20 +459,50 @@ function TournamentDetailsCard({
             </div>
           )}
           {canManage && (
-            <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-              <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => editing ? setEditing(false) : startEditing()}>
-                {editing ? 'Cancel' : 'Edit Details'}
-              </button>
+            <div ref={actionsMenuRef} className="relative self-end">
               <button
                 type="button"
-                className="btn-danger px-3 py-2 text-xs"
-                onClick={() => {
-                  setNotifyOnDelete(registeredPlayerCount > 0);
-                  setConfirmDelete(true);
-                }}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition ${actionsOpen ? 'border-pit-teal/55 bg-pit-teal/15 text-white shadow-[0_0_18px_rgba(20,184,166,0.18)]' : 'border-pit-border bg-pit-bg/55 text-pit-text hover:border-pit-teal/45 hover:text-white'}`}
+                onClick={() => setActionsOpen((current) => !current)}
+                aria-haspopup="menu"
+                aria-expanded={actionsOpen}
+                aria-label="Tournament actions"
               >
-                Delete Tournament
+                <Settings size={17} />
               </button>
+              {actionsOpen && (
+                <div className="absolute right-0 z-30 mt-2 w-44 overflow-hidden rounded-xl border border-pit-border bg-pit-card shadow-[0_20px_60px_rgba(0,0,0,0.45)]" role="menu">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      if (editing) {
+                        setEditing(false);
+                      } else {
+                        startEditing();
+                      }
+                    }}
+                    role="menuitem"
+                  >
+                    <Pencil size={15} className="text-pit-teal" />
+                    {editing ? 'Cancel edit' : 'Edit'}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-red-300 transition hover:bg-red-500/10 hover:text-red-200"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      setNotifyOnDelete(registeredPlayerCount > 0);
+                      setConfirmDelete(true);
+                    }}
+                    role="menuitem"
+                  >
+                    <Trash2 size={15} />
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

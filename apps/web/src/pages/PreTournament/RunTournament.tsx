@@ -451,7 +451,9 @@ export default function RunTournament({
       if (!initial && warningState.level != null) {
         const announcedBlind = state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel));
         if (announcedBlind) {
-          playLevelChangeTone();
+          if (!tvMode) {
+            playLevelChangeTone();
+          }
           announceAiOrTemplate('level_up', state, announcedBlind, warningState.level, levelStartedAtRef.current, isRebuyFinalLevel(warningState.level));
         }
       }
@@ -486,8 +488,56 @@ export default function RunTournament({
       fallback();
       return;
     }
-    const preset = normalizeAnnouncerPreset(tournament.aiannouncerpreset);
-    playStoredSpeech(`/sounds/announcer-static/${preset.replace(/_/g, '-')}-${action}.mp3`, fallback);
+    if (!tvMode) {
+      const preset = normalizeAnnouncerPreset(tournament.aiannouncerpreset);
+      playStoredSpeech(`/sounds/announcer-static/${preset.replace(/_/g, '-')}-${action}.mp3`, fallback);
+      return;
+    }
+    const state = timerState;
+    const blind = state ? getStateBlind(state) : currentBlind;
+    generateAnnouncerForSurface({
+      eventtype: action === 'resume' ? 'timer_resumed' : 'timer_paused',
+      currentlevel: Number(state?.currentlevel ?? effectiveLevel),
+      smallblind: Number(blind?.smallblind ?? 0),
+      bigblind: Number(blind?.bigblind ?? 0),
+      ante: Number(blind?.ante ?? 0),
+    }).then((result) => {
+      if (result.aiEnabled && result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+      } else {
+        fallback();
+      }
+    }).catch(() => fallback());
+  }
+
+  function generateAnnouncerForSurface(data: Parameters<typeof api.generateAnnouncerMoment>[1]) {
+    return tvMode && tournament.tvdisplaycode
+      ? api.generatePublicTvAnnouncerMoment(tournament.tvdisplaycode, data)
+      : api.generateAnnouncerMoment(tournamentId, data);
+  }
+
+  function playAnnouncerResult(
+    request: ReturnType<typeof generateAnnouncerForSurface>,
+    fallback?: () => void,
+    options: { quietOnFailure?: boolean } = {}
+  ) {
+    request.then((result) => {
+      if (result.aiEnabled && result.audioBase64) {
+        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
+      } else if (!options.quietOnFailure) {
+        fallback?.();
+      }
+    }).catch(() => {
+      if (!options.quietOnFailure) fallback?.();
+    });
+  }
+
+  function playAnnouncerMoment(
+    data: Parameters<typeof api.generateAnnouncerMoment>[1],
+    fallback?: () => void,
+    options: { quietOnFailure?: boolean } = {}
+  ) {
+    playAnnouncerResult(generateAnnouncerForSurface(data), fallback, options);
   }
 
   function announceCheckinWithAi(playerName: string) {
@@ -527,20 +577,14 @@ export default function RunTournament({
       return;
     }
 
-    api.generateAnnouncerMoment(tournamentId, {
+    playAnnouncerMoment({
       eventtype,
       currentlevel: Number(state.currentlevel),
       smallblind: Number(blind?.smallblind ?? 0),
       bigblind: Number(blind?.bigblind ?? 0),
       ante: Number(blind?.ante ?? 0),
       rebuycutoffwarning: isRebuyCutoffWarning ? eventtype : null,
-    }).then((result) => {
-      if (result.aiEnabled && result.audioBase64) {
-        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
-      } else {
-        fallback();
-      }
-    }).catch(() => fallback());
+    }, fallback);
   }
 
   function shouldAnnounceTournamentStart(state: TimerState, blind: BlindLevel | undefined): boolean {
@@ -571,7 +615,7 @@ export default function RunTournament({
       return;
     }
 
-    api.generateAnnouncerMoment(tournamentId, {
+    playAnnouncerMoment({
       eventtype: 'tournament_start',
       currentlevel: Number(state.currentlevel),
       smallblind: Number(blind?.smallblind ?? 0),
@@ -583,13 +627,7 @@ export default function RunTournament({
       rebuyamount: toNumber(tournament.rebuyprice),
       addonenabled: addonEnabled,
       addonamount: toNumber(tournament.addonprice),
-    }).then((result) => {
-      if (result.aiEnabled && result.audioBase64) {
-        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
-      } else {
-        fallback();
-      }
-    }).catch(() => fallback());
+    }, fallback);
   }
 
   function announceAiOrTemplate(
@@ -612,7 +650,7 @@ export default function RunTournament({
       announceLevel(state.currentlevel, Number(blind?.smallblind ?? 0), Number(blind?.bigblind ?? 0), announcementTemplatesRef.current.levelUp, Number(blind?.ante ?? 0));
     };
 
-    api.generateAnnouncerMoment(tournamentId, {
+    playAnnouncerMoment({
       eventtype,
       currentlevel: Number(state.currentlevel),
       previouslevel: previousLevel,
@@ -624,13 +662,7 @@ export default function RunTournament({
       breaklabel: isBreakBlind(blind) ? (blind?.label ?? 'Break') : null,
       breakminutes: isBreakBlind(blind) ? Number(blind?.minutes ?? 0) : null,
       rebuyclosed: rebuyClosed,
-    }).then((result) => {
-      if (result.aiEnabled && result.audioBase64) {
-        playGeneratedSpeech(result.audioBase64, result.mimeType, fallback);
-      } else {
-        fallback();
-      }
-    }).catch(() => fallback());
+    }, fallback);
   }
 
   function announceKnockout(player: TournamentPlayer) {
@@ -650,37 +682,21 @@ export default function RunTournament({
       bountyamount: tournament.bountyenabled && isBountyPlacementEligible(tournament, player.placed) ? toNumber(player.bountyamount) : null,
       bountyclaimedbyname: player.bountyclaimedbyname ?? player.knockedoutbyname ?? null,
     } as const;
-    const request = tvMode && tournament.tvdisplaycode
-      ? api.generatePublicTvAnnouncerMoment(tournament.tvdisplaycode, data)
-      : api.generateAnnouncerMoment(tournamentId, data);
-
-    request.then((result) => {
-      if (result.aiEnabled && result.audioBase64) {
-        playGeneratedSpeech(result.audioBase64, result.mimeType);
-      }
-    }).catch(() => {
-      // Knockout announcements are additive. If generation is unavailable, keep the game flow quiet.
-    });
+    playAnnouncerMoment(data, undefined, { quietOnFailure: true });
   }
 
   function announceMoneyAction(action: MoneyBurst) {
     if (!tournament.aiannouncerenabled || action.type === 'bounty') return;
     const state = timerState;
     const blind = state ? getStateBlind(state) : currentBlind;
-    api.generateAnnouncerMoment(tournamentId, {
+    playAnnouncerMoment({
       eventtype: action.type === 'add-on' ? 'addon' : 'rebuy',
       currentlevel: Number(state?.currentlevel ?? effectiveLevel),
       smallblind: Number(blind?.smallblind ?? 0),
       bigblind: Number(blind?.bigblind ?? 0),
       ante: Number(blind?.ante ?? 0),
       playername: action.name,
-    }).then((result) => {
-      if (result.aiEnabled && result.audioBase64) {
-        playGeneratedSpeech(result.audioBase64, result.mimeType);
-      }
-    }).catch(() => {
-      // Rebuy/add-on announcements should never interrupt the host workflow if generation is unavailable.
-    });
+    }, undefined, { quietOnFailure: true });
   }
 
   const effectiveBlinds = (timerState?.blinds ?? [])
@@ -1341,15 +1357,17 @@ export default function RunTournament({
                   </div>
                 )}
                 <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
-                  <div className="mb-2">
-                    <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
-                  </div>
+                  {!tvMode && (
+                    <div className="mb-2">
+                      <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
+                    </div>
+                  )}
 
-                  <div className={`mb-2 flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-bg/40 ${tvMode ? 'px-2 py-1.5' : displayMode ? 'px-3 py-2' : 'px-2.5 py-2'}`}>
-                    <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
-                    <p className={`${tvMode ? 'text-base' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
+                  <div className={`${tvMode ? 'mb-1.5 flex items-center justify-between gap-2 px-0.5 text-xs' : `mb-2 flex items-center justify-between gap-2 rounded-lg border border-pit-border bg-pit-bg/40 ${displayMode ? 'px-3 py-2' : 'px-2.5 py-2'}`}`}>
+                    <p className={`${tvMode ? 'font-semibold' : displayMode ? 'text-sm' : 'text-xs'} uppercase tracking-wide text-pit-muted`}>Prize Pool</p>
+                    <p className={`${tvMode ? 'text-xs' : displayMode ? 'text-xl' : 'text-base'} font-semibold text-pit-teal`}>{formatMoney(totalPot)}</p>
                   </div>
-                  {tournament.bountyenabled && (
+                  {!tvMode && tournament.bountyenabled && (
                     <div className={`mb-2 grid grid-cols-2 gap-1.5 ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
                       <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5">
                         <p className="uppercase tracking-wide text-amber-100/70">Bounties Left</p>
@@ -1362,21 +1380,21 @@ export default function RunTournament({
                     </div>
                   )}
 
-                  <div className={`${tvMode ? 'max-h-[40rem] space-y-1' : displayMode ? 'max-h-[48rem] space-y-1.5' : 'max-h-[26rem] space-y-1.5'} overflow-y-auto pr-1`}>
+                  <div className={`${tvMode ? 'max-h-[40rem] divide-y divide-pit-border/70 overflow-hidden rounded-lg border border-pit-border bg-pit-surface/35 text-xs' : displayMode ? 'max-h-[48rem] space-y-1.5 overflow-y-auto pr-1' : 'max-h-[26rem] space-y-1.5 overflow-y-auto pr-1'}`}>
                     {payoutSplits.map((split, index) => {
                       const place = index + 1;
                       const finisher = paidFinishers.find((player) => Number(player.placed) === place);
                       return (
-                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 rounded-lg border ${finisher ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${tvMode ? 'px-2 py-1 text-xs' : displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}>
+                        <div key={`${index}-${split}`} className={`flex items-center justify-between gap-2 ${tvMode ? `px-2 py-1 ${finisher ? 'bg-pit-teal/10' : ''}` : `rounded-lg border ${finisher ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${displayMode ? 'px-3 py-2 text-base' : 'px-2.5 py-1.5 text-sm'}`}`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <span className="shrink-0 font-semibold text-white">{ordinal(place)}</span>
                             {finisher ? (
-                              <span className={`truncate font-semibold text-white ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
+                              <span className={`truncate font-semibold text-white ${tvMode ? 'text-xs' : 'text-xs'}`}>
                                 {playerNameWithMedals(finisher)}
                               </span>
                             ) : null}
                           </div>
-                          <p className="shrink-0 text-sm font-semibold text-pit-teal">{formatMoney(payouts[index] ?? 0)}</p>
+                          <p className={`${tvMode ? 'text-xs' : 'text-sm'} shrink-0 font-semibold text-pit-teal`}>{formatMoney(payouts[index] ?? 0)}</p>
                         </div>
                       );
                     })}

@@ -73,8 +73,6 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const registeredCount = players.length;
   const placementFieldSize = registeredCount;
-  const payoutFieldSize = enteredFieldCount;
-  const payoutFieldLabel = payoutFieldSize === 1 ? 'entered player' : 'entered players';
   const registeredPlaceLimit = placementFieldSize > 0 ? placementFieldSize : 1;
   const maxCountPlaces = Math.max(1, canUseClubFeatures ? registeredPlaceLimit : Math.min(registeredPlaceLimit, 3));
   const countDropdownValue = String(clamp(payoutConfig.value, 1, maxCountPlaces));
@@ -216,25 +214,12 @@ export default function Payouts({ tournamentId, tournament }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-pit-text">
-          {payoutConfig.mode === 'percent' ? (
-            placementFieldSize > 0 ? (
-              <span className="chip">{selectionInput || payoutConfig.value}% of {placementFieldSize} registered pays {places}</span>
-            ) : (
-              <span className="chip">{selectionInput || payoutConfig.value}% will update from the field once players register</span>
-            )
-          ) : (
-            <span className="chip">
-              Paying {places} player{places === 1 ? '' : 's'}
-              {placementFieldSize > 0 ? ` from ${placementFieldSize} registered` : ''}
-            </span>
-          )}
-          <span className="chip">
-            Payout pool from {payoutFieldSize} {payoutFieldLabel}
-          </span>
+        {(canManage && (payoutStructureMutation.isPending || payoutStructureMutation.error)) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-pit-text">
           {canManage && payoutStructureMutation.isPending && <span className="text-pit-muted">Saving...</span>}
           {canManage && payoutStructureMutation.error && <span className="text-red-400">{payoutStructureMutation.error.message}</span>}
-        </div>
+          </div>
+        )}
 
         {!canUseClubFeatures && (
           <p className="text-xs text-pit-muted">

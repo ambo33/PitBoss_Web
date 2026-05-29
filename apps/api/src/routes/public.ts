@@ -47,8 +47,10 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
   }
 
   const body = req.body as {
-    eventtype?: 'knockout' | 'rebuy' | 'addon' | 'checkin';
+    eventtype?: 'tournament_start' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
     currentlevel?: number;
+    previouslevel?: number | null;
+    previouslevelstartedat?: string | null;
     smallblind?: number;
     bigblind?: number;
     ante?: number;
@@ -59,9 +61,20 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     bountyamount?: number | null;
     bountyclaimedbyname?: string | null;
     playername?: string | null;
+    isbreak?: boolean;
+    breaklabel?: string | null;
+    breakminutes?: number | null;
+    rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
+    rebuyclosed?: boolean;
+    prizepool?: number | null;
+    playercount?: number | null;
+    rebuyenabled?: boolean | null;
+    rebuyamount?: number | null;
+    addonenabled?: boolean | null;
+    addonamount?: number | null;
   };
   const eventType = body.eventtype ?? 'knockout';
-  if (!['knockout', 'rebuy', 'addon', 'checkin'].includes(eventType)) {
+  if (!['tournament_start', 'timer_paused', 'timer_resumed', 'level_up', 'five_minute_warning', 'one_minute_warning', 'knockout', 'rebuy', 'addon', 'checkin'].includes(eventType)) {
     res.status(400).json({ error: 'This TV announcer event is not supported.' });
     return;
   }
@@ -131,6 +144,7 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     groupName: tournament.groupname,
     eventType,
     currentLevel: Number(body.currentlevel ?? 1),
+    previousLevel: body.previouslevel == null ? null : Number(body.previouslevel),
     smallBlind: Number(body.smallblind ?? 0),
     bigBlind: Number(body.bigblind ?? 0),
     ante: Number(body.ante ?? 0),
@@ -141,12 +155,23 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     bountyAmount: body.bountyamount == null ? null : Number(body.bountyamount),
     bountyClaimedByName: body.bountyclaimedbyname ? String(body.bountyclaimedbyname).trim().slice(0, 80) : null,
     playerName: body.playername ? String(body.playername).trim().slice(0, 80) : null,
+    isBreak: Boolean(body.isbreak),
+    breakLabel: body.breaklabel ? String(body.breaklabel).trim().slice(0, 80) : null,
+    breakMinutes: body.breakminutes == null ? null : Number(body.breakminutes),
+    rebuyCutoffWarning: body.rebuycutoffwarning === 'five_minute_warning' || body.rebuycutoffwarning === 'one_minute_warning' ? body.rebuycutoffwarning : null,
+    rebuyClosed: Boolean(body.rebuyclosed),
     remainingPlayers: Number(tournament.remainingplayers ?? 0),
     checkedInPlayers,
     knockedOutDuringPriorLevel: 0,
     totalRebuys: Number(tournament.totalrebuys ?? 0),
     totalAddons,
     addOnPercent: checkedInPlayers > 0 ? Math.round((totalAddons / checkedInPlayers) * 100) : 0,
+    prizePool: body.prizepool == null ? null : Number(body.prizepool),
+    playerCount: body.playercount == null ? null : Number(body.playercount),
+    rebuyEnabled: body.rebuyenabled == null ? null : Boolean(body.rebuyenabled),
+    rebuyAmount: body.rebuyamount == null ? null : Number(body.rebuyamount),
+    addonEnabled: body.addonenabled == null ? null : Boolean(body.addonenabled),
+    addonAmount: body.addonamount == null ? null : Number(body.addonamount),
   });
   if (shouldChargeOwner && result.aiEnabled) {
     await consumeAiCredit(tournament.ownerid);

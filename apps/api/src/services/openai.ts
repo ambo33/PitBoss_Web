@@ -18,7 +18,7 @@ interface AnnouncerContext {
   classicMode?: boolean | null;
   tournamentName: string;
   groupName?: string | null;
-  eventType: 'tournament_start' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+  eventType: 'tournament_start' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentLevel: number;
   previousLevel?: number | null;
   smallBlind?: number;
@@ -239,6 +239,7 @@ export function normalizeAnnouncerPreset(value: string | null | undefined): Anno
 export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean; preset?: AnnouncerPreset; voice?: string }> {
   const preset = sanitizePreset(context.preset);
   const isTournamentStart = context.eventType === 'tournament_start';
+  const isTimerStatus = context.eventType === 'timer_paused' || context.eventType === 'timer_resumed';
   const isKnockout = context.eventType === 'knockout';
   const isCheckin = context.eventType === 'checkin';
   if (context.classicMode) {
@@ -265,6 +266,14 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Small blind: ${context.smallBlind ?? 0}`,
         `Big blind: ${context.bigBlind ?? 0}`,
         `Ante: ${context.ante ?? 0}`,
+      ].filter(Boolean).join('\n')
+    : isTimerStatus
+    ? [
+        'Write one very short poker tournament clock status announcement.',
+        `Style preset: ${presetInstructions[preset]}`,
+        context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+        'Rules: 3 to 8 words. Say only that the tournament clock is paused or resumed. No tournament name, blinds, prize pool, field count, hype, jokes, profanity, or copyrighted catchphrases.',
+        `Event: ${context.eventType}`,
       ].filter(Boolean).join('\n')
     : isKnockout
     ? [
@@ -330,6 +339,8 @@ function buildClassicAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
+  if (context.eventType === 'timer_paused') return 'Tournament clock paused.';
+  if (context.eventType === 'timer_resumed') return 'Tournament clock resumed.';
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
   if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
   if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
@@ -349,6 +360,8 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   const blinds = `small blind is ${smallBlind}, big blind is ${bigBlind}`;
   if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
+  if (context.eventType === 'timer_paused') return 'Tournament clock paused.';
+  if (context.eventType === 'timer_resumed') return 'Tournament clock resumed.';
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
   if (context.rebuyCutoffWarning === 'one_minute_warning') return 'One minute left to get your re-buys in.';
   if (context.isBreak) return `${context.breakLabel || 'Break'}. ${Number(context.breakMinutes ?? 0)} minute break.`;
