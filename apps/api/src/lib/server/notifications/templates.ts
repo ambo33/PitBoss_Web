@@ -18,6 +18,39 @@ type NotificationTemplate = {
   body: string;
 };
 
+const COMMAND_CENTER_NOTIFICATION_TYPES = new Set<NotificationType>([
+  'new_tournament_created',
+  'tournament_schedule_changed',
+  'tournament_location_changed',
+  'tournament_cancelled',
+  'host_announcement_posted',
+  'seats_almost_full',
+]);
+
+const TOURNAMENT_LOBBY_NOTIFICATION_TYPES = new Set<NotificationType>([
+  'tournament_starting_soon',
+  'tournament_registration_closing',
+  'blinds_level_up',
+  'break_started',
+  'break_ending_soon',
+  'rebuy_period_ending',
+  'addon_window_open',
+  'table_assignment',
+  'seat_assignment',
+  'table_redraw',
+  'final_table_reached',
+  'player_check_in_requested',
+  'player_check_in_confirmed',
+  'player_waitlist_spot_open',
+  'rebuy_request_sent',
+  'addon_request_sent',
+  'knockout_recorded',
+  'bounty_earned',
+  'mystery_bounty_unlocked',
+  'achievement_earned',
+  'tournament_finalized',
+]);
+
 export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTemplate> = {
   tournament_starting_soon: {
     title: '{tournamentName} starts soon',
@@ -160,8 +193,9 @@ function entityUrl(type: NotificationType, data: NotificationTemplateData): stri
   const tournamentId = stringValue(data.tournamentId);
   const leagueId = stringValue(data.leagueId);
   const groupId = stringValue(data.groupId ?? data.clubId);
+  if (COMMAND_CENTER_NOTIFICATION_TYPES.has(type)) return '/';
   if (tournamentId) {
-    if (type === 'seat_assignment' || type === 'table_assignment' || type === 'player_check_in_requested') {
+    if (TOURNAMENT_LOBBY_NOTIFICATION_TYPES.has(type)) {
       return `/lobby/${tournamentId}`;
     }
     return `/tournaments/${tournamentId}`;

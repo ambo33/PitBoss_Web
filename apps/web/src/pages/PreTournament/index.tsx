@@ -442,7 +442,7 @@ function TournamentDetailsCard({
           <p className="eyebrow">Tournament details</p>
           <h2 className="mt-1 truncate text-xl font-bold text-white sm:text-2xl">{tournament.name}</h2>
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-2 lg:w-auto lg:items-end">
+        <div className="flex w-full min-w-0 flex-wrap items-start justify-end gap-2 lg:w-auto">
           {pocketAdminUrl && (
             <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-2 lg:w-auto">
               <div className="inline-block rounded-md bg-white p-1">
@@ -459,7 +459,7 @@ function TournamentDetailsCard({
             </div>
           )}
           {canManage && (
-            <div ref={actionsMenuRef} className="relative self-end">
+            <div ref={actionsMenuRef} className="relative">
               <button
                 type="button"
                 className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition ${actionsOpen ? 'border-pit-teal/55 bg-pit-teal/15 text-white shadow-[0_0_18px_rgba(20,184,166,0.18)]' : 'border-pit-border bg-pit-bg/55 text-pit-text hover:border-pit-teal/45 hover:text-white'}`}

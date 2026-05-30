@@ -89,7 +89,7 @@ async function sendGameCreatedPush(args: GameCreatedArgs): Promise<void> {
   await sendNotificationToUsers(rows.map((row) => row.userid), 'new_tournament_created', {
     title: args.gameType === 'cash' ? 'New cash game posted' : 'New game posted',
     body: `${args.gameTitle} is now open.`,
-    url: args.gameType === 'cash' ? `/cash-games/${args.gameId}/admin` : '/',
+    url: '/',
     tag: `game-${args.gameId}-created`,
     groupId: args.groupId,
     entityId: args.gameId,

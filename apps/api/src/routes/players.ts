@@ -57,6 +57,22 @@ function parsePlaced(value: unknown): number | null {
   return Math.max(1, Math.round(parsed));
 }
 
+function ordinalSuffix(value: number): string {
+  const normalized = Math.abs(Math.trunc(value));
+  const mod100 = normalized % 100;
+  if (mod100 >= 11 && mod100 <= 13) return 'th';
+  switch (normalized % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
 playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
   const tournament = await queryOne<{ groupid: string | null }>(
     `SELECT groupid FROM tournaments WHERE tournamentid = $1`,
@@ -553,6 +569,9 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     res.status(403).json({ error: 'Forbidden' }); return;
   }
   const { placed, knockedoutbyuserid } = req.body as { placed?: number | null; knockedoutbyuserid?: string | null };
+  const creditedKnockoutByUserId = typeof knockedoutbyuserid === 'string' && knockedoutbyuserid.trim()
+    ? knockedoutbyuserid.trim()
+    : null;
   let nextPlaced = parsePlaced(placed);
 
   const client = await pool.connect();
@@ -648,8 +667,33 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
              bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
              bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
          WHERE tournamentid = $1 AND userid = $2`,
-        [req.params.tid, req.params.uid, nextPlaced, knockedoutbyuserid ?? null, bountyStartPlace]
+        [req.params.tid, req.params.uid, nextPlaced, creditedKnockoutByUserId, bountyStartPlace]
       );
+
+      if (nextPlaced === 2) {
+        await client.query(
+          `UPDATE tournamentplayers
+           SET placed = 1,
+               checkedin = TRUE,
+               knockedoutbyuserid = NULL,
+               knockedoutat = NULL,
+               bountyclaimedbyuserid = NULL,
+               bountyclaimedat = NULL
+           WHERE tournamentid = $1
+             AND userid != $2
+             AND COALESCE(checkedin, FALSE) = TRUE
+             AND placed IS NULL
+             AND (
+               SELECT count(*)
+               FROM tournamentplayers remaining
+               WHERE remaining.tournamentid = $1
+                 AND remaining.userid != $2
+                 AND COALESCE(remaining.checkedin, FALSE) = TRUE
+                 AND remaining.placed IS NULL
+             ) = 1`,
+          [req.params.tid, req.params.uid]
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -661,7 +705,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
-  if (nextPlaced != null && knockedoutbyuserid) {
+  if (nextPlaced != null) {
     const knockedOutPlayer = await queryOne<{
       playername: string;
       bountyamount: number;
@@ -673,19 +717,32 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
        FROM tournamentplayers tp
        JOIN users u ON u.guid = tp.userid
        LEFT JOIN usermetadata m ON m.userid = tp.userid
-       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
+      WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.tid, req.params.uid]
     );
     void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
       playerName: knockedOutPlayer?.playername ?? 'a player',
+      body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated${nextPlaced ? ` in ${nextPlaced}${ordinalSuffix(nextPlaced)} place` : ''}.`,
       entityId: `${req.params.tid}:knockout:${req.params.uid}`,
       tag: `tournament-${req.params.tid}-knockout-${req.params.uid}`,
     }, {
-      targetUserIds: [knockedoutbyuserid],
+      audience: 'participants-and-admins',
       entityId: `${req.params.tid}:knockout:${req.params.uid}`,
     }).catch((err) => {
       console.error('Knockout push failed', err instanceof Error ? err.message : err);
     });
+    if (creditedKnockoutByUserId) {
+      void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
+        playerName: knockedOutPlayer?.playername ?? 'a player',
+        entityId: `${req.params.tid}:knockout-credit:${req.params.uid}`,
+        tag: `tournament-${req.params.tid}-knockout-credit-${req.params.uid}`,
+      }, {
+        targetUserIds: [creditedKnockoutByUserId],
+        entityId: `${req.params.tid}:knockout-credit:${req.params.uid}`,
+      }).catch((err) => {
+        console.error('Knockout credit push failed', err instanceof Error ? err.message : err);
+      });
+    }
     if (Number(knockedOutPlayer?.bountyamount ?? 0) > 0 && knockedOutPlayer?.bountyclaimedbyuserid) {
       void sendTournamentNotification(req.params.tid, 'bounty_earned', {
         entityId: `${req.params.tid}:bounty:${req.params.uid}`,

@@ -9,7 +9,7 @@ import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
@@ -29,6 +29,7 @@ type PayoutMode = 'count' | 'percent';
 interface PayoutStructureConfig {
   mode: PayoutMode;
   value: number;
+  roundingdenomination?: number;
 }
 
 interface GreetingQueueItem {
@@ -47,6 +48,14 @@ interface MoneyBurst {
   type: 'rebuy' | 'add-on' | 'bounty';
   amount?: number;
   claimedByName?: string | null;
+}
+
+interface ChampionCelebration {
+  id: string;
+  name: string;
+  audioDataUrl?: string | null;
+  avatarImageUrl?: string | null;
+  awardedCoins?: TournamentPlayer['awardedcoins'];
 }
 
 export default function RunTournament({
@@ -75,6 +84,7 @@ export default function RunTournament({
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
+  const [activeChampion, setActiveChampion] = useState<ChampionCelebration | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
@@ -97,6 +107,7 @@ export default function RunTournament({
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
   const greetingTimeoutRef = useRef<number | null>(null);
   const moneyBurstTimeoutRef = useRef<number | null>(null);
+  const championTimeoutRefs = useRef<number[]>([]);
 
   const showAdminControls = isOwner && mode === 'admin';
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
@@ -346,14 +357,27 @@ export default function RunTournament({
       return;
     }
 
-    const newKnockout = players.find((player) => {
+    const newlyPlaced = players.filter((player) => {
       const previousPlaced = previousPlacements.get(player.userid) ?? null;
       return previousPlaced == null && player.placed != null;
     });
+    const newSecondPlace = newlyPlaced.find((player) => Number(player.placed) === 2);
+    const newChampion = newSecondPlace
+      ? players.find((player) => Number(player.placed) === 1)
+      : null;
+    const newKnockout = newlyPlaced.find((player) => Number(player.placed) !== 1);
 
     knockoutPlacementsRef.current = currentPlacements;
 
-    if (newKnockout) {
+    if (newChampion && newSecondPlace) {
+      setActiveChampion({
+        id: `${newChampion.userid}-champion-${Date.now()}`,
+        name: newChampion.displayname ?? newChampion.emailaddress ?? 'Champion',
+        audioDataUrl: newChampion.checkinaudiodata ?? null,
+        avatarImageUrl: newChampion.avatarimagedata ?? null,
+        awardedCoins: newChampion.awardedcoins ?? [],
+      });
+    } else if (newKnockout) {
       announceKnockout(newKnockout);
     }
   }, [displayMode, players, showAdminControls]);
@@ -393,7 +417,35 @@ export default function RunTournament({
     if (moneyBurstTimeoutRef.current) {
       window.clearTimeout(moneyBurstTimeoutRef.current);
     }
+    championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    championTimeoutRefs.current = [];
   }, []);
+
+  useEffect(() => {
+    if (!activeChampion) return;
+
+    championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    championTimeoutRefs.current = [];
+
+    if (activeChampion.audioDataUrl) {
+      playAirhornHype();
+      championTimeoutRefs.current.push(window.setTimeout(() => {
+        playCheckinGreetingClip(activeChampion.audioDataUrl!, activeChampion.name);
+      }, 950));
+    }
+
+    championTimeoutRefs.current.push(window.setTimeout(() => {
+      announceTournamentChampion(activeChampion);
+    }, activeChampion.audioDataUrl ? 4300 : 0));
+    championTimeoutRefs.current.push(window.setTimeout(() => {
+      setActiveChampion(null);
+    }, activeChampion.audioDataUrl ? 9500 : 6500));
+
+    return () => {
+      championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      championTimeoutRefs.current = [];
+    };
+  }, [activeChampion]);
 
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
@@ -685,6 +737,26 @@ export default function RunTournament({
     playAnnouncerMoment(data, undefined, { quietOnFailure: true });
   }
 
+  function announceTournamentChampion(champion: ChampionCelebration) {
+    const fallback = () => announceMessage(`${champion.name} is your tournament champion. Congratulations to the winner and great game, everyone.`);
+    if (!tournament.aiannouncerenabled) {
+      fallback();
+      return;
+    }
+    const state = timerState;
+    const blind = state ? getStateBlind(state) : currentBlind;
+    playAnnouncerMoment({
+      eventtype: 'tournament_winner',
+      currentlevel: Number(state?.currentlevel ?? effectiveLevel),
+      smallblind: Number(blind?.smallblind ?? 0),
+      bigblind: Number(blind?.bigblind ?? 0),
+      ante: Number(blind?.ante ?? 0),
+      playername: champion.name,
+      prizepool: totalPot,
+      playercount: fieldSize,
+    }, fallback);
+  }
+
   function announceMoneyAction(action: MoneyBurst) {
     if (!tournament.aiannouncerenabled || action.type === 'bounty') return;
     const state = timerState;
@@ -748,7 +820,8 @@ export default function RunTournament({
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
   const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const fieldSize = enteredFieldCount > 0 ? enteredFieldCount : registeredCount;
-  const payoutPlaces = resolvePaidPlaces(parsePayoutStructure(tournament.payoutstructure), fieldSize);
+  const payoutConfig = parsePayoutStructure(tournament.payoutstructure);
+  const payoutPlaces = resolvePaidPlaces(payoutConfig, fieldSize);
   const payoutSplits = buildDefaultSplits(payoutPlaces);
   const grossPot = (toNumber(tournament.buyin) * fieldSize)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
@@ -761,7 +834,7 @@ export default function RunTournament({
     ? players.filter((player) => Boolean(player.bountyclaimedat)).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
     : 0;
   const totalPot = Math.max(grossPot - toNumber(tournament.rake) - bountyTotal, 0);
-  const payouts = payoutSplits.map((pct) => (totalPot * pct) / 100);
+  const payouts = buildRoundedPayouts(totalPot, payoutSplits, payoutConfig.roundingdenomination);
   const paidFinishers = useMemo(
     () => players
       .filter((player) => player.placed != null && (player.placed ?? 999) <= payoutPlaces)
@@ -1502,6 +1575,57 @@ export default function RunTournament({
           </div>
         )}
 
+        {(showAdminControls || displayMode) && activeChampion && (
+          <div className="pointer-events-none fixed inset-0 z-[105] flex items-center justify-center overflow-hidden px-6 py-8">
+            <style>{`
+              @keyframes champion-money-fall {
+                0% { transform: translate3d(0, -24px, 0) rotate(0deg); opacity: 0; }
+                10% { opacity: 1; }
+                100% { transform: translate3d(0, 92vh, 0) rotate(560deg); opacity: 0; }
+              }
+              @keyframes champion-pop {
+                0% { transform: translateY(18px) scale(0.94); opacity: 0; }
+                100% { transform: translateY(0) scale(1); opacity: 1; }
+              }
+            `}</style>
+            {confettiPieces.map((piece, index) => (
+              <span
+                key={`${activeChampion.id}-${piece.id}`}
+                className="absolute top-0 text-3xl drop-shadow-[0_0_10px_rgba(16,185,129,0.65)]"
+                style={{
+                  left: piece.left,
+                  transform: `rotate(${piece.rotation})`,
+                  animation: `champion-money-fall ${piece.duration} ease-out ${piece.delay} forwards`,
+                }}
+              >
+                {index % 4 === 0 ? '💰' : '💵'}
+              </span>
+            ))}
+            <div
+              className="w-full max-w-3xl rounded-3xl border border-emerald-300/35 bg-black/75 px-8 py-7 text-center shadow-2xl shadow-emerald-950/40 backdrop-blur-md"
+              style={{ animation: 'champion-pop 320ms ease-out forwards' }}
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-yellow-200 xl:text-xl">Tournament Champion</p>
+              {activeChampion.avatarImageUrl ? (
+                <div className="mx-auto mt-5 h-24 w-24 overflow-hidden rounded-full border-4 border-emerald-200/30 shadow-xl xl:h-32 xl:w-32">
+                  <img src={activeChampion.avatarImageUrl} alt={activeChampion.name} className="h-full w-full object-cover" />
+                </div>
+              ) : (
+                <div className="mx-auto mt-5 flex h-24 w-24 items-center justify-center rounded-full border-4 border-emerald-200/25 bg-emerald-300/10 text-4xl font-semibold text-white shadow-xl xl:h-32 xl:w-32 xl:text-5xl">
+                  {getInitials(activeChampion.name)}
+                </div>
+              )}
+              <h2 className="mt-4 truncate text-5xl font-black tracking-tight text-white xl:text-8xl">
+                {activeChampion.name}
+              </h2>
+              <CoinBadgeStrip coins={activeChampion.awardedCoins} size="lg" limit={8} className="mt-4 justify-center" />
+              <p className="mt-4 text-lg font-semibold text-emerald-100 xl:text-3xl">
+                The last player standing
+              </p>
+            </div>
+          </div>
+        )}
+
         {(showAdminControls || displayMode) && activeMoneyBurst && (
           <div className="pointer-events-none absolute inset-0 z-40 flex items-start justify-center overflow-hidden rounded-[inherit]">
             <style>{`
@@ -1707,6 +1831,7 @@ function parsePayoutStructure(value: string | null | undefined): PayoutStructure
     return {
       mode: parsed.mode,
       value: sanitizePayoutValue(parsed.mode, Number(parsed.value)),
+      roundingdenomination: sanitizePayoutRounding(Number(parsed.roundingdenomination ?? 0)),
     };
   } catch {
     return { mode: 'count', value: 3 };
@@ -1716,6 +1841,11 @@ function parsePayoutStructure(value: string | null | undefined): PayoutStructure
 function sanitizePayoutValue(mode: PayoutMode, value: number): number {
   if (mode === 'percent') return clamp(Math.round(value), 1, 100);
   return Math.max(1, Math.round(value));
+}
+
+function sanitizePayoutRounding(value: number | undefined): number {
+  const parsed = Number(value ?? 0);
+  return [0, 1, 5, 10, 25].includes(parsed) ? parsed : 0;
 }
 
 function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): number {
@@ -1730,6 +1860,29 @@ function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): nu
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function buildRoundedPayouts(totalPot: number, splits: number[], denominationValue?: number): number[] {
+  const pot = roundCurrency(totalPot);
+  const raw = splits.map((pct) => (pot * pct) / 100);
+  const denomination = sanitizePayoutRounding(denominationValue);
+  if (denomination <= 0 || raw.length <= 1) {
+    return raw.map(roundCurrency);
+  }
+
+  const payouts = raw.map(roundCurrency);
+  let lowerPlacesTotal = 0;
+  for (let index = raw.length - 1; index >= 1; index -= 1) {
+    const rounded = roundCurrency(Math.round(raw[index] / denomination) * denomination);
+    payouts[index] = Math.max(0, Math.min(rounded, roundCurrency(pot - lowerPlacesTotal)));
+    lowerPlacesTotal = roundCurrency(lowerPlacesTotal + payouts[index]);
+  }
+  payouts[0] = roundCurrency(Math.max(pot - lowerPlacesTotal, 0));
+  return payouts;
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function getStateBlind(state: TimerState) {

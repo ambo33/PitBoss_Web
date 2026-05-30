@@ -18,7 +18,7 @@ interface AnnouncerContext {
   classicMode?: boolean | null;
   tournamentName: string;
   groupName?: string | null;
-  eventType: 'tournament_start' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+  eventType: 'tournament_start' | 'tournament_winner' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
   currentLevel: number;
   previousLevel?: number | null;
   smallBlind?: number;
@@ -239,6 +239,7 @@ export function normalizeAnnouncerPreset(value: string | null | undefined): Anno
 export async function generateAnnouncerMoment(context: AnnouncerContext): Promise<{ text: string; audioBase64?: string; mimeType?: string; aiEnabled: boolean; preset?: AnnouncerPreset; voice?: string }> {
   const preset = sanitizePreset(context.preset);
   const isTournamentStart = context.eventType === 'tournament_start';
+  const isTournamentWinner = context.eventType === 'tournament_winner';
   const isTimerStatus = context.eventType === 'timer_paused' || context.eventType === 'timer_resumed';
   const isKnockout = context.eventType === 'knockout';
   const isCheckin = context.eventType === 'checkin';
@@ -266,6 +267,18 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Small blind: ${context.smallBlind ?? 0}`,
         `Big blind: ${context.bigBlind ?? 0}`,
         `Ante: ${context.ante ?? 0}`,
+      ].filter(Boolean).join('\n')
+    : isTournamentWinner
+    ? [
+        'Write one hype winner announcement and tournament recap for a poker tournament.',
+        `Style preset: ${presetInstructions[preset]}`,
+        context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
+        'Rules: 25 to 45 words. Announce the champion by name, say the tournament is complete, mention the final prize pool if provided, and congratulate the table. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims.',
+        `Tournament: ${context.tournamentName}`,
+        context.groupName ? `Group: ${context.groupName}` : '',
+        `Champion: ${context.playerName || 'the champion'}`,
+        `Final prize pool: ${formatMoneyForSpeech(context.prizePool)}`,
+        `Field size: ${getAnnouncedPlayerCount(context)}`,
       ].filter(Boolean).join('\n')
     : isTimerStatus
     ? [
@@ -339,6 +352,7 @@ function buildClassicAnnouncerScript(context: AnnouncerContext): string {
   const smallBlind = Number(context.smallBlind ?? 0).toLocaleString();
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
+  if (context.eventType === 'tournament_winner') return buildTournamentWinnerScript(context);
   if (context.eventType === 'timer_paused') return 'Tournament clock paused.';
   if (context.eventType === 'timer_resumed') return 'Tournament clock resumed.';
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
@@ -360,6 +374,7 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   const blinds = `small blind is ${smallBlind}, big blind is ${bigBlind}`;
   if (context.eventType === 'tournament_start') return buildTournamentStartScript(context);
+  if (context.eventType === 'tournament_winner') return buildTournamentWinnerScript(context);
   if (context.eventType === 'timer_paused') return 'Tournament clock paused.';
   if (context.eventType === 'timer_resumed') return 'Tournament clock resumed.';
   if (context.rebuyCutoffWarning === 'five_minute_warning') return 'Five minutes left in the final level for re-buys.';
@@ -397,6 +412,13 @@ function buildTournamentStartScript(context: AnnouncerContext): string {
   const rebuy = formatAvailabilitySentence('Re-buys', context.rebuyEnabled, context.rebuyAmount);
   const addon = formatAvailabilitySentence('Add-ons', context.addonEnabled, context.addonAmount);
   return `Welcome to ${context.tournamentName}. We have ${fieldCount} player${fieldCount === 1 ? '' : 's'} in the field and a current prize pool of ${prizePool}. ${rebuy} ${addon} Level one starts now: small blind is ${smallBlind}, big blind is ${bigBlind}. Good luck, players.`;
+}
+
+function buildTournamentWinnerScript(context: AnnouncerContext): string {
+  const champion = context.playerName || 'our champion';
+  const prizePool = Number(context.prizePool ?? 0) > 0 ? ` The final prize pool is ${formatMoneyForSpeech(context.prizePool)}.` : '';
+  const fieldCount = getAnnouncedPlayerCount(context);
+  return `${champion} is your champion. The tournament is complete after a ${fieldCount}-player battle.${prizePool} Congratulations to the winner and great game, everyone.`;
 }
 
 function formatAvailabilityFact(label: string, enabled: boolean | null | undefined, amount: number | null | undefined): string {

@@ -273,6 +273,15 @@ export function playLevelChangeTone(): void {
   ]);
 }
 
+export function playAirhornHype(): void {
+  void playSequence([
+    { frequency: 220, duration: 0.34, gain: 0.08 },
+    { frequency: 196, duration: 0.36, delay: 0.08, gain: 0.08 },
+    { frequency: 247, duration: 0.42, delay: 0.48, gain: 0.09 },
+    { frequency: 220, duration: 0.46, delay: 0.58, gain: 0.08 },
+  ]);
+}
+
 function renderAnnouncementTemplate(template: string | null | undefined, tokens: AnnouncementTokens): string {
   const values: Record<string, string> = {
     BlindLevel: String(tokens.BlindLevel),

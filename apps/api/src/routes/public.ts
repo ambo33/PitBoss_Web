@@ -24,6 +24,22 @@ function truthySql(column: string) {
   return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
 }
 
+function ordinalSuffix(value: number): string {
+  const normalized = Math.abs(Math.trunc(value));
+  const mod100 = normalized % 100;
+  if (mod100 >= 11 && mod100 <= 13) return 'th';
+  switch (normalized % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
 publicRouter.post('/ai-voice-preview', async (req: Request, res: Response) => {
   const style = (req.body as { style?: string }).style === 'british_dealer' ? 'british_dealer' : 'football';
   try {
@@ -47,7 +63,7 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
   }
 
   const body = req.body as {
-    eventtype?: 'tournament_start' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
+    eventtype?: 'tournament_start' | 'tournament_winner' | 'timer_paused' | 'timer_resumed' | 'level_up' | 'five_minute_warning' | 'one_minute_warning' | 'knockout' | 'rebuy' | 'addon' | 'checkin';
     currentlevel?: number;
     previouslevel?: number | null;
     previouslevelstartedat?: string | null;
@@ -74,7 +90,7 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     addonamount?: number | null;
   };
   const eventType = body.eventtype ?? 'knockout';
-  if (!['tournament_start', 'timer_paused', 'timer_resumed', 'level_up', 'five_minute_warning', 'one_minute_warning', 'knockout', 'rebuy', 'addon', 'checkin'].includes(eventType)) {
+  if (!['tournament_start', 'tournament_winner', 'timer_paused', 'timer_resumed', 'level_up', 'five_minute_warning', 'one_minute_warning', 'knockout', 'rebuy', 'addon', 'checkin'].includes(eventType)) {
     res.status(400).json({ error: 'This TV announcer event is not supported.' });
     return;
   }
@@ -896,7 +912,7 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     : '';
   const body = req.body as { knockedoutByUserId?: string; knockedOutByUserId?: string };
   const knockedoutByUserId = typeof (body.knockedoutByUserId ?? body.knockedOutByUserId) === 'string'
-    ? String(body.knockedoutByUserId ?? body.knockedOutByUserId)
+    ? String(body.knockedoutByUserId ?? body.knockedOutByUserId).trim() || null
     : null;
   const playerUserId = req.userId ?? guestUserId;
 
@@ -963,7 +979,81 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     [req.params.id, playerUserId, placed, knockedoutByUserId, bountyStartPlace]
   );
 
+  if (placed === 2) {
+    await query(
+      `UPDATE tournamentplayers
+       SET placed = 1,
+           checkedin = TRUE,
+           knockedoutbyuserid = NULL,
+           knockedoutat = NULL,
+           bountyclaimedbyuserid = NULL,
+           bountyclaimedat = NULL
+       WHERE tournamentid = $1
+         AND userid != $2
+         AND COALESCE(checkedin, FALSE) = TRUE
+         AND placed IS NULL
+         AND (
+           SELECT count(*)
+           FROM tournamentplayers remaining
+           WHERE remaining.tournamentid = $1
+             AND remaining.userid != $2
+             AND COALESCE(remaining.checkedin, FALSE) = TRUE
+             AND remaining.placed IS NULL
+         ) = 1`,
+      [req.params.id, playerUserId]
+    );
+  }
+
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });
+
+  const knockedOutPlayer = await queryOne<{
+    playername: string;
+    bountyamount: number;
+    bountyclaimedbyuserid: string | null;
+  }>(
+    `SELECT COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS playername,
+            COALESCE(CAST(tp.bountyamount AS DECIMAL), 0) AS bountyamount,
+            tp.bountyclaimedbyuserid
+     FROM tournamentplayers tp
+     JOIN users u ON u.guid = tp.userid
+     LEFT JOIN usermetadata m ON m.userid = tp.userid
+     WHERE tp.tournamentid = $1 AND tp.userid = $2`,
+    [req.params.id, playerUserId]
+  );
+  void sendTournamentNotification(req.params.id, 'knockout_recorded', {
+    playerName: knockedOutPlayer?.playername ?? 'a player',
+    body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated in ${placed}${ordinalSuffix(placed)} place.`,
+    entityId: `${req.params.id}:knockout:${playerUserId}`,
+    tag: `tournament-${req.params.id}-knockout-${playerUserId}`,
+  }, {
+    audience: 'participants-and-admins',
+    entityId: `${req.params.id}:knockout:${playerUserId}`,
+  }).catch((err) => {
+    console.error('Self knockout push failed', err instanceof Error ? err.message : err);
+  });
+  if (knockedoutByUserId) {
+    void sendTournamentNotification(req.params.id, 'knockout_recorded', {
+      playerName: knockedOutPlayer?.playername ?? 'a player',
+      entityId: `${req.params.id}:knockout-credit:${playerUserId}`,
+      tag: `tournament-${req.params.id}-knockout-credit-${playerUserId}`,
+    }, {
+      targetUserIds: [knockedoutByUserId],
+      entityId: `${req.params.id}:knockout-credit:${playerUserId}`,
+    }).catch((err) => {
+      console.error('Self knockout credit push failed', err instanceof Error ? err.message : err);
+    });
+  }
+  if (Number(knockedOutPlayer?.bountyamount ?? 0) > 0 && knockedOutPlayer?.bountyclaimedbyuserid) {
+    void sendTournamentNotification(req.params.id, 'bounty_earned', {
+      entityId: `${req.params.id}:bounty:${playerUserId}`,
+      tag: `tournament-${req.params.id}-bounty-${playerUserId}`,
+    }, {
+      targetUserIds: [knockedOutPlayer.bountyclaimedbyuserid],
+      entityId: `${req.params.id}:bounty:${playerUserId}`,
+    }).catch((err) => {
+      console.error('Self bounty push failed', err instanceof Error ? err.message : err);
+    });
+  }
   res.json({ success: true, placed });
 });
