@@ -21,6 +21,11 @@ import {
 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import { api, type BlindLevel, type PublicBlindTimerState } from '../../api/client';
+import {
+  DEFAULT_CHIP_DENOMINATIONS,
+  DEFAULT_COLOR_UPS,
+  generateBlindStructure as buildBlindStructure,
+} from '../../utils/blindCalculator';
 
 type DraftLevel = Omit<BlindLevel, 'id'>;
 
@@ -30,12 +35,12 @@ type BuilderSettings = {
   targetHours: string;
   levelMinutes: string;
   startingBigBlind: string;
-  chipIncrement: string;
+  chipDenominations: string;
   finishBigBlinds: string;
   breakCount: string;
   breakMinutes: string;
   anteStartLevel: string;
-  antePercent: string;
+  colorUps: string;
 };
 
 const defaultSettings: BuilderSettings = {
@@ -44,12 +49,12 @@ const defaultSettings: BuilderSettings = {
   targetHours: '3',
   levelMinutes: '20',
   startingBigBlind: '50',
-  chipIncrement: '25',
-  finishBigBlinds: '10',
+  chipDenominations: DEFAULT_CHIP_DENOMINATIONS,
+  finishBigBlinds: '14',
   breakCount: '0',
   breakMinutes: '10',
-  anteStartLevel: '0',
-  antePercent: '10',
+  anteStartLevel: '1',
+  colorUps: DEFAULT_COLOR_UPS,
 };
 
 const defaultLevels = generateBlindStructure(parseSettings(defaultSettings));
@@ -490,11 +495,14 @@ export default function PublicBlindTimerPage() {
                 <NumberField label="Breaks" value={settings.breakCount} onChange={(value) => updateSetting('breakCount', value)} />
                 <NumberField label="Break minutes" value={settings.breakMinutes} onChange={(value) => updateSetting('breakMinutes', value)} />
                 <NumberField label="Starting BB" value={settings.startingBigBlind} onChange={(value) => updateSetting('startingBigBlind', value)} />
-                <NumberField label="Chip increment" value={settings.chipIncrement} onChange={(value) => updateSetting('chipIncrement', value)} />
-                <NumberField label="Finish BBs in play" value={settings.finishBigBlinds} onChange={(value) => updateSetting('finishBigBlinds', value)} />
-                <NumberField label="Ante from level" value={settings.anteStartLevel} onChange={(value) => updateSetting('anteStartLevel', value)} />
-                <NumberField label="Ante percent of BB" value={settings.antePercent} onChange={(value) => updateSetting('antePercent', value)} />
+                <TextField label="Chip denominations" value={settings.chipDenominations} placeholder="25,50,100,500,1000" onChange={(value) => updateSetting('chipDenominations', value)} />
+                <NumberField label="Final BBs in play (~7%)" value={settings.finishBigBlinds} onChange={(value) => updateSetting('finishBigBlinds', value)} />
+                <NumberField label="BB ante from level" value={settings.anteStartLevel} onChange={(value) => updateSetting('anteStartLevel', value)} />
+                <TextField label="Color-ups" value={settings.colorUps} placeholder="25@8, 100@11" onChange={(value) => updateSetting('colorUps', value)} />
               </div>
+              <p className="rounded-lg border border-pit-border bg-pit-bg/45 px-3 py-2 text-xs leading-5 text-pit-text">
+                Blinds are generated from playable chip amounts only. The big blind is always exactly 2x the small blind, ante equals the big blind once antes begin, and color-ups use <span className="font-mono text-white">25@8</span> format.
+              </p>
               <button className="btn-ghost w-full" type="button" onClick={generateStructure}>
                 <Wand2 size={16} />
                 Generate structure
@@ -611,6 +619,15 @@ function NumberField({ label, value, onChange }: { label: string; value: string;
   );
 }
 
+function TextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (value: string) => void }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">{label}</span>
+      <input className="input" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
 function LevelInput({
   label,
   value,
@@ -704,12 +721,12 @@ function parseSettings(settings: BuilderSettings) {
     targetHours: parseSetting(settings.targetHours, 3),
     levelMinutes: parseSetting(settings.levelMinutes, 20),
     startingBigBlind: parseSetting(settings.startingBigBlind, 50),
-    chipIncrement: parseSetting(settings.chipIncrement, 25),
-    finishBigBlinds: parseSetting(settings.finishBigBlinds, 10),
+    chipDenominations: settings.chipDenominations,
+    finishBigBlinds: parseSetting(settings.finishBigBlinds, 14),
     breakCount: Math.max(0, Math.floor(parseSetting(settings.breakCount, 0))),
     breakMinutes: parseSetting(settings.breakMinutes, 10),
     anteStartLevel: parseSetting(settings.anteStartLevel, 0),
-    antePercent: parseSetting(settings.antePercent, 0),
+    colorUps: settings.colorUps,
   };
 }
 
@@ -720,69 +737,7 @@ function parseSetting(value: string, fallback: number) {
 }
 
 function generateBlindStructure(settings: ReturnType<typeof parseSettings>): DraftLevel[] {
-  const safePlayers = Math.max(settings.players || 0, 2);
-  const safeStack = Math.max(settings.startingStack || 0, 100);
-  const safeMinutes = Math.max(settings.levelMinutes || 0, 1);
-  const safeHours = Math.max(settings.targetHours || 0, 0.5);
-  const safeBreakCount = clamp(Math.floor(settings.breakCount || 0), 0, 10);
-  const safeBreakMinutes = Math.max(settings.breakMinutes || 0, 1);
-  const playMinutes = Math.max((safeHours * 60) - (safeBreakCount * safeBreakMinutes), safeMinutes * 4);
-  const increment = Math.max(settings.chipIncrement || 0, 1);
-  const startBigBlind = roundTo(Math.max(settings.startingBigBlind || 0, increment), increment);
-  const totalChips = safePlayers * safeStack;
-  const targetBigBlind = roundTo(Math.max(startBigBlind, totalChips / Math.max(settings.finishBigBlinds || 0, 4)), increment);
-  const levelCount = clamp(Math.round(playMinutes / safeMinutes), 4, 30);
-  const growthFactor = levelCount <= 1 ? 1 : Math.pow(targetBigBlind / startBigBlind, 1 / (levelCount - 1));
-
-  let previousBigBlind = 0;
-  const blindLevels = Array.from({ length: levelCount }, (_unused, index) => {
-    const level = index + 1;
-    const rawBigBlind = startBigBlind * Math.pow(growthFactor, index);
-    let bigblind = roundTo(rawBigBlind, increment);
-    if (bigblind <= previousBigBlind) bigblind = previousBigBlind + increment;
-    previousBigBlind = bigblind;
-
-    const smallblind = Math.max(increment, roundTo(bigblind / 2, increment));
-    const ante = settings.anteStartLevel > 0 && level >= settings.anteStartLevel
-      ? roundTo((bigblind * Math.max(settings.antePercent, 0)) / 100, increment)
-      : 0;
-
-    return {
-      level,
-      label: `Level ${level}`,
-      smallblind,
-      bigblind,
-      ante,
-      minutes: safeMinutes,
-      islastlevel: level === levelCount,
-    };
-  });
-
-  if (safeBreakCount === 0) return blindLevels;
-
-  const levelsWithBreaks: DraftLevel[] = [];
-  const spacing = Math.max(1, Math.floor(levelCount / (safeBreakCount + 1)));
-  let breaksAdded = 0;
-  blindLevels.forEach((blind, index) => {
-    levelsWithBreaks.push(blind);
-    const shouldAddBreak = breaksAdded < safeBreakCount
-      && index < blindLevels.length - 1
-      && (index + 1) >= spacing * (breaksAdded + 1);
-    if (shouldAddBreak) {
-      levelsWithBreaks.push({
-        level: levelsWithBreaks.length + 1,
-        label: `Break ${breaksAdded + 1}`,
-        smallblind: 0,
-        bigblind: 0,
-        ante: 0,
-        minutes: safeBreakMinutes,
-        islastlevel: false,
-      });
-      breaksAdded += 1;
-    }
-  });
-
-  return renumberLevels(levelsWithBreaks);
+  return buildBlindStructure(settings);
 }
 
 function normalizeLevels(levels: Omit<BlindLevel, 'id'>[]): DraftLevel[] {
@@ -828,14 +783,6 @@ function renumberLevels(levels: DraftLevel[]): DraftLevel[] {
     label: isBreakLevel(level) ? level.label || `Break ${index + 1}` : `Level ${index + 1}`,
     islastlevel: index === levels.length - 1,
   }));
-}
-
-function roundTo(value: number, increment: number) {
-  return Math.max(increment, Math.round(value / increment) * increment);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
 }
 
 function isBreakLevel(level?: Pick<DraftLevel, 'label' | 'smallblind' | 'bigblind'>): boolean {

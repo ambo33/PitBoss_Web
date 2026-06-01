@@ -2,6 +2,12 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calculator, GripVertical, Save, Wand2 } from 'lucide-react';
 import { api, BlindLevel, Tournament } from '../../api/client';
+import {
+  calculateTotalChips,
+  DEFAULT_CHIP_DENOMINATIONS,
+  DEFAULT_COLOR_UPS,
+  generateBlindStructure as buildBlindStructure,
+} from '../../utils/blindCalculator';
 
 interface BlindTimerProps {
   tournamentId: string;
@@ -28,12 +34,12 @@ interface CalculatorSettings {
   targetHours: string;
   levelMinutes: string;
   startingBigBlind: string;
-  chipIncrement: string;
+  chipDenominations: string;
   finishBigBlinds: string;
   breakCount: string;
   breakMinutes: string;
   anteStartLevel: string;
-  antePercent: string;
+  colorUps: string;
   expectedRebuys: string;
   expectedAddons: string;
 }
@@ -44,12 +50,12 @@ interface ParsedCalculatorSettings {
   targetHours: number;
   levelMinutes: number;
   startingBigBlind: number;
-  chipIncrement: number;
+  chipDenominations: string;
   finishBigBlinds: number;
   breakCount: number;
   breakMinutes: number;
   anteStartLevel: number;
-  antePercent: number;
+  colorUps: string;
   expectedRebuys: number;
   expectedAddons: number;
   rebuyChips: number;
@@ -179,12 +185,12 @@ function BlindCalculator({
     targetHours: '3',
     levelMinutes: '20',
     startingBigBlind: '50',
-    chipIncrement: '25',
-    finishBigBlinds: '10',
+    chipDenominations: DEFAULT_CHIP_DENOMINATIONS,
+    finishBigBlinds: '14',
     breakCount: '0',
     breakMinutes: '10',
-    anteStartLevel: '0',
-    antePercent: '10',
+    anteStartLevel: '1',
+    colorUps: DEFAULT_COLOR_UPS,
     expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(playerCount * 0.4), 0)) : '0',
     expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(playerCount * 0.5), 0)) : '0',
   });
@@ -194,11 +200,7 @@ function BlindCalculator({
     [settings, tournament]
   );
   const generatedLevels = useMemo(() => generateBlindStructure(parsedSettings), [parsedSettings]);
-  const totalChips = (
-    parsedSettings.players * parsedSettings.startingStack
-    + (parsedSettings.expectedRebuys * parsedSettings.rebuyChips)
-    + (parsedSettings.expectedAddons * parsedSettings.addonChips)
-  );
+  const totalChips = calculateTotalChips(parsedSettings);
   const rebuysEnabled = toNumber(tournament.rebuyprice) > 0 && toNumber(tournament.rebuychips) > 0;
   const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
 
@@ -230,9 +232,20 @@ function BlindCalculator({
             <NumberField label="Breaks" value={settings.breakCount} min={0} onChange={(value) => update('breakCount', value)} />
             <NumberField label="Break minutes" value={settings.breakMinutes} min={1} onChange={(value) => update('breakMinutes', value)} />
             <NumberField label="Starting BB" value={settings.startingBigBlind} min={1} onChange={(value) => update('startingBigBlind', value)} />
-            <NumberField label="Chip increment" value={settings.chipIncrement} min={1} onChange={(value) => update('chipIncrement', value)} />
-            <NumberField label="Finish BBs in play" value={settings.finishBigBlinds} min={4} onChange={(value) => update('finishBigBlinds', value)} />
-            <NumberField label="Ante from level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
+            <TextField
+              label="Chip denominations"
+              value={settings.chipDenominations}
+              placeholder="25,50,100,500,1000"
+              onChange={(value) => update('chipDenominations', value)}
+            />
+            <NumberField label="Final BBs in play (~7%)" value={settings.finishBigBlinds} min={4} onChange={(value) => update('finishBigBlinds', value)} />
+            <NumberField label="BB ante from level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
+            <TextField
+              label="Color-ups"
+              value={settings.colorUps}
+              placeholder="25@8, 100@11"
+              onChange={(value) => update('colorUps', value)}
+            />
             {rebuysEnabled && (
               <NumberField
                 label={`Expected rebuys (${toNumber(tournament.rebuychips).toLocaleString()} chips ea)`}
@@ -272,11 +285,39 @@ function BlindCalculator({
                 Includes {parsedSettings.breakCount} break{parsedSettings.breakCount === 1 ? '' : 's'} at {parsedSettings.breakMinutes} minutes each inside the target time.
               </p>
             )}
+            <p className="mb-3 text-xs text-pit-muted">
+              Generated blinds use only active chip denominations, keep the big blind at exactly 2x the small blind, and set ante equal to the big blind once antes begin. Color-ups use the format <span className="font-mono text-pit-text">25@8</span>.
+            </p>
             <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
           </div>
         </>
       )}
     </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">{label}</span>
+      <input
+        className="input"
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 
@@ -506,12 +547,12 @@ function parseCalculatorSettings(settings: CalculatorSettings, tournament: Tourn
     targetHours: parseSetting(settings.targetHours, 0.5),
     levelMinutes: parseSetting(settings.levelMinutes, 1),
     startingBigBlind: parseSetting(settings.startingBigBlind, 1),
-    chipIncrement: parseSetting(settings.chipIncrement, 1),
-    finishBigBlinds: parseSetting(settings.finishBigBlinds, 4),
+    chipDenominations: settings.chipDenominations,
+    finishBigBlinds: parseSetting(settings.finishBigBlinds, 14),
     breakCount: Math.max(0, Math.floor(parseSetting(settings.breakCount, 0))),
     breakMinutes: parseSetting(settings.breakMinutes, 1),
     anteStartLevel: parseSetting(settings.anteStartLevel, 0),
-    antePercent: parseSetting(settings.antePercent, 0),
+    colorUps: settings.colorUps,
     expectedRebuys: parseSetting(settings.expectedRebuys, 0),
     expectedAddons: parseSetting(settings.expectedAddons, 0),
     rebuyChips: toNumber(tournament.rebuychips),
@@ -526,86 +567,7 @@ function parseSetting(value: string, fallback: number) {
 }
 
 function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[] {
-  const safePlayers = Math.max(settings.players || 0, 2);
-  const safeStack = Math.max(settings.startingStack || 0, 100);
-  const safeMinutes = Math.max(settings.levelMinutes || 0, 1);
-  const safeHours = Math.max(settings.targetHours || 0, 0.5);
-  const safeBreakCount = clamp(Math.floor(settings.breakCount || 0), 0, 10);
-  const safeBreakMinutes = Math.max(settings.breakMinutes || 0, 1);
-  const playMinutes = Math.max((safeHours * 60) - (safeBreakCount * safeBreakMinutes), safeMinutes * 4);
-  const increment = Math.max(settings.chipIncrement || 0, 1);
-  const startBigBlind = roundTo(Math.max(settings.startingBigBlind || 0, increment), increment);
-  const totalChips = (
-    safePlayers * safeStack
-    + Math.max(settings.expectedRebuys || 0, 0) * Math.max(settings.rebuyChips || 0, 0)
-    + Math.max(settings.expectedAddons || 0, 0) * Math.max(settings.addonChips || 0, 0)
-  );
-  const targetBigBlind = roundTo(Math.max(startBigBlind, totalChips / Math.max(settings.finishBigBlinds || 0, 4)), increment);
-  const levelCount = clamp(Math.round(playMinutes / safeMinutes), 4, 30);
-  const growthFactor = levelCount <= 1 ? 1 : Math.pow(targetBigBlind / startBigBlind, 1 / (levelCount - 1));
-
-  let previousBigBlind = 0;
-  const blindLevels = Array.from({ length: levelCount }, (_unused, index) => {
-    const level = index + 1;
-    const rawBigBlind = startBigBlind * Math.pow(growthFactor, index);
-    let bigblind = roundTo(rawBigBlind, increment);
-    if (bigblind <= previousBigBlind) bigblind = previousBigBlind + increment;
-    previousBigBlind = bigblind;
-
-    const smallblind = Math.max(increment, roundTo(bigblind / 2, increment));
-    const ante = settings.anteStartLevel > 0 && level >= settings.anteStartLevel
-      ? roundTo((bigblind * Math.max(settings.antePercent, 0)) / 100, increment)
-      : 0;
-
-    return {
-      level,
-      label: `Level ${level}`,
-      smallblind,
-      bigblind,
-      ante,
-      minutes: safeMinutes,
-      islastlevel: level === levelCount,
-    };
-  });
-
-  if (safeBreakCount === 0) return blindLevels;
-
-  const levelsWithBreaks: DraftLevel[] = [];
-  const spacing = Math.max(1, Math.floor(levelCount / (safeBreakCount + 1)));
-  let breaksAdded = 0;
-  blindLevels.forEach((blind, index) => {
-    levelsWithBreaks.push(blind);
-    const shouldAddBreak = breaksAdded < safeBreakCount
-      && index < blindLevels.length - 1
-      && (index + 1) >= spacing * (breaksAdded + 1);
-    if (shouldAddBreak) {
-      levelsWithBreaks.push({
-        level: levelsWithBreaks.length + 1,
-        label: `Break ${breaksAdded + 1}`,
-        smallblind: 0,
-        bigblind: 0,
-        ante: 0,
-        minutes: safeBreakMinutes,
-        islastlevel: false,
-      });
-      breaksAdded += 1;
-    }
-  });
-
-  return levelsWithBreaks.map((level, index) => ({
-    ...level,
-    level: index + 1,
-    label: isBreakLevel(level) ? level.label : `Level ${index + 1}`,
-    islastlevel: index === levelsWithBreaks.length - 1,
-  }));
-}
-
-function roundTo(value: number, increment: number) {
-  return Math.max(increment, Math.round(value / increment) * increment);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
+  return buildBlindStructure(settings);
 }
 
 function toNumber(value: unknown) {
