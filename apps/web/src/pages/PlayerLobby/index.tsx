@@ -775,9 +775,7 @@ function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): nu
     if (fieldSize <= 0) return 1;
     return clamp(Math.ceil((fieldSize * sanitizePayoutValue('percent', config.value)) / 100), 1, fieldSize);
   }
-  const requested = sanitizePayoutValue('count', config.value);
-  if (fieldSize <= 0) return requested;
-  return clamp(requested, 1, fieldSize);
+  return sanitizePayoutValue('count', config.value);
 }
 
 const DEFAULT_SPLITS: Record<number, number[]> = {

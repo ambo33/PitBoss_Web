@@ -32,7 +32,7 @@ interface ColorUpRule {
 }
 
 export const DEFAULT_CHIP_DENOMINATIONS = '25,50,100,500,1000,5000';
-export const DEFAULT_COLOR_UPS = '25@8, 100@11';
+export const DEFAULT_COLOR_UPS = defaultChipUpDenominations(DEFAULT_CHIP_DENOMINATIONS);
 
 export function calculateTotalChips(settings: Pick<BlindCalculatorInput, 'players' | 'startingStack' | 'expectedRebuys' | 'expectedAddons' | 'rebuyChips' | 'addonChips'>) {
   return (
@@ -59,10 +59,10 @@ export function generateBlindStructure(settings: BlindCalculatorInput): Generate
   const safeBreakCount = clamp(Math.floor(settings.breakCount || 0), 0, 10);
   const safeBreakMinutes = Math.max(settings.breakMinutes || 0, 1);
   const denominations = parseChipDenominations(settings.chipDenominations);
-  const colorUps = parseColorUps(settings.colorUps ?? '', denominations);
-  const baseIncrement = chipIncrementForLevel(1, denominations, colorUps);
+  const baseIncrement = chipIncrementForLevel(1, denominations, []);
   const playMinutes = Math.max((safeHours * 60) - (safeBreakCount * safeBreakMinutes), safeMinutes * 4);
   const levelCount = clamp(Math.round(playMinutes / safeMinutes), 4, 30);
+  const colorUps = parseColorUps(settings.colorUps ?? '', denominations, levelCount);
   const startBigBlind = normalizeBlindPair(Math.max(settings.startingBigBlind || 0, baseIncrement * 2), baseIncrement).bigblind;
   const totalChips = calculateTotalChips({
     players: safePlayers,
@@ -100,25 +100,37 @@ export function generateBlindStructure(settings: BlindCalculatorInput): Generate
     };
   });
 
-  if (safeBreakCount === 0) return blindLevels;
-
   const levelsWithBreaks: GeneratedBlindLevel[] = [];
   const spacing = Math.max(1, Math.floor(levelCount / (safeBreakCount + 1)));
   let breaksAdded = 0;
   blindLevels.forEach((blind, index) => {
     levelsWithBreaks.push(blind);
+    if (index >= blindLevels.length - 1) return;
+
+    const nextBlindLevel = index + 2;
     const shouldAddBreak = breaksAdded < safeBreakCount
-      && index < blindLevels.length - 1
       && (index + 1) >= spacing * (breaksAdded + 1);
-    if (shouldAddBreak) {
-      const nextBlindLevel = index + 2;
-      const colorUpNote = colorUps
-        .filter((rule) => rule.level === nextBlindLevel)
-        .map((rule) => `${rule.denomination.toLocaleString()}s`)
-        .join(', ');
+    const colorUpNote = colorUps
+      .filter((rule) => rule.level === nextBlindLevel)
+      .map((rule) => `${rule.denomination.toLocaleString()}s`)
+      .join(', ');
+
+    if (colorUpNote) {
       levelsWithBreaks.push({
         level: levelsWithBreaks.length + 1,
-        label: colorUpNote ? `Break ${breaksAdded + 1} - Color up ${colorUpNote}` : `Break ${breaksAdded + 1}`,
+        label: `Chip up ${colorUpNote}`,
+        smallblind: 0,
+        bigblind: 0,
+        ante: 0,
+        minutes: 0,
+        islastlevel: false,
+      });
+    }
+
+    if (shouldAddBreak) {
+      levelsWithBreaks.push({
+        level: levelsWithBreaks.length + 1,
+        label: `Break ${breaksAdded + 1}`,
         smallblind: 0,
         bigblind: 0,
         ante: 0,
@@ -137,22 +149,50 @@ export function generateBlindStructure(settings: BlindCalculatorInput): Generate
   }));
 }
 
-function parseColorUps(value: string, denominations: number[]): ColorUpRule[] {
+export function defaultChipUpDenominations(chipDenominations: string): string {
+  const denominations = parseChipDenominations(chipDenominations);
+  return denominations.slice(0, 2).join(',');
+}
+
+function parseColorUps(value: string, denominations: number[], levelCount: number): ColorUpRule[] {
+  const selected = parseColorUpPieces(value, denominations);
+  if (selected.length === 0) return [];
+  const automaticLevels = buildAutomaticColorUpLevels(selected.length, levelCount);
+  return selected
+    .map((piece, index) => ({
+      denomination: piece.denomination,
+      level: piece.level ?? automaticLevels[index] ?? automaticLevels[automaticLevels.length - 1] ?? 2,
+    }))
+    .sort((a, b) => a.level - b.level || a.denomination - b.denomination);
+}
+
+function parseColorUpPieces(value: string, denominations: number[]): Array<{ denomination: number; level?: number }> {
   const allowed = new Set(denominations);
-  return value
+  const byDenomination = new Map<number, { denomination: number; level?: number }>();
+  value
     .split(/[,;\n]+/)
     .map((piece) => piece.trim())
     .filter(Boolean)
-    .map((piece) => {
-      const match = piece.match(/^(\d+(?:\.\d+)?)\s*(?:@|:|level|lvl|l)\s*(\d+)$/i);
-      if (!match) return null;
-      const denomination = Math.round(Number(match[1]));
-      const level = Math.floor(Number(match[2]));
-      if (!allowed.has(denomination) || level < 2) return null;
-      return { denomination, level };
-    })
-    .filter((rule): rule is ColorUpRule => Boolean(rule))
-    .sort((a, b) => a.level - b.level || a.denomination - b.denomination);
+    .forEach((piece) => {
+      const explicitLevelMatch = piece.match(/^(\d+(?:\.\d+)?)\s*(?:@|:|level|lvl|l)\s*(\d+)$/i);
+      const denomination = Math.round(Number(explicitLevelMatch?.[1] ?? piece));
+      const level = explicitLevelMatch ? Math.floor(Number(explicitLevelMatch[2])) : undefined;
+      if (!allowed.has(denomination) || (level !== undefined && level < 2)) return;
+      byDenomination.set(denomination, { denomination, level });
+    });
+  return [...byDenomination.values()].sort((a, b) => a.denomination - b.denomination);
+}
+
+function buildAutomaticColorUpLevels(count: number, levelCount: number): number[] {
+  if (count <= 0 || levelCount < 4) return [];
+  const firstLevel = clamp(Math.floor(levelCount * 0.3) + 1, 2, levelCount);
+  const secondLevel = clamp(Math.floor(levelCount * 0.6) + 1, firstLevel + 1, levelCount);
+  if (count === 1) return [firstLevel];
+  return Array.from({ length: count }, (_unused, index) => {
+    if (index === 0) return firstLevel;
+    if (index === 1) return secondLevel;
+    return clamp(secondLevel + index - 1, firstLevel + 1, levelCount);
+  });
 }
 
 function chipIncrementForLevel(level: number, denominations: number[], colorUps: ColorUpRule[]) {

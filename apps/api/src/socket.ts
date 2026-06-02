@@ -27,11 +27,16 @@ export function initSocket(httpServer: HttpServer): void {
     socket.on('timer-start', async ({ tournamentId }: { tournamentId: string }) => {
       if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = await loadTimerState(tournamentId);
+      const previousLevel = state.currentlevel;
+      if (isChipUpBlind(getCurrentBlind(state)) && state.remainingsecs <= 0) {
+        advanceLevel(state, { acknowledgeChipUp: true });
+      }
       if (state.running || state.blinds.length === 0) return;
       state.running = true;
       timerState.set(tournamentId, state);
       startInterval(tournamentId);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
+      if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
 
     socket.on('timer-pause', async ({ tournamentId }: { tournamentId: string }) => {
@@ -48,7 +53,7 @@ export function initSocket(httpServer: HttpServer): void {
       if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
       const previousLevel = state.currentlevel;
-      advanceLevel(state);
+      advanceLevel(state, { acknowledgeChipUp: true });
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
       if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
@@ -84,7 +89,11 @@ export function initSocket(httpServer: HttpServer): void {
       if (!targetBlind) return;
       const previousLevel = state.currentlevel;
       state.currentlevel = targetBlind.level;
-      state.remainingsecs = Math.max((targetBlind.minutes ?? 20) * 60, 60);
+      state.remainingsecs = isChipUpBlind(targetBlind) ? 0 : Math.max((targetBlind.minutes ?? 20) * 60, 60);
+      if (isChipUpBlind(targetBlind)) {
+        state.running = false;
+        stopInterval(tournamentId);
+      }
       timerState.set(tournamentId, state);
       if (state.running) startInterval(tournamentId);
       await persistTimer(state);
@@ -150,6 +159,11 @@ function startInterval(tournamentId: string): void {
       const previousLevel = state.currentlevel;
       advanceLevel(state);
       if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
+      if (!state.running) {
+        await persistTimer(state);
+        io.to(`t:${tournamentId}`).emit('timer-state', state);
+        return;
+      }
     }
 
     maybeNotifyTimerWarnings(state);
@@ -176,8 +190,14 @@ function stopInterval(tournamentId: string): void {
   }
 }
 
-function advanceLevel(state: TimerState): void {
+function advanceLevel(state: TimerState, options: { acknowledgeChipUp?: boolean } = {}): void {
   const currentBlind = getCurrentBlind(state);
+  if (isChipUpBlind(currentBlind) && !options.acknowledgeChipUp) {
+    state.remainingsecs = 0;
+    state.running = false;
+    stopInterval(state.tournamentid);
+    return;
+  }
   if (currentBlind?.islastlevel) {
     state.running = false;
     stopInterval(state.tournamentid);
@@ -191,10 +211,19 @@ function advanceLevel(state: TimerState): void {
   }
   state.currentlevel = nextBlind.level;
   state.remainingsecs = (nextBlind?.minutes ?? 20) * 60;
+  if (isChipUpBlind(nextBlind)) {
+    state.remainingsecs = 0;
+    state.running = false;
+    stopInterval(state.tournamentid);
+  }
 }
 
 function isBreakBlind(blind: BlindLevel | undefined): boolean {
   return Boolean(blind && (/^break\b/i.test(String(blind.label ?? '')) || (Number(blind.smallblind) === 0 && Number(blind.bigblind) === 0)));
+}
+
+function isChipUpBlind(blind: BlindLevel | undefined): boolean {
+  return Boolean(blind && /^chip\s*up\b/i.test(String(blind.label ?? '')));
 }
 
 function notifyLevelChanged(state: TimerState): void {

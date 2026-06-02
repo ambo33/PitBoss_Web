@@ -22,6 +22,7 @@ import {
 import BrandLockup from '../../components/BrandLockup';
 import { api, type BlindLevel, type PublicBlindTimerState } from '../../api/client';
 import {
+  defaultChipUpDenominations,
   DEFAULT_CHIP_DENOMINATIONS,
   DEFAULT_COLOR_UPS,
   generateBlindStructure as buildBlindStructure,
@@ -53,7 +54,7 @@ const defaultSettings: BuilderSettings = {
   finishBigBlinds: '14',
   breakCount: '0',
   breakMinutes: '10',
-  anteStartLevel: '1',
+  anteStartLevel: '0',
   colorUps: DEFAULT_COLOR_UPS,
 };
 
@@ -176,7 +177,15 @@ export default function PublicBlindTimerPage() {
   }, [currentIndex, currentLevel, lastAnnouncementKey, mode, remainingSecs, soundAnnouncementsEnabled]);
 
   function updateSetting(field: keyof BuilderSettings, value: string) {
-    setSettings((current) => ({ ...current, [field]: value }));
+    setSettings((current) => {
+      if (field !== 'chipDenominations') return { ...current, [field]: value };
+      const currentDefault = defaultChipUpDenominations(current.chipDenominations);
+      return {
+        ...current,
+        chipDenominations: value,
+        colorUps: current.colorUps.trim() === currentDefault ? defaultChipUpDenominations(value) : current.colorUps,
+      };
+    });
   }
 
   function generateStructure() {
@@ -359,10 +368,7 @@ export default function PublicBlindTimerPage() {
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
           <div>
-            <p className="inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal">
-              Free blind timer
-            </p>
-            <h1 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">Build a quick poker timer.</h1>
+            <h1 className="text-4xl font-black leading-tight sm:text-5xl">Build a quick poker timer.</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-pit-text sm:text-base">
               Set up a blind schedule, tweak the levels, then run it right from the browser. Your 6 digit code reopens this timer later, with optional email delivery if you want it saved.
             </p>
@@ -496,13 +502,9 @@ export default function PublicBlindTimerPage() {
                 <NumberField label="Break minutes" value={settings.breakMinutes} onChange={(value) => updateSetting('breakMinutes', value)} />
                 <NumberField label="Starting BB" value={settings.startingBigBlind} onChange={(value) => updateSetting('startingBigBlind', value)} />
                 <TextField label="Chip denominations" value={settings.chipDenominations} placeholder="25,50,100,500,1000" onChange={(value) => updateSetting('chipDenominations', value)} />
-                <NumberField label="Final BBs in play (~7%)" value={settings.finishBigBlinds} onChange={(value) => updateSetting('finishBigBlinds', value)} />
-                <NumberField label="BB ante from level" value={settings.anteStartLevel} onChange={(value) => updateSetting('anteStartLevel', value)} />
-                <TextField label="Color-ups" value={settings.colorUps} placeholder="25@8, 100@11" onChange={(value) => updateSetting('colorUps', value)} />
+                <TextField label="Chip up denominations" value={settings.colorUps} placeholder="25,50" onChange={(value) => updateSetting('colorUps', value)} />
+                <NumberField label="Ante starts at level" value={settings.anteStartLevel} onChange={(value) => updateSetting('anteStartLevel', value)} />
               </div>
-              <p className="rounded-lg border border-pit-border bg-pit-bg/45 px-3 py-2 text-xs leading-5 text-pit-text">
-                Blinds are generated from playable chip amounts only. The big blind is always exactly 2x the small blind, ante equals the big blind once antes begin, and color-ups use <span className="font-mono text-white">25@8</span> format.
-              </p>
               <button className="btn-ghost w-full" type="button" onClick={generateStructure}>
                 <Wand2 size={16} />
                 Generate structure

@@ -692,7 +692,11 @@ export default function RunTournament({
   ) {
     const fallback = () => {
       if (isBreakBlind(blind)) {
-        announceMessage(`${blind?.label || 'Break'}. ${Number(blind?.minutes ?? 0)} minute break.`);
+        if (isChipUpBlind(blind)) {
+          announceMessage(`${blind?.label || 'Chip up'}. Please color up the chips. The clock will wait for the host to resume.`);
+        } else {
+          announceMessage(`${blind?.label || 'Break'}. ${Number(blind?.minutes ?? 0)} minute break.`);
+        }
         return;
       }
       if (rebuyClosed) {
@@ -790,6 +794,7 @@ export default function RunTournament({
   const nextBlindIsBreak = isBreakBlind(nextBlind);
   const displayedLevel = currentBlind ? currentBlindIndex + 1 : 1;
   const secs = timerState?.remainingsecs ?? (currentBlind?.minutes ?? 0) * 60;
+  const chipUpAwaitingAck = Boolean(currentBlind && isChipUpBlind(currentBlind) && !timerState?.running && secs <= 0);
   const mins = Math.floor(secs / 60);
   const sec = secs % 60;
   const minsStr = String(mins).padStart(2, '0');
@@ -925,7 +930,7 @@ export default function RunTournament({
       className={`space-y-4 ${
         displayMode
           ? ''
-          : '-mx-4 -mb-24 -mt-4 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_12%_5%,rgba(20,184,166,0.22),transparent_36%),radial-gradient(circle_at_86%_7%,rgba(139,92,246,0.15),transparent_34%),linear-gradient(to_bottom,rgba(18,46,48,0.74)_0%,rgba(13,18,24,0.9)_48%,#050609_88%,#050609_100%)] px-4 pb-24 pt-4 sm:-mx-6 sm:px-6 md:-mt-6 md:pt-6 lg:-mx-8 lg:px-8'
+          : '-mx-4 -mb-24 -mt-4 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_12%_5%,rgba(20,184,166,0.22),transparent_36%),radial-gradient(circle_at_86%_7%,rgba(139,92,246,0.15),transparent_34%),linear-gradient(to_bottom,rgba(18,46,48,0.74)_0%,rgba(13,18,24,0.9)_48%,#050609_88%,#050609_100%)] px-2 pb-24 pt-4 sm:-mx-6 sm:px-3 md:-mt-6 md:pt-6 lg:-mx-8 lg:px-4'
       }`}
     >
       <div
@@ -1154,17 +1159,17 @@ export default function RunTournament({
                 />
               </div>
             ) : (
-            <div className={`grid items-start ${tvMode ? 'grid-cols-[248px_minmax(0,1fr)_248px] gap-3 2xl:grid-cols-[260px_minmax(0,1fr)_260px]' : displayMode ? 'grid-cols-[300px_minmax(0,1fr)_300px] gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_320px]' : 'gap-3 lg:grid-cols-[220px_minmax(0,1fr)_220px] xl:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
+            <div className={`grid items-start ${tvMode ? 'grid-cols-[260px_minmax(0,1fr)_260px] gap-3 2xl:grid-cols-[274px_minmax(0,1fr)_274px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-2 lg:grid-cols-[252px_minmax(0,1fr)_252px] xl:grid-cols-[274px_minmax(0,1fr)_274px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
                   <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
                 </div>
                 <div className="overflow-hidden rounded-lg border border-pit-border">
-                  <div className={`grid grid-cols-[42px_minmax(0,1fr)_52px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
+                  <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
                     <span>Level</span>
                     <span>Blinds</span>
-                    <span>Time</span>
+                    <span className="text-right">Time</span>
                   </div>
                   <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
                     {effectiveBlinds.map((blind) => {
@@ -1176,17 +1181,17 @@ export default function RunTournament({
                           key={blind.id}
                           disabled={!showAdminControls}
                           onClick={() => handleManualLevelChange(blind)}
-                          className={`grid w-full grid-cols-[42px_minmax(0,1fr)_52px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
+                          className={`grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
-                              ? 'border-l-2 border-l-yellow-200 border-t-yellow-200/60 bg-yellow-200/35 text-yellow-950 shadow-[inset_0_0_0_1px_rgba(254,240,138,0.55)]'
+                              ? 'border-l-2 border-l-pit-teal border-t-pit-teal/55 bg-pit-teal/18 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.28)]'
                               : isNext
                                 ? 'border-pit-border bg-pit-surface/70 text-white'
                                 : 'border-pit-border bg-pit-bg/30 text-pit-text'
                           }`}
                         >
                           <span className="font-semibold">{blind.level}</span>
-                          <span>{isBreakBlind(blind) ? (blind.label || 'Break') : `${blind.smallblind.toLocaleString()} / ${blind.bigblind.toLocaleString()}${blind.ante > 0 ? ` - ${blind.ante.toLocaleString()}` : ''}`}</span>
-                          <span>{blind.minutes}:00</span>
+                          <span>{isBreakBlind(blind) ? formatBreakDisplayLabel(blind) : formatCompactStructureBlinds(blind)}</span>
+                          <span className="text-right">{blind.minutes}m</span>
                         </button>
                       );
                     })}
@@ -1212,7 +1217,7 @@ export default function RunTournament({
                       </button>
                       {timerState?.running
                         ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void warmTimerAudio(); emit('timer-pause'); }}>Pause</button>
-                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={handleStartTimer}>Start</button>
+                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={handleStartTimer}>{chipUpAwaitingAck ? 'Chip-up done' : 'Start'}</button>
                       }
                     </div>
                   )}
@@ -1270,13 +1275,13 @@ export default function RunTournament({
                         tvMode
                           ? 'font-mono font-bold tabular-nums tracking-tight'
                           : showAdjustments
-                            ? 'font-sans font-[300] tabular-nums tracking-tight text-[6.8rem] md:text-[9.5rem] lg:text-[10.4rem] xl:text-[11.2rem]'
+                            ? 'font-sans font-[300] tabular-nums tracking-tight text-[7.5rem] md:text-[10.45rem] lg:text-[11.45rem] xl:text-[12.3rem]'
                             : displayMode
-                              ? 'font-sans font-[300] tabular-nums tracking-tight text-[10.75rem] md:text-[14.5rem] lg:text-[16.75rem] xl:text-[17.75rem]'
-                              : 'font-mono font-bold tabular-nums text-[8.5rem] md:text-[12rem] lg:text-[12.9rem] xl:text-[13.8rem]'
+                              ? 'font-sans font-[300] tabular-nums tracking-tight text-[11.8rem] md:text-[15.95rem] lg:text-[18.4rem] xl:text-[19.5rem]'
+                              : 'font-mono font-bold tabular-nums text-[9.35rem] md:text-[13.2rem] lg:text-[14.2rem] xl:text-[15.2rem]'
                       }`}
                       style={tvMode
-                        ? { fontSize: showAdjustments ? 'clamp(6.8rem, 11vw, 10.4rem)' : 'clamp(9.2rem, 14.4vw, 13.8rem)' }
+                        ? { fontSize: showAdjustments ? 'clamp(7.5rem, 12.1vw, 11.45rem)' : 'clamp(10.1rem, 15.8vw, 15.2rem)' }
                         : undefined}
                     >
                       <span>{minsStr}</span>
@@ -1326,10 +1331,10 @@ export default function RunTournament({
                                 : 'font-sans font-[300] tracking-tight text-[3rem] md:text-[3.65rem] xl:text-[4.15rem]'
                         }`}
                       >
-                        {currentBlindIsBreak ? (currentBlind.label || 'Break') : `${currentBlind.smallblind.toLocaleString()} / ${currentBlind.bigblind.toLocaleString()}`}
+                        {currentBlindIsBreak ? formatBreakDisplayLabel(currentBlind) : formatCompactFeaturedBlinds(currentBlind)}
                       </p>
                       {!currentBlindIsBreak && currentBlind.ante > 0 && (
-                        <p className="mt-1 text-sm text-pit-text md:text-base">Ante {currentBlind.ante.toLocaleString()}</p>
+                        <p className="mt-1 text-sm text-pit-text md:text-base">Ante {formatCompactBlindAmount(currentBlind.ante, 2)}</p>
                       )}
                     </div>
                     <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3'}`}>
@@ -1354,10 +1359,10 @@ export default function RunTournament({
                                     : 'font-sans font-[300] tracking-tight text-[3rem] md:text-[3.65rem] xl:text-[4.15rem]'
                             }`}
                           >
-                            {nextBlindIsBreak ? (nextBlind.label || 'Break') : `${nextBlind.smallblind.toLocaleString()} / ${nextBlind.bigblind.toLocaleString()}`}
+                            {nextBlindIsBreak ? formatBreakDisplayLabel(nextBlind) : formatCompactFeaturedBlinds(nextBlind)}
                           </p>
                           {!nextBlindIsBreak && nextBlind.ante > 0 && (
-                            <p className="mt-1 text-sm text-pit-text md:text-base">Ante {nextBlind.ante.toLocaleString()}</p>
+                            <p className="mt-1 text-sm text-pit-text md:text-base">Ante {formatCompactBlindAmount(nextBlind.ante, 2)}</p>
                           )}
                         </>
                       ) : (
@@ -1372,8 +1377,7 @@ export default function RunTournament({
 
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div
-                    className={`grid gap-2 ${displayMode ? 'grid-cols-3' : ''}`}
-                    style={displayMode ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}
+                    className={`grid gap-2 ${summaryStats.length === 1 ? 'grid-cols-1' : summaryStats.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}
                   >
                     {summaryStats.map((stat) => {
                       const canAdjustRebuys = showAdminControls && !canUseClubFeatures && stat.label === 'Rebuys';
@@ -1853,9 +1857,7 @@ function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): nu
     if (fieldSize <= 0) return 1;
     return clamp(Math.ceil((fieldSize * sanitizePayoutValue('percent', config.value)) / 100), 1, fieldSize);
   }
-  const requested = sanitizePayoutValue('count', config.value);
-  if (fieldSize <= 0) return requested;
-  return clamp(requested, 1, fieldSize);
+  return sanitizePayoutValue('count', config.value);
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1900,6 +1902,44 @@ function buildAnnouncementTokens(state: TimerState, blind?: BlindLevel) {
 
 function isBreakBlind(blind: BlindLevel | null | undefined): boolean {
   return Boolean(blind && (/^break\b/i.test(String(blind.label ?? '')) || (Number(blind.smallblind) === 0 && Number(blind.bigblind) === 0)));
+}
+
+function isChipUpBlind(blind: BlindLevel | null | undefined): boolean {
+  return Boolean(blind && /^chip\s*up\b/i.test(String(blind.label ?? '')));
+}
+
+function formatBreakDisplayLabel(blind: BlindLevel | null | undefined): string {
+  const label = String(blind?.label ?? '').trim();
+  const breakMatch = label.match(/^(Break\s+\d+)(?:\s*[-:]\s*.+)?$/i);
+  if (breakMatch?.[1]) return breakMatch[1];
+  if (/^chip\s*up\b/i.test(label)) return 'Chip up';
+  return label || 'Break';
+}
+
+function formatCompactStructureBlinds(blind: BlindLevel): string {
+  const smallBlind = formatCompactBlindAmount(blind.smallblind, 2);
+  const bigBlind = formatCompactBlindAmount(blind.bigblind, 2);
+  const ante = Number(blind.ante) > 0 ? ` - ${formatCompactBlindAmount(blind.ante, 2)}` : '';
+  return `${smallBlind}/${bigBlind}${ante}`;
+}
+
+function formatCompactFeaturedBlinds(blind: BlindLevel): string {
+  const smallBlind = formatCompactBlindAmount(blind.smallblind, 2);
+  const bigBlind = formatCompactBlindAmount(blind.bigblind, 2);
+  return `${smallBlind} / ${bigBlind}`;
+}
+
+function formatCompactBlindAmount(value: number, maxDecimals = 1): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '0';
+  const absAmount = Math.abs(amount);
+  if (absAmount >= 1_000_000) return `${trimCompactDecimal(amount / 1_000_000, maxDecimals)}M`;
+  if (absAmount >= 1_000) return `${trimCompactDecimal(amount / 1_000, maxDecimals)}K`;
+  return amount.toLocaleString();
+}
+
+function trimCompactDecimal(value: number, maxDecimals = 1): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(maxDecimals).replace(/\.?0+$/, '');
 }
 
 function normalizeAnnouncerPreset(value: string | null | undefined) {

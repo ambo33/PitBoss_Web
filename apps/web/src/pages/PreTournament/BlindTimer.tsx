@@ -4,6 +4,7 @@ import { Calculator, GripVertical, Save, Wand2 } from 'lucide-react';
 import { api, BlindLevel, Tournament } from '../../api/client';
 import {
   calculateTotalChips,
+  defaultChipUpDenominations,
   DEFAULT_CHIP_DENOMINATIONS,
   DEFAULT_COLOR_UPS,
   generateBlindStructure as buildBlindStructure,
@@ -74,7 +75,7 @@ function toDraftLevel(level: BlindLevel): DraftLevel {
   };
 }
 
-export default function BlindTimer({ tournamentId, isOwner, playerCount, tournament }: BlindTimerProps) {
+export default function BlindTimer({ tournamentId, isOwner, tournament }: BlindTimerProps) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [saveStructureName, setSaveStructureName] = useState('');
@@ -109,7 +110,6 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
     <div className="space-y-6">
       {isOwner && (
         <BlindCalculator
-          playerCount={playerCount}
           tournament={tournament}
           saving={saveMutation.isPending}
           error={saveMutation.error?.message}
@@ -166,22 +166,21 @@ export default function BlindTimer({ tournamentId, isOwner, playerCount, tournam
 }
 
 function BlindCalculator({
-  playerCount,
   tournament,
   saving,
   error,
   onSave,
 }: {
-  playerCount: number;
   tournament: Tournament;
   saving: boolean;
   error?: string;
   onSave: (levels: DraftLevel[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const defaultCalculatorPlayers = getDefaultCalculatorPlayers(tournament);
   const [settings, setSettings] = useState<CalculatorSettings>({
-    players: String(Math.max(playerCount || 9, 2)),
-    startingStack: '10000',
+    players: String(defaultCalculatorPlayers),
+    startingStack: toNumber(tournament.rebuychips) > 0 ? String(toNumber(tournament.rebuychips)) : '10000',
     targetHours: '3',
     levelMinutes: '20',
     startingBigBlind: '50',
@@ -189,10 +188,10 @@ function BlindCalculator({
     finishBigBlinds: '14',
     breakCount: '0',
     breakMinutes: '10',
-    anteStartLevel: '1',
+    anteStartLevel: '0',
     colorUps: DEFAULT_COLOR_UPS,
-    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(playerCount * 0.4), 0)) : '0',
-    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(playerCount * 0.5), 0)) : '0',
+    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(defaultCalculatorPlayers * 0.4), 0)) : '0',
+    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(defaultCalculatorPlayers * 0.5), 0)) : '0',
   });
 
   const parsedSettings = useMemo(
@@ -205,7 +204,15 @@ function BlindCalculator({
   const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
 
   function update(field: keyof CalculatorSettings, value: string) {
-    setSettings((current) => ({ ...current, [field]: value }));
+    setSettings((current) => {
+      if (field !== 'chipDenominations') return { ...current, [field]: value };
+      const currentDefault = defaultChipUpDenominations(current.chipDenominations);
+      return {
+        ...current,
+        chipDenominations: value,
+        colorUps: current.colorUps.trim() === currentDefault ? defaultChipUpDenominations(value) : current.colorUps,
+      };
+    });
   }
 
   return (
@@ -238,14 +245,13 @@ function BlindCalculator({
               placeholder="25,50,100,500,1000"
               onChange={(value) => update('chipDenominations', value)}
             />
-            <NumberField label="Final BBs in play (~7%)" value={settings.finishBigBlinds} min={4} onChange={(value) => update('finishBigBlinds', value)} />
-            <NumberField label="BB ante from level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
             <TextField
-              label="Color-ups"
+              label="Chip up denominations"
               value={settings.colorUps}
-              placeholder="25@8, 100@11"
+              placeholder="25,50"
               onChange={(value) => update('colorUps', value)}
             />
+            <NumberField label="Ante starts at level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
             {rebuysEnabled && (
               <NumberField
                 label={`Expected rebuys (${toNumber(tournament.rebuychips).toLocaleString()} chips ea)`}
@@ -275,19 +281,6 @@ function BlindCalculator({
                 {saving ? 'Saving...' : 'Save Generated'}
               </button>
             </div>
-            {(rebuysEnabled || addonsEnabled) && (
-              <p className="mb-3 text-xs text-pit-muted">
-                Includes {parsedSettings.expectedRebuys.toLocaleString()} expected rebuys and {parsedSettings.expectedAddons.toLocaleString()} expected add-ons in the chip pool.
-              </p>
-            )}
-            {parsedSettings.breakCount > 0 && (
-              <p className="mb-3 text-xs text-pit-muted">
-                Includes {parsedSettings.breakCount} break{parsedSettings.breakCount === 1 ? '' : 's'} at {parsedSettings.breakMinutes} minutes each inside the target time.
-              </p>
-            )}
-            <p className="mb-3 text-xs text-pit-muted">
-              Generated blinds use only active chip denominations, keep the big blind at exactly 2x the small blind, and set ante equal to the big blind once antes begin. Color-ups use the format <span className="font-mono text-pit-text">25@8</span>.
-            </p>
             <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
           </div>
         </>
@@ -366,10 +359,11 @@ function BlindTable({ blinds, currentLevel }: { blinds: BlindLevel[]; currentLev
         <tbody>
           {blinds.map((blind) => {
             const breakRow = isBreakLevel(blind);
+            const breakLabel = formatBreakLabel(blind);
             return (
               <tr key={blind.id} className={`border-b border-pit-border/40 ${blind.level === currentLevel ? 'bg-pit-teal/10' : ''} ${breakRow ? 'bg-yellow-300/5 text-yellow-100' : ''}`}>
                 <td className="py-1.5">
-                  {breakRow ? `Break ${blind.label?.replace(/^Break\s*/i, '') || blind.level}` : `Level ${blind.level}`}
+                  {breakRow ? breakLabel : `Level ${blind.level}`}
                   {blind.islastlevel && <span className="ml-1 text-xs text-pit-muted">(last)</span>}
                 </td>
                 {breakRow ? (
@@ -416,6 +410,7 @@ function BlindEditor({
       : [{ level: 1, label: 'Level 1', smallblind: '25', bigblind: '50', ante: '0', minutes: '20', islastlevel: false }]
   );
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const editorGridClass = 'grid grid-cols-[26px_150px_minmax(7rem,1fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_90px_minmax(11rem,1.25fr)_30px] items-center gap-2';
 
   function update(index: number, field: keyof EditableBlindLevel, value: string | number | boolean) {
     setLevels((current) => current.map((level, levelIndex) => levelIndex === index ? { ...level, [field]: value } : level));
@@ -467,7 +462,7 @@ function BlindEditor({
   function save() {
     onSave(levels.map((level, index) => ({
       ...level,
-      label: isBreakEditableLevel(level) ? level.label || `Break ${index + 1}` : `Level ${index + 1}`,
+      label: isBreakEditableLevel(level) ? normalizeEditableBreakLabel(level.label, index) : `Level ${index + 1}`,
       smallblind: parseSetting(level.smallblind, 0),
       bigblind: parseSetting(level.bigblind, 0),
       ante: parseSetting(level.ante, 0),
@@ -480,54 +475,65 @@ function BlindEditor({
     <div className="space-y-3">
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="overflow-x-auto">
-        <div className="grid min-w-[44rem] grid-cols-[36px_130px_1fr_1fr_1fr_1fr_1.25fr_40px] items-center gap-1.5 border-b border-pit-border px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-pit-muted">
-          <span className="sr-only">Move</span>
-          <span>Level</span>
-          <span>SB</span>
-          <span>BB</span>
-          <span>Ante</span>
-          <span>Min</span>
-          <span>Break note</span>
-          <span className="sr-only">Remove</span>
-        </div>
-      </div>
-      <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-        {levels.map((level, index) => {
-          const breakRow = isBreakEditableLevel(level);
-          return (
-          <div
-            key={index}
-            draggable
-            onDragStart={() => setDragIndex(index)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              if (dragIndex != null) moveLevel(dragIndex, index);
-              setDragIndex(null);
-            }}
-            onDragEnd={() => setDragIndex(null)}
-            className={`grid min-w-[44rem] grid-cols-[36px_130px_1fr_1fr_1fr_1fr_1.25fr_40px] items-center gap-1.5 rounded-lg text-sm ${dragIndex === index ? 'bg-pit-teal/10' : ''}`}
-          >
-            <div className="flex h-full cursor-grab items-center justify-center text-pit-muted active:cursor-grabbing">
-              <GripVertical size={15} />
-            </div>
-            <div className="px-2 text-xs font-medium text-pit-text">{breakRow ? `Break ${index + 1}` : `Level ${index + 1}`}</div>
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} disabled={breakRow} onChange={(event) => update(index, 'smallblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} disabled={breakRow} onChange={(event) => update(index, 'bigblind', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} disabled={breakRow} onChange={(event) => update(index, 'ante', event.target.value)} />
-            <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" aria-label={`Level ${index + 1} minutes`} value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
-            <input
-              className="input text-xs"
-              type="text"
-              placeholder={breakRow ? 'CHIP UP WHITES' : '-'}
-              aria-label={`Level ${index + 1} break note`}
-              value={breakRow ? level.label.replace(/^Break\s*/i, '') : ''}
-              disabled={!breakRow}
-              onChange={(event) => update(index, 'label', event.target.value ? `Break ${event.target.value}` : `Break ${index + 1}`)}
-            />
-            <button type="button" onClick={() => removeLevel(index)} className="text-lg leading-none text-red-400 hover:text-red-300">x</button>
+        <div className="min-w-[50rem]">
+          <div className={`${editorGridClass} border-b border-pit-border px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-pit-muted`}>
+            <span aria-hidden="true" />
+            <span className="px-2 pb-1">Level</span>
+            <span className="px-3 pb-1">SB</span>
+            <span className="px-3 pb-1">BB</span>
+            <span className="px-3 pb-1">Ante</span>
+            <span className="px-3 pb-1">Min</span>
+            <span className="px-3 pb-1">Break note</span>
+            <span aria-hidden="true" />
           </div>
-          );
-        })}
+          <div className="space-y-2 pt-2">
+            {levels.map((level, index) => {
+              const breakRow = isBreakEditableLevel(level);
+              const rowLabel = breakRow ? getBreakBaseLabel(level.label, index) : `Level ${index + 1}`;
+              return (
+                <div
+                  key={index}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (dragIndex != null) moveLevel(dragIndex, index);
+                    setDragIndex(null);
+                  }}
+                  onDragEnd={() => setDragIndex(null)}
+                  className={`${editorGridClass} rounded-lg text-sm ${dragIndex === index ? 'bg-pit-teal/10' : ''}`}
+                >
+                  <div className="flex h-full cursor-grab items-center justify-center text-pit-muted active:cursor-grabbing">
+                    <GripVertical size={15} />
+                  </div>
+                  <div className={`px-2 text-xs font-medium ${breakRow ? 'text-yellow-100' : 'text-pit-text'}`}>{rowLabel}</div>
+                  {breakRow ? (
+                    <div className="col-span-3 rounded-lg border border-yellow-300/15 bg-yellow-300/5 px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100">
+                      Break
+                    </div>
+                  ) : (
+                    <>
+                      <input className="input text-xs" type="text" inputMode="numeric" placeholder="SB" aria-label={`Level ${index + 1} small blind`} value={level.smallblind} onChange={(event) => update(index, 'smallblind', event.target.value)} />
+                      <input className="input text-xs" type="text" inputMode="numeric" placeholder="BB" aria-label={`Level ${index + 1} big blind`} value={level.bigblind} onChange={(event) => update(index, 'bigblind', event.target.value)} />
+                      <input className="input text-xs" type="text" inputMode="numeric" placeholder="Ante" aria-label={`Level ${index + 1} ante`} value={level.ante} onChange={(event) => update(index, 'ante', event.target.value)} />
+                    </>
+                  )}
+                  <input className="input text-xs" type="text" inputMode="numeric" placeholder="Min" aria-label={`Level ${index + 1} minutes`} value={level.minutes} onChange={(event) => update(index, 'minutes', event.target.value)} />
+                  <input
+                    className="input text-xs"
+                    type="text"
+                    placeholder={breakRow ? 'Optional break note' : '-'}
+                    aria-label={`Level ${index + 1} break note`}
+                    value={breakRow ? getBreakNote(level.label) : ''}
+                    disabled={!breakRow}
+                    onChange={(event) => update(index, 'label', buildBreakLabel(level.label, index, event.target.value))}
+                  />
+                  <button type="button" onClick={() => removeLevel(index)} className="text-lg leading-none text-red-400 hover:text-red-300">x</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
       <div className="flex gap-2 pt-2">
         <button type="button" className="btn-ghost text-sm" onClick={addLevel}>Add Level</button>
@@ -575,10 +581,48 @@ function toNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function getDefaultCalculatorPlayers(tournament: Tournament): number {
+  const maxPlayers = Math.floor(toNumber(tournament.maxplayers));
+  return maxPlayers > 0 ? maxPlayers : 10;
+}
+
 function isBreakLevel(level: Pick<BlindLevel, 'label' | 'smallblind' | 'bigblind'>): boolean {
   return /^break\b/i.test(String(level.label ?? '')) || (Number(level.smallblind) === 0 && Number(level.bigblind) === 0);
 }
 
 function isBreakEditableLevel(level: EditableBlindLevel): boolean {
   return /^break\b/i.test(String(level.label ?? '')) || (parseSetting(level.smallblind, 0) === 0 && parseSetting(level.bigblind, 0) === 0);
+}
+
+function formatBreakLabel(level: Pick<BlindLevel, 'label' | 'level'>): string {
+  const label = String(level.label ?? '').trim();
+  if (/^chip\s*up\b/i.test(label)) return label;
+  if (/^break\b/i.test(label)) return label;
+  return label ? `Break ${label}` : `Break ${level.level}`;
+}
+
+function getBreakBaseLabel(label: string | undefined, index: number): string {
+  const fallback = `Break ${index + 1}`;
+  const trimmed = String(label ?? '').trim();
+  if (!trimmed) return fallback;
+  const breakMatch = trimmed.match(/^(Break\s+\d+)(?:\s*[-:]\s*.+)?$/i);
+  if (breakMatch?.[1]) return breakMatch[1];
+  const noteSplit = trimmed.split(/\s[-:]\s/)[0]?.trim();
+  return noteSplit || trimmed;
+}
+
+function getBreakNote(label: string | undefined): string {
+  const trimmed = String(label ?? '').trim();
+  const noteMatch = trimmed.match(/^Break\s+\d+\s*[-:]\s*(.+)$/i);
+  return noteMatch?.[1]?.trim() ?? '';
+}
+
+function buildBreakLabel(label: string | undefined, index: number, note: string): string {
+  const baseLabel = getBreakBaseLabel(label, index);
+  const cleanNote = note.trim();
+  return cleanNote ? `${baseLabel} - ${cleanNote}` : baseLabel;
+}
+
+function normalizeEditableBreakLabel(label: string | undefined, index: number): string {
+  return buildBreakLabel(label, index, getBreakNote(label));
 }

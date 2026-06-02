@@ -22,6 +22,7 @@ const DEFAULT_SPLITS: Record<number, number[]> = {
   5: [40, 25, 17, 11, 7],
   6: [37, 23, 16, 11, 8, 5],
 };
+const DEFAULT_PAYOUT_PLANNING_LIMIT = 20;
 
 export default function Payouts({ tournamentId, tournament }: Props) {
   const qc = useQueryClient();
@@ -74,8 +75,15 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   const enteredFieldCount = players.filter((player) => player.checkedin || player.placed != null).length;
   const registeredCount = players.length;
   const placementFieldSize = registeredCount;
-  const registeredPlaceLimit = placementFieldSize > 0 ? placementFieldSize : 1;
-  const maxCountPlaces = Math.max(1, canUseClubFeatures ? registeredPlaceLimit : Math.min(registeredPlaceLimit, 3));
+  const configuredMaxPlayers = Math.max(0, Math.floor(toNumber(tournament.maxplayers)));
+  const countPlanningLimit = Math.max(
+    1,
+    configuredMaxPlayers,
+    registeredCount,
+    payoutConfig.mode === 'count' ? payoutConfig.value : 0,
+    DEFAULT_PAYOUT_PLANNING_LIMIT
+  );
+  const maxCountPlaces = canUseClubFeatures ? countPlanningLimit : Math.min(countPlanningLimit, 3);
   const countDropdownValue = String(clamp(payoutConfig.value, 1, maxCountPlaces));
   const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
   const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
@@ -432,9 +440,7 @@ function resolvePaidPlaces(config: PayoutStructureConfig, fieldSize: number): nu
     return clamp(Math.ceil((fieldSize * sanitizePayoutValue('percent', config.value)) / 100), 1, fieldSize);
   }
 
-  const requested = sanitizePayoutValue('count', config.value);
-  if (fieldSize <= 0) return requested;
-  return clamp(requested, 1, fieldSize);
+  return sanitizePayoutValue('count', config.value);
 }
 
 function buildDefaultSplits(count: number): number[] {

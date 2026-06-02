@@ -92,8 +92,8 @@ export default function PreTournamentPage() {
     if (!canManage && tab === 'run') setTab('details');
   }, [canManage, tab]);
 
-  if (isLoading) return <Layout back="/" hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
-  if (!tournament) return <Layout back="/" hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
+  if (isLoading) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
+  if (!tournament) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const scheduleLocked = eventStarted && !user?.issuperadmin;
