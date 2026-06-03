@@ -78,6 +78,18 @@ async function createUniqueInviteCode(client: DbClient): Promise<string> {
   throw new Error('Failed to create demo invite code.');
 }
 
+async function createUniqueLeagueInviteCode(client: DbClient): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const code = generateInviteCode();
+    const existing = await client.query<{ leagueid: string }>(
+      `SELECT leagueid FROM leagues WHERE invitecode = $1`,
+      [code]
+    );
+    if (existing.rowCount === 0) return code;
+  }
+  throw new Error('Failed to create demo league invite code.');
+}
+
 function formatAppDateTimeForDb(date: Date): { date: string; time: string } {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: APP_TIMEZONE,
@@ -95,6 +107,14 @@ function formatAppDateTimeForDb(date: Date): { date: string; time: string } {
     date: `${parts.year}-${parts.month}-${parts.day}`,
     time: `${parts.hour}:${parts.minute}`,
   };
+}
+
+function demoDateTimeAfter(days: number, hour: number, minute = 0): { date: Date; appDate: string; appTime: string } {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  date.setHours(hour, minute, 0, 0);
+  const { date: appDate, time: appTime } = formatAppDateTimeForDb(date);
+  return { date, appDate, appTime };
 }
 
 async function purgeDemoSessions(client: DbClient, userId?: string): Promise<void> {
@@ -154,9 +174,16 @@ async function purgeDemoSessions(client: DbClient, userId?: string): Promise<voi
        LEFT JOIN usermetadata group_meta ON group_meta.userid = g.userid
        WHERE owner_meta.demosessionid = ANY($1::STRING[])
           OR group_meta.demosessionid = ANY($1::STRING[])
-     )`,
+      )`,
     params
   );
+  if (demoUserIds.length > 0) {
+    await client.query(
+      `DELETE FROM leagues
+       WHERE userid = ANY($1::UUID[])`,
+      [demoUserIds]
+    );
+  }
   await client.query(
     `DELETE FROM groups
      WHERE groupid IN (
@@ -340,6 +367,134 @@ demoRouter.post('/start', optionalAuth, async (req: Request, res: Response) => {
       `INSERT INTO groupmembers (groupid, userid, admin, approved)
        VALUES ${demoMembersInsert.placeholders}`,
       demoMembersInsert.values
+    );
+
+    const cashGameRows = [
+      {
+        title: 'Friday Night Cash Crew',
+        startsAt: demoDateTimeAfter(2, 20, 30).date,
+        stakes: '$1/$2',
+        minBuyIn: 100,
+        maxBuyIn: 300,
+        seats: 8,
+        playerCount: 5,
+        notes: 'Friendly demo cash game with open seating and running buy-in totals.',
+      },
+      {
+        title: 'Deep Stack Cash Session',
+        startsAt: demoDateTimeAfter(6, 19, 45).date,
+        stakes: '$2/$5',
+        minBuyIn: 300,
+        maxBuyIn: 1000,
+        seats: 9,
+        playerCount: 7,
+        notes: 'Bigger-stakes demo night for showing off the cash-game ledger.',
+      },
+    ];
+    for (const cashGame of cashGameRows) {
+      const gameResult = await client.query<{ id: string }>(
+        `INSERT INTO games (groupid, createdbyuserid, gametype, title, status, visibility, startsat)
+         VALUES ($1, $2, 'cash', $3, 'scheduled', 'group_public', $4)
+         RETURNING id`,
+        [groupId, demoUserId, cashGame.title, cashGame.startsAt.toISOString()]
+      );
+      const gameId = gameResult.rows[0]?.id;
+      if (!gameId) throw new Error('Failed to create demo cash game.');
+      await client.query(
+        `INSERT INTO cashgamedetails (gameid, stakeslabel, minbuyin, maxbuyin, seatsavailable, notes)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [gameId, cashGame.stakes, cashGame.minBuyIn, cashGame.maxBuyIn, cashGame.seats, cashGame.notes]
+      );
+      const cashPlayers = demoPlayers.slice(0, cashGame.playerCount);
+      const cashPlayerInsert = buildInsertValues(
+        cashPlayers.map((player) => [gameId, player.playerId, player.name, 'interested'])
+      );
+      await client.query(
+        `INSERT INTO cashgameplayers (gameid, userid, displaynamesnapshot, status)
+         VALUES ${cashPlayerInsert.placeholders}`,
+        cashPlayerInsert.values
+      );
+    }
+
+    const leagueInviteCode = await createUniqueLeagueInviteCode(client);
+    const pointsLookup = JSON.stringify([
+      { place: 'DNF', points: 0 },
+      { place: 1, points: 500 },
+      { place: 2, points: 350 },
+      { place: 3, points: 250 },
+      { place: 4, points: 175 },
+      { place: 5, points: 125 },
+      { place: 6, points: 100 },
+      { place: 7, points: 75 },
+      { place: 8, points: 50 },
+    ]);
+    const finalMultipliers = JSON.stringify([
+      { place: 1, multiplier: 18 },
+      { place: 2, multiplier: 16 },
+      { place: 3, multiplier: 14 },
+      { place: 4, multiplier: 12 },
+      { place: 5, multiplier: 10 },
+      { place: 6, multiplier: 8 },
+      { place: 7, multiplier: 6 },
+      { place: 8, multiplier: 4 },
+    ]);
+    const leagueResult = await client.query<{ leagueid: string }>(
+      `INSERT INTO leagues
+       (userid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints, bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup, finalchiprounding, finalstartingbigblind, memberledgervisible)
+       VALUES ($1, 'Demo Season League', $2, FALSE, 24, 100, 35, 100, 6, $3::JSONB, TRUE, $4::JSONB, 100, 100, TRUE)
+       RETURNING leagueid`,
+      [demoUserId, leagueInviteCode, pointsLookup, finalMultipliers]
+    );
+    const leagueId = leagueResult.rows[0]?.leagueid;
+    if (!leagueId) throw new Error('Failed to create demo league.');
+    const seasonStart = demoDateTimeAfter(1, 12, 0);
+    const seasonEnd = demoDateTimeAfter(90, 12, 0);
+    const seasonResult = await client.query<{ seasonid: string }>(
+      `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
+       VALUES ($1, 'Spring Demo Season', $2, $3, 35)
+       RETURNING seasonid`,
+      [leagueId, seasonStart.appDate, seasonEnd.appDate]
+    );
+    const seasonId = seasonResult.rows[0]?.seasonid;
+    if (!seasonId) throw new Error('Failed to create demo league season.');
+    const leagueMemberRows = [
+      [leagueId, demoUserId, true, true],
+      ...demoPlayers.slice(0, 16).map((player) => [leagueId, player.playerId, false, true]),
+    ];
+    const leagueMemberInsert = buildInsertValues(leagueMemberRows);
+    await client.query(
+      `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
+       VALUES ${leagueMemberInsert.placeholders}`,
+      leagueMemberInsert.values
+    );
+    const seasonParticipantInsert = buildInsertValues(
+      leagueMemberRows.map((row) => [seasonId, row[0], row[1], true])
+    );
+    await client.query(
+      `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+       VALUES ${seasonParticipantInsert.placeholders}`,
+      seasonParticipantInsert.values
+    );
+    const leagueEventRows = [
+      { name: 'League Event #1 - Opening Night', when: demoDateTimeAfter(3, 19, 0), number: 1 },
+      { name: 'League Event #2 - Bounty Night', when: demoDateTimeAfter(10, 19, 30), number: 2 },
+      { name: 'League Event #3 - Final Table Chase', when: demoDateTimeAfter(17, 20, 0), number: 3 },
+    ];
+    const leagueEventInsert = buildInsertValues(
+      leagueEventRows.map((event) => [
+        leagueId,
+        seasonId,
+        event.name,
+        event.when.appDate,
+        event.when.appTime,
+        event.number,
+        35,
+      ])
+    );
+    await client.query(
+      `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventtime, eventnumber, eventfee)
+       VALUES ${leagueEventInsert.placeholders}`,
+      leagueEventInsert.values
     );
 
     const demoTournamentPlayersInsert = buildInsertValues(

@@ -560,16 +560,6 @@ export default function RunTournament({
     }
   }, [demoMode, displayMode, onDemoStartCoachDone, showAdminControls, timerState?.running]);
 
-  useEffect(() => {
-    if (timerState?.running) {
-      setDemoStartCoachDismissed(true);
-      onDemoStartCoachDone?.();
-      if (demoMode && showAdminControls && !displayMode) {
-        setDemoExploreTipVisible(true);
-      }
-    }
-  }, [demoMode, displayMode, onDemoStartCoachDone, showAdminControls, timerState?.running]);
-
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
   }
@@ -579,8 +569,14 @@ export default function RunTournament({
   }
 
   function showDemoExploreTipOnce() {
-    if (demoExploreTipShownRef.current) return;
+    const storageKey = `pb-demo-explore-tip:${tournamentId}`;
+    const alreadyShown = demoExploreTipShownRef.current || window.sessionStorage.getItem(storageKey) === '1';
+    if (alreadyShown) {
+      demoExploreTipShownRef.current = true;
+      return;
+    }
     demoExploreTipShownRef.current = true;
+    window.sessionStorage.setItem(storageKey, '1');
     setDemoExploreTipVisible(true);
   }
 
