@@ -283,7 +283,7 @@ export default function LandingPage() {
               <div className="mx-auto mt-4 max-w-[20rem] sm:hidden">
                 <Link className="btn-primary w-full justify-center px-5 py-4 text-base shadow-[0_18px_45px_rgba(20,184,166,0.26)]" to="/demo">
                   <Play size={18} />
-                  View live demo
+                  Run a Demo Tournament
                 </Link>
               </div>
               <div className="mt-8 hidden max-w-lg sm:flex">
@@ -292,7 +292,7 @@ export default function LandingPage() {
                   to="/demo"
                 >
                   <span>
-                    <span className="block text-xl font-black">View live demo</span>
+                    <span className="block text-xl font-black">Run a Demo Tournament</span>
                     <span className="mt-1 block text-sm font-semibold text-white/80">Jump straight into a 40-player tournament.</span>
                   </span>
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 transition group-hover:bg-white/20">
