@@ -127,6 +127,13 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
 
   const checkedInPlayers = Number(tournament.checkedincount ?? 0);
   const totalAddons = Number(tournament.totaladdons ?? 0);
+  const rawBountyAmount = body.bountyamount == null ? null : Number(body.bountyamount);
+  const bountyAmount = rawBountyAmount != null && Number.isFinite(rawBountyAmount) && rawBountyAmount > 0
+    ? rawBountyAmount
+    : null;
+  const bountyClaimedByName = bountyAmount != null && body.bountyclaimedbyname
+    ? String(body.bountyclaimedbyname).trim().slice(0, 80)
+    : null;
   const result = await generateAnnouncerMoment({
     preset: normalizeAnnouncerPreset(tournament.aiannouncerpreset),
     customPrompt: tournament.aiannouncercustomprompt,
@@ -143,8 +150,8 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     knockedOutByName: body.knockedoutbyname ? String(body.knockedoutbyname).trim().slice(0, 80) : null,
     placement: body.placement == null ? null : Number(body.placement),
     prizeAmount: body.prizeamount == null ? null : Number(body.prizeamount),
-    bountyAmount: body.bountyamount == null ? null : Number(body.bountyamount),
-    bountyClaimedByName: body.bountyclaimedbyname ? String(body.bountyclaimedbyname).trim().slice(0, 80) : null,
+    bountyAmount,
+    bountyClaimedByName,
     playerName: body.playername ? String(body.playername).trim().slice(0, 80) : null,
     isBreak: Boolean(body.isbreak),
     breakLabel: body.breaklabel ? String(body.breaklabel).trim().slice(0, 80) : null,

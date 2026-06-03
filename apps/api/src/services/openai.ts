@@ -294,12 +294,13 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
         'Rules: keep it under 24 words. Use only the provided knockout facts. Do not say the tournament name, group name, level, blinds, ante, remaining players, rebuys, or add-ons. No extra hype, jokes, filler, profanity, illegal gambling encouragement, copyrighted catchphrases, or affiliation claims.',
+        'Important: the placement prize belongs to the knocked out player. If a "knocked out by" player is provided, they only get knockout credit. Do not say the knockout-credit player won, scooped, claimed, or received the placement prize.',
         context.knockedOutPlayerName ? `Knocked out player: ${context.knockedOutPlayerName}` : '',
         context.knockedOutByName ? `Knocked out by: ${context.knockedOutByName}` : '',
         context.placement ? `Placement: ${context.placement}` : '',
-        context.prizeAmount ? `Prize won: $${context.prizeAmount}` : '',
+        context.prizeAmount ? `Knocked out player's placement prize: $${context.prizeAmount}` : '',
         context.bountyAmount ? `Bounty claimed: $${context.bountyAmount}` : '',
-        context.bountyClaimedByName ? `Bounty claimed by: ${context.bountyClaimedByName}` : '',
+        context.bountyAmount && context.bountyClaimedByName ? `Bounty claimed by: ${context.bountyClaimedByName}` : '',
       ].filter(Boolean).join('\n')
     : isCheckin
       ? [
@@ -384,7 +385,7 @@ function buildFallbackAnnouncerScript(context: AnnouncerContext): string {
     const player = context.knockedOutPlayerName || 'A player';
     const placement = context.placement ? ` in ${ordinal(context.placement)} place` : '';
     const by = context.knockedOutByName ? `, knocked out by ${context.knockedOutByName}` : '';
-    const prize = Number(context.prizeAmount ?? 0) > 0 ? ` They win $${Number(context.prizeAmount).toFixed(0)}.` : '';
+    const prize = Number(context.prizeAmount ?? 0) > 0 ? ` ${player} wins $${Number(context.prizeAmount).toFixed(0)}.` : '';
     const bounty = Number(context.bountyAmount ?? 0) > 0
       ? ` ${context.bountyClaimedByName || context.knockedOutByName || 'Someone'} claims a $${Number(context.bountyAmount).toFixed(0)} bounty.`
       : '';

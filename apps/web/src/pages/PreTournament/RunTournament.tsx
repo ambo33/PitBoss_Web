@@ -312,9 +312,14 @@ export default function RunTournament({
         awardedCoins: player.awardedcoins ?? [],
         tableNumber: player.tablenumber ?? null,
         seat: player.seat ?? null,
-      }));
+    }));
     const currentSet = new Set(checkedInPlayers.map((player) => player.id));
     const previousSet = seenCheckedInRef.current;
+
+    if (previousSet && previousSet.size === 0 && checkedInPlayers.length > 1) {
+      seenCheckedInRef.current = currentSet;
+      return;
+    }
 
     if (previousSet) {
       checkedInPlayers
@@ -427,6 +432,7 @@ export default function RunTournament({
 
   useEffect(() => {
     if (!showAdminControls && !displayMode) return;
+    if (players.length === 0) return;
 
     const currentPlacements = new Map<string, number | null>();
     for (const player of players) {
@@ -438,8 +444,13 @@ export default function RunTournament({
       knockoutPlacementsRef.current = currentPlacements;
       return;
     }
+    if (previousPlacements.size === 0) {
+      knockoutPlacementsRef.current = currentPlacements;
+      return;
+    }
 
     const newlyPlaced = players.filter((player) => {
+      if (!previousPlacements.has(player.userid)) return false;
       const previousPlaced = previousPlacements.get(player.userid) ?? null;
       return previousPlaced == null && player.placed != null;
     });
@@ -590,8 +601,17 @@ export default function RunTournament({
   function handleTimerCues(state: TimerState, initial = false) {
     const warningState = lastWarningRef.current;
 
+    if (initial) {
+      lastRunningRef.current = state.running;
+      warningState.level = state.currentlevel;
+      warningState.fiveMin = state.remainingsecs <= 300;
+      warningState.oneMin = state.remainingsecs <= 60;
+      levelStartedAtRef.current = new Date().toISOString();
+      return;
+    }
+
     if (lastRunningRef.current !== state.running) {
-      if (!initial && lastRunningRef.current != null) {
+      if (lastRunningRef.current != null) {
         const blind = getStateBlind(state);
         if (state.running && shouldAnnounceTournamentStart(state, blind)) {
           tournamentIntroAnnouncedRef.current = true;
@@ -604,7 +624,7 @@ export default function RunTournament({
     }
 
     if (warningState.level !== state.currentlevel) {
-      if (!initial && warningState.level != null) {
+      if (warningState.level != null) {
         const announcedBlind = state.blinds.find((blind) => Number(blind.level) === Number(state.currentlevel));
         if (announcedBlind) {
           if (!tvMode) {
@@ -826,17 +846,19 @@ export default function RunTournament({
   }
 
   function announceKnockout(player: TournamentPlayer) {
+    const bountyAmount = toNumber(player.bountyamount);
+    const hasBounty = Boolean(tournament.bountyenabled)
+      && isBountyPlacementEligible(tournament, player.placed)
+      && bountyAmount > 0;
     const fallback = () => {
       const playerName = player.displayname ?? player.emailaddress ?? 'Player';
       const placement = player.placed != null ? ` in ${ordinal(player.placed)} place` : '';
       const knockedOutBy = player.knockedoutbyname ? ` by ${player.knockedoutbyname}` : '';
       const prize = player.placed != null && player.placed <= payoutPlaces && toNumber(payouts[player.placed - 1]) > 0
-        ? ` They win ${formatMoney(toNumber(payouts[player.placed - 1]))}.`
+        ? ` ${playerName} wins ${formatMoney(toNumber(payouts[player.placed - 1]))}.`
         : '';
-      const bounty = tournament.bountyenabled
-        && isBountyPlacementEligible(tournament, player.placed)
-        && toNumber(player.bountyamount) > 0
-        ? ` ${formatMoney(toNumber(player.bountyamount))} bounty${player.bountyclaimedbyname ? ` claimed by ${player.bountyclaimedbyname}` : ' revealed'}.`
+      const bounty = hasBounty
+        ? ` ${formatMoney(bountyAmount)} bounty${player.bountyclaimedbyname ? ` claimed by ${player.bountyclaimedbyname}` : ' revealed'}.`
         : '';
       announceMessage(`${playerName} has been eliminated${placement}${knockedOutBy}.${prize}${bounty}`);
     };
@@ -857,8 +879,8 @@ export default function RunTournament({
       knockedoutbyname: player.knockedoutbyname ?? null,
       placement: player.placed ?? null,
       prizeamount: player.placed != null && player.placed <= payoutPlaces ? toNumber(payouts[player.placed - 1]) : null,
-      bountyamount: tournament.bountyenabled && isBountyPlacementEligible(tournament, player.placed) ? toNumber(player.bountyamount) : null,
-      bountyclaimedbyname: player.bountyclaimedbyname ?? player.knockedoutbyname ?? null,
+      bountyamount: hasBounty ? bountyAmount : null,
+      bountyclaimedbyname: hasBounty ? (player.bountyclaimedbyname ?? player.knockedoutbyname ?? null) : null,
     } as const;
     playAnnouncerMoment(data, fallback, { quietOnFailure: false });
   }
