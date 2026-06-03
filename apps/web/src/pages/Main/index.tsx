@@ -11,6 +11,7 @@ import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
 import PwaPushPrompt from '../../components/PwaPushPrompt';
+import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 
 type MainView = 'command' | 'profile' | 'admin';
 
@@ -99,6 +100,7 @@ export default function MainPage() {
       avatarimagedata: currentProfile.avatarimagedata ?? null,
       hasavatarimage: currentProfile.hasavatarimage ?? false,
       onboardingcomplete: currentProfile.onboardingcomplete,
+      isdemo: currentProfile.isdemo,
     });
     setShowTour(currentProfile.onboardingcomplete === false);
   }, [currentProfile, updateUser]);
@@ -230,6 +232,8 @@ function CommandCenterMenu({
   }, [open]);
 
   function handleLogout() {
+    const token = localStorage.getItem('pb_token');
+    void cleanupDemoSessionIfNeeded(user, token);
     queryClient.clear();
     logout();
     navigate('/landing', { replace: true });
@@ -330,6 +334,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
       phonenumber: profile.phonenumber ?? null,
       smsoptedin: profile.smsoptedin ?? false,
       onboardingcomplete: profile.onboardingcomplete,
+      isdemo: profile.isdemo,
     });
     setPhoneNumber(profile.phonenumber ?? '');
     setSmsOptIn(Boolean(profile.smsoptedin));
@@ -374,6 +379,8 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
     ?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? '?';
 
   function handleLogout() {
+    const token = localStorage.getItem('pb_token');
+    void cleanupDemoSessionIfNeeded(user, token);
     queryClient.clear();
     logout();
     navigate('/landing', { replace: true });
@@ -448,6 +455,38 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
 
   if (isLoading && !profile) {
     return <div className="mx-auto mt-12 max-w-2xl text-center text-pit-text">Loading profile...</div>;
+  }
+
+  if (profile?.isdemo) {
+    return (
+      <div className="mx-auto mt-6 max-w-2xl space-y-4">
+        <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={onReturn}>
+          <Home size={15} />
+          Return to Command Center
+        </button>
+        <div className="card space-y-4 py-8 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-pit-teal/35 bg-pit-teal/15 text-2xl font-black text-pit-teal">
+            D
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pit-muted">Demo Mode</p>
+            <h2 className="mt-2 text-2xl font-bold text-white">Profile editing is locked.</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-pit-muted">
+              This temporary sandbox lets you run tournaments, manage players, reseat tables, open the TV board, and explore groups without changing a real account.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button type="button" className="btn-primary" onClick={onReturn}>
+              Return to Command Center
+            </button>
+            <button type="button" className="btn-ghost text-red-200 hover:text-red-100" onClick={handleLogout}>
+              <LogOut size={15} />
+              End demo
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

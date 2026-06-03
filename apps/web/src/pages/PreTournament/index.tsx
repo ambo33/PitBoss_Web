@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Home, Lock, LogOut, Menu, Pencil, Play, Settings, Shield, Timer, Trash2, User, Users } from 'lucide-react';
@@ -11,6 +11,7 @@ import Modal from '../../components/Modal';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
+import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 import { isEnabledFlag } from '../../utils/flags';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
@@ -18,6 +19,7 @@ import Payouts from './Payouts';
 import RunTournament from './RunTournament';
 
 type Tab = 'details' | 'players' | 'blinds' | 'run';
+type DemoCoachStep = 'start' | null;
 
 export default function PreTournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,7 +28,15 @@ export default function PreTournamentPage() {
   const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
     ? location.state.tab
     : undefined;
-  const [tab, setTab] = useState<Tab>(requestedTab === 'run' ? 'run' : 'details');
+  const requestedDemoCoach = location.state && typeof location.state === 'object' && 'demoCoach' in location.state
+    ? location.state.demoCoach
+    : undefined;
+  const shouldOpenRunTab = requestedTab === 'run' || requestedDemoCoach === 'start' || requestedDemoCoach === 'run-tab';
+  const [tab, setTab] = useState<Tab>(shouldOpenRunTab ? 'run' : 'details');
+  const [demoCoachStep, setDemoCoachStep] = useState<DemoCoachStep>(
+    requestedDemoCoach === 'run-tab' || requestedDemoCoach === 'start' ? 'start' : null
+  );
+  const handleDemoStartCoachDone = useCallback(() => setDemoCoachStep(null), []);
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
@@ -96,8 +106,8 @@ export default function PreTournamentPage() {
   const canManage = tournament ? isEnabledFlag(tournament.canmanage) || tournament.ownerid === user?.guid : false;
 
   useEffect(() => {
-    if (!canManage && tab === 'run') setTab('details');
-  }, [canManage, tab]);
+    if (tournament && !canManage && tab === 'run') setTab('details');
+  }, [tournament, canManage, tab]);
 
   if (isLoading) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
   if (!tournament) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
@@ -110,7 +120,6 @@ export default function PreTournamentPage() {
   const pocketAdminUrl = `${window.location.origin}/pocket-admin/${id}`;
   const showPocketAdmin = canManage;
   const showTvBoard = featureFlags.tvBoard;
-
   const tabs: { id: Tab; label: string; mobileLabel: string; Icon: React.ElementType }[] = [
     { id: 'details', label: 'Details', mobileLabel: 'Details', Icon: ClipboardList },
     { id: 'players', label: 'Players', mobileLabel: 'Players', Icon: Users },
@@ -175,9 +184,23 @@ export default function PreTournamentPage() {
 
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
       {tab === 'blinds' && <BlindTimer tournamentId={id!} isOwner={canManage} playerCount={players.length} tournament={tournament} />}
-      {tab === 'run' && canManage && <RunTournament tournamentId={id!} isOwner={canManage} tournament={tournament} players={players} />}
+      {tab === 'run' && canManage && (
+        <RunTournament
+          tournamentId={id!}
+          isOwner={canManage}
+          tournament={tournament}
+          players={players}
+          demoStartCoachActive={demoCoachStep === 'start'}
+          onDemoStartCoachDone={handleDemoStartCoachDone}
+        />
+      )}
       <div className="h-20 md:hidden" />
-      <TournamentMobileNav tabs={tabs} activeTab={tab} onTabChange={setTab} dockToBottom />
+      <TournamentMobileNav
+        tabs={tabs}
+        activeTab={tab}
+        onTabChange={setTab}
+        dockToBottom
+      />
     </Layout>
   );
 }
@@ -215,6 +238,8 @@ function TournamentAccountMenu() {
   }
 
   function handleLogout() {
+    const token = localStorage.getItem('pb_token');
+    void cleanupDemoSessionIfNeeded(user, token);
     queryClient.clear();
     logout();
     navigate('/landing', { replace: true });
@@ -286,7 +311,9 @@ function TournamentMobileNav({
             }`}
           >
             <div className={`flex h-7 w-11 items-center justify-center rounded-full transition-all duration-150 ${
-              active ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40' : 'bg-black/15'
+              active
+                ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40'
+                : 'bg-black/15'
             }`}>
               <Icon size={18} strokeWidth={active ? 2.5 : 1.75} />
             </div>

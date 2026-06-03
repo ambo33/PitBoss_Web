@@ -304,6 +304,15 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   );
   if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
 
+  const demoProfile = await queryOne<{ isdemo: boolean | null }>(
+    `SELECT COALESCE(isdemo, FALSE) AS isdemo FROM usermetadata WHERE userid = $1`,
+    [req.userId]
+  );
+  if (demoProfile?.isdemo && (aiannouncerenabled === true || aiannouncerpreset != null || aiannouncercustomprompt != null)) {
+    res.status(403).json({ error: 'Generated voice settings are disabled in demo mode.' });
+    return;
+  }
+
   const profile = await getAccountProfile(req.userId!);
   if (!profile) {
     res.status(404).json({ error: 'User account not found' });
@@ -989,6 +998,15 @@ groupsRouter.get('/:id/tournaments', async (req: Request, res: Response) => {
 });
 
 groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
+  const demoProfile = await queryOne<{ isdemo: boolean | null }>(
+    `SELECT COALESCE(isdemo, FALSE) AS isdemo FROM usermetadata WHERE userid = $1`,
+    [req.userId]
+  );
+  if (demoProfile?.isdemo) {
+    res.status(403).json({ error: 'Invites are disabled in demo mode.' });
+    return;
+  }
+
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
     [req.params.id, req.userId]

@@ -21,6 +21,7 @@ export interface AccountProfile {
   aicreditsremaining: number;
   defaultaicredits: number;
   aicreditsrefreshat: string;
+  isdemo?: boolean;
 }
 
 const TRIAL_HOSTED_TOURNAMENT_LIMIT = 2;
@@ -126,6 +127,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     accounttier: string | null;
     issuperadmin: boolean | null;
     hostedtournamentcount: number | string | null;
+    isdemo: boolean | null;
   }>(
     `SELECT u.guid AS userid,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
@@ -134,7 +136,8 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
             ${sqlResolveTierId('um')} AS tierid,
             ${sqlResolveTierKey('um')} AS accounttier,
             COALESCE(um.issuperadmin, FALSE) AS issuperadmin,
-            COALESCE(CAST(um.hostedtournamentcount AS INT), 0) AS hostedtournamentcount
+            COALESCE(CAST(um.hostedtournamentcount AS INT), 0) AS hostedtournamentcount,
+            COALESCE(um.isdemo, FALSE) AS isdemo
      FROM users u
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
@@ -171,6 +174,7 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     aicreditsremaining: creditWindow.remaining,
     defaultaicredits,
     aicreditsrefreshat: creditWindow.refreshat,
+    isdemo: Boolean(row.isdemo),
   };
 }
 

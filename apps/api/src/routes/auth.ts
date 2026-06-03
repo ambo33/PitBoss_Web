@@ -158,6 +158,15 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
+  const demoProfile = await queryOne<{ isdemo: boolean | null }>(
+    `SELECT COALESCE(isdemo, FALSE) AS isdemo FROM usermetadata WHERE userid = $1`,
+    [req.userId]
+  );
+  if (demoProfile?.isdemo) {
+    res.status(403).json({ error: 'Profile changes are disabled in demo mode.' });
+    return;
+  }
+
   const { name, displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin } = req.body as {
     name?: string;
     displayname?: string;
@@ -323,6 +332,7 @@ async function selectAuthProfile(userId: string) {
     onboardingcomplete?: boolean;
     phonenumber?: string | null;
     smsoptedin?: boolean;
+    isdemo?: boolean;
   }>(
     `SELECT u.guid, u.emailaddress, u.emailencrypted, u.emailverified,
             NULLIF(trim(coalesce(m.fullname, '')), '') AS fullname,
@@ -349,7 +359,8 @@ async function selectAuthProfile(userId: string) {
             m.onboardingtourcompletedat,
             CASE WHEN m.onboardingtourcompletedat IS NOT NULL THEN TRUE ELSE FALSE END AS onboardingcomplete,
             m.phonenumber,
-            COALESCE(m.smsoptedin, FALSE) AS smsoptedin
+            COALESCE(m.smsoptedin, FALSE) AS smsoptedin,
+            COALESCE(m.isdemo, FALSE) AS isdemo
      FROM users u
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('m')}

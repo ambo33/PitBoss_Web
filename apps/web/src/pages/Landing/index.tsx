@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle, Volume2 } from 'lucide-react';
+import { Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 
 const features = [
@@ -240,10 +240,6 @@ export default function LandingPage() {
             </Link>
 
             <nav className="hidden shrink-0 items-center gap-2 sm:flex">
-              <Link className="btn h-10 whitespace-nowrap border-white/15 bg-white/5 px-3 text-sm text-white hover:bg-white/10" to="/blind-timer">
-                <Clock3 size={14} />
-                Blind timer
-              </Link>
               <Link className="btn h-10 whitespace-nowrap border-white/15 bg-white/5 px-3 text-sm text-white hover:bg-white/10" to="/login">Sign in</Link>
               <Link className="btn h-10 whitespace-nowrap bg-pit-teal px-3 text-sm text-white shadow-[0_10px_30px_rgba(0,0,0,0.20)] hover:bg-pit-teal-hover" to="/login?mode=register">Create account</Link>
             </nav>
@@ -269,10 +265,6 @@ export default function LandingPage() {
                   <Users size={16} />
                   Create account
                 </Link>
-                <Link className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white" to="/blind-timer" onClick={() => setMobileMenuOpen(false)}>
-                  <Clock3 size={16} />
-                  Free blind timer
-                </Link>
               </div>
             )}
           </header>
@@ -288,16 +280,25 @@ export default function LandingPage() {
               <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 xl:mx-0">
                 Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
-              <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
-                <Link className="btn-primary justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/login?mode=register">Start hosting</Link>
-                <Link className="btn-ghost justify-center px-3 py-2.5 text-sm sm:px-5 sm:py-3 sm:text-base" to="/blind-timer">
-                  <Clock3 size={16} />
-                  Blind timer
+              <div className="mx-auto mt-4 max-w-[20rem] sm:hidden">
+                <Link className="btn-primary w-full justify-center px-5 py-4 text-base shadow-[0_18px_45px_rgba(20,184,166,0.26)]" to="/demo">
+                  <Play size={18} />
+                  View live demo
                 </Link>
-                <button className="btn-ghost justify-center px-5 py-3 text-base" type="button" onClick={() => playVoicePreview(selectedVoiceIndex)}>
-                  <Volume2 size={16} />
-                  Preview voice
-                </button>
+              </div>
+              <div className="mt-8 hidden max-w-lg sm:flex">
+                <Link
+                  className="group flex w-full items-center justify-between gap-5 rounded-2xl border border-pit-teal/45 bg-pit-teal px-6 py-5 text-left text-white shadow-[0_22px_55px_rgba(20,184,166,0.24)] transition hover:bg-pit-teal-hover hover:shadow-[0_26px_70px_rgba(20,184,166,0.32)]"
+                  to="/demo"
+                >
+                  <span>
+                    <span className="block text-xl font-black">View live demo</span>
+                    <span className="mt-1 block text-sm font-semibold text-white/80">Jump straight into a 40-player tournament.</span>
+                  </span>
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 transition group-hover:bg-white/20">
+                    <Play size={22} fill="currentColor" />
+                  </span>
+                </Link>
               </div>
             </div>
 

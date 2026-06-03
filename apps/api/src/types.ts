@@ -137,6 +137,7 @@ export interface Tournament {
   aiannouncerclassicmode?: boolean;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
+  isdemo?: boolean;
   playercount?: number;
   checkedincount?: number;
   isregistered?: boolean;

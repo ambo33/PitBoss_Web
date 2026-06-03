@@ -232,10 +232,12 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(g.aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
             TRUE AS tvfeatureenabled,
             TRUE AS pocketadminenabled,
+            COALESCE(owner_meta.isdemo, FALSE) AS isdemo,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid AND checkedin = TRUE) AS checkedincount
      FROM tournaments t
      LEFT JOIN groups g ON g.groupid = t.groupid
+     LEFT JOIN usermetadata owner_meta ON owner_meta.userid = t.userid
      WHERE t.tvdisplaycode = $1`,
     [normalizedCode]
   );

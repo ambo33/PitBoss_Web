@@ -695,8 +695,9 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const currentMember = members.find((member) => member.userid === user?.guid);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
+  const demoMode = Boolean(user?.isdemo);
   const canUseClubFeatures = Boolean(account?.issuperadmin || account?.canuseclubfeatures || account?.tierid === 2 || account?.tierid === 3);
-  const announcerControlsEnabled = canUseClubFeatures && aiAnnouncerEnabled;
+  const announcerControlsEnabled = canUseClubFeatures && aiAnnouncerEnabled && !demoMode;
   const postsEnabled = postsData?.enabled ?? canUseClubFeatures;
   const detailTabs: DetailTab[] = group.isadmin
     ? ['info', 'members', 'posts', 'coins', 'voice', 'structures', 'history']
@@ -885,7 +886,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </div>
             </div>
 
-            <div className="space-y-2">
+            {!user?.isdemo && <div className="space-y-2">
               <p className="text-sm font-semibold text-white">Group settings</p>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input
@@ -904,7 +905,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 </button>
               </div>
               {updateGroupMutation.error && <p className="text-sm text-red-400">{updateGroupMutation.error.message}</p>}
-            </div>
+            </div>}
 
             <div className="space-y-2">
               <p className="text-sm font-semibold text-white">Tournament defaults</p>
@@ -960,7 +961,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </p>
             </div>
 
-            <div className="space-y-3">
+            {!user?.isdemo ? <div className="space-y-3">
               <p className="text-sm font-semibold text-white">Invite people</p>
               <input
                 className="input"
@@ -1006,7 +1007,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </div>
               {inviteMutation.error && <p className="text-sm text-red-400">{inviteMutation.error.message}</p>}
               {smsStatus && <p className="text-sm text-pit-teal">{smsStatus}</p>}
-            </div>
+            </div> : (
+              <div className="rounded-xl border border-yellow-300/20 bg-yellow-300/10 px-3 py-3 text-sm text-yellow-100">
+                Invites are disabled in demo mode, but you can still edit members, posts, structures, and tournament settings.
+              </div>
+            )}
           </div>
         )}
           </div>
@@ -1019,10 +1024,13 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 <div>
                   <p className="text-sm font-semibold text-white">Announcer</p>
                   <p className="mt-1 text-xs leading-5 text-pit-muted">
-                    Level changes can generate smart announcer audio using the tournament field, rebuys, add-ons, and this group's style.
+                    {demoMode
+                      ? 'Demo mode uses browser speech only, so generated voice clips stay off.'
+                      : "Level changes can generate smart announcer audio using the tournament field, rebuys, add-ons, and this group's style."}
                   </p>
                 </div>
                 {!canUseClubFeatures && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Club</span>}
+                {demoMode && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Demo TTS</span>}
                 <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
                   <span>{aiAnnouncerEnabled ? 'Enabled' : 'Disabled'}</span>
                   <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${aiAnnouncerEnabled ? 'bg-pit-teal' : 'bg-pit-border'}`}>
@@ -1030,7 +1038,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                       type="checkbox"
                       className="sr-only"
                       checked={aiAnnouncerEnabled}
-                      disabled={!canUseClubFeatures}
+                      disabled={!canUseClubFeatures || demoMode}
                       onChange={(event) => handleAnnouncerToggle(event.target.checked)}
                     />
                     <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${aiAnnouncerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />

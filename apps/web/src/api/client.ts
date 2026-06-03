@@ -52,6 +52,8 @@ export const api = {
   resetPassword: (data: { token: string; password: string }) =>
     post('/auth/reset-password', data),
   me: () => get<AuthProfile>('/auth/me'),
+  startDemo: () => post<{ token: string; tournamentId: string; groupId: string; tvCode: string }>('/demo/start'),
+  endDemo: () => post<{ success: boolean; cleaned: boolean }>('/demo/end'),
   updateMe: (data: {
     name?: string;
     displayname?: string;
@@ -260,8 +262,8 @@ export const api = {
   removeGenericRebuy: (tid: string) => del(`/tournaments/${tid}/rebuys`),
   addGenericAddon: (tid: string) => post(`/tournaments/${tid}/addons`),
   removeGenericAddon: (tid: string) => del(`/tournaments/${tid}/addons`),
-  knockPlayer: (tid: string, uid: string, placed: number | null) =>
-    put(`/tournaments/${tid}/players/${uid}/knock`, { placed }),
+  knockPlayer: (tid: string, uid: string, placed: number | null, knockedoutbyuserid?: string | null) =>
+    put(`/tournaments/${tid}/players/${uid}/knock`, { placed, knockedoutbyuserid }),
   updatePlayerBounty: (tid: string, uid: string, amount: number) =>
     put(`/tournaments/${tid}/players/${uid}/bounty`, { amount }),
   assignMysteryBounties: (tid: string, prizepool?: number, denomination?: number) =>
@@ -378,6 +380,7 @@ export interface Tournament {
   aiannouncerclassicmode?: boolean;
   tvfeatureenabled?: boolean;
   pocketadminenabled?: boolean;
+  isdemo?: boolean;
   isowner?: boolean;
   playercount?: number; checkedincount?: number; isregistered?: boolean; isdeclined?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
@@ -687,6 +690,7 @@ export interface AuthProfile {
   smsoptedin?: boolean;
   onboardingcomplete?: boolean;
   onboardingtourcompletedat?: string | null;
+  isdemo?: boolean;
 }
 export interface BlindLevel {
   id: string; level: number; label: string;

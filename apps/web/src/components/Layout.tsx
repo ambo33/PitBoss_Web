@@ -7,6 +7,7 @@ import BrandLockup from './BrandLockup';
 import Modal from './Modal';
 import PwaInstallPrompt from './PwaInstallPrompt';
 import { api } from '../api/client';
+import { cleanupDemoSessionIfNeeded } from '../utils/demoSession';
 
 export type NavTab = 'tournaments' | 'groups' | 'leagues' | 'profile' | 'admin';
 
@@ -68,6 +69,8 @@ export default function Layout({
   const feedbackNewCount = feedbackSummary?.newcount ?? 0;
 
   function handleLogout() {
+    const token = localStorage.getItem('pb_token');
+    void cleanupDemoSessionIfNeeded(user, token);
     queryClient.clear();
     logout();
     navigate('/landing', { replace: true });
@@ -262,7 +265,7 @@ export default function Layout({
         </button>
       )}
 
-      {user && <PwaInstallPrompt />}
+      {user && !user.isdemo && <PwaInstallPrompt />}
 
       <Modal
         title="Send Feedback"

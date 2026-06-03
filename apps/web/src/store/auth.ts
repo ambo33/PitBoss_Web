@@ -22,6 +22,7 @@ interface AuthUser {
   phonenumber?: string | null;
   smsoptedin?: boolean;
   onboardingcomplete?: boolean;
+  isdemo?: boolean;
 }
 
 interface AuthState {

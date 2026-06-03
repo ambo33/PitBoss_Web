@@ -106,7 +106,18 @@ export default function TournamentsPanel({
     mutationFn: (tournament: Tournament) => (
       tournament.groupid ? api.groupRegister(tournament.tournamentid) : api.selfRegister(tournament.tournamentid)
     ),
-    onSuccess: () => {
+    onSuccess: (_result, tournament) => {
+      qc.setQueryData<Tournament[]>(['tournaments', 'mine'], (current) => (
+        current?.map((item) => item.tournamentid === tournament.tournamentid
+          ? {
+              ...item,
+              isregistered: true,
+              isdeclined: false,
+              playercount: Math.max(0, Number(item.playercount ?? 0) + (item.isregistered ? 0 : 1)),
+            }
+          : item
+        )
+      ));
       qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
@@ -787,6 +798,7 @@ function ScheduleRow({
   const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
   const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant;
   const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
+  const showTournamentLobby = showRsvp && isRegistered;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
   const statusLabel = item.canManage && (isTournament || isCash) ? 'Host' : null;
   const fieldCount = isTournament ? formatFieldCount(item.tournament) : isCash ? formatCashGameCount(item.game) : null;
@@ -868,7 +880,24 @@ function ScheduleRow({
       </div>
 
       <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
-        {showRsvp || showLeagueRsvp || showCashRsvp ? (
+        {showTournamentLobby ? (
+          <>
+            <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onOpen}>
+              <PlayCircle size={14} />
+              Lobby
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-8 w-10 items-center justify-center rounded-full border border-red-300/30 bg-red-400/8 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 md:h-9 md:min-w-14 md:px-3"
+              disabled={loading}
+              onClick={onDecline}
+              aria-label={`Cannot attend ${item.name}`}
+              title="Cannot attend"
+            >
+              <X size={16} />
+            </button>
+          </>
+        ) : showRsvp || showLeagueRsvp || showCashRsvp ? (
           <>
             <button
               type="button"

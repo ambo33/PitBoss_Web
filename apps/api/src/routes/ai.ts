@@ -12,6 +12,14 @@ function truthySql(column: string) {
   return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
 }
 
+async function isDemoUser(userId: string): Promise<boolean> {
+  const row = await queryOne<{ isdemo: boolean | null }>(
+    `SELECT COALESCE(isdemo, FALSE) AS isdemo FROM usermetadata WHERE userid = $1`,
+    [userId]
+  );
+  return Boolean(row?.isdemo);
+}
+
 async function canManageTournament(tournamentId: string, userId: string): Promise<boolean> {
   const row = await queryOne<{ canmanage: boolean }>(
     `SELECT CASE
@@ -164,6 +172,11 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
 });
 
 aiRouter.post('/tournaments/:id/analyze-hand', async (req: Request, res: Response) => {
+  if (await isDemoUser(req.userId!)) {
+    res.status(403).json({ error: 'Hand analysis is disabled in demo mode.' });
+    return;
+  }
+
   const handText = String((req.body as { hand?: string }).hand ?? '').trim().slice(0, 2400);
   if (!handText) {
     res.status(400).json({ error: 'Describe the hand first.' });

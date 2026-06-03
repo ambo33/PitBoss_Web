@@ -190,6 +190,30 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS smsoptedin BOOL DEFAULT FALSE
     `);
     await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS isguestuser BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS guestofuserid UUID REFERENCES users(guid) ON DELETE SET NULL
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS isdemo BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS demosessionid STRING(64)
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS democreatedat TIMESTAMPTZ DEFAULT now()
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_usermetadata_demo
+      ON usermetadata (isdemo, demosessionid)
+    `);
+    await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS emailhash STRING(64)
     `);

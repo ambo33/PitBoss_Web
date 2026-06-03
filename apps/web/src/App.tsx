@@ -3,6 +3,7 @@ import { useAuthStore } from './store/auth';
 import LoginPage from './pages/Login';
 import MainPage from './pages/Main';
 import LandingPage from './pages/Landing';
+import DemoPage from './pages/Demo';
 import PricingPage from './pages/Pricing';
 import TermsPage from './pages/Terms';
 import VoiceLabPage from './pages/VoiceLab';
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/register" element={<AppSubdomainRedirect mode="register" />} />
         <Route path="/app" element={<AppSubdomainRedirect />} />
         <Route path="/landing" element={<LandingPage />} />
+        <Route path="/demo" element={<DemoPage />} />
         <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />

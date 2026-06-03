@@ -66,6 +66,8 @@ export default function RunTournament({
   players,
   mode = 'admin',
   queryKeysToRefresh,
+  demoStartCoachActive = false,
+  onDemoStartCoachDone,
 }: {
   tournamentId: string;
   isOwner: boolean;
@@ -73,6 +75,8 @@ export default function RunTournament({
   players: TournamentPlayer[];
   mode?: 'admin' | 'display' | 'tv';
   queryKeysToRefresh?: unknown[][];
+  demoStartCoachActive?: boolean;
+  onDemoStartCoachDone?: () => void;
 }) {
   const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
@@ -82,12 +86,15 @@ export default function RunTournament({
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [showPlayerActions, setShowPlayerActions] = useState(false);
+  const [knockoutCreditOpen, setKnockoutCreditOpen] = useState(false);
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
   const [activeChampion, setActiveChampion] = useState<ChampionCelebration | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
+  const [demoStartCoachDismissed, setDemoStartCoachDismissed] = useState(false);
+  const [demoExploreTipVisible, setDemoExploreTipVisible] = useState(false);
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
@@ -114,9 +121,10 @@ export default function RunTournament({
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
   const tvMode = mode === 'tv';
   const displayMode = mode === 'display' || tvMode;
+  const demoMode = Boolean(user?.isdemo || tournament.isdemo);
   const tvGreetingDisplayEnabled = tournament.tvgreetingdisplayenabled ?? true;
   const tvGreetingAudioEnabled = tournament.tvgreetingaudioenabled ?? true;
-  const showKnockoutQr = mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true));
+  const showKnockoutQr = !demoMode && (mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true)));
   const persistedTvDisplayMode: TvDisplayMode = tournament.tvdisplaymode === 'seating' ? 'seating' : 'timer';
   const [localTvDisplayMode, setLocalTvDisplayMode] = useState<TvDisplayMode>(persistedTvDisplayMode);
 
@@ -138,7 +146,8 @@ export default function RunTournament({
     onSuccess: () => refreshTournamentData(),
   });
   const knockMutation = useMutation({
-    mutationFn: ({ userId, placed }: { userId: string; placed: number | null }) => api.knockPlayer(tournamentId, userId, placed),
+    mutationFn: ({ userId, placed, knockedOutByUserId }: { userId: string; placed: number | null; knockedOutByUserId?: string | null }) =>
+      api.knockPlayer(tournamentId, userId, placed, knockedOutByUserId ?? null),
     onSuccess: () => refreshTournamentData(),
   });
   const genericRebuyMutation = useMutation({
@@ -327,6 +336,10 @@ export default function RunTournament({
       moneyActionCountsRef.current = currentCounts;
       return;
     }
+    if (previousCounts.size === 0 && currentCounts.size > 0) {
+      moneyActionCountsRef.current = currentCounts;
+      return;
+    }
 
     let nextBurst: MoneyBurst | null = null;
     for (const player of players) {
@@ -438,6 +451,10 @@ export default function RunTournament({
     }
   }, [actionablePlayers, selectedPlayerId]);
 
+  useEffect(() => {
+    setKnockoutCreditOpen(false);
+  }, [selectedPlayer?.userid]);
+
   useEffect(() => () => {
     if (greetingTimeoutRef.current) {
       window.clearTimeout(greetingTimeoutRef.current);
@@ -475,6 +492,16 @@ export default function RunTournament({
     };
   }, [activeChampion]);
 
+  useEffect(() => {
+    if (timerState?.running) {
+      setDemoStartCoachDismissed(true);
+      onDemoStartCoachDone?.();
+      if (demoMode && showAdminControls && !displayMode) {
+        setDemoExploreTipVisible(true);
+      }
+    }
+  }, [demoMode, displayMode, onDemoStartCoachDone, showAdminControls, timerState?.running]);
+
   function emit(event: string, payload: Record<string, unknown> = {}) {
     socketRef.current?.emit(event, { tournamentId, ...payload });
   }
@@ -485,6 +512,11 @@ export default function RunTournament({
 
   function handleStartTimer() {
     void warmTimerAudio();
+    setDemoStartCoachDismissed(true);
+    onDemoStartCoachDone?.();
+    if (demoMode && showAdminControls && !displayMode) {
+      setDemoExploreTipVisible(true);
+    }
 
     if (showAdminControls && seatedPlayers.length === 0 && checkedInRoster.length > 0) {
       const promptKey = `pb-start-without-seating:${tournamentId}`;
@@ -506,6 +538,11 @@ export default function RunTournament({
 
   function confirmStartWithoutSeating() {
     setStartWithoutSeatingOpen(false);
+    setDemoStartCoachDismissed(true);
+    onDemoStartCoachDone?.();
+    if (demoMode && showAdminControls && !displayMode) {
+      setDemoExploreTipVisible(true);
+    }
     emit('timer-start');
   }
 
@@ -748,7 +785,25 @@ export default function RunTournament({
   }
 
   function announceKnockout(player: TournamentPlayer) {
-    if (!tournament.aiannouncerenabled) return;
+    const fallback = () => {
+      const playerName = player.displayname ?? player.emailaddress ?? 'Player';
+      const placement = player.placed != null ? ` in ${ordinal(player.placed)} place` : '';
+      const knockedOutBy = player.knockedoutbyname ? ` by ${player.knockedoutbyname}` : '';
+      const prize = player.placed != null && player.placed <= payoutPlaces && toNumber(payouts[player.placed - 1]) > 0
+        ? ` They win ${formatMoney(toNumber(payouts[player.placed - 1]))}.`
+        : '';
+      const bounty = tournament.bountyenabled
+        && isBountyPlacementEligible(tournament, player.placed)
+        && toNumber(player.bountyamount) > 0
+        ? ` ${formatMoney(toNumber(player.bountyamount))} bounty${player.bountyclaimedbyname ? ` claimed by ${player.bountyclaimedbyname}` : ' revealed'}.`
+        : '';
+      announceMessage(`${playerName} has been eliminated${placement}${knockedOutBy}.${prize}${bounty}`);
+    };
+
+    if (!tournament.aiannouncerenabled) {
+      fallback();
+      return;
+    }
     const state = timerState;
     const blind = state ? getStateBlind(state) : currentBlind;
     const data = {
@@ -764,7 +819,7 @@ export default function RunTournament({
       bountyamount: tournament.bountyenabled && isBountyPlacementEligible(tournament, player.placed) ? toNumber(player.bountyamount) : null,
       bountyclaimedbyname: player.bountyclaimedbyname ?? player.knockedoutbyname ?? null,
     } as const;
-    playAnnouncerMoment(data, undefined, { quietOnFailure: true });
+    playAnnouncerMoment(data, fallback, { quietOnFailure: false });
   }
 
   function announceTournamentChampion(champion: ChampionCelebration) {
@@ -918,6 +973,10 @@ export default function RunTournament({
       .sort((a, b) => (a.displayname ?? a.emailaddress).localeCompare(b.displayname ?? b.emailaddress)),
     [players]
   );
+  const knockoutCreditCandidates = useMemo(
+    () => checkedInRoster.filter((player) => player.userid !== selectedPlayer?.userid),
+    [checkedInRoster, selectedPlayer?.userid]
+  );
   const seatingRoster = useMemo(
     () => [...players]
       .filter((player) => player.placed == null)
@@ -951,6 +1010,12 @@ export default function RunTournament({
     : showAdminControls && activeTvDisplayMode === 'seating';
   const rebuysEnabled = toNumber(tournament.rebuyprice) > 0;
   const addonsEnabled = toNumber(tournament.addonprice) > 0;
+  const showDemoStartCoach = demoMode
+    && showAdminControls
+    && !displayMode
+    && demoStartCoachActive
+    && !timerState?.running
+    && !demoStartCoachDismissed;
 
   return (
     <div
@@ -968,18 +1033,40 @@ export default function RunTournament({
             : 'p-0'
         }`}
       >
+        {showDemoStartCoach && (
+          <div className="sticky top-16 z-40 rounded-2xl border border-pit-teal/45 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:top-4">
+            <p className="text-sm font-black text-white">Click Start to continue the demo.</p>
+            <p className="mt-1 text-xs leading-5 text-pit-text">
+              You are already mid-tournament with players seated, payouts live, and the TV board ready.
+            </p>
+          </div>
+        )}
+        {demoExploreTipVisible && !showDemoStartCoach && (
+          <div className="sticky top-16 z-40 flex flex-col gap-3 rounded-2xl border border-pit-teal/35 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:top-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-black text-white">Now play around with the room.</p>
+              <p className="mt-1 text-xs leading-5 text-pit-text">
+                Pick a player, use Player Actions for knockouts, test blind changes, or open the TV board.
+              </p>
+            </div>
+            <button type="button" className="btn-ghost shrink-0 px-3 py-1.5 text-xs" onClick={() => setDemoExploreTipVisible(false)}>
+              Got it
+            </button>
+          </div>
+        )}
         {showAdminControls ? (
           <section className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex min-w-0 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5">
                   <select
                     className="input min-w-0 py-1.5 pr-8 text-sm"
-                    style={{ width: `${playerSelectWidth}px`, maxWidth: 'min(68vw, 320px)' }}
-                    value={selectedPlayer?.userid ?? ''}
-                    onChange={(event) => {
-                      setSelectedPlayerId(event.target.value);
-                      setShowPlayerActions(false);
-                    }}
+                  style={{ width: `${playerSelectWidth}px`, maxWidth: 'min(68vw, 320px)' }}
+                  value={selectedPlayer?.userid ?? ''}
+                  onChange={(event) => {
+                    setSelectedPlayerId(event.target.value);
+                    setShowPlayerActions(Boolean(event.target.value));
+                    setKnockoutCreditOpen(false);
+                  }}
                   >
                     {actionablePlayers.length === 0 ? (
                       <option value="">No active players</option>
@@ -995,15 +1082,18 @@ export default function RunTournament({
                     <button
                       type="button"
                       className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
-                      onClick={() => setShowPlayerActions((current) => !current)}
+                      onClick={() => {
+                        if (showPlayerActions) setKnockoutCreditOpen(false);
+                        setShowPlayerActions(!showPlayerActions);
+                      }}
                       disabled={!selectedPlayer}
                       aria-expanded={showPlayerActions}
                     >
-                      Actions
+                      Player Actions
                       <ChevronDown size={14} />
                     </button>
                     {showPlayerActions && selectedPlayer && (
-                      <div className="absolute right-0 z-30 mt-2 w-48 rounded-xl border border-pit-border bg-pit-card p-2 shadow-2xl">
+                      <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 shadow-2xl">
                         <button
                           type="button"
                           className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -1044,14 +1134,55 @@ export default function RunTournament({
                         <button
                           type="button"
                           className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={() => {
-                            knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1) });
-                            setShowPlayerActions(false);
-                          }}
+                          onClick={() => setKnockoutCreditOpen((current) => !current)}
                           disabled={!selectedPlayer.checkedin || selectedPlayer.placed != null || knockMutation.isPending}
+                          aria-expanded={knockoutCreditOpen}
                         >
                           Knockout
+                          <ChevronRight size={14} className={`transition-transform ${knockoutCreditOpen ? 'rotate-90' : ''}`} />
                         </button>
+                        {knockoutCreditOpen && (
+                          <div className="mt-2 rounded-lg border border-red-300/20 bg-red-500/10 p-2">
+                            <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-100/75">Who got them?</p>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => {
+                                knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1), knockedOutByUserId: null });
+                                setKnockoutCreditOpen(false);
+                                setShowPlayerActions(false);
+                              }}
+                              disabled={knockMutation.isPending}
+                            >
+                              No knockout credit
+                            </button>
+                            <div className="mt-1 max-h-56 overflow-y-auto pr-1">
+                              {knockoutCreditCandidates.length === 0 ? (
+                                <p className="px-2 py-2 text-xs text-pit-muted">No other active players.</p>
+                              ) : (
+                                knockoutCreditCandidates.map((candidate) => (
+                                  <button
+                                    key={candidate.userid}
+                                    type="button"
+                                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-pit-teal/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    onClick={() => {
+                                      knockMutation.mutate({
+                                        userId: selectedPlayer.userid,
+                                        placed: Math.max(activePlayers, 1),
+                                        knockedOutByUserId: candidate.userid,
+                                      });
+                                      setKnockoutCreditOpen(false);
+                                      setShowPlayerActions(false);
+                                    }}
+                                    disabled={knockMutation.isPending}
+                                  >
+                                    {playerNameWithMedals(candidate)}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1097,6 +1228,9 @@ export default function RunTournament({
                         >
                           Open TV board
                         </a>
+                        <p className="mb-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 font-mono text-[11px] leading-4 text-white">
+                          ThePokerPlanner.com/TV/{tournament.tvdisplaycode}
+                        </p>
                         <TvMenuToggle
                           label="Greeting Display"
                           enabled={tournament.tvgreetingdisplayenabled ?? true}
@@ -1109,15 +1243,14 @@ export default function RunTournament({
                           disabled={tvOptionsMutation.isPending}
                           onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
                         />
-                        <TvMenuToggle
-                          label="Player Lobby QR"
-                          enabled={tournament.tvshowknockoutqrenabled ?? true}
-                          disabled={tvOptionsMutation.isPending}
-                          onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
-                        />
-                        <p className="mt-2 text-[11px] leading-4 text-pit-muted">
-                          TV view follows the Timer or Seat Chart control above.
-                        </p>
+                        {!demoMode && (
+                          <TvMenuToggle
+                            label="Player Lobby QR"
+                            enabled={tournament.tvshowknockoutqrenabled ?? true}
+                            disabled={tvOptionsMutation.isPending}
+                            onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1208,15 +1341,17 @@ export default function RunTournament({
                           onClick={() => handleManualLevelChange(blind)}
                           className={`grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
-                              ? 'border-l-2 border-l-pit-teal border-t-pit-teal/55 bg-pit-teal/18 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.28)]'
+                              ? 'border-l-4 border-l-pit-teal border-t-pit-teal/75 bg-gradient-to-r from-pit-teal/50 via-pit-teal/24 to-pit-teal/10 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.55),0_0_18px_rgba(20,184,166,0.18)]'
                               : isNext
-                                ? 'border-pit-border bg-pit-surface/70 text-white'
+                                ? 'border-pit-border bg-pit-surface/70 text-pit-text'
                                 : 'border-pit-border bg-pit-bg/30 text-pit-text'
                           }`}
                         >
-                          <span className="font-semibold">{blind.level}</span>
-                          <span>{isBreakBlind(blind) ? formatBreakDisplayLabel(blind) : formatCompactStructureBlinds(blind)}</span>
-                          <span className="text-right">{blind.minutes}m</span>
+                          <span className={`font-semibold ${isCurrent ? 'text-white' : ''}`}>{blind.level}</span>
+                          <span className={isCurrent ? 'font-black text-white' : ''}>
+                            {isBreakBlind(blind) ? formatBreakDisplayLabel(blind) : formatCompactStructureBlinds(blind)}
+                          </span>
+                          <span className={`text-right ${isCurrent ? 'font-black text-white' : ''}`}>{blind.minutes}m</span>
                         </button>
                       );
                     })}
@@ -1242,7 +1377,7 @@ export default function RunTournament({
                       </button>
                       {timerState?.running
                         ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void warmTimerAudio(); emit('timer-pause'); }}>Pause</button>
-                        : <button className="btn-primary px-3 py-1.5 text-xs" onClick={handleStartTimer}>{chipUpAwaitingAck ? 'Chip-up done' : 'Start'}</button>
+                        : <button className={`btn-primary px-3 py-1.5 text-xs ${showDemoStartCoach ? 'relative z-[70] ring-4 ring-pit-teal/40 shadow-[0_0_36px_rgba(20,184,166,0.55)]' : ''}`} onClick={handleStartTimer}>{chipUpAwaitingAck ? 'Chip-up done' : 'Start'}</button>
                       }
                     </div>
                   )}
@@ -1296,18 +1431,22 @@ export default function RunTournament({
                       </div>
                     )}
                     <div
-                      className={`flex items-center leading-none ${urgency} ${
+                      className={`flex min-w-0 max-w-full items-center justify-center overflow-hidden leading-none ${urgency} ${
                         tvMode
                           ? 'font-mono font-bold tabular-nums tracking-tight'
-                          : showAdjustments
-                            ? 'font-sans font-[300] tabular-nums tracking-tight text-[7.5rem] md:text-[10.45rem] lg:text-[11.45rem] xl:text-[12.3rem]'
+                        : showAdjustments
+                            ? 'font-sans font-[300] tabular-nums tracking-tight'
                             : displayMode
-                              ? 'font-sans font-[300] tabular-nums tracking-tight text-[11.8rem] md:text-[15.95rem] lg:text-[18.4rem] xl:text-[19.5rem]'
-                              : 'font-mono font-bold tabular-nums text-[9.35rem] md:text-[13.2rem] lg:text-[14.2rem] xl:text-[15.2rem]'
+                              ? 'font-sans font-[300] tabular-nums tracking-tight'
+                              : 'font-mono font-bold tabular-nums'
                       }`}
                       style={tvMode
                         ? { fontSize: showAdjustments ? 'clamp(7.5rem, 12.1vw, 11.45rem)' : 'clamp(10.1rem, 15.8vw, 15.2rem)' }
-                        : undefined}
+                        : showAdjustments
+                          ? { fontSize: 'clamp(4.5rem, 19vw, 12.3rem)' }
+                          : displayMode
+                            ? { fontSize: 'clamp(5rem, 20vw, 19.5rem)' }
+                            : { fontSize: 'clamp(4.8rem, 25vw, 15.2rem)' }}
                     >
                       <span>{minsStr}</span>
                       <span className="-mx-[0.08em]">:</span>
