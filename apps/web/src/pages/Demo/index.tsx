@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, RotateCcw } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
@@ -7,6 +8,7 @@ import { useAuthStore } from '../../store/auth';
 
 export default function DemoPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
   const startedRef = useRef(false);
   const [error, setError] = useState('');
@@ -21,6 +23,26 @@ export default function DemoPage() {
       setStatus('Loading the tournament room...');
       const profile = await api.me();
       setAuth(demo.token, profile);
+      setStatus('Loading the blind structure...');
+      await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: ['tournament', demo.tournamentId],
+          queryFn: () => api.getTournament(demo.tournamentId),
+        }),
+        queryClient.fetchQuery({
+          queryKey: ['players', demo.tournamentId],
+          queryFn: () => api.getPlayers(demo.tournamentId),
+        }),
+        queryClient.fetchQuery({
+          queryKey: ['blinds', demo.tournamentId],
+          queryFn: () => api.getBlinds(demo.tournamentId),
+        }),
+        queryClient.fetchQuery({
+          queryKey: ['timer', demo.tournamentId],
+          queryFn: () => api.getTimer(demo.tournamentId),
+        }),
+      ]);
+      setStatus('Opening Run Tournament...');
       navigate(`/tournament/${demo.tournamentId}`, {
         replace: true,
         state: { tab: 'run', demoCoach: 'start' },

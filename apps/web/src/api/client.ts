@@ -273,6 +273,7 @@ export const api = {
 
   // Blinds
   getBlinds: (tid: string) => get<BlindLevel[]>(`/tournaments/${tid}/blinds`),
+  getTimer: (tid: string) => get<TimerSnapshot>(`/tournaments/${tid}/timer`),
   saveBlinds: (tid: string, levels: Omit<BlindLevel, 'id'>[]) =>
     put(`/tournaments/${tid}/blinds`, levels),
   deleteBlinds: (tid: string) => del(`/tournaments/${tid}/blinds`),
@@ -696,6 +697,11 @@ export interface BlindLevel {
   id: string; level: number; label: string;
   smallblind: number; bigblind: number; ante: number;
   minutes: number; islastlevel: boolean;
+}
+export interface TimerSnapshot {
+  currentlevel: number;
+  remainingsecs: number;
+  running: boolean;
 }
 export interface PublicBlindTimer {
   code: string;

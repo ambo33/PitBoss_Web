@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Menu, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, BlindLevel, Tournament, TournamentPlayer } from '../../api/client';
+import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -59,6 +59,43 @@ interface ChampionCelebration {
   awardedCoins?: TournamentPlayer['awardedcoins'];
 }
 
+function buildInitialTimerState(
+  tournamentId: string,
+  blinds: BlindLevel[] | undefined,
+  timer: TimerSnapshot | undefined
+): TimerState | null {
+  const normalizedBlinds = (blinds ?? [])
+    .map((blind) => ({
+      ...blind,
+      level: Number(blind.level),
+      smallblind: Number(blind.smallblind),
+      bigblind: Number(blind.bigblind),
+      ante: Number(blind.ante),
+      minutes: Number(blind.minutes),
+      islastlevel: Boolean(blind.islastlevel),
+    }))
+    .filter((blind) => Number.isFinite(blind.level) && Number.isFinite(blind.minutes))
+    .sort((a, b) => a.level - b.level);
+
+  if (!normalizedBlinds.length) return null;
+
+  const requestedLevel = Number(timer?.currentlevel ?? normalizedBlinds[0]?.level ?? 1);
+  const currentBlind = normalizedBlinds.find((blind) => blind.level === requestedLevel) ?? normalizedBlinds[0];
+  const maxSeconds = Math.max(Number(currentBlind?.minutes ?? 20) * 60, 60);
+  const savedRemaining = Number(timer?.remainingsecs);
+  const remainingsecs = Number.isFinite(savedRemaining) && savedRemaining > 0
+    ? Math.min(savedRemaining, maxSeconds)
+    : maxSeconds;
+
+  return {
+    tournamentid: tournamentId,
+    currentlevel: currentBlind.level,
+    remainingsecs,
+    running: timer?.running === true,
+    blinds: normalizedBlinds,
+  };
+}
+
 export default function RunTournament({
   tournamentId,
   isOwner,
@@ -82,7 +119,11 @@ export default function RunTournament({
   const user = useAuthStore((state) => state.user);
   const socketRef = useRef<Socket | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
-  const [timerState, setTimerState] = useState<TimerState | null>(null);
+  const [timerState, setTimerState] = useState<TimerState | null>(() => {
+    const cachedBlinds = qc.getQueryData<BlindLevel[]>(['blinds', tournamentId]);
+    const cachedTimer = qc.getQueryData<TimerSnapshot>(['timer', tournamentId]);
+    return buildInitialTimerState(tournamentId, cachedBlinds, cachedTimer);
+  });
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [showPlayerActions, setShowPlayerActions] = useState(false);
