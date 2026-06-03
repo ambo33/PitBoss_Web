@@ -4,7 +4,7 @@ import { query, queryOne, pool } from '../db';
 import { getAccountProfile } from '../account';
 import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
-import { broadcastTournamentUpdate } from '../socket';
+import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
@@ -573,6 +573,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     ? knockedoutbyuserid.trim()
     : null;
   let nextPlaced = parsePlaced(placed);
+  let tournamentCompleted = false;
 
   const client = await pool.connect();
   try {
@@ -671,7 +672,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
       );
 
       if (nextPlaced === 2) {
-        await client.query(
+        const championResult = await client.query(
           `UPDATE tournamentplayers
            SET placed = 1,
                checkedin = TRUE,
@@ -693,6 +694,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
              ) = 1`,
           [req.params.tid, req.params.uid]
         );
+        tournamentCompleted = Number(championResult.rowCount ?? 0) > 0;
       }
     }
 
@@ -702,6 +704,9 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     throw err;
   } finally {
     client.release();
+  }
+  if (tournamentCompleted) {
+    await pauseTournamentTimer(req.params.tid);
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });

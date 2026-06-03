@@ -273,11 +273,11 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         'Write one hype winner announcement and tournament recap for a poker tournament.',
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
-        'Rules: 25 to 45 words. Announce the champion by name, say the tournament is complete, mention the final prize pool if provided, and congratulate the table. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims.',
+        'Rules: 25 to 45 words. Announce the champion by name, say the tournament is complete, mention only the champion payout if provided, and congratulate the table. Do not say the champion won the entire prize pool unless explicitly told that. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims.',
         `Tournament: ${context.tournamentName}`,
         context.groupName ? `Group: ${context.groupName}` : '',
         `Champion: ${context.playerName || 'the champion'}`,
-        `Final prize pool: ${formatMoneyForSpeech(context.prizePool)}`,
+        Number(context.prizeAmount ?? 0) > 0 ? `Champion payout: ${formatMoneyForSpeech(context.prizeAmount)}` : '',
         `Field size: ${getAnnouncedPlayerCount(context)}`,
       ].filter(Boolean).join('\n')
     : isTimerStatus
@@ -417,9 +417,9 @@ function buildTournamentStartScript(context: AnnouncerContext): string {
 
 function buildTournamentWinnerScript(context: AnnouncerContext): string {
   const champion = context.playerName || 'our champion';
-  const prizePool = Number(context.prizePool ?? 0) > 0 ? ` The final prize pool is ${formatMoneyForSpeech(context.prizePool)}.` : '';
+  const prize = Number(context.prizeAmount ?? 0) > 0 ? ` ${champion} wins ${formatMoneyForSpeech(context.prizeAmount)} for first place.` : '';
   const fieldCount = getAnnouncedPlayerCount(context);
-  return `${champion} is your champion. The tournament is complete after a ${fieldCount}-player battle.${prizePool} Congratulations to the winner and great game, everyone.`;
+  return `${champion} is your champion. The tournament is complete after a ${fieldCount}-player battle.${prize} Congratulations to the winner and great game, everyone.`;
 }
 
 function formatAvailabilityFact(label: string, enabled: boolean | null | undefined, amount: number | null | undefined): string {

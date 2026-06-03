@@ -6,7 +6,7 @@ import { isFeatureEnabled } from '../features';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament, TournamentPlayer } from '../types';
-import { broadcastTournamentUpdate } from '../socket';
+import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
@@ -988,8 +988,9 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     [req.params.id, playerUserId, placed, knockedoutByUserId, bountyStartPlace]
   );
 
+  let tournamentCompleted = false;
   if (placed === 2) {
-    await query(
+    const championRows = await query<{ userid: string }>(
       `UPDATE tournamentplayers
        SET placed = 1,
            checkedin = TRUE,
@@ -1008,11 +1009,16 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
              AND remaining.userid != $2
              AND COALESCE(remaining.checkedin, FALSE) = TRUE
              AND remaining.placed IS NULL
-         ) = 1`,
+         ) = 1
+       RETURNING userid`,
       [req.params.id, playerUserId]
     );
+    tournamentCompleted = championRows.length > 0;
   }
 
+  if (tournamentCompleted) {
+    await pauseTournamentTimer(req.params.id);
+  }
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });
 

@@ -281,7 +281,7 @@ demoRouter.post('/start', optionalAuth, async (req: Request, res: Response) => {
     );
     await client.query(
       `INSERT INTO tournamenttimer (tournamentid, currentlevel, remainingsecs, running, lastupdated)
-       VALUES ($1, 8, 742, FALSE, now())`,
+       VALUES ($1, 8, 732, FALSE, now())`,
       [tournamentId]
     );
 

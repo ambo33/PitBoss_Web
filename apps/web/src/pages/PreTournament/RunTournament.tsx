@@ -54,6 +54,7 @@ interface MoneyBurst {
 interface ChampionCelebration {
   id: string;
   name: string;
+  prizeAmount?: number;
   audioDataUrl?: string | null;
   avatarImageUrl?: string | null;
   awardedCoins?: TournamentPlayer['awardedcoins'];
@@ -145,6 +146,7 @@ export default function RunTournament({
   const lastRunningRef = useRef<boolean | null>(null);
   const tournamentIntroAnnouncedRef = useRef(false);
   const demoIntroAnnouncedRef = useRef(false);
+  const demoExploreTipShownRef = useRef(false);
   const levelStartedAtRef = useRef<string | null>(null);
   const announcementTemplatesRef = useRef({
     fiveMinute: tournament.speechfiveminutemessage,
@@ -467,6 +469,7 @@ export default function RunTournament({
       setActiveChampion({
         id: `${newChampion.userid}-champion-${Date.now()}`,
         name: newChampion.displayname ?? newChampion.emailaddress ?? 'Champion',
+        prizeAmount: toNumber(payouts[0]),
         audioDataUrl: newChampion.checkinaudiodata ?? null,
         avatarImageUrl: newChampion.avatarimagedata ?? null,
         awardedCoins: newChampion.awardedcoins ?? [],
@@ -535,15 +538,27 @@ export default function RunTournament({
     championTimeoutRefs.current.push(window.setTimeout(() => {
       announceTournamentChampion(activeChampion);
     }, activeChampion.audioDataUrl ? 4300 : 0));
-    championTimeoutRefs.current.push(window.setTimeout(() => {
-      setActiveChampion(null);
-    }, activeChampion.audioDataUrl ? 9500 : 6500));
+    if (displayMode) {
+      championTimeoutRefs.current.push(window.setTimeout(() => {
+        setActiveChampion(null);
+      }, activeChampion.audioDataUrl ? 9500 : 6500));
+    }
 
     return () => {
       championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
       championTimeoutRefs.current = [];
     };
-  }, [activeChampion]);
+  }, [activeChampion, displayMode]);
+
+  useEffect(() => {
+    if (timerState?.running) {
+      setDemoStartCoachDismissed(true);
+      onDemoStartCoachDone?.();
+      if (demoMode && showAdminControls && !displayMode) {
+        showDemoExploreTipOnce();
+      }
+    }
+  }, [demoMode, displayMode, onDemoStartCoachDone, showAdminControls, timerState?.running]);
 
   useEffect(() => {
     if (timerState?.running) {
@@ -563,12 +578,18 @@ export default function RunTournament({
     await unlockTimerAudio();
   }
 
+  function showDemoExploreTipOnce() {
+    if (demoExploreTipShownRef.current) return;
+    demoExploreTipShownRef.current = true;
+    setDemoExploreTipVisible(true);
+  }
+
   function handleStartTimer() {
     void warmTimerAudio();
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
     if (demoMode && showAdminControls && !displayMode) {
-      setDemoExploreTipVisible(true);
+      showDemoExploreTipOnce();
     }
 
     if (showAdminControls && seatedPlayers.length === 0 && checkedInRoster.length > 0) {
@@ -594,7 +615,7 @@ export default function RunTournament({
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
     if (demoMode && showAdminControls && !displayMode) {
-      setDemoExploreTipVisible(true);
+      showDemoExploreTipOnce();
     }
     emit('timer-start');
   }
@@ -889,7 +910,10 @@ export default function RunTournament({
   }
 
   function announceTournamentChampion(champion: ChampionCelebration) {
-    const fallback = () => announceMessage(`${champion.name} is your tournament champion. Congratulations to the winner and great game, everyone.`);
+    const prizeLine = Number(champion.prizeAmount ?? 0) > 0
+      ? ` ${champion.name} wins ${formatMoney(Number(champion.prizeAmount))}.`
+      : '';
+    const fallback = () => announceMessage(`${champion.name} is your tournament champion.${prizeLine} Congratulations to the winner and great game, everyone.`);
     if (!tournament.aiannouncerenabled) {
       fallback();
       return;
@@ -903,7 +927,7 @@ export default function RunTournament({
       bigblind: Number(blind?.bigblind ?? 0),
       ante: Number(blind?.ante ?? 0),
       playername: champion.name,
-      prizepool: totalPot,
+      prizeamount: Number(champion.prizeAmount ?? 0),
       playercount: fieldSize,
     }, fallback);
   }
@@ -1810,7 +1834,7 @@ export default function RunTournament({
         )}
 
         {(showAdminControls || displayMode) && activeChampion && (
-          <div className="pointer-events-none fixed inset-0 z-[105] flex items-center justify-center overflow-hidden px-6 py-8">
+          <div className={`${displayMode ? 'pointer-events-none' : 'pointer-events-auto'} fixed inset-0 z-[105] flex items-center justify-center overflow-hidden bg-black/45 px-6 py-8 backdrop-blur-sm`}>
             <style>{`
               @keyframes champion-money-fall {
                 0% { transform: translate3d(0, -24px, 0) rotate(0deg); opacity: 0; }
@@ -1856,6 +1880,20 @@ export default function RunTournament({
               <p className="mt-4 text-lg font-semibold text-emerald-100 xl:text-3xl">
                 The last player standing
               </p>
+              {Number(activeChampion.prizeAmount ?? 0) > 0 && (
+                <p className="mt-2 text-base font-black text-pit-teal xl:text-2xl">
+                  {formatMoney(Number(activeChampion.prizeAmount))} for 1st place
+                </p>
+              )}
+              {!displayMode && (
+                <button
+                  type="button"
+                  className="btn-primary pointer-events-auto mt-6 px-5 py-2.5"
+                  onClick={() => setActiveChampion(null)}
+                >
+                  Acknowledge winner
+                </button>
+              )}
             </div>
           </div>
         )}
