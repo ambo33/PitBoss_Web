@@ -8,6 +8,7 @@
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "test:league-workflows": "npm run test:league-workflows -w apps/api",
     "generate:ai-demo-clips": "node scripts/generate-ai-demo-clips.mjs",
+    "generate:demo-intro-clip": "node scripts/generate-demo-intro-clip.mjs",
     "generate:vapid": "npx web-push generate-vapid-keys",
     "send:daily-reminders": "node scripts/run-daily-reminders.mjs"
   },

@@ -805,22 +805,8 @@ export default function RunTournament({
     }, fallback);
   }
 
-  function announceDemoTournamentStart(state: TimerState) {
-    const levelLabel = ordinal(Number(state.currentlevel ?? effectiveLevel));
-    const minutes = Math.floor(Number(state.remainingsecs ?? 0) / 60);
-    const seconds = Math.max(0, Number(state.remainingsecs ?? 0) % 60);
-    const timeLeft = `${minutes} minute${minutes === 1 ? '' : 's'}, ${seconds} second${seconds === 1 ? '' : 's'}`;
-    const playersRemaining = players.filter((player) => player.checkedin && player.placed == null).length || activePlayers;
-    const remainingPrizePool = payouts.reduce((sum, amount, index) => {
-      const place = index + 1;
-      const alreadyPaid = players.some((player) => Number(player.placed) === place);
-      return alreadyPaid ? sum : sum + toNumber(amount);
-    }, 0);
-    const prizeLine = remainingPrizePool > 0
-      ? `${formatMoney(remainingPrizePool)} still up for grabs`
-      : 'the final spots still up for grabs';
-
-    announceMessage(`Welcome to The Poker Planner's demo tournament. We are picking it up with ${timeLeft} left in the ${levelLabel} level. ${playersRemaining} players remain with ${prizeLine}.`);
+  function announceDemoTournamentStart(_state: TimerState) {
+    playStoredSpeech('/sounds/announcer-static/demo-tournament-start.mp3');
   }
 
   function announceAiOrTemplate(
