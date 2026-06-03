@@ -144,6 +144,7 @@ export default function RunTournament({
   const receivedInitialTimerStateRef = useRef(false);
   const lastRunningRef = useRef<boolean | null>(null);
   const tournamentIntroAnnouncedRef = useRef(false);
+  const demoIntroAnnouncedRef = useRef(false);
   const levelStartedAtRef = useRef<string | null>(null);
   const announcementTemplatesRef = useRef({
     fiveMinute: tournament.speechfiveminutemessage,
@@ -613,7 +614,10 @@ export default function RunTournament({
     if (lastRunningRef.current !== state.running) {
       if (lastRunningRef.current != null) {
         const blind = getStateBlind(state);
-        if (state.running && shouldAnnounceTournamentStart(state, blind)) {
+        if (state.running && demoMode && !demoIntroAnnouncedRef.current) {
+          demoIntroAnnouncedRef.current = true;
+          announceDemoTournamentStart(state);
+        } else if (state.running && shouldAnnounceTournamentStart(state, blind)) {
           tournamentIntroAnnouncedRef.current = true;
           announceTournamentStart(state, blind);
         } else {
@@ -804,6 +808,24 @@ export default function RunTournament({
       addonenabled: addonEnabled,
       addonamount: toNumber(tournament.addonprice),
     }, fallback);
+  }
+
+  function announceDemoTournamentStart(state: TimerState) {
+    const levelLabel = ordinal(Number(state.currentlevel ?? effectiveLevel));
+    const minutes = Math.floor(Number(state.remainingsecs ?? 0) / 60);
+    const seconds = Math.max(0, Number(state.remainingsecs ?? 0) % 60);
+    const timeLeft = `${minutes} minute${minutes === 1 ? '' : 's'}, ${seconds} second${seconds === 1 ? '' : 's'}`;
+    const playersRemaining = players.filter((player) => player.checkedin && player.placed == null).length || activePlayers;
+    const remainingPrizePool = payouts.reduce((sum, amount, index) => {
+      const place = index + 1;
+      const alreadyPaid = players.some((player) => Number(player.placed) === place);
+      return alreadyPaid ? sum : sum + toNumber(amount);
+    }, 0);
+    const prizeLine = remainingPrizePool > 0
+      ? `${formatMoney(remainingPrizePool)} still up for grabs`
+      : 'the final spots still up for grabs';
+
+    announceMessage(`Welcome to The Poker Planner's demo tournament. We are picking it up with ${timeLeft} left in the ${levelLabel} level. ${playersRemaining} players remain with ${prizeLine}.`);
   }
 
   function announceAiOrTemplate(
