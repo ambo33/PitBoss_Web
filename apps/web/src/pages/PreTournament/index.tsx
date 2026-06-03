@@ -53,10 +53,17 @@ export default function PreTournamentPage() {
     if (socket.connected) {
       joinTournament();
     }
-    socket.on('tournament-updated', () => {
-      qc.invalidateQueries({ queryKey: ['tournament', id] });
-      qc.invalidateQueries({ queryKey: ['players', id] });
-      qc.invalidateQueries({ queryKey: ['seating', id] });
+    socket.on('tournament-updated', (payload?: { tournament?: boolean; players?: boolean; seating?: boolean }) => {
+      const refreshAll = !payload;
+      if (refreshAll || payload.tournament) {
+        qc.invalidateQueries({ queryKey: ['tournament', id] });
+      }
+      if (refreshAll || payload.players) {
+        qc.invalidateQueries({ queryKey: ['players', id] });
+      }
+      if (refreshAll || payload.seating) {
+        qc.invalidateQueries({ queryKey: ['seating', id] });
+      }
     });
     return () => {
       socket.disconnect();

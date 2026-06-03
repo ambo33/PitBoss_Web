@@ -25,6 +25,7 @@ interface TimerState extends TimerTick {
 }
 
 type PayoutMode = 'count' | 'percent';
+type TvDisplayMode = 'timer' | 'seating';
 
 interface PayoutStructureConfig {
   mode: PayoutMode;
@@ -116,6 +117,8 @@ export default function RunTournament({
   const tvGreetingDisplayEnabled = tournament.tvgreetingdisplayenabled ?? true;
   const tvGreetingAudioEnabled = tournament.tvgreetingaudioenabled ?? true;
   const showKnockoutQr = mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true));
+  const persistedTvDisplayMode: TvDisplayMode = tournament.tvdisplaymode === 'seating' ? 'seating' : 'timer';
+  const [localTvDisplayMode, setLocalTvDisplayMode] = useState<TvDisplayMode>(persistedTvDisplayMode);
 
   const refreshTournamentData = () => {
     if (queryKeysToRefresh?.length) {
@@ -160,7 +163,13 @@ export default function RunTournament({
   });
   const tvOptionsMutation = useMutation({
     mutationFn: (data: Partial<Tournament>) => api.updateTournament(tournamentId, data),
-    onSuccess: () => refreshTournamentData(),
+    onSuccess: () => {
+      if (queryKeysToRefresh?.length) {
+        queryKeysToRefresh.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
+    },
   });
   const assignSeatsMutation = useMutation({
     mutationFn: (mode: 'all' | 'remaining') => api.assignSeats(tournamentId, seatingMaxPerTable, mode),
@@ -171,9 +180,28 @@ export default function RunTournament({
     onSuccess: () => refreshTournamentData(),
   });
 
+  function selectTvDisplayMode(nextMode: TvDisplayMode) {
+    if (localTvDisplayMode === nextMode) return;
+
+    const previousMode = localTvDisplayMode;
+    setLocalTvDisplayMode(nextMode);
+    tvOptionsMutation.mutate(
+      { tvdisplaymode: nextMode },
+      {
+        onError: () => setLocalTvDisplayMode(previousMode),
+      }
+    );
+  }
+
   useEffect(() => {
     setSeatingMaxPerTable(Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   }, [tournament.seatingmaxpertable]);
+
+  useEffect(() => {
+    if (!tvOptionsMutation.isPending) {
+      setLocalTvDisplayMode(persistedTvDisplayMode);
+    }
+  }, [persistedTvDisplayMode, tvOptionsMutation.isPending]);
 
   useEffect(() => {
     announcementTemplatesRef.current = {
@@ -473,9 +501,7 @@ export default function RunTournament({
 
   function cancelStartWithoutSeating() {
     setStartWithoutSeatingOpen(false);
-    if (tournament.tvdisplaymode !== 'seating') {
-      tvOptionsMutation.mutate({ tvdisplaymode: 'seating' });
-    }
+    selectTvDisplayMode('seating');
   }
 
   function confirmStartWithoutSeating() {
@@ -919,9 +945,10 @@ export default function RunTournament({
     return null;
   }, [checkedInRoster, seatingMaxPerTable]);
   const isPreStart = !timerState?.running && displayedLevel === 1 && secs === (currentBlind?.minutes ?? 0) * 60;
+  const activeTvDisplayMode = tvMode ? persistedTvDisplayMode : localTvDisplayMode;
   const showSeatingBoard = tvMode
-    ? tournament.tvdisplaymode === 'seating' || isPreStart
-    : showAdminControls && tournament.tvdisplaymode === 'seating';
+    ? activeTvDisplayMode === 'seating' || isPreStart
+    : showAdminControls && activeTvDisplayMode === 'seating';
   const rebuysEnabled = toNumber(tournament.rebuyprice) > 0;
   const addonsEnabled = toNumber(tournament.addonprice) > 0;
 
@@ -1033,17 +1060,15 @@ export default function RunTournament({
                 <div className="flex items-center rounded-xl border border-pit-border bg-pit-bg/65 p-1">
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${((tournament.tvdisplaymode ?? 'timer') === 'timer') ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
-                    disabled={tvOptionsMutation.isPending}
-                    onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'timer' })}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'timer' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
+                    onClick={() => selectTvDisplayMode('timer')}
                   >
                     Timer
                   </button>
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${tournament.tvdisplaymode === 'seating' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
-                    disabled={tvOptionsMutation.isPending}
-                    onClick={() => tvOptionsMutation.mutate({ tvdisplaymode: 'seating' })}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'seating' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
+                    onClick={() => selectTvDisplayMode('seating')}
                   >
                     Seat Chart
                   </button>

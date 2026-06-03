@@ -455,6 +455,38 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   if (!await canManageTournament(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
   }
+  const requestKeys = Object.keys(req.body ?? {});
+  const tvOptionKeys = new Set([
+    'tvgreetingdisplayenabled',
+    'tvgreetingaudioenabled',
+    'tvshowknockoutqrenabled',
+    'tvdisplaymode',
+  ]);
+  const isTvOptionsOnly = requestKeys.length > 0 && requestKeys.every((key) => tvOptionKeys.has(key));
+
+  if (isTvOptionsOnly) {
+    const { tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode } = req.body as Partial<Tournament>;
+    const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
+    await query(
+      `UPDATE tournaments SET
+         tvgreetingdisplayenabled = COALESCE($1, tvgreetingdisplayenabled),
+         tvgreetingaudioenabled = COALESCE($2, tvgreetingaudioenabled),
+         tvshowknockoutqrenabled = COALESCE($3, tvshowknockoutqrenabled),
+         tvdisplaymode = COALESCE($4, tvdisplaymode)
+       WHERE tournamentid = $5`,
+      [
+        tvgreetingdisplayenabled ?? null,
+        tvgreetingaudioenabled ?? null,
+        tvshowknockoutqrenabled ?? null,
+        normalizedTvDisplayMode,
+        req.params.id,
+      ]
+    );
+    broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-tv-options' });
+    res.json({ success: true });
+    return;
+  }
+
   const currentProfile = await getAccountProfile(req.userId!);
   if (!currentProfile) {
     res.status(404).json({ error: 'User account not found' });
