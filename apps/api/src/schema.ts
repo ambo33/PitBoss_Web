@@ -231,11 +231,11 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE groups
-      ADD COLUMN IF NOT EXISTS speechfiveminutemessage STRING(240) DEFAULT 'There are 5 minutes remaining in the current blind.'
+      ADD COLUMN IF NOT EXISTS speechfiveminutemessage STRING(240) DEFAULT 'Five minutes remaining in this level.'
     `);
     await client.query(`
       ALTER TABLE groups
-      ADD COLUMN IF NOT EXISTS speechoneminutemessage STRING(240) DEFAULT 'One minute remaining in the current blind.'
+      ADD COLUMN IF NOT EXISTS speechoneminutemessage STRING(240) DEFAULT 'One minute remaining in this level.'
     `);
     await client.query(`
       ALTER TABLE groups

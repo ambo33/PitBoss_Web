@@ -752,19 +752,14 @@ export default function RunTournament({
       }
     };
 
-    if (!tournament.aiannouncerenabled) {
-      fallback();
+    if (tournament.aiannouncerenabled && !isRebuyCutoffWarning) {
+      const preset = normalizeAnnouncerPreset(tournament.aiannouncerpreset).replace(/_/g, '-');
+      const clip = eventtype === 'five_minute_warning' ? 'five-minute-warning' : 'one-minute-warning';
+      playStoredSpeech(`/sounds/announcer-static/${preset}-${clip}.mp3`, fallback);
       return;
     }
 
-    playAnnouncerMoment({
-      eventtype,
-      currentlevel: Number(state.currentlevel),
-      smallblind: Number(blind?.smallblind ?? 0),
-      bigblind: Number(blind?.bigblind ?? 0),
-      ante: Number(blind?.ante ?? 0),
-      rebuycutoffwarning: isRebuyCutoffWarning ? eventtype : null,
-    }, fallback);
+    fallback();
   }
 
   function shouldAnnounceTournamentStart(state: TimerState, blind: BlindLevel | undefined): boolean {

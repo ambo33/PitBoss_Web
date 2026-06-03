@@ -7,8 +7,8 @@ let currentEventAudio: HTMLAudioElement | null = null;
 const activeOscillators = new Set<OscillatorNode>();
 let audioUnlocked = false;
 
-export const DEFAULT_FIVE_MINUTE_ANNOUNCEMENT = 'There are 5 minutes remaining in the current blind.';
-export const DEFAULT_ONE_MINUTE_ANNOUNCEMENT = 'One minute remaining in the current blind.';
+export const DEFAULT_FIVE_MINUTE_ANNOUNCEMENT = 'Five minutes remaining in this level.';
+export const DEFAULT_ONE_MINUTE_ANNOUNCEMENT = 'One minute remaining in this level.';
 export const DEFAULT_LEVEL_UP_ANNOUNCEMENT = 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.';
 
 export interface AnnouncementTokens {

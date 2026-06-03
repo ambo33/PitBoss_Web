@@ -144,8 +144,8 @@ groupsRouter.get('/', async (req: Request, res: Response) => {
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
-            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
-            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechfiveminutemessage, 'Five minutes remaining in this level.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in this level.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
             COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
@@ -232,8 +232,8 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
-            COALESCE(g.speechfiveminutemessage, 'There are 5 minutes remaining in the current blind.') AS speechfiveminutemessage,
-            COALESCE(g.speechoneminutemessage, 'One minute remaining in the current blind.') AS speechoneminutemessage,
+            COALESCE(g.speechfiveminutemessage, 'Five minutes remaining in this level.') AS speechfiveminutemessage,
+            COALESCE(g.speechoneminutemessage, 'One minute remaining in this level.') AS speechoneminutemessage,
             COALESCE(g.speechlevelupmessage, 'Level {BlindLevel}. Small blind {SB}. Big blind {BB}.') AS speechlevelupmessage,
             COALESCE(g.aiannouncerenabled, FALSE) AS aiannouncerenabled,
             COALESCE(g.aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
@@ -336,11 +336,11 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
     : tvseatingwelcomemessage.trim().slice(0, 180) || 'Welcome! Please see host to check-in!';
   const normalizedFiveMinuteMessage = normalizeAnnouncementTemplate(
     speechfiveminutemessage,
-    'There are 5 minutes remaining in the current blind.'
+    'Five minutes remaining in this level.'
   );
   const normalizedOneMinuteMessage = normalizeAnnouncementTemplate(
     speechoneminutemessage,
-    'One minute remaining in the current blind.'
+    'One minute remaining in this level.'
   );
   const normalizedLevelUpMessage = normalizeAnnouncementTemplate(
     speechlevelupmessage,
