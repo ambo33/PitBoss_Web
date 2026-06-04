@@ -28,6 +28,7 @@ interface TimerState extends TimerTick {
 
 type PayoutMode = 'count' | 'percent';
 type TvDisplayMode = 'timer' | 'seating';
+type SidePanelView = 'bounties' | 'knockouts';
 
 interface PayoutStructureConfig {
   mode: PayoutMode;
@@ -150,6 +151,7 @@ export default function RunTournament({
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
   const [demoStartCoachDismissed, setDemoStartCoachDismissed] = useState(false);
   const [demoExploreTipVisible, setDemoExploreTipVisible] = useState(false);
+  const [sidePanelView, setSidePanelView] = useState<SidePanelView>(() => tournament.bountyenabled ? 'bounties' : 'knockouts');
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
     oneMin: false,
@@ -186,6 +188,10 @@ export default function RunTournament({
   const persistedTvDisplayMode: TvDisplayMode = tournament.tvdisplaymode === 'seating' ? 'seating' : 'timer';
   const [localTvDisplayMode, setLocalTvDisplayMode] = useState<TvDisplayMode>(persistedTvDisplayMode);
   const mobileStructurePanelId = `mobile-run-structure-${tournamentId}`;
+
+  useEffect(() => {
+    setSidePanelView(tournament.bountyenabled ? 'bounties' : 'knockouts');
+  }, [tournament.bountyenabled]);
 
   const refreshTournamentData = () => {
     if (queryKeysToRefresh?.length) {
@@ -1079,6 +1085,28 @@ export default function RunTournament({
       .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
     [players, payoutPlaces]
   );
+  const bountyClaimSummaries = useMemo(() => {
+    if (!tournament.bountyenabled) return [];
+
+    const summaries = new Map<string, { key: string; name: string; count: number; total: number }>();
+    for (const player of players) {
+      const bountyAmount = toNumber(player.bountyamount);
+      if (!player.bountyclaimedat || bountyAmount <= 0) continue;
+
+      const key = player.bountyclaimedbyuserid || player.bountyclaimedbyname || 'unknown';
+      const current = summaries.get(key) ?? {
+        key,
+        name: player.bountyclaimedbyname || player.knockedoutbyname || 'Unassigned',
+        count: 0,
+        total: 0,
+      };
+      current.count += 1;
+      current.total += bountyAmount;
+      summaries.set(key, current);
+    }
+
+    return [...summaries.values()].sort((a, b) => b.total - a.total || b.count - a.count || a.name.localeCompare(b.name));
+  }, [players, tournament.bountyenabled]);
   const knockoutLeader = useMemo(() => {
     const counts = new Map<string, { name: string; count: number }>();
     for (const player of players) {
@@ -1803,66 +1831,80 @@ export default function RunTournament({
                   </div>
                 </div>
                 <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Knocked Out</h3>
-                    <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} text-pit-muted`}>{knockedOutPlayers.length}</span>
-                  </div>
-                  {knockedOutPlayers.length === 0 ? (
+                  {tournament.bountyenabled ? (
+                    <div className="mb-2 flex items-center gap-1 rounded-lg border border-pit-border bg-pit-bg/50 p-1">
+                      {(['bounties', 'knockouts'] as SidePanelView[]).map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          className={`flex-1 rounded-md px-2 py-1.5 text-center font-semibold uppercase tracking-[0.16em] transition-colors ${tvMode ? 'text-[10px]' : 'text-[11px]'} ${
+                            sidePanelView === view
+                              ? 'bg-pit-teal text-white shadow-[0_0_18px_rgba(20,184,184,0.22)]'
+                              : 'text-pit-muted hover:bg-pit-surface/70 hover:text-pit-text'
+                          }`}
+                          onClick={() => setSidePanelView(view)}
+                        >
+                          {view === 'bounties' ? 'Bounties' : 'Knocked Out'}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className={`${tvMode ? 'text-sm' : displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Knocked Out</h3>
+                      <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} text-pit-muted`}>{knockedOutPlayers.length}</span>
+                    </div>
+                  )}
+
+                  {tournament.bountyenabled && sidePanelView === 'bounties' ? (
+                    <>
+                      <div className={`mb-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2 ${tvMode ? 'text-[11px]' : 'text-xs'}`}>
+                        <span className="uppercase tracking-wide text-amber-100/75">Total claimed</span>
+                        <span className="font-semibold text-amber-100">{formatMoney(bountyClaimed)}</span>
+                      </div>
+                      {bountyClaimSummaries.length === 0 ? (
+                        <p className={`${tvMode ? 'text-[11px]' : 'text-xs'} rounded-lg border border-pit-border bg-pit-surface/35 px-2.5 py-2 text-pit-muted`}>
+                          No claimed bounties yet.
+                        </p>
+                      ) : (
+                        <div className={`${tvMode ? 'max-h-44 divide-y divide-pit-border/70 overflow-hidden rounded-lg border border-pit-border bg-pit-surface/35 text-xs' : displayMode ? 'max-h-64 space-y-1.5 overflow-y-auto pr-1' : 'max-h-52 space-y-1.5 overflow-y-auto pr-1'}`}>
+                          {bountyClaimSummaries.map((summary) => (
+                            <div
+                              key={summary.key}
+                              className={`flex items-center justify-between gap-2 ${tvMode ? 'px-2 py-1' : 'rounded-lg border border-pit-border bg-pit-surface/40 px-2.5 py-2'}`}
+                            >
+                              <span className="min-w-0 truncate font-semibold text-pit-text">{summary.name}</span>
+                              <span className="shrink-0 whitespace-nowrap font-semibold text-amber-200">
+                                🎯{summary.count} 💰{formatMoney(summary.total)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : knockedOutPlayers.length === 0 ? (
                     <p className={`${tvMode ? 'text-[11px]' : 'text-xs'} rounded-lg border border-pit-border bg-pit-surface/35 px-2.5 py-2 text-pit-muted`}>
                       No knockouts yet.
                     </p>
                   ) : (
                     <div className={`${tvMode ? 'max-h-44 divide-y divide-pit-border/70 overflow-hidden rounded-lg border border-pit-border bg-pit-surface/35 text-xs' : displayMode ? 'max-h-64 space-y-1.5 overflow-y-auto pr-1' : 'max-h-52 space-y-1.5 overflow-y-auto pr-1'}`}>
-                      {knockedOutPlayers.map((player) => {
-                        const bountyAmount = toNumber(player.bountyamount);
-                        const showBounty = tournament.bountyenabled && bountyAmount > 0 && isBountyPlacementEligible(tournament, player.placed);
-                        if (tvMode) {
-                          return (
-                            <div
-                              key={`${player.userid}-${player.placed}`}
-                              className="flex items-center justify-between gap-2 px-2 py-1"
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
-                                <span className="truncate font-semibold text-pit-text">
-                                  {playerNameWithMedals(player)}
-                                </span>
-                              </div>
-                              {showBounty && (
-                                <span className="shrink-0 font-semibold text-amber-200">
-                                  🎯 {formatMoney(bountyAmount)}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        }
-                        return (
-                          <div
-                            key={`${player.userid}-${player.placed}`}
-                            className={`rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}
-                          >
-                            <div className="flex min-w-0 items-center justify-between gap-2">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
-                                <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} truncate font-medium text-pit-text`}>
-                                  {playerNameWithMedals(player)}
-                                </span>
-                              </div>
-                            </div>
-                            {player.knockedoutbyname && (
-                              <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate text-pit-muted`}>
-                                Knocked out by {player.knockedoutbyname}
-                              </p>
-                            )}
-                            {showBounty && (
-                              <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate font-semibold text-amber-200`}>
-                                {formatMoney(bountyAmount)} bounty
-                                {player.bountyclaimedbyname ? ` to ${player.bountyclaimedbyname}` : ' revealed'}
-                              </p>
-                            )}
+                      {knockedOutPlayers.map((player) => (
+                        <div
+                          key={`${player.userid}-${player.placed}`}
+                          className={`flex items-center justify-between gap-2 ${tvMode ? 'px-2 py-1' : 'rounded-lg border border-pit-border bg-pit-surface/40 px-2.5 py-2'}`}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
+                            <span className={`${tvMode ? 'text-[11px]' : 'text-xs'} truncate font-medium text-pit-text`}>
+                              {playerNameWithMedals(player)}
+                            </span>
                           </div>
-                        );
-                      })}
+                          {player.knockedoutbyname && !tvMode && (
+                            <span className="max-w-[45%] truncate text-[11px] text-pit-muted">
+                              by {player.knockedoutbyname}
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
