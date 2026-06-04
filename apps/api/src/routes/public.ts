@@ -10,6 +10,7 @@ import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
+import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
@@ -293,7 +294,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
     [tournament.tournamentid]
   );
 
-  const playersWithCoins = await attachPlayerCoinBadges(players, tournament.groupid);
+  const playersWithAchievements = await attachPlayerAchievementCounts(players, tournament.groupid);
+  const playersWithCoins = await attachPlayerCoinBadges(playersWithAchievements, tournament.groupid);
   res.json({ tournament, players: playersWithCoins });
 });
 

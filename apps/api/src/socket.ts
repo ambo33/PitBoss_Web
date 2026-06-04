@@ -35,8 +35,26 @@ export function initSocket(httpServer: HttpServer): void {
       state.running = true;
       timerState.set(tournamentId, state);
       startInterval(tournamentId);
+      await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
       if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
+    });
+
+    socket.on('timer-chip-up-done', async ({ tournamentId }: { tournamentId: string }) => {
+      if (!await canControlTournamentTimer(socket, tournamentId)) return;
+      const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
+      const currentBlind = getCurrentBlind(state);
+      if (!isChipUpBlind(currentBlind)) return;
+      const previousLevel = state.currentlevel;
+      advanceLevel(state, { acknowledgeChipUp: true });
+      const nextBlind = getCurrentBlind(state);
+      if (!nextBlind || isChipUpBlind(nextBlind) || state.currentlevel === previousLevel) return;
+      state.running = true;
+      timerState.set(tournamentId, state);
+      startInterval(tournamentId);
+      await persistTimer(state);
+      io.to(`t:${tournamentId}`).emit('timer-state', state);
+      notifyLevelChanged(state);
     });
 
     socket.on('timer-pause', async ({ tournamentId }: { tournamentId: string }) => {
@@ -377,7 +395,9 @@ function normalizeTimerState(state: TimerState): void {
   const rawRemaining = Number(state.remainingsecs);
   state.remainingsecs = Number.isFinite(rawRemaining) && rawRemaining > 0
     ? Math.min(rawRemaining, maxSeconds)
-    : maxSeconds;
+    : isChipUpBlind(currentBlind)
+      ? 0
+      : maxSeconds;
 }
 
 async function persistTimer(state: TimerState): Promise<void> {

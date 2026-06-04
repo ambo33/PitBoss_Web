@@ -390,6 +390,7 @@ export interface Tournament {
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
   firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
+  cashfinishcount?: number; finaltablecount?: number;
   awardedcoins?: PlayerCoinBadge[];
   checkinaudiodata?: string | null;
   avatarimagedata?: string | null;

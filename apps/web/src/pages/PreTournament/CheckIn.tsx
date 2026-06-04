@@ -6,6 +6,7 @@ import { api, GroupMember, Tournament, TournamentPlayer } from '../../api/client
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
+import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { useAuthStore } from '../../store/auth';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
@@ -443,6 +444,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
     <div className={`card flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between ${player.placed != null ? 'opacity-50' : ''}`}>
       <div className="min-w-0 sm:flex-1">
         <p className="truncate text-sm font-medium text-white">{playerName(player)}</p>
+        <PlayerTrophyStrip player={player} size="sm" className="mt-1" />
         <CoinBadgeStrip coins={player.awardedcoins} size="sm" limit={4} className="mt-1" />
         <div className="mt-1 flex max-w-full flex-wrap items-center gap-1.5">
           {player.rebuys > 0 && (
@@ -583,7 +585,7 @@ function toNumber(value: unknown): number {
 }
 
 function playerName(player: TournamentPlayer): string {
-  return playerNameWithMedals(player);
+  return player.displayname ?? player.emailaddress ?? 'Player';
 }
 
 function formatMoney(value: number): string {

@@ -8,6 +8,7 @@ import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
 import { redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
+import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 
@@ -129,7 +130,8 @@ playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
      ORDER BY tp.createdate`,
     [req.params.tid]
   );
-  const rowsWithCoins = await attachPlayerCoinBadges(rows, tournament?.groupid);
+  const rowsWithAchievements = await attachPlayerAchievementCounts(rows, tournament?.groupid);
+  const rowsWithCoins = await attachPlayerCoinBadges(rowsWithAchievements, tournament?.groupid);
   res.json(rowsWithCoins);
 });
 

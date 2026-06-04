@@ -7,6 +7,7 @@ import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '..
 import BrandLockup from '../../components/BrandLockup';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
@@ -40,6 +41,11 @@ interface GreetingQueueItem {
   audioDataUrl?: string | null;
   avatarImageUrl?: string | null;
   awardedCoins?: TournamentPlayer['awardedcoins'];
+  firstplacecount?: TournamentPlayer['firstplacecount'];
+  secondplacecount?: TournamentPlayer['secondplacecount'];
+  thirdplacecount?: TournamentPlayer['thirdplacecount'];
+  cashfinishcount?: TournamentPlayer['cashfinishcount'];
+  finaltablecount?: TournamentPlayer['finaltablecount'];
   tableNumber?: number | null;
   seat?: number | null;
 }
@@ -59,6 +65,11 @@ interface ChampionCelebration {
   audioDataUrl?: string | null;
   avatarImageUrl?: string | null;
   awardedCoins?: TournamentPlayer['awardedcoins'];
+  firstplacecount?: TournamentPlayer['firstplacecount'];
+  secondplacecount?: TournamentPlayer['secondplacecount'];
+  thirdplacecount?: TournamentPlayer['thirdplacecount'];
+  cashfinishcount?: TournamentPlayer['cashfinishcount'];
+  finaltablecount?: TournamentPlayer['finaltablecount'];
 }
 
 function buildInitialTimerState(
@@ -162,6 +173,7 @@ export default function RunTournament({
   const greetingTimeoutRef = useRef<number | null>(null);
   const moneyBurstTimeoutRef = useRef<number | null>(null);
   const championTimeoutRefs = useRef<number[]>([]);
+  const pendingTvDisplayModeRef = useRef<TvDisplayMode | null>(null);
 
   const showAdminControls = isOwner && mode === 'admin';
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
@@ -237,14 +249,18 @@ export default function RunTournament({
   });
 
   function selectTvDisplayMode(nextMode: TvDisplayMode) {
-    if (localTvDisplayMode === nextMode) return;
+    if (activeTvDisplayMode === nextMode && pendingTvDisplayModeRef.current !== nextMode) return;
 
     const previousMode = localTvDisplayMode;
+    pendingTvDisplayModeRef.current = nextMode;
     setLocalTvDisplayMode(nextMode);
     tvOptionsMutation.mutate(
       { tvdisplaymode: nextMode },
       {
-        onError: () => setLocalTvDisplayMode(previousMode),
+        onError: () => {
+          pendingTvDisplayModeRef.current = null;
+          setLocalTvDisplayMode(previousMode);
+        },
       }
     );
   }
@@ -254,9 +270,16 @@ export default function RunTournament({
   }, [tournament.seatingmaxpertable]);
 
   useEffect(() => {
-    if (!tvOptionsMutation.isPending) {
-      setLocalTvDisplayMode(persistedTvDisplayMode);
+    const pendingMode = pendingTvDisplayModeRef.current;
+    if (pendingMode) {
+      if (persistedTvDisplayMode === pendingMode) {
+        pendingTvDisplayModeRef.current = null;
+      } else {
+        setLocalTvDisplayMode(pendingMode);
+        return;
+      }
     }
+    setLocalTvDisplayMode(persistedTvDisplayMode);
   }, [persistedTvDisplayMode, tvOptionsMutation.isPending]);
 
   useEffect(() => {
@@ -316,6 +339,11 @@ export default function RunTournament({
         audioDataUrl: player.checkinaudiodata ?? null,
         avatarImageUrl: player.avatarimagedata ?? null,
         awardedCoins: player.awardedcoins ?? [],
+        firstplacecount: player.firstplacecount,
+        secondplacecount: player.secondplacecount,
+        thirdplacecount: player.thirdplacecount,
+        cashfinishcount: player.cashfinishcount,
+        finaltablecount: player.finaltablecount,
         tableNumber: player.tablenumber ?? null,
         seat: player.seat ?? null,
     }));
@@ -476,6 +504,11 @@ export default function RunTournament({
         audioDataUrl: newChampion.checkinaudiodata ?? null,
         avatarImageUrl: newChampion.avatarimagedata ?? null,
         awardedCoins: newChampion.awardedcoins ?? [],
+        firstplacecount: newChampion.firstplacecount,
+        secondplacecount: newChampion.secondplacecount,
+        thirdplacecount: newChampion.thirdplacecount,
+        cashfinishcount: newChampion.cashfinishcount,
+        finaltablecount: newChampion.finaltablecount,
       });
     } else if (newKnockout) {
       announceKnockout(newKnockout);
@@ -569,6 +602,12 @@ export default function RunTournament({
 
   async function warmTimerAudio() {
     await unlockTimerAudio();
+    primeTimerAudio();
+  }
+
+  function submitKnockout(userId: string, placed: number | null, knockedOutByUserId: string | null = null) {
+    void warmTimerAudio();
+    knockMutation.mutate({ userId, placed, knockedOutByUserId });
   }
 
   function showDemoExploreTipOnce() {
@@ -587,6 +626,10 @@ export default function RunTournament({
     void warmTimerAudio();
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
+    if (chipUpAwaitingAck) {
+      emit('timer-chip-up-done');
+      return;
+    }
     if (demoMode && showAdminControls && !displayMode) {
       showDemoExploreTipOnce();
     }
@@ -842,7 +885,7 @@ export default function RunTournament({
     const fallback = () => {
       if (isBreakBlind(blind)) {
         if (isChipUpBlind(blind)) {
-          announceMessage(`${blind?.label || 'Chip up'}. Please color up the chips. The clock will wait for the host to resume.`);
+          announceMessage(`${blind?.label || 'Chip up'}. Please color up the chips. The clock will wait for the host to continue.`);
         } else {
           announceMessage(`${blind?.label || 'Break'}. ${Number(blind?.minutes ?? 0)} minute break.`);
         }
@@ -854,6 +897,11 @@ export default function RunTournament({
       }
       announceLevel(state.currentlevel, Number(blind?.smallblind ?? 0), Number(blind?.bigblind ?? 0), announcementTemplatesRef.current.levelUp, Number(blind?.ante ?? 0));
     };
+
+    if (isChipUpBlind(blind)) {
+      fallback();
+      return;
+    }
 
     playAnnouncerMoment({
       eventtype,
@@ -871,6 +919,7 @@ export default function RunTournament({
   }
 
   function announceKnockout(player: TournamentPlayer) {
+    void warmTimerAudio();
     const bountyAmount = toNumber(player.bountyamount);
     const hasBounty = Boolean(tournament.bountyenabled)
       && isBountyPlacementEligible(tournament, player.placed)
@@ -1239,7 +1288,7 @@ export default function RunTournament({
                               type="button"
                               className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                               onClick={() => {
-                                knockMutation.mutate({ userId: selectedPlayer.userid, placed: Math.max(activePlayers, 1), knockedOutByUserId: null });
+                                submitKnockout(selectedPlayer.userid, Math.max(activePlayers, 1));
                                 setKnockoutCreditOpen(false);
                                 setShowPlayerActions(false);
                               }}
@@ -1257,11 +1306,7 @@ export default function RunTournament({
                                     type="button"
                                     className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-pit-teal/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={() => {
-                                      knockMutation.mutate({
-                                        userId: selectedPlayer.userid,
-                                        placed: Math.max(activePlayers, 1),
-                                        knockedOutByUserId: candidate.userid,
-                                      });
+                                      submitKnockout(selectedPlayer.userid, Math.max(activePlayers, 1), candidate.userid);
                                       setKnockoutCreditOpen(false);
                                       setShowPlayerActions(false);
                                     }}
@@ -1839,7 +1884,8 @@ export default function RunTournament({
               <h2 className="mt-4 truncate text-5xl font-semibold tracking-tight text-white xl:text-8xl 2xl:text-[7rem]">
                 {activeGreeting.name}
               </h2>
-              <CoinBadgeStrip coins={activeGreeting.awardedCoins} size="lg" limit={8} className="mt-4 justify-center" />
+              <PlayerTrophyStrip player={activeGreeting} size="lg" className="mt-4 justify-center" />
+              <CoinBadgeStrip coins={activeGreeting.awardedCoins} size="lg" limit={8} className="mt-3 justify-center" />
               {activeGreeting.tableNumber != null && activeGreeting.seat != null && (
                 <p className="mt-3 text-2xl font-semibold uppercase tracking-[0.18em] text-yellow-200 xl:text-4xl">
                   Table {activeGreeting.tableNumber} Seat {activeGreeting.seat}
@@ -1892,7 +1938,8 @@ export default function RunTournament({
               <h2 className="mt-4 truncate text-5xl font-black tracking-tight text-white xl:text-8xl">
                 {activeChampion.name}
               </h2>
-              <CoinBadgeStrip coins={activeChampion.awardedCoins} size="lg" limit={8} className="mt-4 justify-center" />
+              <PlayerTrophyStrip player={activeChampion} size="lg" className="mt-4 justify-center" />
+              <CoinBadgeStrip coins={activeChampion.awardedCoins} size="lg" limit={8} className="mt-3 justify-center" />
               <p className="mt-4 text-lg font-semibold text-emerald-100 xl:text-3xl">
                 The last player standing
               </p>
@@ -2075,7 +2122,13 @@ function TvSeatingBoard({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${nameSize}`}>{playerNameWithMedals(player)}</p>
+                <p className={`truncate font-semibold ${checkedIn ? 'text-white' : 'text-pit-muted'} ${nameSize}`}>{player.displayname ?? player.emailaddress ?? 'Player'}</p>
+                <PlayerTrophyStrip
+                  player={player}
+                  size={compactRegistered ? 'xs' : denseTvCard ? 'sm' : fullWidth ? 'md' : 'sm'}
+                  limit={5}
+                  className={compactRegistered ? 'mt-0.5' : 'mt-1'}
+                />
                 {!compactRegistered && !showFloatingCoins && <CoinBadgeStrip coins={player.awardedcoins} size={fullWidth ? 'md' : 'sm'} limit={fullWidth ? 5 : 4} className="mt-1" />}
                 {hasAssignments ? (
                   <p className={`${assignmentSize} font-medium ${checkedIn ? 'text-yellow-200' : 'text-pit-muted'}`}>

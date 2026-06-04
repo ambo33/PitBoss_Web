@@ -40,7 +40,7 @@ export default function CoinBadgeStrip({
           title={`${coin.name}${coin.count > 1 ? ` x${coin.count}` : ''}`}
         >
           <img
-            src={coin.imagedata ?? coin.imageurl ?? '/challenge-coins/placement-gold.svg'}
+            src={coin.imagedata ?? coin.imageurl ?? '/challenge-coins/defaults/big-stack.svg'}
             alt={coin.name}
             className={`${sizeClasses[size]} rounded-full border border-white/15 bg-pit-bg object-cover shadow-sm`}
           />

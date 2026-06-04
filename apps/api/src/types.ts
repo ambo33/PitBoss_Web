@@ -155,6 +155,8 @@ export interface TournamentPlayer {
   firstplacecount?: number;
   secondplacecount?: number;
   thirdplacecount?: number;
+  cashfinishcount?: number;
+  finaltablecount?: number;
   awardedcoins?: PlayerCoinBadge[];
   checkinaudiodata?: string | null;
   avatarimagedata?: string | null;

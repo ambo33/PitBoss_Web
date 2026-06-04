@@ -7,9 +7,10 @@ import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, Grou
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { useAuthStore } from '../../store/auth';
 import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
-import { playerNameWithMedals } from '../../utils/playerAchievements';
+import { PLAYER_ACHIEVEMENT_LEGEND, playerNameWithMedals } from '../../utils/playerAchievements';
 import { isEnabledFlag } from '../../utils/flags';
 import {
   DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
@@ -1431,7 +1432,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
             <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pit-muted">Member stats</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-pit-text">
-                {GROUP_MEMBER_STAT_LEGEND.map((item) => (
+                {PLAYER_ACHIEVEMENT_LEGEND.map((item) => (
                   <span key={item.label} className="inline-flex items-center gap-1 rounded-full border border-pit-border bg-pit-surface/50 px-2 py-1">
                     <span aria-hidden="true">{item.icon}</span>
                     <span>{item.label}</span>
@@ -1455,15 +1456,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                           </span>
                         )}
                       </div>
-                      {groupMemberTournamentStats(m).length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold text-pit-text">
-                          {groupMemberTournamentStats(m).map((stat) => (
-                            <span key={stat.label} className="rounded-full border border-pit-border bg-pit-surface/50 px-2 py-0.5" title={stat.label} aria-label={`${stat.label}: ${stat.count}`}>
-                              {stat.icon}x{stat.count}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <PlayerTrophyStrip player={m} size="sm" className="mt-1" />
                     </div>
                   </div>
                   {group.isadmin && !m.isadmin && (
@@ -1478,22 +1471,6 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
 
         {detailTab === 'coins' && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-white">Placement medals</p>
-                  <p className="mt-1 text-xs leading-5 text-pit-muted">
-                    Registered users automatically collect first, second, and third place counts from this group's tournament results. Guests are ignored.
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <img src="/challenge-coins/placement-gold.svg" alt="First place" className="h-10 w-10" />
-                  <img src="/challenge-coins/placement-silver.svg" alt="Second place" className="h-10 w-10" />
-                  <img src="/challenge-coins/placement-bronze.svg" alt="Third place" className="h-10 w-10" />
-                </div>
-              </div>
-            </div>
-
             {group.isadmin && (
               <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-xl border border-pit-border bg-pit-bg p-4">
@@ -1792,19 +1769,6 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   );
 }
 
-const GROUP_MEMBER_STAT_LEGEND = [
-  { icon: '🏆', label: '1st place', key: 'firstplacecount' },
-  { icon: '🥈', label: '2nd place', key: 'secondplacecount' },
-  { icon: '🥉', label: '3rd place', key: 'thirdplacecount' },
-  { icon: '💰', label: 'Cash finishes', key: 'cashfinishcount' },
-  { icon: '🏁', label: 'Final tables', key: 'finaltablecount' },
-] as const;
-
-function statCount(value: unknown): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
-}
-
 function groupMemberDisplayName(member: GroupMember): string {
   return member.displayname ?? member.emailaddress ?? 'Player';
 }
@@ -1818,16 +1782,6 @@ function sortGroupMembersByName(members: GroupMember[]): GroupMember[] {
     if (nameCompare !== 0) return nameCompare;
     return a.userid.localeCompare(b.userid);
   });
-}
-
-function groupMemberTournamentStats(member: GroupMember) {
-  return GROUP_MEMBER_STAT_LEGEND
-    .map((item) => ({
-      icon: item.icon,
-      label: item.label,
-      count: statCount(member[item.key]),
-    }))
-    .filter((item) => item.count > 0);
 }
 
 function CoinImage({ coin }: { coin: GroupCoin }) {
