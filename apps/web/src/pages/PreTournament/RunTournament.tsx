@@ -126,6 +126,7 @@ export default function RunTournament({
     return buildInitialTimerState(tournamentId, cachedBlinds, cachedTimer);
   });
   const [showAdjustments, setShowAdjustments] = useState(false);
+  const [mobileStructureCollapsed, setMobileStructureCollapsed] = useState(true);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [showPlayerActions, setShowPlayerActions] = useState(false);
   const [knockoutCreditOpen, setKnockoutCreditOpen] = useState(false);
@@ -171,6 +172,7 @@ export default function RunTournament({
   const showKnockoutQr = !demoMode && (mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true)));
   const persistedTvDisplayMode: TvDisplayMode = tournament.tvdisplaymode === 'seating' ? 'seating' : 'timer';
   const [localTvDisplayMode, setLocalTvDisplayMode] = useState<TvDisplayMode>(persistedTvDisplayMode);
+  const mobileStructurePanelId = `mobile-run-structure-${tournamentId}`;
 
   const refreshTournamentData = () => {
     if (queryKeysToRefresh?.length) {
@@ -1405,10 +1407,26 @@ export default function RunTournament({
             ) : (
             <div className={`grid items-start ${tvMode ? 'grid-cols-[260px_minmax(0,1fr)_260px] gap-3 2xl:grid-cols-[274px_minmax(0,1fr)_274px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-2 lg:grid-cols-[252px_minmax(0,1fr)_252px] xl:grid-cols-[274px_minmax(0,1fr)_274px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
-                  <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
+                    <button
+                      type="button"
+                      className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold lg:hidden"
+                      aria-expanded={!mobileStructureCollapsed}
+                      aria-controls={mobileStructurePanelId}
+                      onClick={() => setMobileStructureCollapsed((collapsed) => !collapsed)}
+                    >
+                      {mobileStructureCollapsed ? 'Expand' : 'Collapse'}
+                      {mobileStructureCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                    </button>
+                  </div>
                 </div>
+                <div
+                  id={mobileStructurePanelId}
+                  className={`${mobileStructureCollapsed ? 'hidden lg:block' : 'block'}`}
+                >
                 <div className="overflow-hidden rounded-lg border border-pit-border">
                   <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
                     <span>Level</span>
@@ -1442,6 +1460,7 @@ export default function RunTournament({
                       );
                     })}
                   </div>
+                </div>
                 </div>
               </section>
 

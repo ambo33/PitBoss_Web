@@ -408,11 +408,12 @@ adminRouter.get('/users', async (req: Request, res: Response) => {
      FROM users u
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN accounttiers at ON at.tierid = ${sqlResolveTierId('um')}
-     WHERE ($2::STRING IS NULL OR u.emailhash = $2)
-       AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.thepokerplanner.com'
-       AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.pokerplanner.bet'
-       AND COALESCE(um.isguestuser, FALSE) = FALSE
-     ORDER BY lower(COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress)) ASC`,
+      WHERE ($2::STRING IS NULL OR u.emailhash = $2)
+        AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.thepokerplanner.com'
+        AND COALESCE(u.emailaddress, '') NOT LIKE 'guest+%@guest.pokerplanner.bet'
+        AND COALESCE(um.isguestuser, FALSE) = FALSE
+        AND COALESCE(um.isdemo, FALSE) = FALSE
+      ORDER BY lower(COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress)) ASC`,
     [nowInAppTimezone(), emailHash]
   );
   res.json(rows.map((row) => {
@@ -429,6 +430,10 @@ adminRouter.get('/users', async (req: Request, res: Response) => {
 adminRouter.get('/users/:id', async (req: Request, res: Response) => {
   const account = await getAccountProfile(req.params.id);
   if (!account) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  if (account.isdemo) {
     res.status(404).json({ error: 'User not found' });
     return;
   }
@@ -465,6 +470,11 @@ adminRouter.get('/users/:id', async (req: Request, res: Response) => {
 
 adminRouter.put('/users/:id', async (req: Request, res: Response) => {
   const { tierid, issuperadmin, aicreditsremaining } = req.body as { tierid?: number; issuperadmin?: boolean; aicreditsremaining?: number };
+  const account = await getAccountProfile(req.params.id);
+  if (!account || account.isdemo) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
   if (tierid != null && ![1, 2, 3].includes(Number(tierid))) {
     res.status(400).json({ error: 'Invalid account tier' });
     return;
@@ -485,8 +495,8 @@ adminRouter.put('/users/:id', async (req: Request, res: Response) => {
     [req.params.id, tierid ?? null, issuperadmin ?? null, aicreditsremaining == null ? null : Math.floor(Number(aicreditsremaining))]
   );
 
-  const account = await getAccountProfile(req.params.id);
-  res.json({ success: true, account });
+  const updatedAccount = await getAccountProfile(req.params.id);
+  res.json({ success: true, account: updatedAccount });
 });
 
 function nowInAppTimezone() {

@@ -440,16 +440,16 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   }, [player.bountyamount]);
 
   return (
-    <div className={`card flex items-center justify-between gap-3 py-3 ${player.placed != null ? 'opacity-50' : ''}`}>
-      <div className="min-w-0">
+    <div className={`card flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between ${player.placed != null ? 'opacity-50' : ''}`}>
+      <div className="min-w-0 sm:flex-1">
         <p className="truncate text-sm font-medium text-white">{playerName(player)}</p>
         <CoinBadgeStrip coins={player.awardedcoins} size="sm" limit={4} className="mt-1" />
-        <div className="mt-1 flex gap-2">
+        <div className="mt-1 flex max-w-full flex-wrap items-center gap-1.5">
           {player.rebuys > 0 && (
             isOwner && canUseClubFeatures ? (
               <button
                 type="button"
-                className="badge bg-yellow-900/50 text-xs text-yellow-300 transition hover:bg-yellow-800/60"
+                className="badge whitespace-nowrap bg-yellow-900/50 text-xs text-yellow-300 transition hover:bg-yellow-800/60"
                 onClick={onRemoveRebuy}
                 disabled={isBusy}
                 title="Remove one rebuy"
@@ -457,14 +457,14 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
                 x{player.rebuys} rebuy
               </button>
             ) : (
-              <span className="badge bg-yellow-900/50 text-xs text-yellow-300">x{player.rebuys} rebuy</span>
+              <span className="badge whitespace-nowrap bg-yellow-900/50 text-xs text-yellow-300">x{player.rebuys} rebuy</span>
             )
           )}
           {player.addedon && (
             isOwner && canUseClubFeatures ? (
               <button
                 type="button"
-                className="badge bg-blue-900/50 text-xs text-blue-300 transition hover:bg-blue-800/60"
+                className="badge whitespace-nowrap bg-blue-900/50 text-xs text-blue-300 transition hover:bg-blue-800/60"
                 onClick={onRemoveAddon}
                 disabled={isBusy}
                 title="Remove add-on"
@@ -472,25 +472,25 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
                 add-on
               </button>
             ) : (
-              <span className="badge bg-blue-900/50 text-xs text-blue-300">add-on</span>
+              <span className="badge whitespace-nowrap bg-blue-900/50 text-xs text-blue-300">add-on</span>
             )
           )}
-          {player.placed != null && <span className="badge bg-red-900/50 text-xs text-red-300">#{player.placed}</span>}
+          {player.placed != null && <span className="badge whitespace-nowrap bg-red-900/50 text-xs text-red-300">#{player.placed}</span>}
           {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && (
-            <span className="badge bg-amber-400/15 text-xs text-amber-200">
+            <span className="badge whitespace-nowrap bg-amber-400/15 text-xs text-amber-200">
               Bounty {formatMoney(toNumber(player.bountyamount))}
             </span>
           )}
-          {player.seat != null && <span className="badge bg-pit-teal/20 text-xs text-pit-teal">T{player.tablenumber}.S{player.seat}</span>}
+          {player.seat != null && <span className="badge whitespace-nowrap bg-pit-teal/20 text-xs text-pit-teal">T{player.tablenumber}.S{player.seat}</span>}
         </div>
       </div>
       {isOwner && (
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 min-[430px]:grid-cols-[repeat(auto-fit,minmax(76px,1fr))] sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end">
           {canUseClubFeatures && tournament.rebuyprice > 0 && player.checkedin && player.placed == null && (
-            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onRebuy} disabled={isBusy}>Rebuy</button>
+            <button type="button" className="btn-ghost min-h-9 justify-center px-2 py-1 text-xs" onClick={onRebuy} disabled={isBusy}>Rebuy</button>
           )}
           {canUseClubFeatures && tournament.addonprice > 0 && !player.addedon && (
-            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onAddon} disabled={isBusy}>Add-on</button>
+            <button type="button" className="btn-ghost min-h-9 justify-center px-2 py-1 text-xs" onClick={onAddon} disabled={isBusy}>Add-on</button>
           )}
           {tournament.bountyenabled && tournament.bountymode !== 'mystery' && (
             <label className="flex items-center gap-1 rounded-lg border border-pit-border bg-pit-bg/60 px-2 py-1 text-xs text-pit-muted">
@@ -512,25 +512,25 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             type="button"
             onClick={onCheckin}
             disabled={isBusy}
-            className={`btn px-3 py-1 text-xs ${player.checkedin ? 'border border-pit-teal bg-pit-teal/20 text-pit-teal' : 'btn-ghost'}`}
+            className={`btn min-h-9 justify-center px-3 py-1 text-xs ${player.checkedin ? 'border border-pit-teal bg-pit-teal/20 text-pit-teal' : 'btn-ghost'}`}
           >
               {player.checkedin ? 'In' : 'Check In'}
           </button>
           {player.placed == null ? (
             <button
               type="button"
-              className="btn-danger px-2 py-1 text-xs"
+              className="btn-danger min-h-9 justify-center px-2 py-1 text-xs"
               onClick={onKnockout}
               disabled={isBusy || !player.checkedin}
             >
               Knockout
             </button>
           ) : (
-            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onRestore} disabled={isBusy}>
+            <button type="button" className="btn-ghost min-h-9 justify-center px-2 py-1 text-xs" onClick={onRestore} disabled={isBusy}>
               Restore to field
             </button>
           )}
-          <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onSelect}>...</button>
+          <button type="button" className="btn-ghost min-h-9 justify-center px-2 py-1 text-xs" onClick={onSelect}>...</button>
         </div>
       )}
     </div>

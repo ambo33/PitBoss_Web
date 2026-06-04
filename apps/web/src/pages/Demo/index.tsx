@@ -6,6 +6,14 @@ import BrandLockup from '../../components/BrandLockup';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
 
+const demoBuildStatuses = [
+  'Building the demo poker room...',
+  'Creating 40 demo players...',
+  'Checking players in...',
+  'Seating the room...',
+  'Setting payouts and clock state...',
+];
+
 export default function DemoPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -16,9 +24,19 @@ export default function DemoPage() {
 
   async function startDemo() {
     setError('');
-    setStatus('Getting demo ready...');
+    setStatus(demoBuildStatuses[0]);
+    let buildStatusTimer: number | null = null;
     try {
+      let statusIndex = 0;
+      buildStatusTimer = window.setInterval(() => {
+        statusIndex = Math.min(statusIndex + 1, demoBuildStatuses.length - 1);
+        setStatus(demoBuildStatuses[statusIndex]);
+      }, 1300);
       const demo = await api.startDemo();
+      if (buildStatusTimer) {
+        window.clearInterval(buildStatusTimer);
+        buildStatusTimer = null;
+      }
       localStorage.setItem('pb_token', demo.token);
       setStatus('Loading the tournament room...');
       const profile = await api.me();
@@ -48,6 +66,9 @@ export default function DemoPage() {
         state: { tab: 'run', demoCoach: 'start' },
       });
     } catch (err) {
+      if (buildStatusTimer) {
+        window.clearInterval(buildStatusTimer);
+      }
       startedRef.current = false;
       setError(err instanceof Error ? err.message : 'Demo could not be created. Please try again.');
       setStatus('Demo setup hit a snag.');

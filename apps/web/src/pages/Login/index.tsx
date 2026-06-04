@@ -85,7 +85,7 @@ export default function LoginPage() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-10">
         <Link to="/" aria-label="ThePokerPlanner home">
-          <BrandLockup compact showSlogan={false} />
+          <BrandLockup compact showSlogan={false} className="[&>div]:translate-y-1" />
         </Link>
         <nav className="flex items-center gap-2">
           <Link className="hidden px-3 py-2 text-sm font-medium text-pit-text transition-colors hover:text-white sm:inline-flex" to="/landing">Overview</Link>
@@ -107,7 +107,6 @@ export default function LoginPage() {
         <div className="mb-6 hidden w-full max-w-sm sm:block">
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-pit-teal">Welcome back</p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-white">Sign in to ThePokerPlanner</h1>
-          <p className="mt-2 text-sm leading-6 text-pit-text">Manage poker nights, groups, leagues, and alerts from one clean dashboard.</p>
         </div>
 
         <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-pit-surface/96 shadow-[0_24px_70px_rgba(0,0,0,0.42)]">
