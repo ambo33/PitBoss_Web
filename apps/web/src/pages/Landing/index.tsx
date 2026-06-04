@@ -269,15 +269,15 @@ export default function LandingPage() {
             )}
           </header>
 
-          <div className="grid items-start gap-3 py-3 sm:gap-10 sm:pb-10 sm:pt-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(560px,1.1fr)] xl:pb-14 xl:pt-8">
-            <div data-reveal className="mx-auto max-w-2xl text-center xl:mx-0 xl:text-left">
+          <div className="grid items-start gap-3 py-3 sm:gap-10 sm:pb-10 sm:pt-4 min-[1100px]:grid-cols-[minmax(340px,0.86fr)_minmax(520px,1.14fr)] min-[1100px]:pb-14 min-[1100px]:pt-8">
+            <div data-reveal className="mx-auto max-w-2xl text-center min-[1100px]:mx-0 min-[1100px]:text-left">
               <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-3 sm:text-xs">
                 Poker nights, organized
               </p>
               <h1 className="whitespace-nowrap text-[clamp(1.62rem,6.9vw,2rem)] font-black leading-none text-white sm:whitespace-normal sm:text-6xl sm:leading-[0.98] lg:text-7xl">
                 Run Better Poker Nights
               </h1>
-              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 xl:mx-0">
+              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 min-[1100px]:mx-0">
                 Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
               </p>
               <div className="mx-auto mt-4 max-w-[20rem] sm:hidden">
@@ -310,7 +310,7 @@ export default function LandingPage() {
               <HeroBoard />
             </div>
 
-            <div data-reveal className="hidden max-w-lg gap-2 self-start text-sm text-pit-text sm:grid sm:grid-cols-3 xl:mt-[-0.25rem]">
+            <div data-reveal className="hidden max-w-lg gap-2 self-start text-sm text-pit-text sm:grid sm:grid-cols-3 min-[1100px]:mt-[-0.25rem]">
               {steps.map((step, index) => (
                 <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
                   <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-pit-teal/15 text-xs font-bold text-pit-teal">
@@ -321,7 +321,7 @@ export default function LandingPage() {
               ))}
             </div>
 
-            <div data-reveal className="hidden self-start sm:block xl:mt-[-0.25rem]">
+            <div data-reveal className="hidden self-start sm:block min-[1100px]:mt-[-0.25rem]">
               <HeroSupportRail />
             </div>
           </div>

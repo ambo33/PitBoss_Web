@@ -577,12 +577,22 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         name STRING(160) NOT NULL,
         begindate DATE NOT NULL,
         enddate DATE NOT NULL,
+        expectedplayercount INT,
+        leaguefee DECIMAL(10,2),
         pereventfee DECIMAL(10,2) DEFAULT 0,
+        showupbonuspoints INT,
+        bestfinishcount INT,
+        pointslookup JSONB,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
     `);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS expectedplayercount INT`);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS leaguefee DECIMAL(10,2)`);
     await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS pereventfee DECIMAL(10,2) DEFAULT 0`);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS showupbonuspoints INT`);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS bestfinishcount INT`);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS pointslookup JSONB`);
     await client.query(`
       UPDATE leagueseasons s
       SET pereventfee = COALESCE(l.pereventfee, 0)

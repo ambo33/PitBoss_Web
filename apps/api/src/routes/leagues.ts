@@ -14,6 +14,7 @@ import {
   type LeagueMemberRow,
   type LeaguePointRule,
   type LeagueResultRow,
+  type SerializedLeagueForFinals,
 } from '../leagues/scoring';
 import { encryptEmail, hashEmail, isGuestEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 import { sendLeagueNotification } from '../lib/server/notifications/notificationService';
@@ -46,13 +47,21 @@ type LeagueRow = {
   membercount?: number;
   eventcount?: number;
 };
+type SerializedLeague = Omit<LeagueRow, 'pointslookup' | 'finalmultiplierlookup'> & SerializedLeagueForFinals & {
+  pointslookup: LeaguePointRule[];
+};
 type LeagueSeasonRow = {
   seasonid: string;
   leagueid: string;
   name: string;
   begindate: string;
   enddate: string;
+  expectedplayercount?: number | null;
+  leaguefee?: number | null;
   pereventfee: number;
+  showupbonuspoints?: number | null;
+  bestfinishcount?: number | null;
+  pointslookup?: LeaguePointRule[] | string | null;
   active: boolean;
   createdat: string;
 };
@@ -217,7 +226,7 @@ function normalizeEventTime(value: unknown): string | null {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
-function serializeLeague(row: LeagueRow) {
+function serializeLeague(row: LeagueRow): SerializedLeague {
   return {
     ...row,
     expectedplayercount: Number(row.expectedplayercount || 36),
@@ -242,12 +251,38 @@ function serializeLeague(row: LeagueRow) {
 function serializeSeason(row: LeagueSeasonRow) {
   return {
     ...row,
+    expectedplayercount: row.expectedplayercount == null ? null : Number(row.expectedplayercount),
+    leaguefee: row.leaguefee == null ? null : Number(row.leaguefee),
     pereventfee: Number(row.pereventfee || 0),
+    showupbonuspoints: row.showupbonuspoints == null ? null : Number(row.showupbonuspoints),
+    bestfinishcount: row.bestfinishcount == null ? null : Number(row.bestfinishcount),
+    pointslookup: row.pointslookup == null
+      ? null
+      : typeof row.pointslookup === 'string'
+        ? JSON.parse(row.pointslookup) as LeaguePointRule[]
+        : row.pointslookup,
   };
 }
 
 function seasonEventFee(season: LeagueSeasonRow | null | undefined, fallback = 0) {
   return Math.max(0, Math.round(Number(season?.pereventfee ?? fallback ?? 0) * 100) / 100);
+}
+
+function leagueWithSeasonSettings(league: SerializedLeague, season: LeagueSeasonRow | null | undefined): SerializedLeague {
+  const seasonPointsLookup = season?.pointslookup == null
+    ? league.pointslookup
+    : typeof season.pointslookup === 'string'
+      ? JSON.parse(season.pointslookup) as LeaguePointRule[]
+      : season.pointslookup;
+  return {
+    ...league,
+    expectedplayercount: Number(season?.expectedplayercount ?? league.expectedplayercount ?? 36),
+    leaguefee: Number(season?.leaguefee ?? league.leaguefee ?? 0),
+    pereventfee: Number(season?.pereventfee ?? league.pereventfee ?? 0),
+    showupbonuspoints: Number(season?.showupbonuspoints ?? league.showupbonuspoints ?? 0),
+    bestfinishcount: Number(season?.bestfinishcount ?? league.bestfinishcount ?? 7),
+    pointslookup: seasonPointsLookup,
+  };
 }
 
 async function requireLeagueAdmin(leagueId: string, userId: string): Promise<boolean> {
@@ -280,7 +315,14 @@ async function getLeagueSeasonParticipantCount(leagueId: string, seasonId: strin
 
 async function getLeagueSeasons(leagueId: string) {
   return query<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat
+    `SELECT seasonid, leagueid, name, begindate, enddate,
+            expectedplayercount,
+            CAST(leaguefee AS DECIMAL) AS leaguefee,
+            CAST(pereventfee AS DECIMAL) AS pereventfee,
+            showupbonuspoints,
+            bestfinishcount,
+            pointslookup,
+            active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
      ORDER BY begindate DESC, createdat DESC`,
@@ -291,14 +333,28 @@ async function getLeagueSeasons(leagueId: string) {
 async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
   if (seasonId) {
     return queryOne<LeagueSeasonRow>(
-      `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat
+      `SELECT seasonid, leagueid, name, begindate, enddate,
+              expectedplayercount,
+              CAST(leaguefee AS DECIMAL) AS leaguefee,
+              CAST(pereventfee AS DECIMAL) AS pereventfee,
+              showupbonuspoints,
+              bestfinishcount,
+              pointslookup,
+              active, createdat
        FROM leagueseasons
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
       [leagueId, seasonId]
     );
   }
   return queryOne<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat
+    `SELECT seasonid, leagueid, name, begindate, enddate,
+            expectedplayercount,
+            CAST(leaguefee AS DECIMAL) AS leaguefee,
+            CAST(pereventfee AS DECIMAL) AS pereventfee,
+            showupbonuspoints,
+            bestfinishcount,
+            pointslookup,
+            active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
      ORDER BY begindate DESC, createdat DESC
@@ -593,17 +649,35 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
       ]
     );
     if (body.pointslookup != null || body.showupbonuspoints != null) {
-      const results = await client.query<{ resultid: string; placed: number | null; dnf: boolean }>(
-        `SELECT resultid, placed, dnf FROM leagueresults WHERE leagueid = $1`,
+      const results = await client.query<{
+        resultid: string;
+        placed: number | null;
+        dnf: boolean;
+        seasonpointslookup: LeaguePointRule[] | string | null;
+        seasonshowupbonuspoints: number | null;
+      }>(
+        `SELECT r.resultid, r.placed, r.dnf,
+                s.pointslookup AS seasonpointslookup,
+                s.showupbonuspoints AS seasonshowupbonuspoints
+         FROM leagueresults r
+         LEFT JOIN leagueevents e ON e.eventid = r.eventid
+         LEFT JOIN leagueseasons s ON s.seasonid = e.seasonid
+         WHERE r.leagueid = $1`,
         [req.params.id]
       );
       for (const result of results.rows) {
+        const resultPointsLookup = result.seasonpointslookup == null
+          ? pointsLookup
+          : normalizePointsLookup(result.seasonpointslookup);
+        const resultShowupBonus = result.seasonshowupbonuspoints == null
+          ? showupBonus
+          : Math.max(0, Number(result.seasonshowupbonuspoints || 0));
         await client.query(
           `UPDATE leagueresults SET points = $2, showupbonuspoints = $3, updatedat = now() WHERE resultid = $1`,
           [
             result.resultid,
-            pointsForPlace(pointsLookup, result.placed, result.dnf),
-            result.dnf ? 0 : showupBonus,
+            pointsForPlace(resultPointsLookup, result.placed, result.dnf),
+            result.dnf ? 0 : resultShowupBonus,
           ]
         );
       }
@@ -1723,6 +1797,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'League not found or not joined.' });
     return;
   }
+  const effectiveLeague = leagueWithSeasonSettings(league, selectedSeason);
   await query(
     `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
      SELECT $2, lm.leagueid, lm.userid, TRUE
@@ -1845,8 +1920,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      LIMIT 200`,
     [league.leagueid]
   );
-  const currentPointsLookup = normalizePointsLookup(league.pointslookup);
-  const currentShowupBonus = Math.max(0, Number(league.showupbonuspoints || 0));
+  const currentPointsLookup = normalizePointsLookup(effectiveLeague.pointslookup);
+  const currentShowupBonus = Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
   const normalizedResults = results.map((result) => {
     const placed = result.placed == null ? null : Number(result.placed);
     const dnf = Boolean(result.dnf);
@@ -1858,12 +1933,12 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
       showupbonuspoints: dnf ? 0 : currentShowupBonus,
     };
   });
-  const standings = buildStandings(members, normalizedResults, Number(league.bestfinishcount || 7));
+  const standings = buildStandings(members, normalizedResults, Number(effectiveLeague.bestfinishcount || 7));
 
   const canViewLeagueLedger = Boolean(league.isadmin || league.memberledgervisible);
 
   res.json({
-    league,
+    league: effectiveLeague,
     seasons: seasons.map(serializeSeason),
     selectedseasonid: selectedSeason.seasonid,
     members,
@@ -1882,7 +1957,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     }),
     auditlog: canViewLeagueLedger ? auditlog.map(serializeLeagueAudit) : [],
     standings,
-    finalstacks: buildFinalStacks(standings, league),
+    finalstacks: buildFinalStacks(standings, effectiveLeague),
   });
 });
 
@@ -2408,6 +2483,8 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     res.status(404).json({ error: 'League event not found.' });
     return;
   }
+  const season = event.seasonid ? await getSelectedSeason(req.params.id, event.seasonid) : null;
+  const effectiveLeague = leagueWithSeasonSettings(serializeLeague(leagueRow), season);
   const isSelf = targetUserId === req.userId;
   if ((!allowSelfLog || !isSelf) && !await requireLeagueAdmin(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'League admin required.' });
@@ -2448,9 +2525,9 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       return;
     }
   }
-  const pointsLookup = normalizePointsLookup(leagueRow.pointslookup);
+  const pointsLookup = normalizePointsLookup(effectiveLeague.pointslookup);
   const points = pointsForPlace(pointsLookup, placed, dnf);
-  const showupBonus = dnf ? 0 : Math.max(0, Number(leagueRow.showupbonuspoints || 0));
+  const showupBonus = dnf ? 0 : Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
   const previousResult = await queryOne<LeagueResultRow>(
     `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
      FROM leagueresults

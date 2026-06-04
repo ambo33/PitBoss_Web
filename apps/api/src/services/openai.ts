@@ -34,6 +34,7 @@ interface AnnouncerContext {
   isBreak?: boolean;
   breakLabel?: string | null;
   breakMinutes?: number | null;
+  resumingFromPause?: boolean;
   rebuyCutoffWarning?: 'five_minute_warning' | 'one_minute_warning' | null;
   rebuyClosed?: boolean;
   remainingPlayers: number;
@@ -315,6 +316,8 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
         'Rules: keep it under 38 words, no profanity, no illegal gambling encouragement, no copyrighted catchphrases, and do not claim affiliation with WWE, NFL, WSOP, or any real organization. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        context.eventType === 'level_up' && !context.isBreak && !context.resumingFromPause ? 'Do not say "welcome back" or imply players are returning; play never stopped.' : '',
+        context.eventType === 'level_up' && context.resumingFromPause ? 'Players are resuming after a break or chip-up. A brief "welcome back" is allowed, but not required.' : '',
         context.eventType === 'five_minute_warning' || context.eventType === 'one_minute_warning' ? 'This is a clock warning. Keep it direct and do not mention tournament name, prize pool, field movement, rebuys, add-ons, or player counts unless this is a rebuy cutoff warning.' : '',
         context.rebuyCutoffWarning ? 'This is a rebuy cutoff warning. Keep it direct and mention the rebuy deadline only.' : '',
         context.isBreak ? 'This level is a break. Announce the break note and duration. Do not mention blinds.' : '',

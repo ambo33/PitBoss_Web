@@ -81,6 +81,7 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     isbreak?: boolean;
     breaklabel?: string | null;
     breakminutes?: number | null;
+    resumingfrompause?: boolean;
     rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
     rebuyclosed?: boolean;
     prizepool?: number | null;
@@ -182,6 +183,7 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     isBreak: Boolean(body.isbreak),
     breakLabel: body.breaklabel ? String(body.breaklabel).trim().slice(0, 80) : null,
     breakMinutes: body.breakminutes == null ? null : Number(body.breakminutes),
+    resumingFromPause: Boolean(body.resumingfrompause),
     rebuyCutoffWarning: body.rebuycutoffwarning === 'five_minute_warning' || body.rebuycutoffwarning === 'one_minute_warning' ? body.rebuycutoffwarning : null,
     rebuyClosed: Boolean(body.rebuyclosed),
     remainingPlayers: Number(tournament.remainingplayers ?? 0),

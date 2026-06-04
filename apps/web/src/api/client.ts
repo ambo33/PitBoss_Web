@@ -801,6 +801,7 @@ export interface AnnouncerMomentRequest {
   isbreak?: boolean;
   breaklabel?: string | null;
   breakminutes?: number | null;
+  resumingfrompause?: boolean;
   rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
   rebuyclosed?: boolean;
   prizepool?: number | null;

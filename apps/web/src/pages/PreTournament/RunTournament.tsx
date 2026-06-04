@@ -903,6 +903,11 @@ export default function RunTournament({
       return;
     }
 
+    const previousBlind = previousLevel == null
+      ? undefined
+      : effectiveBlinds.find((candidate) => Number(candidate.level) === Number(previousLevel));
+    const resumingFromPause = !isBreakBlind(blind) && (isBreakBlind(previousBlind) || isChipUpBlind(previousBlind));
+
     playAnnouncerMoment({
       eventtype,
       currentlevel: Number(state.currentlevel),
@@ -914,6 +919,7 @@ export default function RunTournament({
       isbreak: isBreakBlind(blind),
       breaklabel: isBreakBlind(blind) ? (blind?.label ?? 'Break') : null,
       breakminutes: isBreakBlind(blind) ? Number(blind?.minutes ?? 0) : null,
+      resumingfrompause: resumingFromPause,
       rebuyclosed: rebuyClosed,
     }, fallback);
   }
@@ -1453,27 +1459,29 @@ export default function RunTournament({
                 />
               </div>
             ) : (
-            <div className={`grid items-start ${tvMode ? 'grid-cols-[260px_minmax(0,1fr)_260px] gap-3 2xl:grid-cols-[274px_minmax(0,1fr)_274px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-2 lg:grid-cols-[252px_minmax(0,1fr)_252px] xl:grid-cols-[274px_minmax(0,1fr)_274px]'}`}>
+            <div className={`grid items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-2 lg:grid-cols-[252px_minmax(0,1fr)_252px] xl:grid-cols-[274px_minmax(0,1fr)_274px]'}`}>
               <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
                   <div className="flex items-center gap-2">
                     <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
-                    <button
-                      type="button"
-                      className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold lg:hidden"
-                      aria-expanded={!mobileStructureCollapsed}
-                      aria-controls={mobileStructurePanelId}
-                      onClick={() => setMobileStructureCollapsed((collapsed) => !collapsed)}
-                    >
-                      {mobileStructureCollapsed ? 'Expand' : 'Collapse'}
-                      {mobileStructureCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                    </button>
+                    {!tvMode && (
+                      <button
+                        type="button"
+                        className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold lg:hidden"
+                        aria-expanded={!mobileStructureCollapsed}
+                        aria-controls={mobileStructurePanelId}
+                        onClick={() => setMobileStructureCollapsed((collapsed) => !collapsed)}
+                      >
+                        {mobileStructureCollapsed ? 'Expand' : 'Collapse'}
+                        {mobileStructureCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div
                   id={mobileStructurePanelId}
-                  className={`${mobileStructureCollapsed ? 'hidden lg:block' : 'block'}`}
+                  className={`${!tvMode && mobileStructureCollapsed ? 'hidden lg:block' : 'block'}`}
                 >
                 <div className="overflow-hidden rounded-lg border border-pit-border">
                   <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
@@ -1804,8 +1812,30 @@ export default function RunTournament({
                       No knockouts yet.
                     </p>
                   ) : (
-                    <div className={`${tvMode ? 'max-h-44 space-y-1' : displayMode ? 'max-h-64 space-y-1.5' : 'max-h-52 space-y-1.5'} overflow-y-auto pr-1`}>
+                    <div className={`${tvMode ? 'max-h-44 divide-y divide-pit-border/70 overflow-hidden rounded-lg border border-pit-border bg-pit-surface/35 text-xs' : displayMode ? 'max-h-64 space-y-1.5 overflow-y-auto pr-1' : 'max-h-52 space-y-1.5 overflow-y-auto pr-1'}`}>
                       {knockedOutPlayers.map((player) => {
+                        const bountyAmount = toNumber(player.bountyamount);
+                        const showBounty = tournament.bountyenabled && bountyAmount > 0 && isBountyPlacementEligible(tournament, player.placed);
+                        if (tvMode) {
+                          return (
+                            <div
+                              key={`${player.userid}-${player.placed}`}
+                              className="flex items-center justify-between gap-2 px-2 py-1"
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="shrink-0 font-semibold text-white">{ordinal(player.placed ?? 0)}</span>
+                                <span className="truncate font-semibold text-pit-text">
+                                  {playerNameWithMedals(player)}
+                                </span>
+                              </div>
+                              {showBounty && (
+                                <span className="shrink-0 font-semibold text-amber-200">
+                                  🎯 {formatMoney(bountyAmount)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
                         return (
                           <div
                             key={`${player.userid}-${player.placed}`}
@@ -1824,9 +1854,9 @@ export default function RunTournament({
                                 Knocked out by {player.knockedoutbyname}
                               </p>
                             )}
-                            {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && isBountyPlacementEligible(tournament, player.placed) && (
+                            {showBounty && (
                               <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate font-semibold text-amber-200`}>
-                                {formatMoney(toNumber(player.bountyamount))} bounty
+                                {formatMoney(bountyAmount)} bounty
                                 {player.bountyclaimedbyname ? ` to ${player.bountyclaimedbyname}` : ' revealed'}
                               </p>
                             )}

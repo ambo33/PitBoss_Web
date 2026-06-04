@@ -89,23 +89,6 @@ export async function resolveBountyPrizepool(tournamentId: string, value: number
   return normalizeMoney((grossPot * normalizePercent(value)) / 100);
 }
 
-async function hasStartedBountySettlement(tournamentId: string, startPlace: number | null): Promise<boolean> {
-  const row = await queryOne<{ locked: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1
-       FROM tournamentplayers
-       WHERE tournamentid = $1
-         AND (
-           bountyclaimedat IS NOT NULL
-           OR ($2::INT IS NULL AND placed IS NOT NULL)
-           OR ($2::INT IS NOT NULL AND placed IS NOT NULL AND placed <= $2::INT)
-         )
-     ) AS locked`,
-    [tournamentId, startPlace]
-  );
-  return Boolean(row?.locked);
-}
-
 export async function assignMysteryBounties(
   tournamentId: string,
   prizepool: number,
@@ -114,42 +97,56 @@ export async function assignMysteryBounties(
   minPayoutValue: number = 0
 ): Promise<{ assigned: number; total: number; denomination: number; locked: boolean }> {
   const startPlace = normalizeBountyStartPlace(startPlaceValue);
-  const locked = await hasStartedBountySettlement(tournamentId, startPlace);
   const denominationCents = Math.max(1, Math.round(normalizeBountyDenomination(denominationValue) * 100));
   const minUnits = Math.max(0, Math.ceil(normalizeBountyMinPayout(minPayoutValue) * 100 / denominationCents));
-  if (locked) {
-    const total = await queryOne<{ total: number }>(
-      `SELECT CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS total
-       FROM tournamentplayers
-       WHERE tournamentid = $1`,
-      [tournamentId]
-    );
-    return { assigned: 0, total: Number(total?.total ?? 0), denomination: denominationCents / 100, locked: true };
-  }
+  const claimed = await queryOne<{ total: number; count: number }>(
+    `SELECT CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS total,
+            CAST(count(*) AS INT) AS count
+     FROM tournamentplayers
+     WHERE tournamentid = $1
+       AND bountyclaimedat IS NOT NULL`,
+    [tournamentId]
+  );
+  const claimedTotal = normalizeMoney(claimed?.total ?? 0);
 
-  const activePlayers = await query<{ userid: string }>(
+  const eligiblePlayers = await query<{ userid: string }>(
     `SELECT userid
      FROM tournamentplayers
      WHERE tournamentid = $1
        AND COALESCE(checkedin, FALSE) = TRUE
-       AND placed IS NULL
+       AND bountyclaimedat IS NULL
+       AND (
+         placed IS NULL
+         OR $2::INT IS NULL
+         OR placed <= $2::INT
+       )
      ORDER BY createdate, userid`,
-    [tournamentId]
+    [tournamentId, startPlace]
   );
-  const players = activePlayers;
-  const totalUnits = Math.max(0, Math.round(normalizeMoney(prizepool) * 100 / denominationCents));
+  const players = eligiblePlayers;
+  const remainingPrizepool = Math.max(0, normalizeMoney(prizepool) - claimedTotal);
+  const totalUnits = Math.max(0, Math.round(remainingPrizepool * 100 / denominationCents));
 
   await query(
     `UPDATE tournamentplayers
      SET bountyamount = 0,
          bountyclaimedbyuserid = NULL,
          bountyclaimedat = NULL
-     WHERE tournamentid = $1`,
-    [tournamentId]
+     WHERE tournamentid = $1
+       AND bountyclaimedat IS NULL
+       AND (
+         COALESCE(checkedin, FALSE) = FALSE
+         OR (
+           placed IS NOT NULL
+           AND $2::INT IS NOT NULL
+           AND placed > $2::INT
+         )
+       )`,
+    [tournamentId, startPlace]
   );
 
   if (players.length === 0 || totalUnits <= 0) {
-    return { assigned: players.length, total: 0, denomination: denominationCents / 100, locked: false };
+    return { assigned: players.length, total: claimedTotal, denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
   }
   const enforceMinimum = !startPlace || players.length <= startPlace;
   const startingUnits = enforceMinimum ? minUnits : 0;
@@ -179,12 +176,20 @@ export async function assignMysteryBounties(
   const totalCents = totalUnits * denominationCents;
   await Promise.all(players.map((player, index) => query(
     `UPDATE tournamentplayers
-     SET bountyamount = $3
+     SET bountyamount = $3,
+         bountyclaimedbyuserid = CASE
+           WHEN placed IS NOT NULL AND knockedoutbyuserid IS NOT NULL AND $3::DECIMAL > 0 THEN knockedoutbyuserid
+           ELSE bountyclaimedbyuserid
+         END,
+         bountyclaimedat = CASE
+           WHEN placed IS NOT NULL AND knockedoutbyuserid IS NOT NULL AND $3::DECIMAL > 0 THEN COALESCE(bountyclaimedat, now())
+           ELSE bountyclaimedat
+         END
      WHERE tournamentid = $1 AND userid = $2`,
     [tournamentId, player.userid, (amounts[index] * denominationCents) / 100]
   )));
 
-  return { assigned: players.length, total: totalCents / 100, denomination: denominationCents / 100, locked: false };
+  return { assigned: players.length, total: claimedTotal + (totalCents / 100), denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
 }
 
 export async function redistributeMysteryBountiesForTournament(tournamentId: string): Promise<void> {
