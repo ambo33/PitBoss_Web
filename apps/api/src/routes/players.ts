@@ -185,6 +185,7 @@ playersRouter.post('/:tid/players', async (req: Request, res: Response) => {
         [req.params.tid, createdUser.guid]
       );
       await client.query('COMMIT');
+      await redistributeMysteryBountiesForTournament(req.params.tid);
       broadcastTournamentUpdate(req.params.tid, { players: true, source: 'admin-add-player' });
       res.status(201).json({ success: true });
       return;
@@ -214,6 +215,7 @@ playersRouter.post('/:tid/players', async (req: Request, res: Response) => {
     `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2)`,
     [req.params.tid, targetUserId]
   );
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'admin-add-player' });
   res.status(201).json({ success: true });
 });
@@ -246,6 +248,7 @@ playersRouter.post('/:tid/players/group-register', async (req: Request, res: Res
     `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2)`,
     [req.params.tid, req.userId]
   );
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'group-register' });
   res.status(201).json({ success: true });
 });
@@ -272,6 +275,7 @@ playersRouter.post('/:tid/players/self', async (req: Request, res: Response) => 
     `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2)`,
     [req.params.tid, req.userId]
   );
+  await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'self-register' });
   res.status(201).json({ success: true });
 });
@@ -595,12 +599,14 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     }
 
     const currentPlaced = current.placed == null ? null : Number(current.placed);
-    const bountySettings = await client.query<{ bountystartplace: number | null }>(
-      `SELECT CAST(bountystartplace AS INT) AS bountystartplace
+    const bountySettings = await client.query<{ bountyenabled: boolean; bountystartplace: number | null }>(
+      `SELECT COALESCE(bountyenabled, FALSE) AS bountyenabled,
+              CAST(bountystartplace AS INT) AS bountystartplace
        FROM tournaments
        WHERE tournamentid = $1`,
       [req.params.tid]
     );
+    const bountiesEnabled = Boolean(bountySettings.rows[0]?.bountyenabled);
     const bountyStartPlace = bountySettings.rows[0]?.bountystartplace == null
       ? null
       : Number(bountySettings.rows[0].bountystartplace);
@@ -612,6 +618,29 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
         [req.params.tid]
       );
       nextPlaced = Math.max(Number(activeResult.rows[0]?.activecount ?? nextPlaced), 1);
+    }
+
+    if (nextPlaced != null && bountiesEnabled && !creditedKnockoutByUserId) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'Choose who knocked out this player before recording the placement.' });
+      return;
+    }
+    if (nextPlaced != null && creditedKnockoutByUserId) {
+      const validCreditResult = await client.query(
+        `SELECT 1
+         FROM tournamentplayers
+         WHERE tournamentid = $1
+           AND userid = $2
+           AND userid != $3
+           AND COALESCE(checkedin, FALSE) = TRUE
+           AND placed IS NULL`,
+        [req.params.tid, creditedKnockoutByUserId, req.params.uid]
+      );
+      if (!validCreditResult.rows[0]) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'Choose a valid active player who knocked them out.' });
+        return;
+      }
     }
 
     if (nextPlaced == null) {

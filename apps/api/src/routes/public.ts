@@ -655,6 +655,7 @@ publicRouter.post('/tournaments/:id/register/self', requireAuth, async (req: Req
     [req.params.id, req.userId]
   );
 
+  await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-register-lobby' });
   res.json({ success: true });
 });
@@ -723,6 +724,7 @@ publicRouter.post('/tournaments/:id/register/guest', async (req: Request, res: R
     );
 
     await client.query('COMMIT');
+    await redistributeMysteryBountiesForTournament(req.params.id);
     broadcastTournamentUpdate(req.params.id, { players: true, source: 'guest-register-lobby' });
     res.status(201).json({ success: true, guestUserId: createdUser.guid });
   } catch (err) {
@@ -969,8 +971,9 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     }
   }
 
-  const activeField = await queryOne<{ activecount: number; bountystartplace: number | null }>(
+  const activeField = await queryOne<{ activecount: number; bountyenabled: boolean; bountystartplace: number | null }>(
     `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(tp.checkedin, FALSE) = TRUE AND tp.placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
+            , COALESCE(MAX(CASE WHEN COALESCE(t.bountyenabled, FALSE) = TRUE THEN 1 ELSE 0 END), 0) = 1 AS bountyenabled
             , CAST(MAX(t.bountystartplace) AS INT) AS bountystartplace
      FROM tournamentplayers tp
      JOIN tournaments t ON t.tournamentid = tp.tournamentid
@@ -979,6 +982,10 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   );
   const placed = Math.max(Number(activeField?.activecount ?? 0), 1);
   const bountyStartPlace = activeField?.bountystartplace == null ? null : Number(activeField.bountystartplace);
+  if (activeField?.bountyenabled && !knockedoutByUserId) {
+    res.status(400).json({ error: 'Choose who knocked you out before submitting.' });
+    return;
+  }
 
   await query(
     `UPDATE tournamentplayers

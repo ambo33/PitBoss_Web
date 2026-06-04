@@ -33,8 +33,16 @@ export function isBountyLive(tournament: Pick<Tournament, 'bountystartplace'>, a
 export function getConfiguredBountyPool(
   tournament: Pick<Tournament, 'bountyenabled' | 'bountymode' | 'bountyprizepool' | 'bountypooltype' | 'bountyroundingdenomination' | 'bountystartplace'>,
   grossPot: number,
-  players: Pick<TournamentPlayer, 'bountyamount' | 'placed' | 'bountyclaimedat'>[]
+  players: Pick<TournamentPlayer, 'bountyamount' | 'placed' | 'bountyclaimedat' | 'checkedin'>[]
 ) {
+  if (!tournament.bountyenabled) return 0;
+  if (tournament.bountymode !== 'mystery') {
+    const enteredFieldCount = players.filter((player) => Boolean(player.checkedin) || player.placed != null).length;
+    const startPlace = getBountyStartPlace(tournament);
+    const eligibleKnockouts = startPlace ? Math.min(startPlace, enteredFieldCount) : enteredFieldCount;
+    return Math.max(0, toNumber(tournament.bountyprizepool) * eligibleKnockouts);
+  }
+
   const locked = players.some((player) => Boolean(player.bountyclaimedat) || isBountyPlacementEligible(tournament, player.placed));
   return getConfiguredBountyPoolFromAssigned(tournament, grossPot, getAssignedBountyPool(players), locked);
 }

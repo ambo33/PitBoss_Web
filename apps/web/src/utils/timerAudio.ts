@@ -439,3 +439,27 @@ export function playKachingSound(): void {
     ]);
   }
 }
+
+export function playMysteryBountySpin(): void {
+  const steps: Array<{ frequency: number; duration: number; delay?: number; gain?: number }> = [];
+  for (let index = 0; index < 44; index += 1) {
+    const progress = index / 43;
+    steps.push({
+      frequency: 330 + (index % 9) * 55 + Math.floor(progress * 240),
+      duration: 0.055,
+      delay: index * (0.21 - progress * 0.11),
+      gain: 0.035 + progress * 0.025,
+    });
+  }
+  void playSequence(steps);
+}
+
+export function playMysteryBountyReveal(): void {
+  void playSequence([
+    { frequency: 523, duration: 0.12, gain: 0.06 },
+    { frequency: 659, duration: 0.12, delay: 0.13, gain: 0.065 },
+    { frequency: 784, duration: 0.14, delay: 0.27, gain: 0.07 },
+    { frequency: 1046, duration: 0.2, delay: 0.44, gain: 0.08 },
+    { frequency: 1318, duration: 0.28, delay: 0.66, gain: 0.07 },
+  ]);
+}

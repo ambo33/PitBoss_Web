@@ -115,10 +115,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
       setSelected(null);
     },
   });
-  const bountyMutation = useMutation({
-    mutationFn: ({ uid, amount }: { uid: string; amount: number }) => api.updatePlayerBounty(tournamentId, uid, amount),
-    onSuccess: () => refreshTournamentData(),
-  });
   const mysteryBountyMutation = useMutation({
     mutationFn: () => api.assignMysteryBounties(tournamentId),
     onSuccess: () => refreshTournamentData(),
@@ -141,7 +137,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     ?? removeGenericRebuyMutation.error
     ?? removeGenericAddonMutation.error
     ?? knockMutation.error
-    ?? bountyMutation.error
     ?? mysteryBountyMutation.error
     ?? removeMutation.error;
 
@@ -322,7 +317,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onRemoveAddon={() => removeAddonMutation.mutate(player.userid)}
             onKnockout={() => knockMutation.mutate({ uid: player.userid, placed: Math.max(activePlayers, 1) })}
             onRestore={() => knockMutation.mutate({ uid: player.userid, placed: null })}
-            onBountyChange={(amount) => bountyMutation.mutate({ uid: player.userid, amount })}
             onSelect={() => setSelected(player)}
             tournament={tournament}
             canUseClubFeatures={canUseClubFeatures}
@@ -337,7 +331,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               || removeGenericRebuyMutation.isPending
               || removeGenericAddonMutation.isPending
               || knockMutation.isPending
-              || bountyMutation.isPending
               || mysteryBountyMutation.isPending
             }
           />
@@ -419,7 +412,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onBountyChange, onSelect, tournament, canUseClubFeatures, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onSelect, tournament, canUseClubFeatures, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
@@ -429,17 +422,11 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   onRemoveAddon: () => void;
   onKnockout: () => void;
   onRestore: () => void;
-  onBountyChange: (amount: number) => void;
   onSelect: () => void;
   tournament: Tournament;
   canUseClubFeatures: boolean;
   isBusy: boolean;
 }) {
-  const [bountyInput, setBountyInput] = useState(String(toNumber(player.bountyamount)));
-  useEffect(() => {
-    setBountyInput(String(toNumber(player.bountyamount)));
-  }, [player.bountyamount]);
-
   return (
     <div className={`card flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between ${player.placed != null ? 'opacity-50' : ''}`}>
       <div className="min-w-0 sm:flex-1">
@@ -494,22 +481,6 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
           {canUseClubFeatures && tournament.addonprice > 0 && !player.addedon && (
             <button type="button" className="btn-ghost min-h-9 justify-center px-2 py-1 text-xs" onClick={onAddon} disabled={isBusy}>Add-on</button>
           )}
-          {tournament.bountyenabled && tournament.bountymode !== 'mystery' && (
-            <label className="flex items-center gap-1 rounded-lg border border-pit-border bg-pit-bg/60 px-2 py-1 text-xs text-pit-muted">
-              <span>$</span>
-              <input
-                className="w-16 bg-transparent text-right text-white outline-none"
-                type="number"
-                min="0"
-                step="0.01"
-                value={bountyInput}
-                onChange={(event) => setBountyInput(event.target.value)}
-                onBlur={() => onBountyChange(toNumber(bountyInput))}
-                disabled={isBusy}
-                aria-label={`Bounty amount for ${player.displayname ?? player.emailaddress ?? 'player'}`}
-              />
-            </label>
-          )}
           <button
             type="button"
             onClick={onCheckin}
@@ -523,7 +494,8 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
               type="button"
               className="btn-danger min-h-9 justify-center px-2 py-1 text-xs"
               onClick={onKnockout}
-              disabled={isBusy || !player.checkedin}
+              disabled={isBusy || !player.checkedin || Boolean(tournament.bountyenabled)}
+              title={tournament.bountyenabled ? 'Use Run Tournament player actions so the knockout can be credited.' : undefined}
             >
               Knockout
             </button>

@@ -10,7 +10,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
-import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
+import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playMysteryBountyReveal, playMysteryBountySpin, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
@@ -57,6 +57,15 @@ interface MoneyBurst {
   type: 'rebuy' | 'add-on' | 'bounty';
   amount?: number;
   claimedByName?: string | null;
+}
+
+interface MysteryBountyReveal {
+  id: string;
+  eliminatedName: string;
+  claimedByName?: string | null;
+  amount: number;
+  possibleAmounts: number[];
+  revealed: boolean;
 }
 
 interface ChampionCelebration {
@@ -146,6 +155,7 @@ export default function RunTournament({
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
+  const [activeMysteryBounty, setActiveMysteryBounty] = useState<MysteryBountyReveal | null>(null);
   const [activeChampion, setActiveChampion] = useState<ChampionCelebration | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
@@ -174,6 +184,8 @@ export default function RunTournament({
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
   const greetingTimeoutRef = useRef<number | null>(null);
   const moneyBurstTimeoutRef = useRef<number | null>(null);
+  const mysteryBountyRevealTimeoutRef = useRef<number | null>(null);
+  const mysteryBountyClearTimeoutRef = useRef<number | null>(null);
   const championTimeoutRefs = useRef<number[]>([]);
   const pendingTvDisplayModeRef = useRef<TvDisplayMode | null>(null);
 
@@ -448,11 +460,44 @@ export default function RunTournament({
         break;
       }
       if (current.bountyClaimed && current.bountyClaimed !== previous.bountyClaimed && toNumber(player.bountyamount) > 0) {
+        const bountyAmount = toNumber(player.bountyamount);
+        if (tournament.bountyenabled && tournament.bountymode === 'mystery') {
+          const possibleAmounts = [
+            bountyAmount,
+            ...players
+              .filter((candidate) => candidate.userid !== player.userid && !candidate.bountyclaimedat && toNumber(candidate.bountyamount) > 0)
+              .map((candidate) => toNumber(candidate.bountyamount)),
+          ].sort((a, b) => b - a);
+          const revealId = `${player.userid}-mystery-bounty-${current.bountyClaimed}-${Date.now()}`;
+          setActiveMoneyBurst(null);
+          setActiveMysteryBounty({
+            id: revealId,
+            eliminatedName: player.displayname ?? player.emailaddress ?? 'Player',
+            claimedByName: player.bountyclaimedbyname,
+            amount: bountyAmount,
+            possibleAmounts,
+            revealed: false,
+          });
+          playMysteryBountySpin();
+          if (mysteryBountyRevealTimeoutRef.current) window.clearTimeout(mysteryBountyRevealTimeoutRef.current);
+          if (mysteryBountyClearTimeoutRef.current) window.clearTimeout(mysteryBountyClearTimeoutRef.current);
+          mysteryBountyRevealTimeoutRef.current = window.setTimeout(() => {
+            setActiveMysteryBounty((currentReveal) => currentReveal?.id === revealId
+              ? { ...currentReveal, revealed: true }
+              : currentReveal);
+            playMysteryBountyReveal();
+          }, 10000);
+          mysteryBountyClearTimeoutRef.current = window.setTimeout(() => {
+            setActiveMysteryBounty((currentReveal) => currentReveal?.id === revealId ? null : currentReveal);
+          }, 15000);
+          nextBurst = null;
+          break;
+        }
         nextBurst = {
           id: `${player.userid}-bounty-${current.bountyClaimed}-${Date.now()}`,
           name: player.displayname ?? player.emailaddress ?? 'Player',
           type: 'bounty',
-          amount: toNumber(player.bountyamount),
+          amount: bountyAmount,
           claimedByName: player.bountyclaimedbyname,
         };
         break;
@@ -468,7 +513,7 @@ export default function RunTournament({
       if (moneyBurstTimeoutRef.current) window.clearTimeout(moneyBurstTimeoutRef.current);
       moneyBurstTimeoutRef.current = window.setTimeout(() => setActiveMoneyBurst(null), 2400);
     }
-  }, [displayMode, players, showAdminControls]);
+  }, [displayMode, players, showAdminControls, tournament.bountyenabled, tournament.bountymode]);
 
   useEffect(() => {
     if (!showAdminControls && !displayMode) return;
@@ -560,6 +605,12 @@ export default function RunTournament({
     if (moneyBurstTimeoutRef.current) {
       window.clearTimeout(moneyBurstTimeoutRef.current);
     }
+    if (mysteryBountyRevealTimeoutRef.current) {
+      window.clearTimeout(mysteryBountyRevealTimeoutRef.current);
+    }
+    if (mysteryBountyClearTimeoutRef.current) {
+      window.clearTimeout(mysteryBountyClearTimeoutRef.current);
+    }
     championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     championTimeoutRefs.current = [];
   }, []);
@@ -612,6 +663,7 @@ export default function RunTournament({
   }
 
   function submitKnockout(userId: string, placed: number | null, knockedOutByUserId: string | null = null) {
+    if (placed != null && tournament.bountyenabled && !knockedOutByUserId) return;
     void warmTimerAudio();
     knockMutation.mutate({ userId, placed, knockedOutByUserId });
   }
@@ -1326,9 +1378,9 @@ export default function RunTournament({
                                 setKnockoutCreditOpen(false);
                                 setShowPlayerActions(false);
                               }}
-                              disabled={knockMutation.isPending}
+                              disabled={knockMutation.isPending || Boolean(tournament.bountyenabled)}
                             >
-                              No knockout credit
+                              {tournament.bountyenabled ? 'Knockout credit required' : 'No knockout credit'}
                             </button>
                             <div className="mt-1 max-h-56 overflow-y-auto pr-1">
                               {knockoutCreditCandidates.length === 0 ? (
@@ -2029,6 +2081,87 @@ export default function RunTournament({
                   Finalize Tournament
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {(showAdminControls || displayMode) && activeMysteryBounty && (
+          <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center overflow-hidden rounded-[inherit] bg-black/55 px-4 py-6 backdrop-blur-sm">
+            <style>{`
+              @keyframes mystery-bounty-wheel-spin {
+                0% { transform: rotate(0deg) scale(0.98); }
+                80% { transform: rotate(2520deg) scale(1.02); }
+                100% { transform: rotate(2880deg) scale(1); }
+              }
+              @keyframes mystery-bounty-pulse {
+                0%, 100% { box-shadow: 0 0 22px rgba(245, 184, 75, 0.24); }
+                50% { box-shadow: 0 0 46px rgba(245, 184, 75, 0.46); }
+              }
+              @keyframes mystery-bounty-pop {
+                0% { transform: scale(0.82); opacity: 0; }
+                70% { transform: scale(1.06); opacity: 1; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+            `}</style>
+            <div className={`relative w-full max-w-[34rem] rounded-3xl border border-amber-300/35 bg-pit-bg/90 p-5 text-center shadow-2xl ${activeMysteryBounty.revealed ? '' : 'animate-[mystery-bounty-pulse_1.4s_ease-in-out_infinite]'}`}>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-200">Mystery Bounty</p>
+              <h3 className="mt-2 text-2xl font-black text-white md:text-4xl">
+                {activeMysteryBounty.revealed ? 'Bounty revealed' : 'Spinning the bounty wheel'}
+              </h3>
+              <p className="mt-1 text-sm text-pit-text">
+                {activeMysteryBounty.claimedByName
+                  ? `${activeMysteryBounty.claimedByName} knocked out ${activeMysteryBounty.eliminatedName}`
+                  : `${activeMysteryBounty.eliminatedName} has been eliminated`}
+              </p>
+
+              <div className="relative mx-auto mt-5 flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
+                <div className="absolute -top-1 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[14px] border-t-[22px] border-x-transparent border-t-amber-300 drop-shadow-[0_0_10px_rgba(245,184,75,0.7)]" />
+                <div
+                  className={`absolute inset-0 rounded-full border border-amber-200/30 bg-[conic-gradient(from_0deg,rgba(245,184,75,0.26),rgba(20,184,184,0.22),rgba(168,85,247,0.24),rgba(245,184,75,0.26))] shadow-[inset_0_0_28px_rgba(0,0,0,0.8),0_0_34px_rgba(245,184,75,0.22)] ${activeMysteryBounty.revealed ? 'opacity-45' : ''}`}
+                  style={{
+                    animation: activeMysteryBounty.revealed
+                      ? undefined
+                      : 'mystery-bounty-wheel-spin 10s cubic-bezier(0.12, 0.72, 0.15, 1) forwards',
+                    transform: activeMysteryBounty.revealed ? 'rotate(2880deg) scale(1)' : undefined,
+                  }}
+                >
+                  {(() => {
+                    const amounts = Array.from(new Set([activeMysteryBounty.amount, ...activeMysteryBounty.possibleAmounts]))
+                      .filter((amount) => amount > 0)
+                      .slice(0, 12);
+                    const wheelAmounts = amounts.length > 0 ? amounts : [activeMysteryBounty.amount];
+                    return wheelAmounts.map((amount, index) => {
+                      const angle = (index * 360) / wheelAmounts.length;
+                      return (
+                        <span
+                          key={`${amount}-${index}`}
+                          className="absolute left-1/2 top-1/2 flex h-9 min-w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/70 px-2 text-xs font-black text-white shadow-lg"
+                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-6.2rem) rotate(180deg)` }}
+                        >
+                          {formatMoney(amount)}
+                        </span>
+                      );
+                    });
+                  })()}
+                </div>
+                <div className="relative z-20 flex h-36 w-36 flex-col items-center justify-center rounded-full border border-pit-teal/40 bg-black/80 px-3 shadow-[0_0_30px_rgba(20,184,184,0.32)]">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-muted">
+                    {activeMysteryBounty.revealed ? 'Winner' : 'Revealing'}
+                  </span>
+                  {activeMysteryBounty.revealed ? (
+                    <span className="mt-1 animate-[mystery-bounty-pop_0.45s_ease-out_forwards] text-3xl font-black text-amber-200">
+                      {formatMoney(activeMysteryBounty.amount)}
+                    </span>
+                  ) : (
+                    <span className="mt-2 text-3xl font-black tracking-[0.2em] text-amber-200">???</span>
+                  )}
+                </div>
+              </div>
+              <p className="mt-4 text-sm font-semibold text-amber-100">
+                {activeMysteryBounty.revealed
+                  ? `${formatMoney(activeMysteryBounty.amount)} mystery bounty claimed.`
+                  : 'Possible remaining bounty values are on the wheel.'}
+              </p>
             </div>
           </div>
         )}

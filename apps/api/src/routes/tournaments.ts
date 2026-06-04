@@ -15,7 +15,9 @@ import {
   normalizeBountyStartPlace,
   normalizeMoney,
   normalizePercent,
+  redistributeMysteryBountiesForTournament,
   resolveBountyPrizepool,
+  validateStandardKnockoutBounty,
 } from '../services/bounties';
 import { broadcastTournamentUpdate } from '../socket';
 import { BlindLevel, Tournament } from '../types';
@@ -246,22 +248,45 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   const normalizedRebuyLastLevel = Number(rebuyprice ?? 0) > 0 || Number(rebuychips ?? 0) > 0
     ? normalizeRebuyLastLevel(rebuylastlevel)
     : null;
-  const normalizedBountyPoolType = normalizeBountyPoolType(bountypooltype);
+  const normalizedBountyPoolType = normalizedBountyMode === 'manual' ? 'amount' : normalizeBountyPoolType(bountypooltype);
   const normalizedBountyPrizepool = normalizedBountyPoolType === 'percent' ? normalizePercent(bountyprizepool) : normalizeMoney(bountyprizepool);
   const normalizedBountyDenomination = normalizeBountyDenomination(bountyroundingdenomination);
   const normalizedBountyStartPlace = normalizeBountyStartPlace(bountystartplace);
   const normalizedBountyMinPayout = normalizeBountyMinPayout(bountyminpayout);
-  if (Boolean(bountyenabled) && normalizedBountyMode === 'mystery' && normalizedBountyMinPayout > 0) {
+  if (Boolean(bountyenabled) && normalizedBountyMode === 'manual') {
+    const standardBountyError = validateStandardKnockoutBounty({
+      buyin,
+      maxPlayers: maxplayers,
+      bountyPerKnockout: normalizedBountyPrizepool,
+      startPlace: normalizedBountyStartPlace,
+    });
+    if (standardBountyError) {
+      res.status(400).json({ error: standardBountyError });
+      return;
+    }
+  }
+  if (Boolean(bountyenabled) && normalizedBountyMode === 'mystery') {
     const estimatedField = Math.max(0, Math.round(Number(maxplayers ?? 0)));
+    if (estimatedField <= 0) {
+      res.status(400).json({ error: 'Set max players before enabling bounties so the bounty cap is defined.' });
+      return;
+    }
     const eligibleCount = normalizedBountyStartPlace ? Math.min(normalizedBountyStartPlace, estimatedField) : estimatedField;
     const estimatedGrossPot = (Number(buyin ?? 0) * estimatedField)
       + (Number(rebuyprice ?? 0) * Number(genericrebuys ?? 0))
       + (Number(addonprice ?? 0) * Number(genericaddons ?? 0));
     const estimatedPool = estimateConfiguredBountyPool(normalizedBountyPoolType, normalizedBountyPrizepool, estimatedGrossPot);
-    const bountyMinimumError = validateBountyMinimumPool(estimatedPool, normalizedBountyMinPayout, eligibleCount);
-    if (bountyMinimumError) {
-      res.status(400).json({ error: bountyMinimumError });
+    const estimatedCap = normalizeMoney(Number(buyin ?? 0) * estimatedField);
+    if (estimatedPool > estimatedCap) {
+      res.status(400).json({ error: `Mystery bounty pool cannot exceed the expected cap of $${estimatedCap.toFixed(2)} from ${estimatedField} players.` });
       return;
+    }
+    if (normalizedBountyMinPayout > 0) {
+      const bountyMinimumError = validateBountyMinimumPool(estimatedPool, normalizedBountyMinPayout, eligibleCount);
+      if (bountyMinimumError) {
+        res.status(400).json({ error: bountyMinimumError });
+        return;
+      }
     }
   }
 
@@ -337,6 +362,7 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
       `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [row.tournamentid, req.userId]
     );
+    await redistributeMysteryBountiesForTournament(row.tournamentid);
   }
 
   if (groupid && notifygroup !== false) {
@@ -500,7 +526,9 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
           bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, bountystartplace, bountyminpayout } = req.body as Partial<Tournament>;
   const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
   const normalizedBountyMode = bountymode == null ? null : normalizeBountyMode(bountymode);
-  const normalizedBountyPoolType = bountypooltype == null ? null : normalizeBountyPoolType(bountypooltype);
+  const normalizedBountyPoolType = bountypooltype == null
+    ? (normalizedBountyMode === 'manual' ? 'amount' : null)
+    : (normalizedBountyMode === 'manual' ? 'amount' : normalizeBountyPoolType(bountypooltype));
   const effectiveBountyPoolType = normalizedBountyPoolType ?? null;
   const normalizedBountyPrizepool = bountyprizepool == null
     ? null
@@ -571,26 +599,54 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   }
   const effectiveBountyEnabled = bountyenabled ?? Boolean(currentTournament.bountyenabled);
   const effectiveBountyMode = normalizedBountyMode ?? normalizeBountyMode(currentTournament.bountymode);
-  const effectivePoolType = normalizedBountyPoolType ?? normalizeBountyPoolType(currentTournament.bountypooltype);
+  const effectivePoolType = effectiveBountyMode === 'manual'
+    ? 'amount'
+    : (normalizedBountyPoolType ?? normalizeBountyPoolType(currentTournament.bountypooltype));
   const effectivePrizepool = normalizedBountyPrizepool ?? Number(currentTournament.bountyprizepool ?? 0);
   const effectiveStartPlace = normalizedBountyStartPlace !== undefined ? normalizedBountyStartPlace : normalizeBountyStartPlace(currentTournament.bountystartplace);
   const effectiveMinPayout = normalizedBountyMinPayout ?? normalizeBountyMinPayout(currentTournament.bountyminpayout);
-  if (effectiveBountyEnabled !== false && effectiveBountyMode === 'mystery' && effectiveMinPayout > 0) {
-    const effectiveField = Math.max(
-      Number(currentTournament.activecount ?? 0),
-      Number(currentTournament.enteredcount ?? 0),
-      Number(maxplayers ?? currentTournament.maxplayers ?? 0),
-      Number(currentTournament.registeredcount ?? 0)
-    );
+  if (
+    bountyenabled !== undefined
+    && Boolean(bountyenabled) !== Boolean(currentTournament.bountyenabled)
+    && Number(currentTournament.enteredcount ?? 0) > 0
+  ) {
+    res.status(400).json({ error: 'Bounties cannot be enabled or disabled once players have entered the tournament.' });
+    return;
+  }
+  if (effectiveBountyEnabled !== false && effectiveBountyMode === 'manual') {
+    const standardBountyError = validateStandardKnockoutBounty({
+      buyin: buyin ?? currentTournament.buyin,
+      maxPlayers: maxplayers ?? currentTournament.maxplayers,
+      bountyPerKnockout: effectivePrizepool,
+      startPlace: effectiveStartPlace,
+    });
+    if (standardBountyError) {
+      res.status(400).json({ error: standardBountyError });
+      return;
+    }
+  }
+  if (effectiveBountyEnabled !== false && effectiveBountyMode === 'mystery') {
+    const effectiveField = Math.max(0, Math.round(Number(maxplayers ?? currentTournament.maxplayers ?? 0)));
+    if (effectiveField <= 0) {
+      res.status(400).json({ error: 'Set max players before enabling bounties so the bounty cap is defined.' });
+      return;
+    }
     const eligibleCount = effectiveStartPlace ? Math.min(effectiveStartPlace, effectiveField) : effectiveField;
     const estimatedGrossPot = (Number(buyin ?? currentTournament.buyin ?? 0) * effectiveField)
       + (Number(rebuyprice ?? currentTournament.rebuyprice ?? 0) * Number(genericrebuys ?? currentTournament.genericrebuys ?? 0))
       + (Number(addonprice ?? currentTournament.addonprice ?? 0) * Number(genericaddons ?? currentTournament.genericaddons ?? 0));
     const estimatedPool = estimateConfiguredBountyPool(effectivePoolType, effectivePrizepool, estimatedGrossPot);
-    const bountyMinimumError = validateBountyMinimumPool(estimatedPool, effectiveMinPayout, eligibleCount);
-    if (bountyMinimumError) {
-      res.status(400).json({ error: bountyMinimumError });
+    const estimatedCap = normalizeMoney(Number(buyin ?? currentTournament.buyin ?? 0) * effectiveField);
+    if (estimatedPool > estimatedCap) {
+      res.status(400).json({ error: `Mystery bounty pool cannot exceed the expected cap of $${estimatedCap.toFixed(2)} from ${effectiveField} players.` });
       return;
+    }
+    if (effectiveMinPayout > 0) {
+      const bountyMinimumError = validateBountyMinimumPool(estimatedPool, effectiveMinPayout, eligibleCount);
+      if (bountyMinimumError) {
+        res.status(400).json({ error: bountyMinimumError });
+        return;
+      }
     }
   }
   await query(
@@ -635,10 +691,19 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   if (bountyenabled === false) {
     await query(
       `UPDATE tournamentplayers
-       SET bountyclaimedbyuserid = NULL,
+       SET bountyamount = 0,
+           bountyclaimedbyuserid = NULL,
            bountyclaimedat = NULL
        WHERE tournamentid = $1`,
       [req.params.id]
+    );
+  } else if (effectiveBountyEnabled !== false && effectiveBountyMode === 'manual') {
+    await query(
+      `UPDATE tournamentplayers
+       SET bountyamount = $2
+       WHERE tournamentid = $1
+         AND bountyclaimedat IS NULL`,
+      [req.params.id, effectivePrizepool]
     );
   } else if (
     (bountyenabled == null || bountyenabled === true)

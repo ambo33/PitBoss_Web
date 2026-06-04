@@ -35,6 +35,44 @@ export function normalizeBountyMinPayout(value: unknown): number {
   return normalizeMoney(value);
 }
 
+export function getBountyEligibleCount(fieldSize: number, startPlaceValue: unknown): number {
+  const field = Math.max(0, Math.floor(Number(fieldSize) || 0));
+  const startPlace = normalizeBountyStartPlace(startPlaceValue);
+  return startPlace ? Math.min(startPlace, field) : field;
+}
+
+export function validateStandardKnockoutBounty({
+  buyin,
+  maxPlayers,
+  bountyPerKnockout,
+  startPlace,
+}: {
+  buyin: unknown;
+  maxPlayers: unknown;
+  bountyPerKnockout: unknown;
+  startPlace: unknown;
+}): string | null {
+  const field = Math.max(0, Math.floor(Number(maxPlayers) || 0));
+  const perKnockout = normalizeMoney(bountyPerKnockout);
+  const entry = normalizeMoney(buyin);
+  const normalizedStartPlace = normalizeBountyStartPlace(startPlace);
+  if (field <= 0) return 'Set max players before enabling bounties so the bounty cap is defined.';
+  if (!normalizedStartPlace && perKnockout > entry) {
+    return `Bounty per knockout cannot exceed the ${formatMoney(entry)} buy-in when it applies to the whole field.`;
+  }
+  const eligibleCount = getBountyEligibleCount(field, normalizedStartPlace);
+  const maxPool = entry * field;
+  const configuredPool = perKnockout * eligibleCount;
+  if (configuredPool > maxPool) {
+    return `Configured bounties can pay up to ${formatMoney(configuredPool)}, but the expected cap is ${formatMoney(maxPool)} from ${field} players.`;
+  }
+  return null;
+}
+
+function formatMoney(value: number): string {
+  return `$${normalizeMoney(value).toFixed(2)}`;
+}
+
 export function normalizePercent(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -192,6 +230,16 @@ export async function assignMysteryBounties(
   return { assigned: players.length, total: claimedTotal + (totalCents / 100), denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
 }
 
+async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKnockout: number): Promise<void> {
+  await query(
+    `UPDATE tournamentplayers
+     SET bountyamount = $2
+     WHERE tournamentid = $1
+       AND bountyclaimedat IS NULL`,
+    [tournamentId, normalizeMoney(bountyPerKnockout)]
+  );
+}
+
 export async function redistributeMysteryBountiesForTournament(tournamentId: string): Promise<void> {
   const tournament = await queryOne<{
     bountyenabled: boolean;
@@ -213,7 +261,22 @@ export async function redistributeMysteryBountiesForTournament(tournamentId: str
      WHERE tournamentid = $1`,
     [tournamentId]
   );
-  if (!tournament?.bountyenabled || normalizeBountyMode(tournament.bountymode) !== 'mystery') return;
+  if (!tournament?.bountyenabled) {
+    await query(
+      `UPDATE tournamentplayers
+       SET bountyamount = 0,
+           bountyclaimedbyuserid = NULL,
+           bountyclaimedat = NULL
+       WHERE tournamentid = $1
+         AND bountyclaimedat IS NULL`,
+      [tournamentId]
+    );
+    return;
+  }
+  if (normalizeBountyMode(tournament.bountymode) !== 'mystery') {
+    await assignStandardKnockoutBounties(tournamentId, tournament.bountyprizepool);
+    return;
+  }
   const poolType = normalizeBountyPoolType(tournament.bountypooltype);
   const configuredValue = poolType === 'percent'
     ? normalizePercent(tournament.bountyprizepool)
