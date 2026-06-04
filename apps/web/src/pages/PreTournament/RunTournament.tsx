@@ -1017,9 +1017,9 @@ export default function RunTournament({
   );
   const knockedOutPlayers = useMemo(
     () => players
-      .filter((player) => player.placed != null)
+      .filter((player) => player.placed != null && Number(player.placed) > payoutPlaces)
       .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
-    [players]
+    [players, payoutPlaces]
   );
   const knockoutLeader = useMemo(() => {
     const counts = new Map<string, { name: string; count: number }>();
@@ -1356,17 +1356,17 @@ export default function RunTournament({
             {showSeatingBoard ? (
               <div className="space-y-2">
                 {showAdminControls && (
-                  <div className="mx-auto w-fit max-w-full rounded-2xl border border-yellow-300/45 bg-yellow-300/12 px-4 py-3 shadow-[0_0_28px_rgba(253,224,71,0.12)]">
-                    <div className="flex flex-wrap items-center justify-center gap-3">
+                  <div className="mx-auto w-full max-w-3xl rounded-2xl border border-yellow-300/45 bg-yellow-300/12 px-3 py-3 shadow-[0_0_28px_rgba(253,224,71,0.12)] sm:px-4">
+                    <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center">
                       <button
                         type="button"
-                        className="rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full rounded-xl bg-yellow-300 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black shadow-[0_0_18px_rgba(253,224,71,0.3)] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                         disabled={assignSeatsMutation.isPending || checkedInRoster.length === 0 || Boolean(seatingValidationMessage)}
                         onClick={() => assignSeatsMutation.mutate(seatedPlayers.length > 0 ? 'remaining' : 'all')}
                       >
                         {seatedPlayers.length > 0 ? 'Re-seat Remaining Players' : 'Seat Players'}
                       </button>
-                      <div className="flex items-center gap-2 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-yellow-200/25 bg-black/20 px-3 py-2 sm:justify-center">
                         <span className="text-xs font-semibold uppercase tracking-wide text-yellow-100">Max per table</span>
                         <input
                           type="number"
@@ -1380,7 +1380,7 @@ export default function RunTournament({
                       {seatedPlayers.length > 0 && (
                         <button
                           type="button"
-                          className="rounded-xl border border-red-300/35 bg-red-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="w-full rounded-xl border border-red-300/35 bg-red-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                           disabled={clearSeatingMutation.isPending}
                           onClick={() => clearSeatingMutation.mutate()}
                         >
@@ -1758,11 +1758,10 @@ export default function RunTournament({
                   ) : (
                     <div className={`${tvMode ? 'max-h-44 space-y-1' : displayMode ? 'max-h-64 space-y-1.5' : 'max-h-52 space-y-1.5'} overflow-y-auto pr-1`}>
                       {knockedOutPlayers.map((player) => {
-                        const paid = (player.placed ?? 999) <= payoutPlaces;
                         return (
                           <div
                             key={`${player.userid}-${player.placed}`}
-                            className={`rounded-lg border ${paid ? 'border-pit-teal/35 bg-pit-teal/10' : 'border-pit-border bg-pit-surface/40'} ${tvMode ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}
+                            className={`rounded-lg border border-pit-border bg-pit-surface/40 ${tvMode ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}
                           >
                             <div className="flex min-w-0 items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
@@ -1771,7 +1770,6 @@ export default function RunTournament({
                                   {playerNameWithMedals(player)}
                                 </span>
                               </div>
-                              {paid && <span className="shrink-0 rounded-full bg-pit-teal/20 px-2 py-0.5 text-[10px] font-semibold text-pit-teal">Paid</span>}
                             </div>
                             {player.knockedoutbyname && (
                               <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} mt-1 truncate text-pit-muted`}>
@@ -1989,18 +1987,28 @@ function TvSeatingBoard({
   const roster = registeredPlayers.map((player) => assignmentByUserId.get(player.userid) ?? player);
 
   return (
-    <div className={`rounded-xl border border-yellow-200/35 bg-yellow-200/10 ${fullWidth ? 'px-5 py-5' : 'px-3 py-3'}`}>
-      <div className={`${fullWidth ? 'mb-4' : 'mb-2'} flex items-center ${compactRegistered ? 'justify-center text-center' : 'justify-between'} gap-3`}>
+    <div className={`rounded-xl border border-yellow-200/35 bg-yellow-200/10 ${fullWidth ? 'px-3 py-4 sm:px-5 sm:py-5' : 'px-3 py-3'}`}>
+      <div className={`${fullWidth ? 'mb-4' : 'mb-2'} flex gap-3 ${
+        compactRegistered
+          ? 'items-center justify-center text-center'
+          : fullWidth
+            ? 'flex-col items-start sm:flex-row sm:items-center sm:justify-between'
+            : 'items-center justify-between'
+      }`}>
         <div className={compactRegistered ? 'mx-auto' : ''}>
-          <h3 className={`${fullWidth ? 'text-4xl xl:text-5xl' : 'text-xl'} font-semibold uppercase tracking-[0.2em] text-white`}>
+          <h3 className={`font-semibold uppercase text-white ${
+            fullWidth
+              ? 'text-2xl tracking-[0.16em] sm:text-4xl sm:tracking-[0.2em] xl:text-5xl'
+              : 'text-xl tracking-[0.2em]'
+          }`}>
             {hasAssignments ? 'Table Assignments' : 'Registered Players'}
           </h3>
           {!hasAssignments && (
-            <p className={`${fullWidth ? 'mt-2 text-2xl xl:text-3xl' : 'mt-1 text-base xl:text-lg'} font-semibold text-yellow-200`}>{welcomeMessage}</p>
+            <p className={`${fullWidth ? 'mt-2 text-base sm:text-2xl xl:text-3xl' : 'mt-1 text-base xl:text-lg'} font-semibold text-yellow-200`}>{welcomeMessage}</p>
           )}
         </div>
         {!compactRegistered && (
-          <span className="rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
+          <span className="shrink-0 rounded-lg border border-pit-border bg-pit-bg/50 px-2 py-1 text-xs text-pit-text">
             {checkedInRosterLabel(checkedInIds.size, roster.length)}
           </span>
         )}
@@ -2016,7 +2024,7 @@ function TvSeatingBoard({
           compactRegistered
             ? 'max-h-[70vh] grid-cols-5 gap-1.5'
             : fullWidth
-              ? 'max-h-[70vh] grid-cols-4 gap-2 xl:grid-cols-5 2xl:grid-cols-6'
+              ? 'max-h-[70vh] grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
               : 'max-h-[32rem] grid-cols-2 gap-1.5 xl:grid-cols-3 2xl:grid-cols-4'
         }`}>
           {roster.map((player) => {
