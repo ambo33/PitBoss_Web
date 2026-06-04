@@ -395,14 +395,20 @@ export function invalidateTimerCache(tournamentId: string): void {
   stopInterval(tournamentId);
 }
 
-export async function pauseTournamentTimer(tournamentId: string): Promise<void> {
+export async function pauseTournamentTimer(
+  tournamentId: string,
+  options: { reason?: 'tournament-completed' } = {}
+): Promise<void> {
   const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
   state.running = false;
+  state.pauseReason = options.reason;
   stopInterval(tournamentId);
   await persistTimer(state);
   if (io) {
-    io.to(`t:${tournamentId}`).emit('timer-state', state);
+    const emittedState = options.reason ? { ...state, pauseReason: options.reason } : state;
+    io.to(`t:${tournamentId}`).emit('timer-state', emittedState);
   }
+  state.pauseReason = undefined;
 }
 
 export function broadcastTournamentUpdate(tournamentId: string, payload: Record<string, unknown> = { players: true }): void {

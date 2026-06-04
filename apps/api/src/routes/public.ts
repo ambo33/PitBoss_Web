@@ -1017,7 +1017,7 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   }
 
   if (tournamentCompleted) {
-    await pauseTournamentTimer(req.params.id);
+    await pauseTournamentTimer(req.params.id, { reason: 'tournament-completed' });
   }
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });

@@ -345,6 +345,7 @@ export interface GroupMember {
   isadmin: boolean; approved: boolean;
   emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean;
   firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
+  cashfinishcount?: number; finaltablecount?: number;
 }
 export interface Tournament {
   tournamentid: string; ownerid: string; name: string;

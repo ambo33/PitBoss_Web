@@ -71,6 +71,42 @@ function normalizeAnnouncerPreset(value: string | null | undefined): string | nu
   return 'all_in_alex';
 }
 
+type GroupPayoutMode = 'count' | 'percent';
+
+interface GroupPayoutConfig {
+  mode: GroupPayoutMode;
+  value: number;
+}
+
+function parseGroupPayoutStructure(value: string | null | undefined): GroupPayoutConfig {
+  if (!value) return { mode: 'count', value: 3 };
+  try {
+    const parsed = JSON.parse(value) as Partial<GroupPayoutConfig>;
+    if (parsed.mode !== 'count' && parsed.mode !== 'percent') return { mode: 'count', value: 3 };
+    return {
+      mode: parsed.mode,
+      value: sanitizeGroupPayoutValue(parsed.mode, Number(parsed.value)),
+    };
+  } catch {
+    return { mode: 'count', value: 3 };
+  }
+}
+
+function sanitizeGroupPayoutValue(mode: GroupPayoutMode, value: number): number {
+  if (mode === 'percent') {
+    return Math.min(100, Math.max(1, Math.round(Number.isFinite(value) ? value : 3)));
+  }
+  return Math.max(1, Math.round(Number.isFinite(value) ? value : 3));
+}
+
+function resolveGroupPaidPlaces(config: GroupPayoutConfig, fieldSize: number): number {
+  if (config.mode === 'percent') {
+    if (fieldSize <= 0) return 1;
+    return Math.min(fieldSize, Math.max(1, Math.ceil((fieldSize * config.value) / 100)));
+  }
+  return config.value;
+}
+
 function normalizeCoinImage(value: unknown, filename: unknown): { data: string | null; filename: string | null; error?: string } {
   const imageData = typeof value === 'string' ? value.trim() : '';
   const imageFilename = typeof filename === 'string' ? filename.trim().slice(0, 160) : null;
@@ -278,6 +314,48 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
      ORDER BY gm.admin DESC, u.emailaddress`,
     [req.params.id]
   );
+
+  const placementRows = await query<{
+    userid: string;
+    placed: number;
+    payoutstructure: string | null;
+    fieldsize: number;
+  }>(
+    `SELECT tp.userid,
+            CAST(tp.placed AS INT) AS placed,
+            t.payoutstructure,
+            CAST((
+              SELECT count(*)
+              FROM tournamentplayers field
+              WHERE field.tournamentid = tp.tournamentid
+            ) AS INT) AS fieldsize
+     FROM tournamentplayers tp
+     JOIN tournaments t ON t.tournamentid = tp.tournamentid
+     LEFT JOIN usermetadata history_meta ON history_meta.userid = tp.userid
+     WHERE t.groupid = $1
+       AND tp.placed IS NOT NULL
+       AND COALESCE(history_meta.isguestuser, FALSE) = FALSE`,
+    [req.params.id]
+  );
+
+  const membersById = new Map(members.map((member) => [member.userid, member]));
+  for (const member of members) {
+    member.cashfinishcount = 0;
+    member.finaltablecount = 0;
+  }
+  for (const row of placementRows) {
+    const member = membersById.get(row.userid);
+    if (!member) continue;
+    const placed = Number(row.placed);
+    if (!Number.isFinite(placed) || placed <= 0) continue;
+    if (placed <= 9) {
+      member.finaltablecount = Number(member.finaltablecount ?? 0) + 1;
+    }
+    const paidPlaces = resolveGroupPaidPlaces(parseGroupPayoutStructure(row.payoutstructure), Number(row.fieldsize ?? 0));
+    if (placed <= paidPlaces) {
+      member.cashfinishcount = Number(member.cashfinishcount ?? 0) + 1;
+    }
+  }
 
   res.json({ ...group, members });
 });

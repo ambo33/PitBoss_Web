@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Upload, Vote } from 'lucide-react';
@@ -9,7 +9,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useAuthStore } from '../../store/auth';
 import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
-import { playerMedalSuffix, playerNameWithMedals } from '../../utils/playerAchievements';
+import { playerNameWithMedals } from '../../utils/playerAchievements';
 import { isEnabledFlag } from '../../utils/flags';
 import {
   DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
@@ -690,8 +690,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   });
 
   const members: GroupMember[] = data?.members ?? [];
-  const pending = members.filter(m => !m.approved);
-  const approved = members.filter(m => m.approved);
+  const pending = useMemo(
+    () => sortGroupMembersByName(members.filter(m => !m.approved)),
+    [members]
+  );
+  const approved = useMemo(
+    () => sortGroupMembersByName(members.filter(m => m.approved)),
+    [members]
+  );
   const currentMember = members.find((member) => member.userid === user?.guid);
   const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
@@ -1422,22 +1428,41 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 </div>
               </div>
             )}
+            <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pit-muted">Member stats</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-pit-text">
+                {GROUP_MEMBER_STAT_LEGEND.map((item) => (
+                  <span key={item.label} className="inline-flex items-center gap-1 rounded-full border border-pit-border bg-pit-surface/50 px-2 py-1">
+                    <span aria-hidden="true">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1">
               {approved.map(m => (
                 <div key={m.userid} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-pit-bg/60 transition-colors">
-                  <div className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-full bg-pit-surface border border-pit-border flex items-center justify-center text-[10px] font-bold text-pit-muted">
                       {(m.displayname ?? m.emailaddress).slice(0, 2).toUpperCase()}
                     </div>
-                    <div>
-                      <span className="text-sm text-white">{playerNameWithMedals(m)}</span>
-                      {m.isadmin && (
-                        <span className="ml-2 badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold text-[10px]">
-                          <Crown size={8} className="mr-0.5" /> Admin
-                        </span>
-                      )}
-                      {playerMedalSuffix(m) && (
-                        <p className="mt-0.5 text-[11px] text-pit-muted">Registered player history</p>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="truncate text-sm text-white">{groupMemberDisplayName(m)}</span>
+                        {m.isadmin && (
+                          <span className="badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold text-[10px]">
+                            <Crown size={8} className="mr-0.5" /> Admin
+                          </span>
+                        )}
+                      </div>
+                      {groupMemberTournamentStats(m).length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold text-pit-text">
+                          {groupMemberTournamentStats(m).map((stat) => (
+                            <span key={stat.label} className="rounded-full border border-pit-border bg-pit-surface/50 px-2 py-0.5" title={stat.label} aria-label={`${stat.label}: ${stat.count}`}>
+                              {stat.icon}x{stat.count}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1765,6 +1790,44 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
       />
     </div>
   );
+}
+
+const GROUP_MEMBER_STAT_LEGEND = [
+  { icon: '🏆', label: '1st place', key: 'firstplacecount' },
+  { icon: '🥈', label: '2nd place', key: 'secondplacecount' },
+  { icon: '🥉', label: '3rd place', key: 'thirdplacecount' },
+  { icon: '💰', label: 'Cash finishes', key: 'cashfinishcount' },
+  { icon: '🏁', label: 'Final tables', key: 'finaltablecount' },
+] as const;
+
+function statCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+function groupMemberDisplayName(member: GroupMember): string {
+  return member.displayname ?? member.emailaddress ?? 'Player';
+}
+
+function sortGroupMembersByName(members: GroupMember[]): GroupMember[] {
+  return [...members].sort((a, b) => {
+    const nameCompare = groupMemberDisplayName(a).localeCompare(groupMemberDisplayName(b), undefined, {
+      sensitivity: 'base',
+      numeric: true,
+    });
+    if (nameCompare !== 0) return nameCompare;
+    return a.userid.localeCompare(b.userid);
+  });
+}
+
+function groupMemberTournamentStats(member: GroupMember) {
+  return GROUP_MEMBER_STAT_LEGEND
+    .map((item) => ({
+      icon: item.icon,
+      label: item.label,
+      count: statCount(member[item.key]),
+    }))
+    .filter((item) => item.count > 0);
 }
 
 function CoinImage({ coin }: { coin: GroupCoin }) {

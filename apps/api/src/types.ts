@@ -57,6 +57,8 @@ export interface GroupMember {
   firstplacecount?: number;
   secondplacecount?: number;
   thirdplacecount?: number;
+  cashfinishcount?: number;
+  finaltablecount?: number;
 }
 
 export interface GroupCoin {
@@ -205,6 +207,7 @@ export interface TimerState {
   remainingsecs: number;
   running: boolean;
   blinds: BlindLevel[];
+  pauseReason?: 'tournament-completed';
 }
 
 export interface SeatingAssignment {

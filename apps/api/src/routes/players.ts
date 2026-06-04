@@ -706,7 +706,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     client.release();
   }
   if (tournamentCompleted) {
-    await pauseTournamentTimer(req.params.tid);
+    await pauseTournamentTimer(req.params.tid, { reason: 'tournament-completed' });
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });

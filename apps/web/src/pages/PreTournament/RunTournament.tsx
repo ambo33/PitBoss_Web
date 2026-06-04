@@ -22,6 +22,7 @@ interface TimerTick {
 interface TimerState extends TimerTick {
   blinds: BlindLevel[];
   tournamentid: string;
+  pauseReason?: 'tournament-completed';
 }
 
 type PayoutMode = 'count' | 'percent';
@@ -639,6 +640,8 @@ export default function RunTournament({
         } else if (state.running && shouldAnnounceTournamentStart(state, blind)) {
           tournamentIntroAnnouncedRef.current = true;
           announceTournamentStart(state, blind);
+        } else if (!state.running && state.pauseReason === 'tournament-completed') {
+          // The champion sequence has its own audio; do not let the forced timer pause cut it off.
         } else {
           announceTimerStatus(state.running ? 'resume' : 'pause');
         }
@@ -1904,7 +1907,7 @@ export default function RunTournament({
                   className="btn-primary pointer-events-auto mt-6 px-5 py-2.5"
                   onClick={() => setActiveChampion(null)}
                 >
-                  Acknowledge winner
+                  Finalize Tournament
                 </button>
               )}
             </div>
