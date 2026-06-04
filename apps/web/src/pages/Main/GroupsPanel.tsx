@@ -853,17 +853,23 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
           </div>
         </div>
 
+        {demoMode && (
+          <div className="rounded-xl border border-yellow-300/25 bg-yellow-300/10 px-4 py-3 text-sm font-medium text-yellow-100">
+            Invites are disabled in demo mode, but you can still edit members, posts, structures, and tournament settings.
+          </div>
+        )}
+
         {detailTab === 'info' && (
           <div className="space-y-4">
         {/* Invite code */}
-        <div className="flex flex-col gap-1 rounded-xl bg-pit-bg border border-pit-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {!demoMode && <div className="flex flex-col gap-1 rounded-xl bg-pit-bg border border-pit-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs text-pit-muted">Invite code</span>
           <span className="font-mono font-bold text-white tracking-[0.2em]">{effectiveGroup.invitecode}</span>
-        </div>
+        </div>}
 
         {group.isadmin && (
           <div className="space-y-4 rounded-xl border border-pit-border bg-pit-bg px-4 py-4">
-            <div className="space-y-3">
+            {!demoMode && <div className="space-y-3">
               <p className="text-sm font-semibold text-white">Join link</p>
               <div className="rounded-xl border border-pit-border bg-pit-surface px-3 py-3">
                 <p className="break-all font-mono text-xs text-pit-text">{joinLink}</p>
@@ -884,7 +890,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               <div className="inline-block rounded-xl bg-white p-3">
                 <QRCodeSVG value={joinLink} size={150} />
               </div>
-            </div>
+            </div>}
 
             {!user?.isdemo && <div className="space-y-2">
               <p className="text-sm font-semibold text-white">Group settings</p>
@@ -961,7 +967,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </p>
             </div>
 
-            {!user?.isdemo ? <div className="space-y-3">
+            {!demoMode && <div className="space-y-3">
               <p className="text-sm font-semibold text-white">Invite people</p>
               <input
                 className="input"
@@ -1007,11 +1013,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
               </div>
               {inviteMutation.error && <p className="text-sm text-red-400">{inviteMutation.error.message}</p>}
               {smsStatus && <p className="text-sm text-pit-teal">{smsStatus}</p>}
-            </div> : (
-              <div className="rounded-xl border border-yellow-300/20 bg-yellow-300/10 px-3 py-3 text-sm text-yellow-100">
-                Invites are disabled in demo mode, but you can still edit members, posts, structures, and tournament settings.
-              </div>
-            )}
+            </div>}
           </div>
         )}
           </div>
