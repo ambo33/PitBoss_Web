@@ -127,6 +127,78 @@ export async function resolveBountyPrizepool(tournamentId: string, value: number
   return normalizeMoney((grossPot * normalizePercent(value)) / 100);
 }
 
+export async function validateCurrentBountyBudget(
+  tournamentId: string,
+  overrides: Partial<Tournament> & { bountyTotalOverride?: number | null; requireLivePot?: boolean } = {}
+): Promise<string | null> {
+  const tournament = await queryOne<{
+    bountyenabled: boolean;
+    bountymode: string | null;
+    bountyprizepool: number;
+    bountypooltype: string | null;
+    bountystartplace: number | null;
+    rake: number;
+  }>(
+    `SELECT COALESCE(bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(bountypooltype, 'amount') AS bountypooltype,
+            CAST(bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(adjustment AS DECIMAL), 0) AS rake
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [tournamentId]
+  );
+  if (!tournament) return 'Tournament not found.';
+
+  const bountiesEnabled = overrides.bountyenabled ?? Boolean(tournament.bountyenabled);
+  if (!bountiesEnabled) return null;
+
+  const grossPot = await getGrossPot(tournamentId, overrides);
+  const rake = normalizeMoney(overrides.rake ?? tournament.rake ?? 0);
+  const availablePot = normalizeMoney(Math.max(0, grossPot - rake));
+  const stats = await queryOne<{ enteredcount: number; assignedtotal: number }>(
+    `SELECT CAST(COALESCE(sum(CASE WHEN checkedin = TRUE OR placed IS NOT NULL THEN 1 ELSE 0 END), 0) AS INT) AS enteredcount,
+            CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS assignedtotal
+     FROM tournamentplayers
+     WHERE tournamentid = $1`,
+    [tournamentId]
+  );
+  const enteredCount = Math.max(0, Math.floor(Number(stats?.enteredcount ?? 0)));
+  const assignedTotal = normalizeMoney(stats?.assignedtotal ?? 0);
+  if (!overrides.requireLivePot && enteredCount <= 0) return null;
+
+  const mode = normalizeBountyMode(overrides.bountymode ?? tournament.bountymode);
+  const poolType = mode === 'manual'
+    ? 'amount'
+    : normalizeBountyPoolType(overrides.bountypooltype ?? tournament.bountypooltype);
+  const configuredValue = poolType === 'percent'
+    ? normalizePercent(overrides.bountyprizepool ?? tournament.bountyprizepool)
+    : normalizeMoney(overrides.bountyprizepool ?? tournament.bountyprizepool);
+  const startPlace = normalizeBountyStartPlace(
+    overrides.bountystartplace === undefined ? tournament.bountystartplace : overrides.bountystartplace
+  );
+  const eligibleCount = startPlace ? Math.min(startPlace, enteredCount) : enteredCount;
+  const configuredBountyTotal = mode === 'manual'
+    ? normalizeMoney(configuredValue * eligibleCount)
+    : estimatePoolFromValue(poolType, configuredValue, grossPot);
+  const bountyTotal = overrides.bountyTotalOverride == null
+    ? Math.max(assignedTotal, configuredBountyTotal)
+    : normalizeMoney(overrides.bountyTotalOverride);
+
+  if (bountyTotal > availablePot) {
+    return `Bounties are set to ${formatMoney(bountyTotal)}, but only ${formatMoney(availablePot)} is available after rake. Fix the bounty or payout settings before starting the tournament.`;
+  }
+
+  return null;
+}
+
+function estimatePoolFromValue(poolType: 'amount' | 'percent', value: number, grossPot: number): number {
+  return poolType === 'percent'
+    ? normalizeMoney((Math.max(0, grossPot) * normalizePercent(value)) / 100)
+    : normalizeMoney(value);
+}
+
 export async function assignMysteryBounties(
   tournamentId: string,
   prizepool: number,
@@ -230,13 +302,36 @@ export async function assignMysteryBounties(
   return { assigned: players.length, total: claimedTotal + (totalCents / 100), denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
 }
 
-async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKnockout: number): Promise<void> {
+async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKnockout: number, startPlaceValue: number | null = null): Promise<void> {
+  const startPlace = normalizeBountyStartPlace(startPlaceValue);
+  await query(
+    `UPDATE tournamentplayers
+     SET bountyamount = 0
+     WHERE tournamentid = $1
+       AND bountyclaimedat IS NULL
+       AND (
+         COALESCE(checkedin, FALSE) = FALSE
+         OR (
+           placed IS NOT NULL
+           AND $2::INT IS NOT NULL
+           AND placed > $2::INT
+         )
+       )`,
+    [tournamentId, startPlace]
+  );
+
   await query(
     `UPDATE tournamentplayers
      SET bountyamount = $2
      WHERE tournamentid = $1
-       AND bountyclaimedat IS NULL`,
-    [tournamentId, normalizeMoney(bountyPerKnockout)]
+       AND bountyclaimedat IS NULL
+       AND COALESCE(checkedin, FALSE) = TRUE
+       AND (
+         placed IS NULL
+         OR $3::INT IS NULL
+         OR placed <= $3::INT
+       )`,
+    [tournamentId, normalizeMoney(bountyPerKnockout), startPlace]
   );
 }
 
@@ -274,7 +369,7 @@ export async function redistributeMysteryBountiesForTournament(tournamentId: str
     return;
   }
   if (normalizeBountyMode(tournament.bountymode) !== 'mystery') {
-    await assignStandardKnockoutBounties(tournamentId, tournament.bountyprizepool);
+    await assignStandardKnockoutBounties(tournamentId, tournament.bountyprizepool, normalizeBountyStartPlace(tournament.bountystartplace));
     return;
   }
   const poolType = normalizeBountyPoolType(tournament.bountypooltype);

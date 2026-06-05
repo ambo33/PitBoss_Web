@@ -6,6 +6,7 @@ import { BlindLevel, TimerState } from './types';
 import { sendTournamentNotification } from './lib/server/notifications/notificationService';
 import { decodeAuthToken } from './middleware/auth';
 import { isDatabaseTrue } from './utils/booleans';
+import { validateCurrentBountyBudget } from './services/bounties';
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 const timerState = new Map<string, TimerState>();
@@ -26,6 +27,11 @@ export function initSocket(httpServer: HttpServer): void {
 
     socket.on('timer-start', async ({ tournamentId }: { tournamentId: string }) => {
       if (!await canControlTournamentTimer(socket, tournamentId)) return;
+      const bountyBudgetError = await validateCurrentBountyBudget(tournamentId, { requireLivePot: true });
+      if (bountyBudgetError) {
+        socket.emit('timer-error', { error: bountyBudgetError });
+        return;
+      }
       const state = await loadTimerState(tournamentId);
       const previousLevel = state.currentlevel;
       if (isChipUpBlind(getCurrentBlind(state)) && state.remainingsecs <= 0) {

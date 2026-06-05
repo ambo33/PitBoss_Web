@@ -159,6 +159,7 @@ export default function RunTournament({
   const [activeChampion, setActiveChampion] = useState<ChampionCelebration | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
+  const [timerStartError, setTimerStartError] = useState('');
   const [demoStartCoachDismissed, setDemoStartCoachDismissed] = useState(false);
   const [demoExploreTipVisible, setDemoExploreTipVisible] = useState(false);
   const [sidePanelView, setSidePanelView] = useState<SidePanelView>(() => tournament.bountyenabled ? 'bounties' : 'knockouts');
@@ -184,6 +185,7 @@ export default function RunTournament({
   const greetingQueueRef = useRef<GreetingQueueItem[]>([]);
   const greetingTimeoutRef = useRef<number | null>(null);
   const moneyBurstTimeoutRef = useRef<number | null>(null);
+  const activeMysteryBountyRef = useRef<MysteryBountyReveal | null>(null);
   const mysteryBountyRevealTimeoutRef = useRef<number | null>(null);
   const mysteryBountyClearTimeoutRef = useRef<number | null>(null);
   const championTimeoutRefs = useRef<number[]>([]);
@@ -213,6 +215,22 @@ export default function RunTournament({
     qc.invalidateQueries({ queryKey: ['players', tournamentId] });
     qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
   };
+
+  function revealMysteryBounty(revealId: string) {
+    const currentReveal = activeMysteryBountyRef.current;
+    if (!currentReveal || currentReveal.id !== revealId || currentReveal.revealed) {
+      return;
+    }
+
+    const revealed = { ...currentReveal, revealed: true };
+    activeMysteryBountyRef.current = revealed;
+    if (mysteryBountyRevealTimeoutRef.current) {
+      window.clearTimeout(mysteryBountyRevealTimeoutRef.current);
+      mysteryBountyRevealTimeoutRef.current = null;
+    }
+    setActiveMysteryBounty((current) => current?.id === revealId ? revealed : current);
+    playMysteryBountyReveal();
+  }
 
   const rebuyMutation = useMutation({
     mutationFn: (userId: string) => api.addRebuy(tournamentId, userId),
@@ -340,6 +358,9 @@ export default function RunTournament({
     });
     socket.on('tournament-updated', () => {
       refreshTournamentData();
+    });
+    socket.on('timer-error', (payload: { error?: string }) => {
+      setTimerStartError(payload.error || 'The timer could not be started. Check tournament settings and try again.');
     });
     return () => {
       socket.disconnect();
@@ -469,26 +490,31 @@ export default function RunTournament({
               .map((candidate) => toNumber(candidate.bountyamount)),
           ].sort((a, b) => b - a);
           const revealId = `${player.userid}-mystery-bounty-${current.bountyClaimed}-${Date.now()}`;
-          setActiveMoneyBurst(null);
-          setActiveMysteryBounty({
+          const revealState = {
             id: revealId,
             eliminatedName: player.displayname ?? player.emailaddress ?? 'Player',
             claimedByName: player.bountyclaimedbyname,
             amount: bountyAmount,
             possibleAmounts,
             revealed: false,
-          });
+          };
+          setActiveMoneyBurst(null);
+          activeMysteryBountyRef.current = revealState;
+          setActiveMysteryBounty(revealState);
           playMysteryBountySpin();
           if (mysteryBountyRevealTimeoutRef.current) window.clearTimeout(mysteryBountyRevealTimeoutRef.current);
           if (mysteryBountyClearTimeoutRef.current) window.clearTimeout(mysteryBountyClearTimeoutRef.current);
           mysteryBountyRevealTimeoutRef.current = window.setTimeout(() => {
-            setActiveMysteryBounty((currentReveal) => currentReveal?.id === revealId
-              ? { ...currentReveal, revealed: true }
-              : currentReveal);
-            playMysteryBountyReveal();
-          }, 10000);
+            revealMysteryBounty(revealId);
+          }, 10500);
           mysteryBountyClearTimeoutRef.current = window.setTimeout(() => {
-            setActiveMysteryBounty((currentReveal) => currentReveal?.id === revealId ? null : currentReveal);
+            setActiveMysteryBounty((currentReveal) => {
+              if (currentReveal?.id === revealId) {
+                activeMysteryBountyRef.current = null;
+                return null;
+              }
+              return currentReveal;
+            });
           }, 15000);
           nextBurst = null;
           break;
@@ -682,6 +708,7 @@ export default function RunTournament({
 
   function handleStartTimer() {
     void warmTimerAudio();
+    setTimerStartError('');
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
     if (chipUpAwaitingAck) {
@@ -712,6 +739,7 @@ export default function RunTournament({
 
   function confirmStartWithoutSeating() {
     setStartWithoutSeatingOpen(false);
+    setTimerStartError('');
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
     if (demoMode && showAdminControls && !displayMode) {
@@ -1280,6 +1308,11 @@ export default function RunTournament({
             </button>
           </div>
         )}
+        {showAdminControls && timerStartError && (
+          <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 shadow-lg shadow-red-950/20">
+            {timerStartError}
+          </div>
+        )}
         {showAdminControls ? (
           <section className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -1322,14 +1355,15 @@ export default function RunTournament({
                       <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 shadow-2xl">
                         <button
                           type="button"
-                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 ${checkinMutation.isPending ? 'animate-pulse bg-pit-teal/15 text-white' : 'text-pit-text'}`}
                           onClick={() => {
-                            checkinMutation.mutate(selectedPlayer.userid);
-                            setShowPlayerActions(false);
+                            checkinMutation.mutate(selectedPlayer.userid, {
+                              onSettled: () => setShowPlayerActions(false),
+                            });
                           }}
                           disabled={checkinMutation.isPending || selectedPlayer.placed != null}
                         >
-                          {selectedPlayer.checkedin ? 'Check out' : 'Check in'}
+                          {checkinMutation.isPending ? 'Working...' : selectedPlayer.checkedin ? 'Check out' : 'Check in'}
                         </button>
                         {canUseClubFeatures && rebuysEnabled && (
                           <button
@@ -2117,13 +2151,12 @@ export default function RunTournament({
               <div className="relative mx-auto mt-5 flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
                 <div className="absolute -top-1 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[14px] border-t-[22px] border-x-transparent border-t-amber-300 drop-shadow-[0_0_10px_rgba(245,184,75,0.7)]" />
                 <div
+                  key={activeMysteryBounty.id}
                   className={`absolute inset-0 rounded-full border border-amber-200/30 bg-[conic-gradient(from_0deg,rgba(245,184,75,0.26),rgba(20,184,184,0.22),rgba(168,85,247,0.24),rgba(245,184,75,0.26))] shadow-[inset_0_0_28px_rgba(0,0,0,0.8),0_0_34px_rgba(245,184,75,0.22)] ${activeMysteryBounty.revealed ? 'opacity-45' : ''}`}
                   style={{
-                    animation: activeMysteryBounty.revealed
-                      ? undefined
-                      : 'mystery-bounty-wheel-spin 10s cubic-bezier(0.12, 0.72, 0.15, 1) forwards',
-                    transform: activeMysteryBounty.revealed ? 'rotate(2880deg) scale(1)' : undefined,
+                    animation: 'mystery-bounty-wheel-spin 10s cubic-bezier(0.12, 0.72, 0.15, 1) forwards',
                   }}
+                  onAnimationEnd={() => revealMysteryBounty(activeMysteryBounty.id)}
                 >
                   {(() => {
                     const amounts = Array.from(new Set([activeMysteryBounty.amount, ...activeMysteryBounty.possibleAmounts]))
@@ -2136,7 +2169,7 @@ export default function RunTournament({
                         <span
                           key={`${amount}-${index}`}
                           className="absolute left-1/2 top-1/2 flex h-9 min-w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/70 px-2 text-xs font-black text-white shadow-lg"
-                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-6.2rem) rotate(180deg)` }}
+                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-6.2rem) rotate(360deg)` }}
                         >
                           {formatMoney(amount)}
                         </span>

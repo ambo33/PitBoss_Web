@@ -17,6 +17,7 @@ import {
   normalizePercent,
   redistributeMysteryBountiesForTournament,
   resolveBountyPrizepool,
+  validateCurrentBountyBudget,
   validateStandardKnockoutBounty,
 } from '../services/bounties';
 import { broadcastTournamentUpdate } from '../socket';
@@ -603,16 +604,24 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     ? 'amount'
     : (normalizedBountyPoolType ?? normalizeBountyPoolType(currentTournament.bountypooltype));
   const effectivePrizepool = normalizedBountyPrizepool ?? Number(currentTournament.bountyprizepool ?? 0);
-  const effectiveStartPlace = normalizedBountyStartPlace !== undefined ? normalizedBountyStartPlace : normalizeBountyStartPlace(currentTournament.bountystartplace);
-  const effectiveMinPayout = normalizedBountyMinPayout ?? normalizeBountyMinPayout(currentTournament.bountyminpayout);
-  if (
-    bountyenabled !== undefined
-    && Boolean(bountyenabled) !== Boolean(currentTournament.bountyenabled)
-    && Number(currentTournament.enteredcount ?? 0) > 0
-  ) {
-    res.status(400).json({ error: 'Bounties cannot be enabled or disabled once players have entered the tournament.' });
-    return;
+  const liveBountyStartPlace = Math.max(0, Math.floor(Number(currentTournament.activecount ?? 0))) > 1
+    ? Math.max(0, Math.floor(Number(currentTournament.activecount ?? 0)))
+    : null;
+  let effectiveStartPlace = normalizedBountyStartPlace !== undefined ? normalizedBountyStartPlace : normalizeBountyStartPlace(currentTournament.bountystartplace);
+  let forceBountyStartPlace = false;
+  const enablingBountiesMidTournament = bountyenabled === true
+    && !Boolean(currentTournament.bountyenabled)
+    && liveBountyStartPlace != null;
+  if (enablingBountiesMidTournament) {
+    if (effectiveStartPlace == null) {
+      effectiveStartPlace = liveBountyStartPlace;
+      forceBountyStartPlace = true;
+    } else if (effectiveStartPlace > liveBountyStartPlace) {
+      res.status(400).json({ error: `Bounties can only start at ${liveBountyStartPlace}th place or later because ${liveBountyStartPlace} players are still active.` });
+      return;
+    }
   }
+  const effectiveMinPayout = normalizedBountyMinPayout ?? normalizeBountyMinPayout(currentTournament.bountyminpayout);
   if (effectiveBountyEnabled !== false && effectiveBountyMode === 'manual') {
     const standardBountyError = validateStandardKnockoutBounty({
       buyin: buyin ?? currentTournament.buyin,
@@ -647,6 +656,25 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
         res.status(400).json({ error: bountyMinimumError });
         return;
       }
+    }
+  }
+  if (effectiveBountyEnabled !== false) {
+    const currentBountyBudgetError = await validateCurrentBountyBudget(req.params.id, {
+      buyin: buyin ?? currentTournament.buyin,
+      rebuyprice: rebuyprice ?? currentTournament.rebuyprice,
+      genericrebuys: genericrebuys ?? currentTournament.genericrebuys,
+      addonprice: addonprice ?? currentTournament.addonprice,
+      genericaddons: genericaddons ?? currentTournament.genericaddons,
+      rake: rake ?? undefined,
+      bountyenabled: effectiveBountyEnabled,
+      bountymode: effectiveBountyMode,
+      bountypooltype: effectivePoolType,
+      bountyprizepool: effectivePrizepool,
+      bountystartplace: effectiveStartPlace,
+    });
+    if (currentBountyBudgetError) {
+      res.status(400).json({ error: currentBountyBudgetError });
+      return;
     }
   }
   await query(
@@ -686,7 +714,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
      tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode,
      seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination,
-     bountystartplace !== undefined, normalizedBountyStartPlace ?? null, normalizedBountyMinPayout]
+     bountystartplace !== undefined || forceBountyStartPlace, effectiveStartPlace ?? null, normalizedBountyMinPayout]
   );
   if (bountyenabled === false) {
     await query(
@@ -702,8 +730,29 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
       `UPDATE tournamentplayers
        SET bountyamount = $2
        WHERE tournamentid = $1
-         AND bountyclaimedat IS NULL`,
-      [req.params.id, effectivePrizepool]
+         AND bountyclaimedat IS NULL
+         AND COALESCE(checkedin, FALSE) = TRUE
+         AND (
+           placed IS NULL
+           OR $3::INT IS NULL
+           OR placed <= $3::INT
+         )`,
+      [req.params.id, effectivePrizepool, effectiveStartPlace]
+    );
+    await query(
+      `UPDATE tournamentplayers
+       SET bountyamount = 0
+       WHERE tournamentid = $1
+         AND bountyclaimedat IS NULL
+         AND (
+           COALESCE(checkedin, FALSE) = FALSE
+           OR (
+             placed IS NOT NULL
+             AND $2::INT IS NOT NULL
+             AND placed > $2::INT
+           )
+         )`,
+      [req.params.id, effectiveStartPlace]
     );
   } else if (
     (bountyenabled == null || bountyenabled === true)
@@ -792,6 +841,17 @@ tournamentsRouter.post('/:id/bounties/mystery-assign', async (req: Request, res:
     : normalizeMoney(prizepool ?? tournament.bountyprizepool);
   const configuredDenomination = normalizeBountyDenomination(denomination ?? tournament.bountyroundingdenomination);
   const total = await resolveBountyPrizepool(req.params.id, configuredValue, poolType);
+  const currentBountyBudgetError = await validateCurrentBountyBudget(req.params.id, {
+    bountyenabled: true,
+    bountymode: 'mystery',
+    bountypooltype: poolType,
+    bountyprizepool: configuredValue,
+    bountyTotalOverride: total,
+  });
+  if (currentBountyBudgetError) {
+    res.status(400).json({ error: currentBountyBudgetError });
+    return;
+  }
   await query(
     `UPDATE tournaments
      SET bountymode = 'mystery',

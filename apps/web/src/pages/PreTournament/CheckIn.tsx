@@ -29,6 +29,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<TournamentPlayer | null>(null);
   const [qrView, setQrView] = useState<QrView>('checkin');
+  const [checkinBusyPlayerId, setCheckinBusyPlayerId] = useState<string | null>(null);
 
   const checkInUrl = `${window.location.origin}/checkin/${tournamentId}`;
   const addOnUrl = `${window.location.origin}/addon/${tournamentId}`;
@@ -75,6 +76,8 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const checkinMutation = useMutation({
     mutationFn: (uid: string) => api.toggleCheckin(tournamentId, uid),
     onSuccess: () => refreshTournamentData(),
+    onMutate: (uid) => setCheckinBusyPlayerId(uid),
+    onSettled: () => setCheckinBusyPlayerId(null),
   });
   const rebuyMutation = useMutation({
     mutationFn: (uid: string) => api.addRebuy(tournamentId, uid),
@@ -320,6 +323,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             onSelect={() => setSelected(player)}
             tournament={tournament}
             canUseClubFeatures={canUseClubFeatures}
+            isCheckinBusy={checkinBusyPlayerId === player.userid}
             isBusy={
               checkinMutation.isPending
               || rebuyMutation.isPending
@@ -412,7 +416,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   );
 }
 
-function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onSelect, tournament, canUseClubFeatures, isBusy }: {
+function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy, onRemoveAddon, onKnockout, onRestore, onSelect, tournament, canUseClubFeatures, isCheckinBusy, isBusy }: {
   player: TournamentPlayer;
   isOwner: boolean;
   onCheckin: () => void;
@@ -425,6 +429,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
   onSelect: () => void;
   tournament: Tournament;
   canUseClubFeatures: boolean;
+  isCheckinBusy: boolean;
   isBusy: boolean;
 }) {
   return (
@@ -485,9 +490,9 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             type="button"
             onClick={onCheckin}
             disabled={isBusy}
-            className={`btn min-h-9 justify-center px-3 py-1 text-xs ${player.checkedin ? 'border border-pit-teal bg-pit-teal/20 text-pit-teal' : 'btn-ghost'}`}
+            className={`btn min-h-9 justify-center px-3 py-1 text-xs ${isCheckinBusy ? 'animate-pulse border border-pit-teal bg-pit-teal/30 text-white' : player.checkedin ? 'border border-pit-teal bg-pit-teal/20 text-pit-teal' : 'btn-ghost'}`}
           >
-              {player.checkedin ? 'In' : 'Check In'}
+              {isCheckinBusy ? 'Working...' : player.checkedin ? 'In' : 'Check In'}
           </button>
           {player.placed == null ? (
             <button

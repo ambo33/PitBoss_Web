@@ -168,7 +168,7 @@ export default function PreTournamentPage() {
             bountyTotal={bountyTotal}
             canManage={canManage}
             scheduleLocked={scheduleLocked}
-            bountyToggleLocked={players.some((player) => player.checkedin || player.placed != null || Boolean(player.bountyclaimedat))}
+            liveBountyStartPlace={players.filter((player) => player.checkedin && player.placed == null).length || null}
             saving={updateTournamentMutation.isPending}
             deleting={deleteTournamentMutation.isPending}
             error={updateTournamentMutation.error?.message}
@@ -333,7 +333,7 @@ function TournamentDetailsCard({
   bountyTotal,
   canManage,
   scheduleLocked,
-  bountyToggleLocked,
+  liveBountyStartPlace,
   saving,
   deleting,
   error,
@@ -349,7 +349,7 @@ function TournamentDetailsCard({
   bountyTotal: number;
   canManage: boolean;
   scheduleLocked: boolean;
-  bountyToggleLocked: boolean;
+  liveBountyStartPlace: number | null;
   saving: boolean;
   deleting: boolean;
   error?: string;
@@ -426,9 +426,13 @@ function TournamentDetailsCard({
   function saveDetails() {
     if (bountyMinimumError) return;
     if (bountyCapError) return;
-    if (bountyToggleError) return;
     if (rebuyCutoffError) return;
     const bountyMode = form.bountymode;
+    const saveBountyStartPlace = form.bountyenabled && midGameBountyStartPlace && !form.bountystartplace
+      ? midGameBountyStartPlace
+      : form.bountystartplace
+        ? Number(form.bountystartplace) || null
+        : null;
     onSave({
       name: form.name.trim(),
       tourneydate: form.tourneydate || undefined,
@@ -445,7 +449,7 @@ function TournamentDetailsCard({
       bountyprizepool: toNumber(form.bountyprizepool),
       bountypooltype: bountyMode === 'manual' ? 'amount' : form.bountypooltype,
       bountyroundingdenomination: toNumber(form.bountyroundingdenomination) || 5,
-      bountystartplace: form.bountystartplace ? Number(form.bountystartplace) || null : null,
+      bountystartplace: saveBountyStartPlace,
       bountyminpayout: toNumber(form.bountyminpayout),
     });
     setEditing(false);
@@ -456,8 +460,14 @@ function TournamentDetailsCard({
   const rebuyCutoffError = detailsRebuysEnabled && !Number(form.rebuylastlevel)
     ? 'Set the final level where rebuys are allowed.'
     : '';
-  const estimatedBountyEligibleCount = form.bountystartplace
-    ? Math.min(Number(form.bountystartplace) || 0, estimatedBountyField)
+  const midGameBountyStartPlace = !tournament.bountyenabled && liveBountyStartPlace && liveBountyStartPlace > 1
+    ? liveBountyStartPlace
+    : null;
+  const effectiveFormBountyStartPlace = form.bountyenabled && midGameBountyStartPlace && !form.bountystartplace
+    ? midGameBountyStartPlace
+    : form.bountystartplace ? Number(form.bountystartplace) || 0 : 0;
+  const estimatedBountyEligibleCount = effectiveFormBountyStartPlace
+    ? Math.min(effectiveFormBountyStartPlace, estimatedBountyField)
     : estimatedBountyField;
   const estimatedBountyGross = (toNumber(form.buyin) * estimatedBountyField)
     + (toNumber(form.rebuyprice) * totalRebuys)
@@ -467,13 +477,12 @@ function TournamentDetailsCard({
     : toNumber(form.bountyprizepool);
   const standardBountyTotal = toNumber(form.bountyprizepool) * estimatedBountyEligibleCount;
   const standardBountyCap = toNumber(form.buyin) * estimatedBountyField;
-  const bountyToggleError = form.bountyenabled !== Boolean(tournament.bountyenabled) && bountyToggleLocked
-    ? 'Bounties cannot be enabled or disabled once players have entered the tournament.'
-    : '';
   const bountyCapError = form.bountyenabled
     ? estimatedBountyField <= 0
       ? 'Set max players before enabling bounties so the bounty cap is defined.'
-      : form.bountymode === 'manual' && !form.bountystartplace && toNumber(form.bountyprizepool) > toNumber(form.buyin)
+      : midGameBountyStartPlace && form.bountystartplace && Number(form.bountystartplace) > midGameBountyStartPlace
+        ? `Bounties can only start at ${formatOrdinal(midGameBountyStartPlace)} place or later because ${midGameBountyStartPlace} players are still active.`
+      : form.bountymode === 'manual' && !effectiveFormBountyStartPlace && toNumber(form.bountyprizepool) > toNumber(form.buyin)
         ? `Bounty per knockout cannot exceed the ${formatMoney(toNumber(form.buyin))} buy-in when it applies to the whole field.`
         : form.bountymode === 'manual' && standardBountyTotal > standardBountyCap
           ? `Configured bounties can pay up to ${formatMoney(standardBountyTotal)}, but the expected cap is ${formatMoney(standardBountyCap)} from ${estimatedBountyField} players.`
@@ -632,13 +641,17 @@ function TournamentDetailsCard({
                   className="mt-1 h-4 w-4 accent-pit-teal"
                   type="checkbox"
                   checked={form.bountyenabled}
-                  disabled={bountyToggleLocked}
-                  onChange={(e) => setForm((current) => ({ ...current, bountyenabled: e.target.checked }))}
+                  onChange={(e) => setForm((current) => ({
+                    ...current,
+                    bountyenabled: e.target.checked,
+                  }))}
                 />
                 <span>
                   <span className="block text-sm font-semibold text-white">Enable Knockout/Mystery Bounties</span>
                   <span className="mt-1 block text-xs leading-5 text-pit-text">
-                    Bounty settings lock once players have entered so every knockout can be tracked cleanly.
+                    {midGameBountyStartPlace
+                      ? `Mid-game bounties start no earlier than ${formatOrdinal(midGameBountyStartPlace)} place, so already-eliminated players stay untouched.`
+                      : 'Set bounties before play or start them from a future knockout spot.'}
                   </span>
                 </span>
               </label>
@@ -716,9 +729,14 @@ function TournamentDetailsCard({
                     <select
                       className="input"
                       value={form.bountystartplace ? 'placement' : 'field'}
-                      onChange={(e) => setForm((current) => ({ ...current, bountystartplace: e.target.value === 'placement' ? (current.bountystartplace || '10') : '' }))}
+                      onChange={(e) => setForm((current) => ({
+                        ...current,
+                        bountystartplace: e.target.value === 'placement'
+                          ? (current.bountystartplace || String(midGameBountyStartPlace || 10))
+                          : '',
+                      }))}
                     >
-                      <option value="field">Whole field</option>
+                      <option value="field">{midGameBountyStartPlace ? `Remaining field (${formatOrdinal(midGameBountyStartPlace)} place on)` : 'Whole field'}</option>
                       <option value="placement">At a specific knockout</option>
                     </select>
                   </Field>
@@ -728,6 +746,7 @@ function TournamentDetailsCard({
                         className="input"
                         type="number"
                         min="2"
+                        max={midGameBountyStartPlace ?? undefined}
                         step="1"
                         value={form.bountystartplace}
                         onChange={(e) => setForm((current) => ({ ...current, bountystartplace: e.target.value }))}
@@ -740,9 +759,9 @@ function TournamentDetailsCard({
                       Cap: {formatMoney(standardBountyCap)} from {estimatedBountyField} max player{estimatedBountyField === 1 ? '' : 's'}.
                     </p>
                   )}
-                  {(bountyCapError || bountyMinimumError || bountyToggleError) && (
+                  {(bountyCapError || bountyMinimumError) && (
                     <p className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300 sm:col-span-2">
-                      {bountyCapError || bountyMinimumError || bountyToggleError}
+                      {bountyCapError || bountyMinimumError}
                     </p>
                   )}
                 </div>
@@ -751,7 +770,7 @@ function TournamentDetailsCard({
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost text-sm" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving || Boolean(bountyMinimumError) || Boolean(bountyCapError) || Boolean(bountyToggleError) || Boolean(rebuyCutoffError)}>
+            <button type="button" className="btn-primary text-sm" onClick={saveDetails} disabled={saving || Boolean(bountyMinimumError) || Boolean(bountyCapError) || Boolean(rebuyCutoffError)}>
               {saving ? 'Saving...' : 'Save Details'}
             </button>
           </div>
@@ -921,6 +940,22 @@ function hasTournamentStarted(tourneydate: string | null | undefined, tourneytim
 
 function formatMoney(value: number) {
   return `$${toNumber(value).toFixed(2)}`;
+}
+
+function formatOrdinal(value: number) {
+  const n = Math.max(0, Math.round(Number(value) || 0));
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
 }
 
 function formatBountyPool(tournament: Awaited<ReturnType<typeof api.getTournament>>, _bountyTotal: number) {

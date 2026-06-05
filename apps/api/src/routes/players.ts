@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
-import { redistributeMysteryBountiesForTournament } from '../services/bounties';
+import { validateCurrentBountyBudget, redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
@@ -553,6 +553,24 @@ playersRouter.put('/:tid/players/:uid/bounty', async (req: Request, res: Respons
     return;
   }
   const amount = Math.round(parsed * 100) / 100;
+  const bountyTotals = await queryOne<{ otherbounties: number; playercount: number }>(
+    `SELECT CAST(COALESCE(sum(CASE WHEN userid <> $2 THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS otherbounties,
+            CAST(COALESCE(sum(CASE WHEN userid = $2 THEN 1 ELSE 0 END), 0) AS INT) AS playercount
+     FROM tournamentplayers
+     WHERE tournamentid = $1`,
+    [req.params.tid, req.params.uid]
+  );
+  if (!bountyTotals?.playercount) {
+    res.status(404).json({ error: 'Player not found' });
+    return;
+  }
+  const currentBountyBudgetError = await validateCurrentBountyBudget(req.params.tid, {
+    bountyTotalOverride: Number(bountyTotals.otherbounties ?? 0) + amount,
+  });
+  if (currentBountyBudgetError) {
+    res.status(400).json({ error: currentBountyBudgetError });
+    return;
+  }
   const updated = await queryOne<{ bountyamount: number }>(
     `UPDATE tournamentplayers
      SET bountyamount = $3,

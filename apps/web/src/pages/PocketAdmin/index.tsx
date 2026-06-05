@@ -46,6 +46,7 @@ export default function PocketAdminPage() {
   const [wakeLockEnabled, setWakeLockEnabled] = useState(false);
   const [wakeLockError, setWakeLockError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
+  const [checkinBusyPlayerId, setCheckinBusyPlayerId] = useState<string | null>(null);
 
   const { data: tournament, isLoading: loadingTournament, error: tournamentError } = useQuery({
     queryKey: ['tournament', id],
@@ -66,6 +67,8 @@ export default function PocketAdminPage() {
   const checkinMutation = useMutation({
     mutationFn: (userId: string) => api.toggleCheckin(id!, userId),
     onSuccess: () => refreshTournamentData(qc, id!),
+    onMutate: (userId) => setCheckinBusyPlayerId(userId),
+    onSettled: () => setCheckinBusyPlayerId(null),
   });
   const rebuyMutation = useMutation({
     mutationFn: (userId: string) => api.addRebuy(id!, userId),
@@ -406,11 +409,11 @@ export default function PocketAdminPage() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className="btn-ghost justify-center"
+                  className={`${checkinBusyPlayerId === selectedPlayer.userid ? 'btn-primary animate-pulse' : 'btn-ghost'} justify-center`}
                   onClick={() => checkinMutation.mutate(selectedPlayer.userid)}
                   disabled={checkinMutation.isPending}
                 >
-                  {selectedPlayer.checkedin ? 'Undo Check-In' : 'Check In'}
+                  {checkinBusyPlayerId === selectedPlayer.userid ? 'Working...' : selectedPlayer.checkedin ? 'Undo Check-In' : 'Check In'}
                 </button>
                 {canUseClubFeatures ? (
                   <>
