@@ -17,7 +17,7 @@ import {
   type SerializedLeagueForFinals,
 } from '../leagues/scoring';
 import { encryptEmail, hashEmail, isGuestEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
-import { sendLeagueNotification } from '../lib/server/notifications/notificationService';
+import { sendLeagueNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
 import { sendLeagueGuestClaimEmail } from '../services/email';
 
 export const leaguesRouter = Router();
@@ -226,6 +226,18 @@ function normalizeEventTime(value: unknown): string | null {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+function ordinal(value: number): string {
+  const rounded = Math.round(Number(value));
+  const mod100 = rounded % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${rounded}th`;
+  switch (rounded % 10) {
+    case 1: return `${rounded}st`;
+    case 2: return `${rounded}nd`;
+    case 3: return `${rounded}rd`;
+    default: return `${rounded}th`;
+  }
+}
+
 function serializeLeague(row: LeagueRow): SerializedLeague {
   return {
     ...row,
@@ -311,6 +323,54 @@ async function getLeagueSeasonParticipantCount(leagueId: string, seasonId: strin
     [leagueId, seasonId]
   );
   return Number(row?.count || 0);
+}
+
+async function sendLeagueResultLoggedPush(args: {
+  leagueId: string;
+  leagueName: string;
+  event: Pick<LeagueEventRow, 'eventid' | 'seasonid' | 'name'>;
+  targetUserId: string;
+  result: LeagueResultRow;
+}) {
+  const recipient = await queryOne<{ pushalertsenabled: boolean | null; isguestuser: boolean | null }>(
+    `SELECT COALESCE(lm.pushalertsenabled, TRUE) AS pushalertsenabled,
+            COALESCE(um.isguestuser, FALSE) AS isguestuser
+     FROM leaguemembers lm
+     JOIN users u ON u.guid = lm.userid
+     LEFT JOIN usermetadata um ON um.userid = u.guid
+     WHERE lm.leagueid = $1
+       AND lm.userid = $2
+       AND lm.approved = TRUE`,
+    [args.leagueId, args.targetUserId]
+  );
+  if (!recipient || recipient.pushalertsenabled === false || recipient.isguestuser) {
+    return;
+  }
+
+  const dnf = Boolean(args.result.dnf);
+  const points = Number(args.result.points || 0) + Number(args.result.showupbonuspoints || 0);
+  const placement = args.result.placed == null ? null : Number(args.result.placed);
+  const placeText = dnf ? 'DNF' : placement ? `${ordinal(placement)} place` : 'a finish';
+  const eventName = args.event.name || 'League event';
+  await sendNotificationToUser(args.targetUserId, 'league_standings_updated', {
+    title: dnf ? 'DNF logged' : `${placeText} logged`,
+    body: dnf
+      ? `${eventName}: DNF was registered for you.`
+      : `${eventName}: ${placeText} was registered for you (${points} pts).`,
+    url: `/league/${args.leagueId}/event/${args.event.eventid}`,
+    tag: `league-${args.leagueId}-event-${args.event.eventid}-result-${args.targetUserId}`,
+    leagueId: args.leagueId,
+    leagueName: args.leagueName,
+    seasonId: args.event.seasonid,
+    eventId: args.event.eventid,
+    eventName,
+    placement: placeText,
+    points,
+  }, {
+    entityType: 'league_event',
+    entityId: args.event.eventid,
+    dedupe: false,
+  });
 }
 
 async function getLeagueSeasons(leagueId: string) {
@@ -2497,7 +2557,10 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     return;
   }
   const event = await queryOne<LeagueEventRow>(
-    `SELECT eventid, leagueid, seasonid, CAST(eventfee AS DECIMAL) AS eventfee FROM leagueevents WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, active, createdat
+     FROM leagueevents
+     WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
     [req.params.eventId, req.params.id]
   );
   if (!event) {
@@ -2559,6 +2622,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
 
   const client = await pool.connect();
   let row: LeagueResultRow | null = null;
+  let resultChanged = false;
   try {
     await client.query('BEGIN');
     const inserted = await client.query<LeagueResultRow>(
@@ -2606,6 +2670,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       || previous.dnf !== current.dnf
       || previous.points !== current.points
       || previous.showupbonuspoints !== current.showupbonuspoints;
+    resultChanged = changed;
     if (changed || removedEventFeePayments > 0) {
       await recordLeagueAudit(client, {
         leagueId: req.params.id,
@@ -2629,6 +2694,17 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     throw err;
   } finally {
     client.release();
+  }
+  if (row && resultChanged) {
+    void sendLeagueResultLoggedPush({
+      leagueId: req.params.id,
+      leagueName: leagueRow.name,
+      event,
+      targetUserId,
+      result: row,
+    }).catch((err) => {
+      console.error('League result push failed', err instanceof Error ? err.message : err);
+    });
   }
   res.json({ result: row });
 }

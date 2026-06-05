@@ -189,6 +189,10 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
      FROM leagueevents e
      JOIN leagues l ON l.leagueid = e.leagueid
      JOIN leaguemembers lm ON lm.leagueid = e.leagueid
+     JOIN leagueseasonparticipants lsp
+       ON lsp.leagueid = e.leagueid
+      AND lsp.seasonid = e.seasonid
+      AND lsp.userid = lm.userid
      JOIN users u ON u.guid = lm.userid
      LEFT JOIN usermetadata um ON um.userid = u.guid
      LEFT JOIN leagueeventreminders ler ON ler.eventid = e.eventid AND ler.userid = lm.userid
@@ -196,7 +200,7 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
        AND COALESCE(e.active, TRUE) = TRUE
        AND COALESCE(l.active, TRUE) = TRUE
        AND COALESCE(lm.approved, TRUE) = TRUE
-       AND COALESCE(lm.participating, TRUE) = TRUE
+       AND COALESCE(lsp.participating, TRUE) = TRUE
        AND COALESCE(lm.emailalertsenabled, TRUE) = TRUE
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND ler.emailsentat IS NULL
@@ -209,7 +213,7 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
     leagueEmailRows.map((row) => {
       const email = publicEmail(row.emailencrypted, row.emailaddress);
       if (!email) return Promise.resolve();
-      return sendLeagueEventReminderEmail(email, row.leagueid, row.leaguename, row.eventname, row.eventdate)
+      return sendLeagueEventReminderEmail(email, row.leagueid, row.leaguename, row.eventname, row.eventdate, row.eventid)
         .then(async () => {
           await query(
             `INSERT INTO leagueeventreminders (eventid, userid, emailsentat)
@@ -232,12 +236,16 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
      FROM leagueevents e
      JOIN leagues l ON l.leagueid = e.leagueid
      JOIN leaguemembers lm ON lm.leagueid = e.leagueid
+     JOIN leagueseasonparticipants lsp
+       ON lsp.leagueid = e.leagueid
+      AND lsp.seasonid = e.seasonid
+      AND lsp.userid = lm.userid
      LEFT JOIN leagueeventreminders ler ON ler.eventid = e.eventid AND ler.userid = lm.userid
      WHERE e.eventdate = $1
        AND COALESCE(e.active, TRUE) = TRUE
        AND COALESCE(l.active, TRUE) = TRUE
        AND COALESCE(lm.approved, TRUE) = TRUE
-       AND COALESCE(lm.participating, TRUE) = TRUE
+       AND COALESCE(lsp.participating, TRUE) = TRUE
        AND COALESCE(lm.pushalertsenabled, TRUE) = TRUE
        AND ler.pushsentat IS NULL`,
     [targetDate]
@@ -246,7 +254,8 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
   const leaguePushResults = await Promise.allSettled(
     leaguePushRows.map(async (row) => {
       const sent = await sendLeagueNotification(row.leagueid, 'season_milestone', {
-        message: `${row.eventname} is scheduled today.`,
+        message: `${row.eventname} starts today. Tap when you are knocked out to log your finish.`,
+        url: `/league/${row.leagueid}/event/${row.eventid}`,
         tag: `league-${row.leagueid}-event-${row.eventid}-daily-reminder`,
         entityId: row.eventid,
       });
@@ -255,9 +264,14 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
           `INSERT INTO leagueeventreminders (eventid, userid, pushsentat)
            SELECT $1, lm.userid, now()
            FROM leaguemembers lm
+           JOIN leagueevents e ON e.leagueid = lm.leagueid AND e.eventid = $1
+           JOIN leagueseasonparticipants lsp
+             ON lsp.leagueid = lm.leagueid
+            AND lsp.seasonid = e.seasonid
+            AND lsp.userid = lm.userid
            WHERE lm.leagueid = $2
              AND COALESCE(lm.approved, TRUE) = TRUE
-             AND COALESCE(lm.participating, TRUE) = TRUE
+             AND COALESCE(lsp.participating, TRUE) = TRUE
            ON CONFLICT (eventid, userid)
            DO UPDATE SET pushsentat = now()`,
           [row.eventid, row.leagueid]

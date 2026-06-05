@@ -430,9 +430,14 @@ export async function sendLeagueEventReminderEmail(
   leagueId: string,
   leagueName: string,
   eventName: string,
-  eventDate?: string | null
+  eventDate?: string | null,
+  eventId?: string | null
 ): Promise<void> {
   const eventDateText = eventDate ? eventDate.slice(0, 10) : 'today';
+  const lobbyUrl = eventId
+    ? `${appUrl}/league/${encodeURIComponent(leagueId)}/event/${encodeURIComponent(eventId)}`
+    : `${appUrl}/?tab=leagues&league=${encodeURIComponent(leagueId)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(lobbyUrl)}`;
   await sendMail({
     to: email,
     subject: `Reminder: ${eventName} is today`,
@@ -440,9 +445,12 @@ export async function sendLeagueEventReminderEmail(
       eyebrow: 'League Event Reminder',
       title: eventName,
       intro: `${leagueName} has a league event scheduled for ${eventDateText}.`,
-      body: '<p style="margin:0;">Open ThePokerPlanner to check standings and event details.</p>',
-      ctaHref: `${appUrl}/?tab=leagues&league=${encodeURIComponent(leagueId)}`,
-      ctaLabel: 'Open League',
+      body: `
+        <p style="margin:0 0 12px;">When you are knocked out, scan this code or tap the button and log your finish for league points.</p>
+        ${eventId ? `<div style="margin:16px 0;border-radius:16px;border:1px solid #2a2c35;background:#ffffff;padding:12px;width:180px;"><img src="${qrUrl}" width="180" height="180" alt="League event knockout QR code" style="display:block;border:0;" /></div>` : ''}
+      `,
+      ctaHref: lobbyUrl,
+      ctaLabel: 'Open Knockout Page',
     }),
   });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -227,7 +227,6 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
-  const [standingsNotifyEventIds, setStandingsNotifyEventIds] = useState<string[]>([]);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
@@ -305,19 +304,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const resultMutation = useMutation({
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
       api.logLeagueResult(league.leagueid, eventId, userId, { placed, dnf }),
-    onSuccess: (_result, variables) => {
-      setStandingsNotifyEventIds((current) => current.includes(variables.eventId) ? current : [...current, variables.eventId]);
-      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
-    },
-  });
-  const notifyStandingsMutation = useMutation({
-    mutationFn: (eventId: string) => {
-      const seasonId = data?.selectedseasonid ?? selectedSeasonId;
-      if (!seasonId) throw new Error('Choose a season first.');
-      return api.notifyLeagueStandings(league.leagueid, seasonId).then((result) => ({ ...result, eventId }));
-    },
-    onSuccess: (result) => {
-      setStandingsNotifyEventIds((current) => current.filter((eventId) => eventId !== result.eventId));
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
     },
   });
@@ -736,13 +723,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
                 resultsCount={detail.results.filter((result) => result.eventid === selectedEventFromDetail.eventid).length}
                 onBack={() => setSelectedEvent(null)}
                 onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, placed, dnf })}
-                onNotifyStandings={() => notifyStandingsMutation.mutate(selectedEventFromDetail.eventid)}
                 onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, all: true })}
                 onTogglePaid={(userId, paid) => toggleEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, paid })}
-                standingsNotificationPending={standingsNotifyEventIds.includes(selectedEventFromDetail.eventid)}
-                notifyLoading={notifyStandingsMutation.isPending && notifyStandingsMutation.variables === selectedEventFromDetail.eventid}
                 loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-                error={resultMutation.error?.message ?? notifyStandingsMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+                error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
               />
             ) : (
               <LeagueEventListCard
@@ -766,13 +750,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               leagueId={league.leagueid}
               resultsCount={eventResults.length}
               onLog={(userId, placed, dnf) => currentEvent && resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
-              onNotifyStandings={() => currentEvent && notifyStandingsMutation.mutate(currentEvent.eventid)}
               onMarkAllPaid={() => currentEvent && markEventPaidMutation.mutate({ eventId: currentEvent.eventid, all: true })}
               onTogglePaid={(userId, paid) => currentEvent && toggleEventPaidMutation.mutate({ eventId: currentEvent.eventid, userId, paid })}
-              standingsNotificationPending={Boolean(currentEvent && standingsNotifyEventIds.includes(currentEvent.eventid))}
-              notifyLoading={Boolean(currentEvent && notifyStandingsMutation.isPending && notifyStandingsMutation.variables === currentEvent.eventid)}
               loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-              error={resultMutation.error?.message ?? notifyStandingsMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+              error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
             />
           </div>
         </div>
@@ -949,11 +930,8 @@ function EventTrackerCard({
   resultsCount,
   onBack,
   onLog,
-  onNotifyStandings,
   onMarkAllPaid,
   onTogglePaid,
-  standingsNotificationPending,
-  notifyLoading,
   loading,
   error,
 }: {
@@ -963,11 +941,8 @@ function EventTrackerCard({
   resultsCount: number;
   onBack?: () => void;
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
-  onNotifyStandings: () => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
-  standingsNotificationPending: boolean;
-  notifyLoading: boolean;
   loading: boolean;
   error?: string;
 }) {
@@ -984,17 +959,6 @@ function EventTrackerCard({
           <h3 className="text-xl font-bold text-white">{event ? event.name : 'No event selected'}</h3>
         </div>
         <div className="flex flex-wrap gap-2">
-          {event && standingsNotificationPending && (
-            <button
-              type="button"
-              className="btn-primary px-3 py-1.5 text-xs"
-              disabled={notifyLoading}
-              onClick={onNotifyStandings}
-            >
-              <Bell size={13} />
-              {notifyLoading ? 'Notifying...' : 'Notify league'}
-            </button>
-          )}
           {event && (
             <a className="chip hover:border-pit-teal/50 hover:text-white" href={`/league/${leagueId}/event/${event.eventid}`}>
               <Copy size={13} />
