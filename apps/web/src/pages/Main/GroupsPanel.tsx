@@ -512,6 +512,13 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     mutationFn: (uid: string) => api.approveMember(group.groupid, uid),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid] }),
   });
+  const approveAllMutation = useMutation({
+    mutationFn: () => api.approveAllMembers(group.groupid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['group', group.groupid] });
+      qc.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
   const removeMutation = useMutation({
     mutationFn: (uid: string) => api.removeMember(group.groupid, uid),
     onSuccess: () => {
@@ -1417,12 +1424,23 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
             )}
             {pending.length > 0 && group.isadmin && (
               <div>
-                <p className="eyebrow mb-2">Pending Approval</p>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="eyebrow">Pending Approval</p>
+                  <button
+                    className="btn-primary px-3 py-1.5 text-xs"
+                    disabled={approveAllMutation.isPending || approveMutation.isPending}
+                    onClick={() => approveAllMutation.mutate()}
+                  >
+                    {approveAllMutation.isPending ? 'Approving...' : `Approve all (${pending.length})`}
+                  </button>
+                </div>
+                {approveAllMutation.error && <p className="mb-2 text-sm text-red-400">{approveAllMutation.error.message}</p>}
                 <div className="space-y-1">
                   {pending.map(m => (
                     <div key={m.userid} className="flex items-center justify-between py-2 px-3 rounded-lg bg-pit-bg border border-pit-border">
                       <span className="text-sm">{m.displayname ?? m.emailaddress}</span>
                       <button className="btn-primary text-xs px-3 py-1"
+                        disabled={approveMutation.isPending || approveAllMutation.isPending}
                         onClick={() => approveMutation.mutate(m.userid)}>Approve</button>
                     </div>
                   ))}

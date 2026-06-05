@@ -315,15 +315,17 @@ export async function sendLeagueNotification(
     [leagueId]
   );
   if (!league) return { recipients: 0, attempted: 0, sent: 0, skipped: 0 };
-  const rows = await query<{ userid: string }>(
-    `SELECT DISTINCT userid
-     FROM leaguemembers
-     WHERE leagueid = $1
-       AND approved = TRUE
-       AND COALESCE(pushalertsenabled, TRUE) = TRUE`,
-    [leagueId]
-  );
-  return sendNotificationToUsers(rows.map((row) => row.userid), type, {
+  const recipientIds = options.targetUserIds?.length
+    ? [...new Set(options.targetUserIds)]
+    : (await query<{ userid: string }>(
+      `SELECT DISTINCT userid
+       FROM leaguemembers
+       WHERE leagueid = $1
+         AND approved = TRUE
+         AND COALESCE(pushalertsenabled, TRUE) = TRUE`,
+      [leagueId]
+    )).map((row) => row.userid);
+  return sendNotificationToUsers(recipientIds, type, {
     leagueId,
     leagueName: league.name,
     ...data,

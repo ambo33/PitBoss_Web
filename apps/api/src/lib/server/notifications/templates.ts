@@ -23,6 +23,7 @@ const COMMAND_CENTER_NOTIFICATION_TYPES = new Set<NotificationType>([
   'tournament_schedule_changed',
   'tournament_location_changed',
   'tournament_cancelled',
+  'group_member_approved',
   'host_announcement_posted',
   'seats_almost_full',
 ]);
@@ -71,6 +72,10 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTempla
   tournament_cancelled: {
     title: 'Tournament cancelled',
     body: '{tournamentName} has been cancelled.',
+  },
+  group_member_approved: {
+    title: 'Group approved',
+    body: 'You are now approved for {groupName}.',
   },
   host_announcement_posted: {
     title: 'Host announcement',
@@ -154,7 +159,7 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTempla
   },
   league_standings_updated: {
     title: 'Standings updated',
-    body: '{leagueName} standings have been updated.',
+    body: '{seasonName} standings have been updated.',
   },
   league_rank_changed: {
     title: 'Your rank changed',

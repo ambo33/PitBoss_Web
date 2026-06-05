@@ -95,6 +95,8 @@ export const api = {
     post<{ groupid: string; pending: boolean }>('/groups/join', { invitecode }),
   approveMember: (groupId: string, userId: string) =>
     put(`/groups/${groupId}/members/${userId}/approve`),
+  approveAllMembers: (groupId: string) =>
+    put<{ success: boolean; approved: number }>(`/groups/${groupId}/members/approve-all`),
   removeMember: (groupId: string, userId: string) =>
     del(`/groups/${groupId}/members/${userId}`),
   leaveGroup: (groupId: string, userId: string) =>
@@ -163,6 +165,8 @@ export const api = {
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname, seasonid }),
   addLeagueAdmin: (id: string, email: string) =>
     post<{ member: LeagueMember }>(`/leagues/${id}/admins`, { email }),
+  addLeagueSeasonMembers: (id: string, seasonId: string, userids: string[]) =>
+    post<{ success: boolean; added: number }>(`/leagues/${id}/seasons/${seasonId}/members`, { userids }),
   inviteLeagueGuestClaim: (id: string, guestUserId: string, email: string) =>
     post<{ success: boolean; email: string }>(`/leagues/${id}/members/${guestUserId}/claim-invite`, { email }),
   inviteLeagueSpotTakeover: (id: string, userId: string, email: string, seasonid?: string | null) =>
@@ -180,6 +184,8 @@ export const api = {
     patch<{ season: LeagueSeason }>(`/leagues/${id}/seasons/${seasonId}`, data),
   deleteLeagueSeason: (id: string, seasonId: string) =>
     del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}`),
+  notifyLeagueStandings: (id: string, seasonId: string) =>
+    post<{ success: boolean; recipients: number; attempted: number; sent: number; skipped: number }>(`/leagues/${id}/seasons/${seasonId}/standings-notification`, {}),
   markLeagueEventPaid: (id: string, eventId: string, data: { userId?: string; all?: boolean; paidat?: string }) =>
     post<{ payments: LeaguePayment[]; updatedCount: number }>(`/leagues/${id}/events/${eventId}/payments/mark-paid`, data),
   createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null }) =>

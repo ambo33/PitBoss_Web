@@ -372,55 +372,6 @@ async function addSeasonParticipant(client: PoolClient, leagueId: string, season
   );
 }
 
-async function addApprovedMembersToSeason(client: PoolClient, leagueId: string, seasonId: string) {
-  const latestSeason = await client.query<{ seasonid: string }>(
-    `SELECT seasonid
-     FROM leagueseasons
-     WHERE leagueid = $1
-       AND seasonid <> $2
-       AND COALESCE(active, TRUE) = TRUE
-     ORDER BY begindate DESC, createdat DESC
-     LIMIT 1`,
-    [leagueId, seasonId]
-  );
-
-  if (latestSeason.rows[0]) {
-    await client.query(
-      `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-       SELECT $2, lsp.leagueid, lsp.userid, TRUE
-       FROM leagueseasonparticipants lsp
-       JOIN leaguemembers lm ON lm.leagueid = lsp.leagueid AND lm.userid = lsp.userid
-       WHERE lsp.leagueid = $1
-         AND lsp.seasonid = $3
-         AND lsp.participating = TRUE
-         AND lm.approved = TRUE
-       ON CONFLICT (seasonid, userid) DO UPDATE SET participating = TRUE`,
-      [leagueId, seasonId, latestSeason.rows[0].seasonid]
-    );
-    return;
-  }
-
-  await client.query(
-    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-     SELECT $2, lm.leagueid, lm.userid, TRUE
-     FROM leaguemembers lm
-     WHERE lm.leagueid = $1 AND lm.approved = TRUE AND COALESCE(lm.participating, TRUE) = TRUE
-     ON CONFLICT (seasonid, userid) DO NOTHING`,
-    [leagueId, seasonId]
-  );
-}
-
-async function addMemberToActiveSeasons(client: PoolClient, leagueId: string, userId: string) {
-  await client.query(
-    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-     SELECT s.seasonid, s.leagueid, $2, TRUE
-     FROM leagueseasons s
-     WHERE s.leagueid = $1 AND COALESCE(s.active, TRUE) = TRUE
-     ON CONFLICT (seasonid, userid) DO UPDATE SET participating = TRUE`,
-    [leagueId, userId]
-  );
-}
-
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
@@ -866,9 +817,6 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
        ON CONFLICT (leagueid, userid) DO UPDATE SET approved = CASE WHEN leaguemembers.approved THEN TRUE ELSE $3 END`,
       [league.leagueid, req.userId, approved]
     );
-    if (approved) {
-      await addMemberToActiveSeasons(client, league.leagueid, req.userId!);
-    }
     if (!existingMembership || (approved && !existingMembership.approved)) {
       await recordLeagueAudit(client, {
         leagueId: league.leagueid,
@@ -916,7 +864,6 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
       [req.params.id, name, beginDate, endDate, perEventFee]
     );
     const season = seasonResult.rows[0];
-    await addApprovedMembersToSeason(client, req.params.id, season.seasonid);
     const events = eventCount > 0 ? await createLeagueEventStubs(client, req.params.id, season.seasonid, 1, eventCount) : [];
     await recordLeagueAudit(client, {
       leagueId: req.params.id,
@@ -930,6 +877,7 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
         enddate: endDate,
         perEventFee,
         eventCount: events.length,
+        rosterSeeded: false,
       },
     });
     await client.query('COMMIT');
@@ -1012,6 +960,81 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     });
     await client.query('COMMIT');
     res.json({ season: serializeSeason(row) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+leaguesRouter.post('/:id/seasons/:seasonId/members', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as { userids?: unknown };
+  const userIds = Array.isArray(body.userids)
+    ? [...new Set(body.userids.map((value) => String(value ?? '').trim()).filter(Boolean))]
+    : [];
+  if (userIds.length === 0) {
+    res.status(400).json({ error: 'Choose at least one league member for this season.' });
+    return;
+  }
+  const season = await queryOne<LeagueSeasonRow>(
+    `SELECT seasonid, leagueid, name, begindate, enddate,
+            expectedplayercount, leaguefee, CAST(pereventfee AS DECIMAL) AS pereventfee,
+            showupbonuspoints, bestfinishcount, pointslookup,
+            finalenabled, finalmultiplierlookup, finalchiprounding, finalstartingbigblind,
+            active, createdat
+     FROM leagueseasons
+     WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id, req.params.seasonId]
+  );
+  if (!season) {
+    res.status(404).json({ error: 'Season not found.' });
+    return;
+  }
+
+  const eligible = await query<{ userid: string; displayname: string | null }>(
+    `SELECT lm.userid,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname
+     FROM leaguemembers lm
+     JOIN users u ON u.guid = lm.userid
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE lm.leagueid = $1
+       AND lm.userid = ANY($2::UUID[])
+       AND lm.approved = TRUE
+       AND COALESCE(lm.participating, TRUE) = TRUE`,
+    [req.params.id, userIds]
+  );
+  if (eligible.length === 0) {
+    res.status(400).json({ error: 'Selected players must be approved league members.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+       SELECT $2, $1, unnest($3::UUID[]), TRUE
+       ON CONFLICT (seasonid, userid) DO UPDATE SET participating = TRUE`,
+      [req.params.id, season.seasonid, eligible.map((member) => member.userid)]
+    );
+    await recordLeagueAudit(client, {
+      leagueId: req.params.id,
+      seasonId: season.seasonid,
+      actorId: req.userId,
+      action: 'season_players_added',
+      summary: 'Players were added to the season roster.',
+      details: {
+        count: eligible.length,
+        players: eligible.map((member) => member.displayname ?? member.userid),
+      },
+    });
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, added: eligible.length });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -1798,14 +1821,6 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     return;
   }
   const effectiveLeague = leagueWithSeasonSettings(league, selectedSeason);
-  await query(
-    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-     SELECT $2, lm.leagueid, lm.userid, TRUE
-     FROM leaguemembers lm
-     WHERE lm.leagueid = $1 AND lm.approved = TRUE AND COALESCE(lm.participating, TRUE) = TRUE
-     ON CONFLICT (seasonid, userid) DO NOTHING`,
-    [league.leagueid, selectedSeason.seasonid]
-  );
   const memberRows = await query<LeagueMemberRow>(
     `SELECT u.guid AS userid, u.emailaddress, u.emailencrypted,
             ${leagueDisplayNameSql('m', 'u')} AS displayname,
@@ -1825,9 +1840,10 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      JOIN users u ON u.guid = lm.userid
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN leagueseasonparticipants lsp ON lsp.seasonid = $2 AND lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
-     WHERE lm.leagueid = $1 AND (lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)
+     WHERE lm.leagueid = $1
+       AND ($3::BOOL = TRUE OR lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)
      ORDER BY lm.admin DESC, lm.approved DESC, lower(${leagueDisplayNameSql('m', 'u')}) ASC`,
-    [league.leagueid, selectedSeason.seasonid]
+    [league.leagueid, selectedSeason.seasonid, Boolean(league.isadmin)]
   );
   const members = memberRows.map((member) => {
     const {
@@ -1873,6 +1889,11 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
             p.eventid, e.name AS eventname, p.paymenttype, CAST(p.amount AS DECIMAL) AS amount,
             p.paidat, p.note, p.recordedby, p.createdat
      FROM leaguepayments p
+     JOIN leagueseasonparticipants lsp
+       ON lsp.seasonid = $2
+      AND lsp.leagueid = p.leagueid
+      AND lsp.userid = p.userid
+      AND lsp.participating = TRUE
      JOIN users u ON u.guid = p.userid
      LEFT JOIN usermetadata m ON m.userid = u.guid
      LEFT JOIN leagueevents e ON e.eventid = p.eventid
@@ -2609,15 +2630,6 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
   } finally {
     client.release();
   }
-  void sendLeagueNotification(req.params.id, 'league_standings_updated', {
-    entityId: event.eventid,
-    tag: `league-${req.params.id}-standings-${event.eventid}`,
-  }, {
-    entityId: event.eventid,
-    dedupe: false,
-  }).catch((err) => {
-    console.error('League standings push failed', err instanceof Error ? err.message : err);
-  });
   res.json({ result: row });
 }
 
@@ -2627,4 +2639,44 @@ leaguesRouter.put('/:id/events/:eventId/results/:userId', async (req: Request, r
 
 leaguesRouter.put('/:id/events/:eventId/self-result', async (req: Request, res: Response) => {
   await upsertResult(req, res, req.userId!, true);
+});
+
+leaguesRouter.post('/:id/seasons/:seasonId/standings-notification', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const season = await queryOne<{ seasonid: string; name: string }>(
+    `SELECT seasonid, name
+     FROM leagueseasons
+     WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.id, req.params.seasonId]
+  );
+  if (!season) {
+    res.status(404).json({ error: 'Season not found.' });
+    return;
+  }
+  const recipients = await query<{ userid: string }>(
+    `SELECT DISTINCT lm.userid
+     FROM leaguemembers lm
+     LEFT JOIN leagueseasonparticipants lsp
+       ON lsp.leagueid = lm.leagueid
+      AND lsp.userid = lm.userid
+      AND lsp.seasonid = $2
+     WHERE lm.leagueid = $1
+       AND lm.approved = TRUE
+       AND COALESCE(lm.pushalertsenabled, TRUE) = TRUE
+       AND (lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)`,
+    [req.params.id, season.seasonid]
+  );
+  const summary = await sendLeagueNotification(req.params.id, 'league_standings_updated', {
+    seasonId: season.seasonid,
+    seasonName: season.name,
+    tag: `league-${req.params.id}-season-${season.seasonid}-standings`,
+  }, {
+    targetUserIds: recipients.map((row) => row.userid),
+    entityId: season.seasonid,
+    dedupe: false,
+  });
+  res.json({ success: true, ...summary });
 });

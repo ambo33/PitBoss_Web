@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -227,6 +227,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
+  const [standingsNotifyEventIds, setStandingsNotifyEventIds] = useState<string[]>([]);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
@@ -246,6 +247,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     onSuccess: (created) => {
       setSelectedSeasonId(created.season.seasonid);
       setSelectedEvent(null);
+      setActiveDetailTab('players');
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
       setSeasonModalOpen(false);
@@ -260,6 +262,17 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   });
   const addAdminMutation = useMutation({
     mutationFn: (email: string) => api.addLeagueAdmin(league.leagueid, email),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
+  const addSeasonMembersMutation = useMutation({
+    mutationFn: (userids: string[]) => {
+      const seasonId = data?.selectedseasonid ?? selectedSeasonId;
+      if (!seasonId) throw new Error('Choose a season first.');
+      return api.addLeagueSeasonMembers(league.leagueid, seasonId, userids);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -292,7 +305,21 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const resultMutation = useMutation({
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
       api.logLeagueResult(league.leagueid, eventId, userId, { placed, dnf }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+    onSuccess: (_result, variables) => {
+      setStandingsNotifyEventIds((current) => current.includes(variables.eventId) ? current : [...current, variables.eventId]);
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+    },
+  });
+  const notifyStandingsMutation = useMutation({
+    mutationFn: (eventId: string) => {
+      const seasonId = data?.selectedseasonid ?? selectedSeasonId;
+      if (!seasonId) throw new Error('Choose a season first.');
+      return api.notifyLeagueStandings(league.leagueid, seasonId).then((result) => ({ ...result, eventId }));
+    },
+    onSuccess: (result) => {
+      setStandingsNotifyEventIds((current) => current.filter((eventId) => eventId !== result.eventId));
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+    },
   });
   const updateEventMutation = useMutation({
     mutationFn: ({ eventId, ...payload }: { eventId: string; name?: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number | null }) =>
@@ -684,15 +711,17 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           detail={detail}
           onAddGuest={(displayname) => addGuestMutation.mutate(displayname)}
           onAddAdmin={(email) => addAdminMutation.mutate(email)}
+          onAddSeasonMembers={(userids) => addSeasonMembersMutation.mutate(userids)}
           onInviteTakeover={(userId, email) => inviteSpotTakeoverMutation.mutate({ userId, email })}
           onToggleAdmin={(userId, isadmin) => updateMemberAdminMutation.mutate({ userId, isadmin })}
           onRemoveMember={setRemoveMemberTarget}
           addLoading={addGuestMutation.isPending}
           addAdminLoading={addAdminMutation.isPending}
+          addSeasonMembersLoading={addSeasonMembersMutation.isPending}
           inviteLoadingUserId={inviteSpotTakeoverMutation.isPending ? inviteSpotTakeoverMutation.variables?.userId : null}
           adminLoadingUserId={updateMemberAdminMutation.isPending ? updateMemberAdminMutation.variables?.userId : null}
           removeLoading={removeMemberMutation.isPending}
-          error={addGuestMutation.error?.message ?? addAdminMutation.error?.message ?? inviteSpotTakeoverMutation.error?.message ?? updateMemberAdminMutation.error?.message ?? removeMemberMutation.error?.message}
+          error={addGuestMutation.error?.message ?? addAdminMutation.error?.message ?? addSeasonMembersMutation.error?.message ?? inviteSpotTakeoverMutation.error?.message ?? updateMemberAdminMutation.error?.message ?? removeMemberMutation.error?.message}
         />
       )}
 
@@ -707,10 +736,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
                 resultsCount={detail.results.filter((result) => result.eventid === selectedEventFromDetail.eventid).length}
                 onBack={() => setSelectedEvent(null)}
                 onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, placed, dnf })}
+                onNotifyStandings={() => notifyStandingsMutation.mutate(selectedEventFromDetail.eventid)}
                 onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, all: true })}
                 onTogglePaid={(userId, paid) => toggleEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, paid })}
+                standingsNotificationPending={standingsNotifyEventIds.includes(selectedEventFromDetail.eventid)}
+                notifyLoading={notifyStandingsMutation.isPending && notifyStandingsMutation.variables === selectedEventFromDetail.eventid}
                 loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-                error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+                error={resultMutation.error?.message ?? notifyStandingsMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
               />
             ) : (
               <LeagueEventListCard
@@ -734,10 +766,13 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               leagueId={league.leagueid}
               resultsCount={eventResults.length}
               onLog={(userId, placed, dnf) => currentEvent && resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
+              onNotifyStandings={() => currentEvent && notifyStandingsMutation.mutate(currentEvent.eventid)}
               onMarkAllPaid={() => currentEvent && markEventPaidMutation.mutate({ eventId: currentEvent.eventid, all: true })}
               onTogglePaid={(userId, paid) => currentEvent && toggleEventPaidMutation.mutate({ eventId: currentEvent.eventid, userId, paid })}
+              standingsNotificationPending={Boolean(currentEvent && standingsNotifyEventIds.includes(currentEvent.eventid))}
+              notifyLoading={Boolean(currentEvent && notifyStandingsMutation.isPending && notifyStandingsMutation.variables === currentEvent.eventid)}
               loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-              error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+              error={resultMutation.error?.message ?? notifyStandingsMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
             />
           </div>
         </div>
@@ -914,8 +949,11 @@ function EventTrackerCard({
   resultsCount,
   onBack,
   onLog,
+  onNotifyStandings,
   onMarkAllPaid,
   onTogglePaid,
+  standingsNotificationPending,
+  notifyLoading,
   loading,
   error,
 }: {
@@ -925,8 +963,11 @@ function EventTrackerCard({
   resultsCount: number;
   onBack?: () => void;
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
+  onNotifyStandings: () => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
+  standingsNotificationPending: boolean;
+  notifyLoading: boolean;
   loading: boolean;
   error?: string;
 }) {
@@ -943,6 +984,17 @@ function EventTrackerCard({
           <h3 className="text-xl font-bold text-white">{event ? event.name : 'No event selected'}</h3>
         </div>
         <div className="flex flex-wrap gap-2">
+          {event && standingsNotificationPending && (
+            <button
+              type="button"
+              className="btn-primary px-3 py-1.5 text-xs"
+              disabled={notifyLoading}
+              onClick={onNotifyStandings}
+            >
+              <Bell size={13} />
+              {notifyLoading ? 'Notifying...' : 'Notify league'}
+            </button>
+          )}
           {event && (
             <a className="chip hover:border-pit-teal/50 hover:text-white" href={`/league/${leagueId}/event/${event.eventid}`}>
               <Copy size={13} />
@@ -1529,11 +1581,13 @@ function LeagueMembersCard({
   detail,
   onAddGuest,
   onAddAdmin,
+  onAddSeasonMembers,
   onInviteTakeover,
   onToggleAdmin,
   onRemoveMember,
   addLoading,
   addAdminLoading,
+  addSeasonMembersLoading,
   inviteLoadingUserId,
   adminLoadingUserId,
   removeLoading,
@@ -1542,11 +1596,13 @@ function LeagueMembersCard({
   detail: LeagueDetail;
   onAddGuest: (displayname: string) => void;
   onAddAdmin: (email: string) => void;
+  onAddSeasonMembers: (userIds: string[]) => void;
   onInviteTakeover: (userId: string, email: string) => void;
   onToggleAdmin: (userId: string, isadmin: boolean) => void;
   onRemoveMember: (member: LeagueMember) => void;
   addLoading: boolean;
   addAdminLoading: boolean;
+  addSeasonMembersLoading: boolean;
   inviteLoadingUserId?: string | null;
   adminLoadingUserId?: string | null;
   removeLoading: boolean;
@@ -1554,9 +1610,13 @@ function LeagueMembersCard({
 }) {
   const [guestName, setGuestName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
+  const [selectedSeasonMemberIds, setSelectedSeasonMemberIds] = useState<string[]>([]);
   const [takeoverEmails, setTakeoverEmails] = useState<Record<string, string>>({});
   const approvedMembers = detail.members
     .filter((member) => member.approved && member.participating)
+    .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
+  const seasonCandidates = detail.members
+    .filter((member) => member.approved && !member.participating)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const leagueAdmins = detail.members
     .filter((member) => member.approved && member.isadmin)
@@ -1580,6 +1640,11 @@ function LeagueMembersCard({
     onAddAdmin(email);
     setAdminEmail('');
   };
+  const submitSeasonMembers = () => {
+    if (selectedSeasonMemberIds.length === 0) return;
+    onAddSeasonMembers(selectedSeasonMemberIds);
+    setSelectedSeasonMemberIds([]);
+  };
 
   return (
     <section className="card space-y-4">
@@ -1596,6 +1661,39 @@ function LeagueMembersCard({
 
       {detail.league.isadmin && (
         <div className="grid gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3 xl:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end xl:col-span-2">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add league members to this season</span>
+              <select
+                className="input min-h-[7.5rem] py-2"
+                multiple
+                value={selectedSeasonMemberIds}
+                onChange={(event) => {
+                  const values = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                  setSelectedSeasonMemberIds(values);
+                }}
+              >
+                {seasonCandidates.map((member) => (
+                  <option key={member.userid} value={member.userid}>
+                    {member.displayname ?? 'League member'}{member.isadmin ? ' (admin)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="btn-primary justify-center px-4 py-2 text-sm"
+              disabled={addSeasonMembersLoading || selectedSeasonMemberIds.length === 0}
+              onClick={submitSeasonMembers}
+            >
+              <UserPlus size={13} />
+              {addSeasonMembersLoading ? 'Adding...' : 'Add to season'}
+            </button>
+            {seasonCandidates.length === 0 && (
+              <p className="rounded-lg border border-pit-border bg-pit-card/60 px-3 py-2 text-sm text-pit-muted lg:col-span-2">
+                No approved league members are waiting for this season.
+              </p>
+            )}
+          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add player</span>
@@ -1638,7 +1736,7 @@ function LeagueMembersCard({
               <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>
             ) : (
               <p className="text-sm leading-6 text-pit-muted">
-                League admins can manage seasons, events, fees, and players. They do not have to be active players in the season roster.
+                Each season has its own roster. Add league members here only when they are playing this selected season.
               </p>
             )}
           </div>
@@ -1752,7 +1850,7 @@ function LeagueMembersCard({
             )}
           </div>
         ))}
-        {approvedMembers.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No approved players yet.</p>}
+        {approvedMembers.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No players in this season yet.</p>}
       </div>
     </section>
   );
@@ -2695,11 +2793,11 @@ function CreateSeasonModal({
           </label>
         </div>
         <label className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starter events</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Total events</span>
           <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
         </label>
         <p className="text-sm leading-6 text-pit-text">
-          A season is the scoring window inside this league. New seasons start with the active roster from the most recent season, so removed players stay out unless an admin adds them back.
+          A season is its own roster, standings, events, and fee ledger. After creating it, add only the league members who are playing this season.
         </p>
       </div>
     </Modal>

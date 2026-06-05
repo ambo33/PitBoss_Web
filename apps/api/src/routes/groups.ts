@@ -6,7 +6,7 @@ import { getAppUrl } from '../config';
 import { BlindLevel, Group, GroupCoin, GroupCoinAward, GroupComment, GroupMember, GroupPollOption, GroupPost } from '../types';
 import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
 import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
-import { sendGroupNotification } from '../lib/server/notifications/notificationService';
+import { sendGroupNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -163,6 +163,27 @@ async function notifyGroupAdminsForPost(groupId: string, postId: string, authorN
       .map((email) => sendGroupPostApprovalEmail(email, group.name, authorName, message))
   );
   await query(`UPDATE groupposts SET active = TRUE WHERE id = $1`, [postId]);
+}
+
+async function notifyMembersApprovedForGroup(groupId: string, userIds: string[]): Promise<void> {
+  if (userIds.length === 0) return;
+  const group = await queryOne<{ name: string }>(
+    `SELECT name FROM groups WHERE groupid = $1 AND COALESCE(active, TRUE) = TRUE`,
+    [groupId]
+  );
+  if (!group) return;
+  await Promise.allSettled(
+    [...new Set(userIds)].map((userId) => sendNotificationToUser(userId, 'group_member_approved', {
+      groupId,
+      clubId: groupId,
+      groupName: group.name,
+      entityId: userId,
+    }, {
+      entityType: 'group',
+      entityId: groupId,
+      dedupe: false,
+    }))
+  );
 }
 
 async function getGroupConversationAccess(groupId: string): Promise<{ exists: boolean; enabled: boolean }> {
@@ -1137,11 +1158,32 @@ groupsRouter.put('/:id/members/:userId/approve', async (req: Request, res: Respo
     [req.params.id, req.userId]
   );
   if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
-  await query(
-    `UPDATE groupmembers SET approved = TRUE WHERE groupid = $1 AND userid = $2`,
+  const approved = await query<{ userid: string }>(
+    `UPDATE groupmembers
+     SET approved = TRUE
+     WHERE groupid = $1 AND userid = $2 AND approved IS DISTINCT FROM TRUE
+     RETURNING userid`,
     [req.params.id, req.params.userId]
   );
-  res.json({ success: true });
+  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
+  res.json({ success: true, approved: approved.length });
+});
+
+groupsRouter.put('/:id/members/approve-all', async (req: Request, res: Response) => {
+  const admin = await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
+    [req.params.id, req.userId]
+  );
+  if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
+  const approved = await query<{ userid: string }>(
+    `UPDATE groupmembers
+     SET approved = TRUE
+     WHERE groupid = $1 AND approved IS DISTINCT FROM TRUE
+     RETURNING userid`,
+    [req.params.id]
+  );
+  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
+  res.json({ success: true, approved: approved.length });
 });
 
 groupsRouter.delete('/:id/members/:userId', async (req: Request, res: Response) => {
