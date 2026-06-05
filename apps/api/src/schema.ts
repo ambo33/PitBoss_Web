@@ -130,6 +130,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ADD COLUMN IF NOT EXISTS bountyminpayout DECIMAL(10,2) DEFAULT 0
     `);
     await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS demosessionid STRING(64)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_tournaments_demo_session
+      ON tournaments (demosessionid)
+    `);
+    await client.query(`
       ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS fullname STRING(160)
     `);
@@ -214,6 +222,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON usermetadata (isdemo, demosessionid)
     `);
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_usermetadata_demo_created
+      ON usermetadata (isdemo, democreatedat, demosessionid)
+    `);
+    await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS emailhash STRING(64)
     `);
@@ -260,6 +272,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS postapprovalrequired BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS demosessionid STRING(64)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_groups_demo_session
+      ON groups (demosessionid)
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS groupblindstructures (
@@ -560,6 +580,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS memberledgervisible BOOL DEFAULT FALSE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS demosessionid STRING(64)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leagues_demo_session ON leagues (demosessionid)`);
     await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
     await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
     await client.query(`UPDATE leagues SET expectedplayercount = 36 WHERE expectedplayercount IS NULL`);
@@ -877,6 +899,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       CREATE INDEX IF NOT EXISTS idx_games_visibility
       ON games (visibility, groupid)
     `);
+    await client.query(`ALTER TABLE games ADD COLUMN IF NOT EXISTS demosessionid STRING(64)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_games_demo_session ON games (demosessionid)`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS cashgamedetails (
         gameid UUID PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
