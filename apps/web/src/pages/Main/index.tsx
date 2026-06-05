@@ -11,6 +11,7 @@ import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
 import PwaPushPrompt from '../../components/PwaPushPrompt';
+import FirstRunTutorial from '../../components/FirstRunTutorial';
 import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 
 type MainView = 'command' | 'profile' | 'admin';
@@ -76,7 +77,7 @@ export default function MainPage() {
   }, [location.pathname, navigate, requestedLeagueId, requestedTab]);
 
   useEffect(() => {
-    if (user && user.onboardingcomplete === false) {
+    if (user && user.onboardingcomplete === false && !user.isdemo) {
       setShowTour(true);
     }
   }, [user]);
@@ -102,7 +103,7 @@ export default function MainPage() {
       onboardingcomplete: currentProfile.onboardingcomplete,
       isdemo: currentProfile.isdemo,
     });
-    setShowTour(currentProfile.onboardingcomplete === false);
+    setShowTour(currentProfile.onboardingcomplete === false && !currentProfile.isdemo);
   }, [currentProfile, updateUser]);
 
   const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
@@ -166,7 +167,7 @@ export default function MainPage() {
             onSectionChange={handleCommandSectionChange}
             hideDashboard={commandDetailOpen}
             onCreateFlowChange={setCreateTournamentOpen}
-            onboardingActive={showTour}
+            onboardingActive={false}
             createGameRequestId={createGameRequestId}
             onStartGroupCreate={startGroupCreate}
             onStartGroupInvite={startGroupInvite}
@@ -188,6 +189,13 @@ export default function MainPage() {
         {view === 'profile' && <ProfilePanel onReturn={() => setView('command')} />}
         {view === 'admin' && <AdminPanel />}
       </Layout>
+      {showTour && (
+        <FirstRunTutorial
+          displayName={currentProfile?.displayname ?? user?.displayname}
+          completing={completeTourMutation.isPending}
+          onComplete={() => completeTourMutation.mutate()}
+        />
+      )}
     </>
   );
 }
