@@ -466,9 +466,10 @@ function TournamentDetailsCard({
   const effectiveFormBountyStartPlace = form.bountyenabled && midGameBountyStartPlace && !form.bountystartplace
     ? midGameBountyStartPlace
     : form.bountystartplace ? Number(form.bountystartplace) || 0 : 0;
-  const estimatedBountyEligibleCount = effectiveFormBountyStartPlace
-    ? Math.min(effectiveFormBountyStartPlace, estimatedBountyField)
-    : estimatedBountyField;
+  const estimatedBountyEligibleCount = Math.max(
+    0,
+    (effectiveFormBountyStartPlace ? Math.min(effectiveFormBountyStartPlace, estimatedBountyField) : estimatedBountyField) - 1
+  );
   const estimatedBountyGross = (toNumber(form.buyin) * estimatedBountyField)
     + (toNumber(form.rebuyprice) * totalRebuys)
     + (toNumber(form.addonprice) * totalAddons);

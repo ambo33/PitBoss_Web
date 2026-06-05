@@ -344,7 +344,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     tournament,
     Number(field.grosspot ?? 0),
     Number(field.bountytotal ?? 0),
-    Number(field.knockedoutcount ?? 0) > 0 || Number(field.bountyclaimed ?? 0) > 0
+    false
   );
   const prizePool = Math.max(Number(field.grosspot ?? 0) - Number(tournament.rake ?? 0) - bountyTotal, 0);
   const stats = [

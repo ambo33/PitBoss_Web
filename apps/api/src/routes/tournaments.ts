@@ -7,6 +7,7 @@ import { hasTournamentStarted } from '../schedule';
 import { sendTournamentCancelledEmail, sendTournamentPostedEmail } from '../services/email';
 import {
   assignMysteryBounties,
+  getBountyEligibleCount,
   getGrossPot,
   normalizeBountyDenomination,
   normalizeBountyMode,
@@ -118,9 +119,23 @@ function normalizeRebuyLastLevel(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function formatStartTime(date: string | null | undefined, time: string | null | undefined): string {
-  const dateText = date ? date.slice(0, 10) : 'the scheduled date';
-  const timeText = time ? time.slice(0, 5) : 'the scheduled time';
+function normalizeScheduleDate(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function normalizeScheduleTime(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(11, 19);
+  const match = String(value).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return String(value).slice(0, 8);
+  return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}:${match[3] ?? '00'}`;
+}
+
+function formatStartTime(date: string | Date | null | undefined, time: string | Date | null | undefined): string {
+  const dateText = normalizeScheduleDate(date) ?? 'the scheduled date';
+  const timeText = normalizeScheduleTime(time)?.slice(0, 5) ?? 'the scheduled time';
   return `${dateText} ${timeText}`;
 }
 
@@ -272,7 +287,7 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Set max players before enabling bounties so the bounty cap is defined.' });
       return;
     }
-    const eligibleCount = normalizedBountyStartPlace ? Math.min(normalizedBountyStartPlace, estimatedField) : estimatedField;
+    const eligibleCount = getBountyEligibleCount(estimatedField, normalizedBountyStartPlace);
     const estimatedGrossPot = (Number(buyin ?? 0) * estimatedField)
       + (Number(rebuyprice ?? 0) * Number(genericrebuys ?? 0))
       + (Number(addonprice ?? 0) * Number(genericaddons ?? 0));
@@ -572,12 +587,16 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   const scheduleLocked = hasTournamentStarted(currentTournament.tourneydate, currentTournament.tourneytime);
   const requestedDate = tourneydate ?? undefined;
   const requestedTime = tourneytime ?? undefined;
+  const currentScheduleDate = normalizeScheduleDate(currentTournament.tourneydate);
+  const currentScheduleTime = normalizeScheduleTime(currentTournament.tourneytime);
+  const requestedScheduleDate = requestedDate === undefined ? undefined : normalizeScheduleDate(requestedDate);
+  const requestedScheduleTime = requestedTime === undefined ? undefined : normalizeScheduleTime(requestedTime);
   if (
     !isSuperAdmin
     && scheduleLocked
     && (
-      (requestedDate !== undefined && requestedDate !== currentTournament.tourneydate)
-      || (requestedTime !== undefined && requestedTime !== currentTournament.tourneytime)
+      (requestedScheduleDate !== undefined && requestedScheduleDate !== currentScheduleDate)
+      || (requestedScheduleTime !== undefined && requestedScheduleTime !== currentScheduleTime)
     )
   ) {
     res.status(400).json({ error: 'Tournament date and time can no longer be changed after the event has started.' });
@@ -640,7 +659,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Set max players before enabling bounties so the bounty cap is defined.' });
       return;
     }
-    const eligibleCount = effectiveStartPlace ? Math.min(effectiveStartPlace, effectiveField) : effectiveField;
+    const eligibleCount = getBountyEligibleCount(effectiveField, effectiveStartPlace);
     const estimatedGrossPot = (Number(buyin ?? currentTournament.buyin ?? 0) * effectiveField)
       + (Number(rebuyprice ?? currentTournament.rebuyprice ?? 0) * Number(genericrebuys ?? currentTournament.genericrebuys ?? 0))
       + (Number(addonprice ?? currentTournament.addonprice ?? 0) * Number(genericaddons ?? currentTournament.genericaddons ?? 0));
@@ -734,8 +753,13 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
          AND COALESCE(checkedin, FALSE) = TRUE
          AND (
            placed IS NULL
-           OR $3::INT IS NULL
-           OR placed <= $3::INT
+           OR (
+             placed > 1
+             AND (
+               $3::INT IS NULL
+               OR placed <= $3::INT
+             )
+           )
          )`,
       [req.params.id, effectivePrizepool, effectiveStartPlace]
     );
@@ -746,6 +770,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
          AND bountyclaimedat IS NULL
          AND (
            COALESCE(checkedin, FALSE) = FALSE
+           OR placed = 1
            OR (
              placed IS NOT NULL
              AND $2::INT IS NOT NULL
@@ -787,12 +812,12 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
   }
   broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-update' });
   const scheduleChanged = (
-    (requestedDate !== undefined && requestedDate !== currentTournament.tourneydate)
-    || (requestedTime !== undefined && requestedTime !== currentTournament.tourneytime)
+    (requestedScheduleDate !== undefined && requestedScheduleDate !== currentScheduleDate)
+    || (requestedScheduleTime !== undefined && requestedScheduleTime !== currentScheduleTime)
   );
   if (scheduleChanged) {
-    const newDate = requestedDate ?? currentTournament.tourneydate;
-    const newTime = requestedTime ?? currentTournament.tourneytime;
+    const newDate = requestedScheduleDate ?? currentScheduleDate;
+    const newTime = requestedScheduleTime ?? currentScheduleTime;
     void sendTournamentNotification(req.params.id, 'tournament_schedule_changed', {
       tournamentName: name ?? currentTournament.name,
       newStartTime: formatStartTime(newDate, newTime),

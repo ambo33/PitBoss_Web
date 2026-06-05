@@ -69,6 +69,12 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
     rebuyclosed?: boolean;
     prizepool?: number | null;
+    paidplaces?: number | null;
+    bountyenabled?: boolean;
+    bountymode?: 'manual' | 'mystery' | null;
+    bountystartplace?: number | null;
+    bountypool?: number | null;
+    bountyremaining?: number | null;
     playercount?: number | null;
     rebuyenabled?: boolean;
     rebuyamount?: number | null;
@@ -167,6 +173,12 @@ aiRouter.post('/tournaments/:id/announcer', async (req: Request, res: Response) 
     totalAddons,
     addOnPercent: checkedInPlayers > 0 ? Math.round((totalAddons / checkedInPlayers) * 100) : 0,
     prizePool: body.prizepool == null ? null : Number(body.prizepool),
+    paidPlaces: body.paidplaces == null ? null : Number(body.paidplaces),
+    bountyEnabled: body.bountyenabled == null ? null : Boolean(body.bountyenabled),
+    bountyMode: body.bountymode === 'mystery' ? 'mystery' : body.bountymode === 'manual' ? 'manual' : null,
+    bountyStartPlace: body.bountystartplace == null ? null : Number(body.bountystartplace),
+    bountyPool: body.bountypool == null ? null : Number(body.bountypool),
+    bountyRemaining: body.bountyremaining == null ? null : Number(body.bountyremaining),
     playerCount: body.playercount == null ? null : Number(body.playercount),
     rebuyEnabled: body.rebuyenabled == null ? null : Boolean(body.rebuyenabled),
     rebuyAmount: body.rebuyamount == null ? null : Number(body.rebuyamount),

@@ -38,7 +38,8 @@ export function normalizeBountyMinPayout(value: unknown): number {
 export function getBountyEligibleCount(fieldSize: number, startPlaceValue: unknown): number {
   const field = Math.max(0, Math.floor(Number(fieldSize) || 0));
   const startPlace = normalizeBountyStartPlace(startPlaceValue);
-  return startPlace ? Math.min(startPlace, field) : field;
+  const highestPaidBountyPlace = startPlace ? Math.min(startPlace, field) : field;
+  return Math.max(0, highestPaidBountyPlace - 1);
 }
 
 export function validateStandardKnockoutBounty({
@@ -178,7 +179,7 @@ export async function validateCurrentBountyBudget(
   const startPlace = normalizeBountyStartPlace(
     overrides.bountystartplace === undefined ? tournament.bountystartplace : overrides.bountystartplace
   );
-  const eligibleCount = startPlace ? Math.min(startPlace, enteredCount) : enteredCount;
+  const eligibleCount = getBountyEligibleCount(enteredCount, startPlace);
   const configuredBountyTotal = mode === 'manual'
     ? normalizeMoney(configuredValue * eligibleCount)
     : estimatePoolFromValue(poolType, configuredValue, grossPot);
@@ -204,11 +205,10 @@ export async function assignMysteryBounties(
   prizepool: number,
   denominationValue: number = 5,
   startPlaceValue: number | null = null,
-  minPayoutValue: number = 0
+  _minPayoutValue: number = 0
 ): Promise<{ assigned: number; total: number; denomination: number; locked: boolean }> {
   const startPlace = normalizeBountyStartPlace(startPlaceValue);
   const denominationCents = Math.max(1, Math.round(normalizeBountyDenomination(denominationValue) * 100));
-  const minUnits = Math.max(0, Math.ceil(normalizeBountyMinPayout(minPayoutValue) * 100 / denominationCents));
   const claimed = await queryOne<{ total: number; count: number }>(
     `SELECT CAST(COALESCE(sum(COALESCE(bountyamount, 0)), 0) AS DECIMAL) AS total,
             CAST(count(*) AS INT) AS count
@@ -233,9 +233,6 @@ export async function assignMysteryBounties(
      ORDER BY createdate, userid`,
     [tournamentId, startPlace]
   );
-  const players = eligiblePlayers;
-  const remainingPrizepool = Math.max(0, normalizeMoney(prizepool) - claimedTotal);
-  const totalUnits = Math.max(0, Math.round(remainingPrizepool * 100 / denominationCents));
 
   await query(
     `UPDATE tournamentplayers
@@ -243,63 +240,103 @@ export async function assignMysteryBounties(
          bountyclaimedbyuserid = NULL,
          bountyclaimedat = NULL
      WHERE tournamentid = $1
-       AND bountyclaimedat IS NULL
-       AND (
-         COALESCE(checkedin, FALSE) = FALSE
-         OR (
-           placed IS NOT NULL
-           AND $2::INT IS NOT NULL
-           AND placed > $2::INT
-         )
-       )`,
-    [tournamentId, startPlace]
+       AND bountyclaimedat IS NULL`,
+    [tournamentId]
   );
 
-  if (players.length === 0 || totalUnits <= 0) {
-    return { assigned: players.length, total: claimedTotal, denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
-  }
-  const enforceMinimum = !startPlace || players.length <= startPlace;
-  const startingUnits = enforceMinimum ? minUnits : 0;
-  if (startingUnits > 0 && startingUnits * players.length > totalUnits) {
-    throw new Error(`Minimum bounty payout is too high for the bounty pool and eligible players.`);
+  return {
+    assigned: eligiblePlayers.length,
+    total: Math.max(normalizeMoney(prizepool), claimedTotal),
+    denomination: denominationCents / 100,
+    locked: Number(claimed?.count ?? 0) > 0,
+  };
+}
+
+export async function assignMysteryBountyForKnockout(
+  tournamentId: string,
+  playerUserId: string,
+  placementValue: unknown,
+  claimedByUserId: string | null
+): Promise<number> {
+  const placement = Math.floor(Number(placementValue) || 0);
+  if (!claimedByUserId || placement <= 1) return 0;
+
+  const tournament = await queryOne<{
+    bountyenabled: boolean;
+    bountymode: string | null;
+    bountyprizepool: number;
+    bountypooltype: string | null;
+    bountyroundingdenomination: number;
+    bountystartplace: number | null;
+    bountyminpayout: number;
+  }>(
+    `SELECT COALESCE(bountyenabled, FALSE) AS bountyenabled,
+            COALESCE(bountymode, 'manual') AS bountymode,
+            COALESCE(CAST(bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
+            COALESCE(bountypooltype, 'amount') AS bountypooltype,
+            COALESCE(CAST(bountyroundingdenomination AS DECIMAL), 5) AS bountyroundingdenomination,
+            CAST(bountystartplace AS INT) AS bountystartplace,
+            COALESCE(CAST(bountyminpayout AS DECIMAL), 0) AS bountyminpayout
+     FROM tournaments
+     WHERE tournamentid = $1`,
+    [tournamentId]
+  );
+  if (!tournament?.bountyenabled || normalizeBountyMode(tournament.bountymode) !== 'mystery') return 0;
+
+  const startPlace = normalizeBountyStartPlace(tournament.bountystartplace);
+  if (startPlace && placement > startPlace) return 0;
+
+  const field = await queryOne<{ enteredcount: number; claimedcount: number; claimedtotal: number }>(
+    `SELECT CAST(COALESCE(sum(CASE WHEN checkedin = TRUE OR placed IS NOT NULL THEN 1 ELSE 0 END), 0) AS INT) AS enteredcount,
+            CAST(COALESCE(sum(CASE WHEN bountyclaimedat IS NOT NULL THEN 1 ELSE 0 END), 0) AS INT) AS claimedcount,
+            CAST(COALESCE(sum(CASE WHEN bountyclaimedat IS NOT NULL THEN COALESCE(bountyamount, 0) ELSE 0 END), 0) AS DECIMAL) AS claimedtotal
+     FROM tournamentplayers
+     WHERE tournamentid = $1`,
+    [tournamentId]
+  );
+  const enteredCount = Math.max(0, Math.floor(Number(field?.enteredcount ?? 0)));
+  const eligibleCount = getBountyEligibleCount(enteredCount, startPlace);
+  const claimedCount = Math.max(0, Math.floor(Number(field?.claimedcount ?? 0)));
+  const remainingSlots = Math.max(0, eligibleCount - claimedCount);
+  if (remainingSlots <= 0) return 0;
+
+  const poolType = normalizeBountyPoolType(tournament.bountypooltype);
+  const configuredValue = poolType === 'percent'
+    ? normalizePercent(tournament.bountyprizepool)
+    : normalizeMoney(tournament.bountyprizepool);
+  const configuredPool = await resolveBountyPrizepool(tournamentId, configuredValue, poolType);
+  const denominationCents = Math.max(1, Math.round(normalizeBountyDenomination(tournament.bountyroundingdenomination) * 100));
+  const claimedUnits = Math.round(normalizeMoney(field?.claimedtotal ?? 0) * 100 / denominationCents);
+  const totalUnits = Math.max(0, Math.round(configuredPool * 100 / denominationCents));
+  const remainingUnits = Math.max(0, totalUnits - claimedUnits);
+  if (remainingUnits <= 0) return 0;
+
+  const configuredMinUnits = Math.max(0, Math.ceil(normalizeBountyMinPayout(tournament.bountyminpayout) * 100 / denominationCents));
+  const minimumUnits = configuredMinUnits > 0 ? configuredMinUnits : (remainingUnits >= remainingSlots ? 1 : 0);
+  if (minimumUnits * remainingSlots > remainingUnits) {
+    throw new Error('Minimum bounty payout is too high for the remaining mystery bounty pool.');
   }
 
-  const amounts = new Array(players.length).fill(startingUnits);
-  let remainingUnits = totalUnits;
-  remainingUnits -= startingUnits * players.length;
+  const amountUnits = remainingSlots === 1
+    ? remainingUnits
+    : crypto.randomInt(minimumUnits, Math.max(minimumUnits, remainingUnits - (minimumUnits * (remainingSlots - 1))) + 1);
+  const amount = normalizeMoney((amountUnits * denominationCents) / 100);
+  if (amount <= 0) return 0;
 
-  if (startingUnits === 0 && totalUnits >= players.length) {
-    amounts.fill(1);
-    remainingUnits -= players.length;
-  }
-
-  const weights = players.map((_, index) => crypto.randomInt(25, 300) + ((index % 5) * 15));
-  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-  const weightedUnits = weights.map((weight) => Math.floor((remainingUnits * weight) / weightTotal));
-  weightedUnits.forEach((units, index) => { amounts[index] += units; });
-  let remainder = remainingUnits - weightedUnits.reduce((sum, units) => sum + units, 0);
-  while (remainder > 0) {
-    amounts[crypto.randomInt(0, amounts.length)] += 1;
-    remainder -= 1;
-  }
-
-  const totalCents = totalUnits * denominationCents;
-  await Promise.all(players.map((player, index) => query(
+  await query(
     `UPDATE tournamentplayers
      SET bountyamount = $3,
-         bountyclaimedbyuserid = CASE
-           WHEN placed IS NOT NULL AND knockedoutbyuserid IS NOT NULL AND $3::DECIMAL > 0 THEN knockedoutbyuserid
-           ELSE bountyclaimedbyuserid
-         END,
-         bountyclaimedat = CASE
-           WHEN placed IS NOT NULL AND knockedoutbyuserid IS NOT NULL AND $3::DECIMAL > 0 THEN COALESCE(bountyclaimedat, now())
-           ELSE bountyclaimedat
-         END
-     WHERE tournamentid = $1 AND userid = $2`,
-    [tournamentId, player.userid, (amounts[index] * denominationCents) / 100]
-  )));
+         bountyclaimedbyuserid = $4,
+         bountyclaimedat = COALESCE(bountyclaimedat, now())
+     WHERE tournamentid = $1
+       AND userid = $2
+       AND placed IS NOT NULL
+       AND placed > 1
+       AND bountyclaimedat IS NULL`,
+    [tournamentId, playerUserId, amount, claimedByUserId]
+  );
 
-  return { assigned: players.length, total: claimedTotal + (totalCents / 100), denomination: denominationCents / 100, locked: Number(claimed?.count ?? 0) > 0 };
+  return amount;
 }
 
 async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKnockout: number, startPlaceValue: number | null = null): Promise<void> {
@@ -311,6 +348,7 @@ async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKno
        AND bountyclaimedat IS NULL
        AND (
          COALESCE(checkedin, FALSE) = FALSE
+         OR placed = 1
          OR (
            placed IS NOT NULL
            AND $2::INT IS NOT NULL
@@ -328,8 +366,13 @@ async function assignStandardKnockoutBounties(tournamentId: string, bountyPerKno
        AND COALESCE(checkedin, FALSE) = TRUE
        AND (
          placed IS NULL
-         OR $3::INT IS NULL
-         OR placed <= $3::INT
+         OR (
+           placed > 1
+           AND (
+             $3::INT IS NULL
+             OR placed <= $3::INT
+           )
+         )
        )`,
     [tournamentId, normalizeMoney(bountyPerKnockout), startPlace]
   );

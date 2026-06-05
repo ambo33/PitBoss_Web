@@ -8,7 +8,7 @@ import { isTvBoardAvailable } from '../schedule';
 import { KnockoutOption, LobbyEntry, LobbyFieldStats, SeatingAssignment, Tournament, TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted } from '../services/seating';
-import { redistributeMysteryBountiesForTournament } from '../services/bounties';
+import { assignMysteryBountyForKnockout, redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
@@ -85,6 +85,12 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
     rebuyclosed?: boolean;
     prizepool?: number | null;
+    paidplaces?: number | null;
+    bountyenabled?: boolean | null;
+    bountymode?: 'manual' | 'mystery' | null;
+    bountystartplace?: number | null;
+    bountypool?: number | null;
+    bountyremaining?: number | null;
     playercount?: number | null;
     rebuyenabled?: boolean | null;
     rebuyamount?: number | null;
@@ -193,6 +199,12 @@ publicRouter.post('/tv/:code/announcer', async (req: Request, res: Response) => 
     totalAddons,
     addOnPercent: checkedInPlayers > 0 ? Math.round((totalAddons / checkedInPlayers) * 100) : 0,
     prizePool: body.prizepool == null ? null : Number(body.prizepool),
+    paidPlaces: body.paidplaces == null ? null : Number(body.paidplaces),
+    bountyEnabled: body.bountyenabled == null ? null : Boolean(body.bountyenabled),
+    bountyMode: body.bountymode === 'mystery' ? 'mystery' : body.bountymode === 'manual' ? 'manual' : null,
+    bountyStartPlace: body.bountystartplace == null ? null : Number(body.bountystartplace),
+    bountyPool: body.bountypool == null ? null : Number(body.bountypool),
+    bountyRemaining: body.bountyremaining == null ? null : Number(body.bountyremaining),
     playerCount: body.playercount == null ? null : Number(body.playercount),
     rebuyEnabled: body.rebuyenabled == null ? null : Boolean(body.rebuyenabled),
     rebuyAmount: body.rebuyamount == null ? null : Number(body.rebuyamount),
@@ -971,9 +983,10 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
     }
   }
 
-  const activeField = await queryOne<{ activecount: number; bountyenabled: boolean; bountystartplace: number | null }>(
+  const activeField = await queryOne<{ activecount: number; bountyenabled: boolean; bountymode: string | null; bountystartplace: number | null }>(
     `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(tp.checkedin, FALSE) = TRUE AND tp.placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
             , COALESCE(MAX(CASE WHEN COALESCE(t.bountyenabled, FALSE) = TRUE THEN 1 ELSE 0 END), 0) = 1 AS bountyenabled
+            , COALESCE(MAX(t.bountymode), 'manual') AS bountymode
             , CAST(MAX(t.bountystartplace) AS INT) AS bountystartplace
      FROM tournamentplayers tp
      JOIN tournaments t ON t.tournamentid = tp.tournamentid
@@ -982,6 +995,7 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   );
   const placed = Math.max(Number(activeField?.activecount ?? 0), 1);
   const bountyStartPlace = activeField?.bountystartplace == null ? null : Number(activeField.bountystartplace);
+  const bountyMode = activeField?.bountymode === 'mystery' ? 'mystery' : 'manual';
   if (activeField?.bountyenabled && !knockedoutByUserId) {
     res.status(400).json({ error: 'Choose who knocked you out before submitting.' });
     return;
@@ -993,10 +1007,10 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
          checkedin = TRUE,
          knockedoutbyuserid = $4,
          knockedoutat = now(),
-         bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
-         bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
+         bountyclaimedbyuserid = CASE WHEN $6::TEXT != 'mystery' AND COALESCE(bountyamount, 0) > 0 AND $3::INT > 1 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
+         bountyclaimedat = CASE WHEN $6::TEXT != 'mystery' AND COALESCE(bountyamount, 0) > 0 AND $3::INT > 1 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
      WHERE tournamentid = $1 AND userid = $2`,
-    [req.params.id, playerUserId, placed, knockedoutByUserId, bountyStartPlace]
+    [req.params.id, playerUserId, placed, knockedoutByUserId, bountyStartPlace, bountyMode]
   );
 
   let tournamentCompleted = false;
@@ -1029,6 +1043,9 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
 
   if (tournamentCompleted) {
     await pauseTournamentTimer(req.params.id, { reason: 'tournament-completed' });
+  }
+  if (knockedoutByUserId) {
+    await assignMysteryBountyForKnockout(req.params.id, playerUserId, placed, knockedoutByUserId);
   }
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });

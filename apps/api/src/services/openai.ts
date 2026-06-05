@@ -44,6 +44,12 @@ interface AnnouncerContext {
   totalAddons: number;
   addOnPercent: number;
   prizePool?: number | null;
+  paidPlaces?: number | null;
+  bountyEnabled?: boolean | null;
+  bountyMode?: 'manual' | 'mystery' | null;
+  bountyStartPlace?: number | null;
+  bountyPool?: number | null;
+  bountyRemaining?: number | null;
   playerCount?: number | null;
   rebuyEnabled?: boolean | null;
   rebuyAmount?: number | null;
@@ -257,11 +263,14 @@ export async function generateAnnouncerMoment(context: AnnouncerContext): Promis
         'Write one opening announcement for the start of a poker tournament.',
         `Style preset: ${presetInstructions[preset]}`,
         context.customPrompt ? `Group custom direction: ${context.customPrompt}` : '',
-        'Rules: 45 to 75 words. Welcome the players, state the field size, current prize pool, whether re-buys and add-ons are available, first blinds, and wish everyone good luck. This only plays at tournament start, so make it complete but not bloated. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        'Rules: 45 to 75 words. Welcome the players, state the field size, current placement prize pool, payout places, bounty/knockout setup if enabled, whether re-buys and add-ons are available, first blinds, and wish everyone good luck. This only plays at tournament start, so make it complete but not bloated. No profanity, illegal gambling encouragement, copyrighted catchphrases, or real organization affiliation claims. Never describe blinds as "over" or "slash"; say "small blind is X, big blind is Y."',
+        'Important payout wording: placement payouts and bounties are separate. Never say "prizes start at 0" or "prizes start at zero." If paid places are provided, say "top X places are paid." If mystery bounties are enabled, say they reveal when eligible players are knocked out; do not invent exact mystery values.',
         `Tournament: ${context.tournamentName}`,
         context.groupName ? `Group: ${context.groupName}` : '',
         `Players in field: ${getAnnouncedPlayerCount(context)}`,
-        `Current prize pool: ${formatMoneyForSpeech(context.prizePool)}`,
+        `Current placement prize pool: ${formatMoneyForSpeech(context.prizePool)}`,
+        formatPaidPlacesFact(context),
+        formatBountyFact(context),
         formatAvailabilityFact('Re-buys', context.rebuyEnabled, context.rebuyAmount),
         formatAvailabilityFact('Add-ons', context.addonEnabled, context.addonAmount),
         `First level: ${context.currentLevel}`,
@@ -413,9 +422,11 @@ function buildTournamentStartScript(context: AnnouncerContext): string {
   const bigBlind = Number(context.bigBlind ?? 0).toLocaleString();
   const fieldCount = getAnnouncedPlayerCount(context);
   const prizePool = formatMoneyForSpeech(context.prizePool);
+  const paidPlaces = formatPaidPlacesSentence(context);
+  const bounty = formatBountySentence(context);
   const rebuy = formatAvailabilitySentence('Re-buys', context.rebuyEnabled, context.rebuyAmount);
   const addon = formatAvailabilitySentence('Add-ons', context.addonEnabled, context.addonAmount);
-  return `Welcome to ${context.tournamentName}. We have ${fieldCount} player${fieldCount === 1 ? '' : 's'} in the field and a current prize pool of ${prizePool}. ${rebuy} ${addon} Level one starts now: small blind is ${smallBlind}, big blind is ${bigBlind}. Good luck, players.`;
+  return `Welcome to ${context.tournamentName}. We have ${fieldCount} player${fieldCount === 1 ? '' : 's'} in the field and a current placement prize pool of ${prizePool}. ${paidPlaces} ${bounty} ${rebuy} ${addon} Level one starts now: small blind is ${smallBlind}, big blind is ${bigBlind}. Good luck, players.`;
 }
 
 function buildTournamentWinnerScript(context: AnnouncerContext): string {
@@ -429,6 +440,50 @@ function formatAvailabilityFact(label: string, enabled: boolean | null | undefin
   if (!enabled) return `${label}: not available`;
   const numericAmount = Number(amount ?? 0);
   return `${label}: available${numericAmount > 0 ? ` for ${formatMoneyForSpeech(numericAmount)}` : ''}`;
+}
+
+function formatPaidPlacesFact(context: AnnouncerContext): string {
+  const paidPlaces = Math.max(0, Math.floor(Number(context.paidPlaces ?? 0)));
+  return paidPlaces > 0
+    ? `Placement payouts: top ${paidPlaces} place${paidPlaces === 1 ? '' : 's'} paid`
+    : 'Placement payouts: not configured';
+}
+
+function formatPaidPlacesSentence(context: AnnouncerContext): string {
+  const paidPlaces = Math.max(0, Math.floor(Number(context.paidPlaces ?? 0)));
+  return paidPlaces > 0
+    ? `Top ${paidPlaces} place${paidPlaces === 1 ? ' is' : 's are'} paid.`
+    : 'Placement payouts are not configured yet.';
+}
+
+function formatBountyFact(context: AnnouncerContext): string {
+  if (!context.bountyEnabled) return 'Bounties: not enabled';
+  const startPlace = Math.max(0, Math.floor(Number(context.bountyStartPlace ?? 0)));
+  const bountyPool = formatMoneyForSpeech(context.bountyPool ?? context.bountyRemaining);
+  const startText = startPlace > 0
+    ? ` starting at ${ordinal(startPlace)} place`
+    : ' for the field';
+  if (context.bountyMode === 'mystery') {
+    return `Bounties: mystery bounties${startText}; amounts reveal only when eligible players are knocked out; bounty pool ${bountyPool}`;
+  }
+  return `Bounties: standard knockout bounties${startText}; bounty pool ${bountyPool}`;
+}
+
+function formatBountySentence(context: AnnouncerContext): string {
+  if (!context.bountyEnabled) return 'No bounties are in play.';
+  const startPlace = Math.max(0, Math.floor(Number(context.bountyStartPlace ?? 0)));
+  const startText = startPlace > 0
+    ? ` beginning at ${ordinal(startPlace)} place`
+    : '';
+  if (context.bountyMode === 'mystery') {
+    return `Mystery bounties are in play${startText}, with amounts revealed when eligible players are knocked out.`;
+  }
+  const amount = Number(context.bountyPool ?? 0) > 0 && getAnnouncedPlayerCount(context) > 0
+    ? Number(context.bountyPool) / getAnnouncedPlayerCount(context)
+    : Number(context.bountyAmount ?? 0);
+  return Number.isFinite(amount) && amount > 0
+    ? `Standard knockout bounties are in play${startText}.`
+    : `Knockout bounties are in play${startText}.`;
 }
 
 function formatAvailabilitySentence(label: string, enabled: boolean | null | undefined, amount: number | null | undefined): string {

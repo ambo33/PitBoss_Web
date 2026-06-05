@@ -188,6 +188,7 @@ export default function RunTournament({
   const activeMysteryBountyRef = useRef<MysteryBountyReveal | null>(null);
   const mysteryBountyRevealTimeoutRef = useRef<number | null>(null);
   const mysteryBountyClearTimeoutRef = useRef<number | null>(null);
+  const pendingChampionRef = useRef<ChampionCelebration | null>(null);
   const championTimeoutRefs = useRef<number[]>([]);
   const pendingTvDisplayModeRef = useRef<TvDisplayMode | null>(null);
 
@@ -230,6 +231,14 @@ export default function RunTournament({
     }
     setActiveMysteryBounty((current) => current?.id === revealId ? revealed : current);
     playMysteryBountyReveal();
+  }
+
+  function queueChampionCelebration(champion: ChampionCelebration) {
+    if (activeMysteryBountyRef.current) {
+      pendingChampionRef.current = champion;
+      return;
+    }
+    setActiveChampion(champion);
   }
 
   const rebuyMutation = useMutation({
@@ -483,12 +492,17 @@ export default function RunTournament({
       if (current.bountyClaimed && current.bountyClaimed !== previous.bountyClaimed && toNumber(player.bountyamount) > 0) {
         const bountyAmount = toNumber(player.bountyamount);
         if (tournament.bountyenabled && tournament.bountymode === 'mystery') {
-          const possibleAmounts = [
+          const denomination = Math.max(1, toNumber(tournament.bountyroundingdenomination) || 5);
+          const minimum = Math.max(denomination, toNumber(tournament.bountyminpayout) || denomination);
+          const possibleAmounts = Array.from(new Set([
             bountyAmount,
-            ...players
-              .filter((candidate) => candidate.userid !== player.userid && !candidate.bountyclaimedat && toNumber(candidate.bountyamount) > 0)
-              .map((candidate) => toNumber(candidate.bountyamount)),
-          ].sort((a, b) => b - a);
+            minimum,
+            Math.max(minimum, bountyAmount - (denomination * 2)),
+            Math.max(minimum, bountyAmount - denomination),
+            bountyAmount + denomination,
+            bountyAmount + (denomination * 2),
+            Math.max(minimum, Math.round((bountyAmount * 1.5) / denomination) * denomination),
+          ])).filter((amount) => amount > 0).sort((a, b) => b - a);
           const revealId = `${player.userid}-mystery-bounty-${current.bountyClaimed}-${Date.now()}`;
           const revealState = {
             id: revealId,
@@ -515,6 +529,11 @@ export default function RunTournament({
               }
               return currentReveal;
             });
+            if (pendingChampionRef.current) {
+              const champion = pendingChampionRef.current;
+              pendingChampionRef.current = null;
+              setActiveChampion(champion);
+            }
           }, 15000);
           nextBurst = null;
           break;
@@ -539,7 +558,7 @@ export default function RunTournament({
       if (moneyBurstTimeoutRef.current) window.clearTimeout(moneyBurstTimeoutRef.current);
       moneyBurstTimeoutRef.current = window.setTimeout(() => setActiveMoneyBurst(null), 2400);
     }
-  }, [displayMode, players, showAdminControls, tournament.bountyenabled, tournament.bountymode]);
+  }, [displayMode, players, showAdminControls, tournament.bountyenabled, tournament.bountymode, tournament.bountyminpayout, tournament.bountyroundingdenomination]);
 
   useEffect(() => {
     if (!showAdminControls && !displayMode) return;
@@ -574,7 +593,7 @@ export default function RunTournament({
     knockoutPlacementsRef.current = currentPlacements;
 
     if (newChampion && newSecondPlace) {
-      setActiveChampion({
+      queueChampionCelebration({
         id: `${newChampion.userid}-champion-${Date.now()}`,
         name: newChampion.displayname ?? newChampion.emailaddress ?? 'Champion',
         prizeAmount: toNumber(payouts[0]),
@@ -637,6 +656,7 @@ export default function RunTournament({
     if (mysteryBountyClearTimeoutRef.current) {
       window.clearTimeout(mysteryBountyClearTimeoutRef.current);
     }
+    pendingChampionRef.current = null;
     championTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     championTimeoutRefs.current = [];
   }, []);
@@ -948,6 +968,12 @@ export default function RunTournament({
       bigblind: Number(blind?.bigblind ?? 0),
       ante: Number(blind?.ante ?? 0),
       prizepool: prizePool,
+      paidplaces: payoutPlaces,
+      bountyenabled: Boolean(tournament.bountyenabled),
+      bountymode: tournament.bountymode ?? null,
+      bountystartplace: tournament.bountystartplace ?? null,
+      bountypool: bountyTotal,
+      bountyremaining: bountyRemaining,
       playercount: playerCount,
       rebuyenabled: rebuyEnabled,
       rebuyamount: toNumber(tournament.rebuyprice),
@@ -1145,11 +1171,11 @@ export default function RunTournament({
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
   const bountyTotal = getConfiguredBountyPool(tournament, grossPot, players);
-  const bountyRemaining = tournament.bountyenabled
-    ? players.filter((player) => player.placed == null).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
-    : 0;
   const bountyClaimed = tournament.bountyenabled
     ? players.filter((player) => Boolean(player.bountyclaimedat)).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    : 0;
+  const bountyRemaining = tournament.bountyenabled
+    ? Math.max(0, bountyTotal - bountyClaimed)
     : 0;
   const totalPot = Math.max(grossPot - toNumber(tournament.rake) - bountyTotal, 0);
   const payouts = buildRoundedPayouts(totalPot, payoutSplits, payoutConfig.roundingdenomination);
@@ -2147,6 +2173,11 @@ export default function RunTournament({
                   ? `${activeMysteryBounty.claimedByName} knocked out ${activeMysteryBounty.eliminatedName}`
                   : `${activeMysteryBounty.eliminatedName} has been eliminated`}
               </p>
+              {activeMysteryBounty.claimedByName && (
+                <p className="mt-3 text-lg font-black text-amber-100">
+                  Claimed by {activeMysteryBounty.claimedByName}
+                </p>
+              )}
 
               <div className="relative mx-auto mt-5 flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
                 <div className="absolute -top-1 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[14px] border-t-[22px] border-x-transparent border-t-amber-300 drop-shadow-[0_0_10px_rgba(245,184,75,0.7)]" />
@@ -2179,7 +2210,7 @@ export default function RunTournament({
                 </div>
                 <div className="relative z-20 flex h-36 w-36 flex-col items-center justify-center rounded-full border border-pit-teal/40 bg-black/80 px-3 shadow-[0_0_30px_rgba(20,184,184,0.32)]">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-muted">
-                    {activeMysteryBounty.revealed ? 'Winner' : 'Revealing'}
+                    {activeMysteryBounty.revealed ? 'Bounty' : 'Revealing'}
                   </span>
                   {activeMysteryBounty.revealed ? (
                     <span className="mt-1 animate-[mystery-bounty-pop_0.45s_ease-out_forwards] text-3xl font-black text-amber-200">
@@ -2192,7 +2223,7 @@ export default function RunTournament({
               </div>
               <p className="mt-4 text-sm font-semibold text-amber-100">
                 {activeMysteryBounty.revealed
-                  ? `${formatMoney(activeMysteryBounty.amount)} mystery bounty claimed.`
+                  ? `${activeMysteryBounty.claimedByName ? `${activeMysteryBounty.claimedByName} claims ` : ''}${formatMoney(activeMysteryBounty.amount)}.`
                   : 'Possible remaining bounty values are on the wheel.'}
               </p>
             </div>

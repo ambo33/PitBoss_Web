@@ -8,6 +8,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { useAuthStore } from '../../store/auth';
+import { getConfiguredBountyPool } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 
 interface Props {
@@ -118,10 +119,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
       setSelected(null);
     },
   });
-  const mysteryBountyMutation = useMutation({
-    mutationFn: () => api.assignMysteryBounties(tournamentId),
-    onSuccess: () => refreshTournamentData(),
-  });
   const removeMutation = useMutation({
     mutationFn: (uid: string) => api.removePlayer(tournamentId, uid),
     onSuccess: () => {
@@ -140,7 +137,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
     ?? removeGenericRebuyMutation.error
     ?? removeGenericAddonMutation.error
     ?? knockMutation.error
-    ?? mysteryBountyMutation.error
     ?? removeMutation.error;
 
   const filtered = [...players].filter((player) => {
@@ -159,8 +155,12 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   const grossPot = (toNumber(tournament.buyin) * enteredFieldCount)
     + (toNumber(tournament.rebuyprice) * totalRebuys)
     + (toNumber(tournament.addonprice) * totalAddons);
+  const bountyTotal = getConfiguredBountyPool(tournament, grossPot, players);
+  const bountyClaimed = tournament.bountyenabled
+    ? players.filter((player) => Boolean(player.bountyclaimedat)).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    : 0;
   const bountyRemaining = tournament.bountyenabled
-    ? players.filter((player) => player.placed == null).reduce((sum, player) => sum + toNumber(player.bountyamount), 0)
+    ? Math.max(0, bountyTotal - bountyClaimed)
     : 0;
 
   const registeredIds = new Set(players.map((player) => player.userid));
@@ -216,16 +216,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
             <div className="flex h-full flex-col rounded-xl border border-pit-border bg-pit-bg/50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-white">Field Status</h3>
-                {tournament.bountyenabled && tournament.bountymode === 'mystery' && (
-                  <button
-                    type="button"
-                    className="btn-ghost px-3 py-1.5 text-xs"
-                    onClick={() => mysteryBountyMutation.mutate()}
-                    disabled={mysteryBountyMutation.isPending || players.length === 0}
-                  >
-                    {mysteryBountyMutation.isPending ? 'Assigning...' : 'Assign Mystery Bounties'}
-                  </button>
-                )}
               </div>
               <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {stats.map((stat) => (
@@ -335,7 +325,6 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
               || removeGenericRebuyMutation.isPending
               || removeGenericAddonMutation.isPending
               || knockMutation.isPending
-              || mysteryBountyMutation.isPending
             }
           />
         ))}
@@ -470,7 +459,7 @@ function PlayerRow({ player, isOwner, onCheckin, onRebuy, onAddon, onRemoveRebuy
             )
           )}
           {player.placed != null && <span className="badge whitespace-nowrap bg-red-900/50 text-xs text-red-300">#{player.placed}</span>}
-          {tournament.bountyenabled && toNumber(player.bountyamount) > 0 && (
+          {tournament.bountyenabled && tournament.bountymode !== 'mystery' && toNumber(player.bountyamount) > 0 && (
             <span className="badge whitespace-nowrap bg-amber-400/15 text-xs text-amber-200">
               Bounty {formatMoney(toNumber(player.bountyamount))}
             </span>

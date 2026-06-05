@@ -805,6 +805,12 @@ export interface AnnouncerMomentRequest {
   rebuycutoffwarning?: 'five_minute_warning' | 'one_minute_warning' | null;
   rebuyclosed?: boolean;
   prizepool?: number | null;
+  paidplaces?: number | null;
+  bountyenabled?: boolean;
+  bountymode?: 'manual' | 'mystery' | null;
+  bountystartplace?: number | null;
+  bountypool?: number | null;
+  bountyremaining?: number | null;
   playercount?: number | null;
   rebuyenabled?: boolean;
   rebuyamount?: number | null;

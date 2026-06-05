@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { TournamentPlayer } from '../types';
 import { broadcastTournamentUpdate, pauseTournamentTimer } from '../socket';
 import { assignSeatIfSeatingStarted, clearSeatForPlayer } from '../services/seating';
-import { validateCurrentBountyBudget, redistributeMysteryBountiesForTournament } from '../services/bounties';
+import { assignMysteryBountyForKnockout, validateCurrentBountyBudget, redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
@@ -617,8 +617,9 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     }
 
     const currentPlaced = current.placed == null ? null : Number(current.placed);
-    const bountySettings = await client.query<{ bountyenabled: boolean; bountystartplace: number | null }>(
+    const bountySettings = await client.query<{ bountyenabled: boolean; bountymode: string | null; bountystartplace: number | null }>(
       `SELECT COALESCE(bountyenabled, FALSE) AS bountyenabled,
+              COALESCE(bountymode, 'manual') AS bountymode,
               CAST(bountystartplace AS INT) AS bountystartplace
        FROM tournaments
        WHERE tournamentid = $1`,
@@ -628,6 +629,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     const bountyStartPlace = bountySettings.rows[0]?.bountystartplace == null
       ? null
       : Number(bountySettings.rows[0].bountystartplace);
+    const bountyMode = bountySettings.rows[0]?.bountymode === 'mystery' ? 'mystery' : 'manual';
     if (nextPlaced != null && currentPlaced == null) {
       const activeResult = await client.query<{ activecount: number }>(
         `SELECT CAST(COALESCE(sum(CASE WHEN COALESCE(checkedin, FALSE) = TRUE AND placed IS NULL THEN 1 ELSE 0 END), 0) AS INT) AS activecount
@@ -714,10 +716,10 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
              checkedin = TRUE,
              knockedoutbyuserid = $4,
              knockedoutat = now(),
-             bountyclaimedbyuserid = CASE WHEN COALESCE(bountyamount, 0) > 0 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
-             bountyclaimedat = CASE WHEN COALESCE(bountyamount, 0) > 0 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
+             bountyclaimedbyuserid = CASE WHEN $6::TEXT != 'mystery' AND COALESCE(bountyamount, 0) > 0 AND $3::INT > 1 AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN $4 ELSE NULL END,
+             bountyclaimedat = CASE WHEN $6::TEXT != 'mystery' AND COALESCE(bountyamount, 0) > 0 AND $3::INT > 1 AND $4::UUID IS NOT NULL AND ($5::INT IS NULL OR $3::INT <= $5::INT) THEN now() ELSE NULL END
          WHERE tournamentid = $1 AND userid = $2`,
-        [req.params.tid, req.params.uid, nextPlaced, creditedKnockoutByUserId, bountyStartPlace]
+        [req.params.tid, req.params.uid, nextPlaced, creditedKnockoutByUserId, bountyStartPlace, bountyMode]
       );
 
       if (nextPlaced === 2) {
@@ -756,6 +758,9 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   }
   if (tournamentCompleted) {
     await pauseTournamentTimer(req.params.tid, { reason: 'tournament-completed' });
+  }
+  if (nextPlaced != null && creditedKnockoutByUserId) {
+    await assignMysteryBountyForKnockout(req.params.tid, req.params.uid, nextPlaced, creditedKnockoutByUserId);
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
