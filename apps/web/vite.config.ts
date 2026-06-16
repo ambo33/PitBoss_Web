@@ -9,6 +9,8 @@ const seoPaths = new Set([
   '/home-poker-tournament',
   '/poker-blinds-schedule',
   '/poker-chip-calculator',
+  '/pricing',
+  '/terms',
 ]);
 
 function seoStaticPagesPlugin() {

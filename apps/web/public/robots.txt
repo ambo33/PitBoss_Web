@@ -1,4 +1,22 @@
 User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /app
+Disallow: /cash-games/
+Disallow: /league/
+Disallow: /league-guest-claim
+Disallow: /login
+Disallow: /pay/
+Disallow: /pocket-admin/
+Disallow: /reset-password
+Disallow: /tournament/
+Disallow: /unsubscribe/
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
 
 Sitemap: https://thepokerplanner.com/sitemap.xml

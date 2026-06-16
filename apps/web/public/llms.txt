@@ -1,0 +1,27 @@
+# ThePokerPlanner
+
+ThePokerPlanner is a browser-based poker tournament planning app for home poker hosts and private groups.
+
+Canonical site: https://thepokerplanner.com/
+Application: https://app.thepokerplanner.com/
+Sitemap: https://thepokerplanner.com/sitemap.xml
+
+## Best pages
+
+- Home: https://thepokerplanner.com/
+- Poker timer: https://thepokerplanner.com/poker-timer/
+- Tournament clock: https://thepokerplanner.com/poker-tournament-clock/
+- Tournament director: https://thepokerplanner.com/poker-tournament-director/
+- Home poker tournament guide: https://thepokerplanner.com/home-poker-tournament/
+- Blind schedule generator: https://thepokerplanner.com/poker-blinds-schedule/
+- Chip calculator: https://thepokerplanner.com/poker-chip-calculator/
+- Pricing: https://thepokerplanner.com/pricing/
+- Terms: https://thepokerplanner.com/terms/
+
+## Product summary
+
+- Build and run poker blind structures.
+- Use a TV-friendly tournament clock.
+- Track player registration, check-in, seats, rebuys, add-ons, knockouts, and payouts.
+- Share player lobby and room-display links without requiring a mobile app.
+- Designed for home poker tournaments and private groups, not gambling operations or payment processing.

@@ -1,7 +1,7 @@
 {
   "name": "ThePokerPlanner",
   "short_name": "ThePokerPlanner",
-  "description": "Run Better Poker Nights",
+  "description": "Run better home poker tournaments with a blind timer, TV clock, player check-in, seating, payouts, and shared lobby links.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

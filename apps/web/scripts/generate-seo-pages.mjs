@@ -6,6 +6,50 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
 const siteUrl = 'https://thepokerplanner.com';
 const appUrl = 'https://app.thepokerplanner.com';
+const brandName = 'ThePokerPlanner';
+const brandDescription = 'ThePokerPlanner helps home poker hosts build blind structures, run a tournament clock, track players, show a TV board, and keep poker nights organized.';
+const logoUrl = `${siteUrl}/branding/the-poker-planner-logo-512.png`;
+const defaultImage = `${siteUrl}/seo-assets/thepokerplanner-social-card.svg`;
+const lastModified = new Date().toISOString().slice(0, 10);
+
+const primaryNavigation = [
+  ['/', 'Home'],
+  ['/poker-timer/', 'Poker timer'],
+  ['/poker-tournament-clock/', 'Tournament clock'],
+  ['/poker-tournament-director/', 'Tournament director'],
+  ['/home-poker-tournament/', 'Home poker tournament guide'],
+  ['/poker-blinds-schedule/', 'Blind schedule generator'],
+  ['/poker-chip-calculator/', 'Chip calculator'],
+  ['/pricing/', 'Pricing'],
+  ['/terms/', 'Terms'],
+];
+
+const utilityPages = [
+  {
+    slug: 'pricing',
+    title: 'Pricing | ThePokerPlanner',
+    description: 'ThePokerPlanner is free during beta, with poker timer, tournament clock, player tracking, payouts, TV display, and group tools available to testers.',
+    h1: 'ThePokerPlanner Pricing',
+    eyebrow: 'Beta access',
+    body: [
+      ['Free during beta', 'Every feature is available during beta so real home poker groups can test tournament clocks, player tracking, seating, payouts, group tools, and room displays without paywalls.'],
+      ['Built for casual hosts and recurring clubs', 'The product roadmap keeps a free host-friendly model while reserving deeper league, history, branding, and automation tools for future club and pro tiers.'],
+      ['Start with the real workflow', 'Create a group, schedule a game, build blinds, invite players, run the clock, and use the TV board from the same browser-based workspace.'],
+    ],
+  },
+  {
+    slug: 'terms',
+    title: 'Terms of Service | ThePokerPlanner',
+    description: 'Read ThePokerPlanner terms for using browser-based poker tournament planning tools, including no illegal gambling, user responsibility, beta availability, and account rules.',
+    h1: 'Terms of Service',
+    eyebrow: 'Legal',
+    body: [
+      ['ThePokerPlanner is an organizer tool', 'ThePokerPlanner provides blind timers, tournament clocks, seating tools, payout planning, group organization, player check-in, and related administrative tools for poker hosts.'],
+      ['No gambling operation', 'The service is not a gambling operator, sportsbook, casino, payment processor, escrow service, money transmitter, or betting platform. Hosts are responsible for following all laws and venue rules that apply to their events.'],
+      ['Beta availability', 'ThePokerPlanner is currently offered as a beta product. Features may change as the product improves, and the current full feature set is free during beta.'],
+    ],
+  },
+];
 
 const sharedFaq = [
   {
@@ -195,6 +239,11 @@ function pageUrl(slug) {
   return `${siteUrl}/${slug}/`;
 }
 
+function absoluteUrl(pathname) {
+  if (pathname === '/') return `${siteUrl}/`;
+  return `${siteUrl}${pathname}`;
+}
+
 function renderLinks(currentSlug) {
   return relatedLinks
     .filter(([href]) => href !== `/${currentSlug}/`)
@@ -211,36 +260,125 @@ function renderFaq(faq) {
 }
 
 function renderSchema(page) {
-  const software = {
+  const url = pageUrl(page.slug);
+  const graph = {
     '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'ThePokerPlanner',
-    applicationCategory: 'GameApplication',
-    operatingSystem: 'Web browser',
-    url: pageUrl(page.slug),
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-    description: page.description,
-  };
-  const faq = {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: page.faq.map((item) => ({
-      '@type': 'Question',
-      name: item.q,
-      acceptedAnswer: { '@type': 'Answer', text: item.a },
-    })),
-  };
-  const breadcrumb = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
-      { '@type': 'ListItem', position: 2, name: page.h1, item: pageUrl(page.slug) },
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteUrl}/#organization`,
+        name: brandName,
+        url: siteUrl,
+        logo: {
+          '@type': 'ImageObject',
+          url: logoUrl,
+          width: 512,
+          height: 512,
+        },
+        sameAs: [siteUrl, appUrl],
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}/#website`,
+        name: brandName,
+        url: siteUrl,
+        description: brandDescription,
+        publisher: { '@id': `${siteUrl}/#organization` },
+        inLanguage: 'en-US',
+      },
+      {
+        '@type': 'SoftwareApplication',
+        '@id': `${siteUrl}/#software`,
+        name: brandName,
+        applicationCategory: 'GameApplication',
+        applicationSubCategory: 'Poker tournament management software',
+        operatingSystem: 'Web browser',
+        url,
+        image: defaultImage,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        description: page.description,
+        publisher: { '@id': `${siteUrl}/#organization` },
+      },
+      {
+        '@type': 'WebPage',
+        '@id': `${url}#webpage`,
+        url,
+        name: page.title,
+        description: page.description,
+        isPartOf: { '@id': `${siteUrl}/#website` },
+        about: { '@id': `${siteUrl}/#software` },
+        primaryImageOfPage: {
+          '@type': 'ImageObject',
+          url: `${siteUrl}/seo-assets/${page.screenshot}`,
+        },
+        dateModified: lastModified,
+        inLanguage: 'en-US',
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${url}#faq`,
+        mainEntity: page.faq.map((item) => ({
+          '@type': 'Question',
+          name: item.q,
+          acceptedAnswer: { '@type': 'Answer', text: item.a },
+        })),
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: `${siteUrl}/` },
+          { '@type': 'ListItem', position: 2, name: page.h1, item: url },
+        ],
+      },
     ],
   };
-  return [software, faq, breadcrumb]
-    .map((schema) => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`)
-    .join('\n');
+
+  return `<script type="application/ld+json">${JSON.stringify(graph)}</script>`;
+}
+
+function renderUtilitySchema(page) {
+  const url = pageUrl(page.slug);
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteUrl}/#organization`,
+        name: brandName,
+        url: siteUrl,
+        logo: logoUrl,
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}/#website`,
+        name: brandName,
+        url: siteUrl,
+        publisher: { '@id': `${siteUrl}/#organization` },
+        inLanguage: 'en-US',
+      },
+      {
+        '@type': 'WebPage',
+        '@id': `${url}#webpage`,
+        url,
+        name: page.title,
+        description: page.description,
+        isPartOf: { '@id': `${siteUrl}/#website` },
+        dateModified: lastModified,
+        inLanguage: 'en-US',
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: `${siteUrl}/` },
+          { '@type': 'ListItem', position: 2, name: page.h1, item: url },
+        ],
+      },
+    ],
+  };
+
+  return `<script type="application/ld+json">${JSON.stringify(graph)}</script>`;
 }
 
 function renderPage(page) {
@@ -257,13 +395,23 @@ function renderPage(page) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(page.title)}</title>
     <meta name="description" content="${escapeHtml(page.description)}">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+    <meta name="theme-color" content="#101114">
     <link rel="canonical" href="${pageUrl(page.slug)}">
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+    <meta property="og:site_name" content="ThePokerPlanner">
     <meta property="og:title" content="${escapeHtml(page.title)}">
     <meta property="og:description" content="${escapeHtml(page.description)}">
     <meta property="og:type" content="website">
     <meta property="og:url" content="${pageUrl(page.slug)}">
     <meta property="og:image" content="${siteUrl}/seo-assets/${page.screenshot}">
+    <meta property="og:image:alt" content="${escapeHtml(page.screenshotAlt)}">
+    <meta property="og:locale" content="en_US">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(page.title)}">
+    <meta name="twitter:description" content="${escapeHtml(page.description)}">
+    <meta name="twitter:image" content="${siteUrl}/seo-assets/${page.screenshot}">
+    <meta name="twitter:image:alt" content="${escapeHtml(page.screenshotAlt)}">
     <link rel="icon" type="image/png" href="/branding/the-poker-planner-logo-192.png">
     <link rel="alternate icon" type="image/png" href="/favicon.png">
     <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo-192.png">
@@ -373,6 +521,105 @@ ${articleSections}
 `;
 }
 
+function renderUtilityPage(page) {
+  const sections = page.body.map(([heading, body]) => `
+        <section>
+          <h2>${escapeHtml(heading)}</h2>
+          <p>${escapeHtml(body)}</p>
+        </section>`).join('\n');
+  const url = pageUrl(page.slug);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(page.title)}</title>
+    <meta name="description" content="${escapeHtml(page.description)}">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+    <meta name="theme-color" content="#101114">
+    <link rel="canonical" href="${url}">
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+    <meta property="og:site_name" content="ThePokerPlanner">
+    <meta property="og:title" content="${escapeHtml(page.title)}">
+    <meta property="og:description" content="${escapeHtml(page.description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="${url}">
+    <meta property="og:image" content="${defaultImage}">
+    <meta property="og:image:alt" content="ThePokerPlanner poker tournament planning tools">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(page.title)}">
+    <meta name="twitter:description" content="${escapeHtml(page.description)}">
+    <meta name="twitter:image" content="${defaultImage}">
+    <meta name="twitter:image:alt" content="ThePokerPlanner poker tournament planning tools">
+    <link rel="icon" type="image/png" href="/branding/the-poker-planner-logo-192.png">
+    <link rel="alternate icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo-192.png">
+    ${renderUtilitySchema(page)}
+    <style>
+      :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; }
+      a { color: inherit; }
+      header, footer { border-color: var(--line); }
+      header { border-bottom: 1px solid var(--line); background: rgba(16,17,20,.92); }
+      .nav, main, footer > div { max-width: 1040px; margin: 0 auto; padding-left: 1.25rem; padding-right: 1.25rem; }
+      .nav { padding-top: 1rem; padding-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+      .brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; font-weight: 800; }
+      .brand img { width: 34px; height: 34px; }
+      .navlinks { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
+      .navlinks a { color: var(--muted); text-decoration: none; font-weight: 700; font-size: .92rem; padding: .45rem .65rem; }
+      .cta { color: #041010 !important; background: var(--teal); border-radius: .5rem; }
+      main { padding-top: 4.5rem; padding-bottom: 4.5rem; }
+      .eyebrow { color: var(--teal); text-transform: uppercase; font-weight: 800; font-size: .8rem; }
+      h1 { font-size: clamp(2.4rem, 7vw, 4.8rem); line-height: 1; margin: .8rem 0 1rem; letter-spacing: 0; }
+      h2 { margin: 0 0 .65rem; font-size: 1.35rem; }
+      p { color: var(--muted); margin: 0; }
+      .lead { max-width: 760px; color: #d3dae3; font-size: 1.12rem; }
+      .content { display: grid; gap: 1rem; margin-top: 2rem; }
+      section { border: 1px solid var(--line); background: var(--surface); border-radius: .8rem; padding: 1.2rem; }
+      .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+      .button { border: 1px solid var(--line); background: var(--card); border-radius: .55rem; color: var(--text); display: inline-flex; font-weight: 800; padding: .82rem 1rem; text-decoration: none; }
+      .button.primary { background: var(--teal); border-color: var(--teal); color: #041010; }
+      footer { border-top: 1px solid var(--line); padding: 1.8rem 0; color: var(--muted); }
+      @media (min-width: 760px) { .content { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/branding/the-poker-planner-logo-192.png" alt="" width="34" height="34">
+          <span>ThePokerPlanner</span>
+        </a>
+        <div class="navlinks">
+          <a href="/poker-timer/">Poker timer</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="${appUrl}/login?mode=register" class="cta">Create account</a>
+        </div>
+      </nav>
+    </header>
+    <main>
+      <span class="eyebrow">${escapeHtml(page.eyebrow)}</span>
+      <h1>${escapeHtml(page.h1)}</h1>
+      <p class="lead">${escapeHtml(page.description)}</p>
+      <div class="actions">
+        <a class="button primary" href="${appUrl}/login?mode=register">Start free</a>
+        <a class="button" href="/poker-timer/">Explore poker timer</a>
+      </div>
+      <div class="content">
+${sections}
+      </div>
+    </main>
+    <footer>
+      <div>ThePokerPlanner helps home-game hosts plan tournaments, run the clock, and keep players informed.</div>
+    </footer>
+  </body>
+</html>
+`;
+}
+
 function screenshotSvg(title, subtitle, rows, accent = '#14b8a6') {
   const rowMarkup = rows.map((row, index) => {
     const y = 300 + index * 46;
@@ -400,7 +647,27 @@ function screenshotSvg(title, subtitle, rows, accent = '#14b8a6') {
 </svg>`;
 }
 
+function socialCardSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="ThePokerPlanner social preview card">
+  <rect width="1200" height="630" fill="#101114"/>
+  <rect x="62" y="62" width="1076" height="506" rx="34" fill="#181a1f" stroke="#333842" stroke-width="2"/>
+  <circle cx="158" cy="161" r="52" fill="#14b8a6" opacity=".18"/>
+  <circle cx="158" cy="161" r="28" fill="#14b8a6"/>
+  <text x="230" y="152" fill="#f8fafc" font-size="44" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">ThePokerPlanner</text>
+  <text x="230" y="195" fill="#a7b0be" font-size="24" font-weight="700" font-family="Inter, Segoe UI, Arial, sans-serif">Run better home poker tournaments</text>
+  <text x="112" y="330" fill="#f8fafc" font-size="58" font-weight="950" font-family="Inter, Segoe UI, Arial, sans-serif">Blind timer, TV clock,</text>
+  <text x="112" y="400" fill="#f8fafc" font-size="58" font-weight="950" font-family="Inter, Segoe UI, Arial, sans-serif">players, seats, payouts.</text>
+  <rect x="112" y="466" width="252" height="54" rx="12" fill="#14b8a6"/>
+  <text x="142" y="502" fill="#041010" font-size="22" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">Start free</text>
+  <text x="398" y="502" fill="#f4b24a" font-size="22" font-weight="800" font-family="Inter, Segoe UI, Arial, sans-serif">No download required</text>
+  <rect x="782" y="230" width="254" height="152" rx="22" fill="#0b0c0f" stroke="#333842"/>
+  <text x="820" y="296" fill="#f8fafc" font-size="54" font-family="ui-monospace, Menlo, monospace" font-weight="900">18:42</text>
+  <text x="820" y="340" fill="#14b8a6" font-size="31" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">300 / 600</text>
+</svg>`;
+}
+
 const screenshots = {
+  'thepokerplanner-social-card.svg': socialCardSvg(),
   'timer-board.svg': screenshotSvg('Poker Timer', 'Current level, next blinds, and live countdown', ['Level 3  200 / 400', 'Level 4  300 / 600', 'Level 5  500 / 1K', 'Break  10 minutes']),
   'clock-tv.svg': screenshotSvg('Tournament Clock', 'TV-friendly view for the whole room', ['Players left  12', 'Level 4  300 / 600', 'Next break  24 minutes', 'Prize pool  $860'], '#f4b24a'),
   'director-dashboard.svg': screenshotSvg('Tournament Director', 'Host controls, player status, and payouts', ['Checked in  14 / 16', 'Active level  300 / 600', 'Rebuys  5', 'Paid places  3']),
@@ -422,20 +689,71 @@ async function main() {
     await writeFile(path.join(pageDir, 'index.html'), renderPage(page), 'utf8');
   }
 
-  const urls = pages.map((page) => `/${page.slug}/`);
+  for (const page of utilityPages) {
+    const pageDir = path.join(publicDir, page.slug);
+    await mkdir(pageDir, { recursive: true });
+    await writeFile(path.join(pageDir, 'index.html'), renderUtilityPage(page), 'utf8');
+  }
+
+  const urls = [
+    { path: '/', priority: '1.0', changefreq: 'weekly' },
+    ...pages.map((page) => ({ path: `/${page.slug}/`, priority: '0.9', changefreq: 'monthly' })),
+    { path: '/pricing/', priority: '0.6', changefreq: 'monthly' },
+    { path: '/terms/', priority: '0.3', changefreq: 'yearly' },
+  ];
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map((url) => `  <url><loc>${siteUrl}${url}</loc></url>`).join('\n')}
+${urls.map((entry) => `  <url><loc>${absoluteUrl(entry.path)}</loc><lastmod>${lastModified}</lastmod><changefreq>${entry.changefreq}</changefreq><priority>${entry.priority}</priority></url>`).join('\n')}
 </urlset>
 `;
   await writeFile(path.join(publicDir, 'sitemap.xml'), sitemap, 'utf8');
 
   const robots = `User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /app
+Disallow: /cash-games/
+Disallow: /league/
+Disallow: /league-guest-claim
+Disallow: /login
+Disallow: /pay/
+Disallow: /pocket-admin/
+Disallow: /reset-password
+Disallow: /tournament/
+Disallow: /unsubscribe/
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
 
 Sitemap: ${siteUrl}/sitemap.xml
 `;
   await writeFile(path.join(publicDir, 'robots.txt'), robots, 'utf8');
+
+  const llms = `# ThePokerPlanner
+
+ThePokerPlanner is a browser-based poker tournament planning app for home poker hosts and private groups.
+
+Canonical site: ${siteUrl}/
+Application: ${appUrl}/
+Sitemap: ${siteUrl}/sitemap.xml
+
+## Best pages
+
+${primaryNavigation.map(([href, label]) => `- ${label}: ${absoluteUrl(href)}`).join('\n')}
+
+## Product summary
+
+- Build and run poker blind structures.
+- Use a TV-friendly tournament clock.
+- Track player registration, check-in, seats, rebuys, add-ons, knockouts, and payouts.
+- Share player lobby and room-display links without requiring a mobile app.
+- Designed for home poker tournaments and private groups, not gambling operations or payment processing.
+`;
+  await writeFile(path.join(publicDir, 'llms.txt'), llms, 'utf8');
 }
 
 main().catch((error) => {

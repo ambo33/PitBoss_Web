@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="ThePokerPlanner social preview card">
+  <rect width="1200" height="630" fill="#101114"/>
+  <rect x="62" y="62" width="1076" height="506" rx="34" fill="#181a1f" stroke="#333842" stroke-width="2"/>
+  <circle cx="158" cy="161" r="52" fill="#14b8a6" opacity=".18"/>
+  <circle cx="158" cy="161" r="28" fill="#14b8a6"/>
+  <text x="230" y="152" fill="#f8fafc" font-size="44" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">ThePokerPlanner</text>
+  <text x="230" y="195" fill="#a7b0be" font-size="24" font-weight="700" font-family="Inter, Segoe UI, Arial, sans-serif">Run better home poker tournaments</text>
+  <text x="112" y="330" fill="#f8fafc" font-size="58" font-weight="950" font-family="Inter, Segoe UI, Arial, sans-serif">Blind timer, TV clock,</text>
+  <text x="112" y="400" fill="#f8fafc" font-size="58" font-weight="950" font-family="Inter, Segoe UI, Arial, sans-serif">players, seats, payouts.</text>
+  <rect x="112" y="466" width="252" height="54" rx="12" fill="#14b8a6"/>
+  <text x="142" y="502" fill="#041010" font-size="22" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">Start free</text>
+  <text x="398" y="502" fill="#f4b24a" font-size="22" font-weight="800" font-family="Inter, Segoe UI, Arial, sans-serif">No download required</text>
+  <rect x="782" y="230" width="254" height="152" rx="22" fill="#0b0c0f" stroke="#333842"/>
+  <text x="820" y="296" fill="#f8fafc" font-size="54" font-family="ui-monospace, Menlo, monospace" font-weight="900">18:42</text>
+  <text x="820" y="340" fill="#14b8a6" font-size="31" font-weight="900" font-family="Inter, Segoe UI, Arial, sans-serif">300 / 600</text>
+</svg>
