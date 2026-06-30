@@ -9,6 +9,11 @@ const seoPaths = new Set([
   '/home-poker-tournament',
   '/poker-blinds-schedule',
   '/poker-chip-calculator',
+  '/poker-payout-calculator',
+  '/poker-bounty-tournament',
+  '/poker-rebuy-add-on-rules',
+  '/home-poker-league',
+  '/poker-night-checklist',
   '/pricing',
   '/terms',
 ]);

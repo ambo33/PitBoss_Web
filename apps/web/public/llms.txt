@@ -15,6 +15,11 @@ Sitemap: https://thepokerplanner.com/sitemap.xml
 - Home poker tournament guide: https://thepokerplanner.com/home-poker-tournament/
 - Blind schedule generator: https://thepokerplanner.com/poker-blinds-schedule/
 - Chip calculator: https://thepokerplanner.com/poker-chip-calculator/
+- Payout calculator: https://thepokerplanner.com/poker-payout-calculator/
+- Bounty tournament rules: https://thepokerplanner.com/poker-bounty-tournament/
+- Rebuy and add-on rules: https://thepokerplanner.com/poker-rebuy-add-on-rules/
+- Home poker league guide: https://thepokerplanner.com/home-poker-league/
+- Poker night checklist: https://thepokerplanner.com/poker-night-checklist/
 - Pricing: https://thepokerplanner.com/pricing/
 - Terms: https://thepokerplanner.com/terms/
 

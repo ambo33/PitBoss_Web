@@ -11,6 +11,18 @@ const brandDescription = 'ThePokerPlanner helps home poker hosts build blind str
 const logoUrl = `${siteUrl}/branding/the-poker-planner-logo-512.png`;
 const defaultImage = `${siteUrl}/seo-assets/thepokerplanner-social-card.svg`;
 const lastModified = new Date().toISOString().slice(0, 10);
+const softwareFeatures = [
+  'Poker blind timer',
+  'Tournament clock',
+  'TV display',
+  'Player check-in',
+  'Seating tools',
+  'Payout planning',
+  'Rebuy and add-on tracking',
+  'Bounty tracking',
+  'League standings',
+  'Shared lobby links',
+];
 
 const primaryNavigation = [
   ['/', 'Home'],
@@ -20,6 +32,11 @@ const primaryNavigation = [
   ['/home-poker-tournament/', 'Home poker tournament guide'],
   ['/poker-blinds-schedule/', 'Blind schedule generator'],
   ['/poker-chip-calculator/', 'Chip calculator'],
+  ['/poker-payout-calculator/', 'Payout calculator'],
+  ['/poker-bounty-tournament/', 'Bounty tournament rules'],
+  ['/poker-rebuy-add-on-rules/', 'Rebuy and add-on rules'],
+  ['/home-poker-league/', 'Home poker league guide'],
+  ['/poker-night-checklist/', 'Poker night checklist'],
   ['/pricing/', 'Pricing'],
   ['/terms/', 'Terms'],
 ];
@@ -77,6 +94,11 @@ const relatedLinks = [
   ['/home-poker-tournament/', 'Home poker tournament guide'],
   ['/poker-blinds-schedule/', 'Blind schedule'],
   ['/poker-chip-calculator/', 'Chip calculator'],
+  ['/poker-payout-calculator/', 'Payout calculator'],
+  ['/poker-bounty-tournament/', 'Bounty tournament rules'],
+  ['/poker-rebuy-add-on-rules/', 'Rebuy and add-on rules'],
+  ['/home-poker-league/', 'Home poker league'],
+  ['/poker-night-checklist/', 'Poker night checklist'],
 ];
 
 const pages = [
@@ -224,6 +246,146 @@ const pages = [
       },
     ],
   },
+  {
+    slug: 'poker-payout-calculator',
+    title: 'Poker Payout Calculator for Home Tournaments | ThePokerPlanner',
+    description: 'Calculate home poker tournament payouts with buy-ins, rebuys, add-ons, bounties, paid places, rounding, and prize pool tracking.',
+    h1: 'Poker Payout Calculator for Home Tournaments',
+    eyebrow: 'Payout planning',
+    primaryKeyword: 'poker payout calculator for home tournament',
+    screenshot: 'payout-calculator.svg',
+    screenshotAlt: 'Poker payout calculator showing prize pool, paid places, and rounded payouts',
+    intro: 'A poker payout calculator keeps prize money clear before the bubble gets tense. ThePokerPlanner helps home-game hosts track buy-ins, rebuys, add-ons, bounties, paid places, and rounded payouts from the same place they run the tournament clock.',
+    sections: [
+      ['Set paid places before the argument starts', 'Payout problems usually happen when the host waits too long to decide how many places get paid. A 9-player game should not use the same payout shape as a 24-player tournament. ThePokerPlanner helps hosts connect field size, prize pool, and paid places so players can see the plan before late-stage decisions get emotional.'],
+      ['Keep rebuys and add-ons in the prize pool', 'Rebuys and add-ons can change the math quickly. If the host tracks them in a separate note, it is easy to miscount the pool or forget who paid. ThePokerPlanner keeps player actions, prize pool changes, and payouts together so the final numbers stay easier to trust.'],
+      ['Handle bounties without mixing the pools', 'Bounty tournaments need clear separation between the regular prize pool and bounty money. ThePokerPlanner supports bounty tracking alongside payouts, helping hosts show what remains for placements and what has already been claimed by knockouts.'],
+      ['Round payouts for real cash games', 'A mathematically perfect payout table is not always practical when people are settling up with cash or payment apps. ThePokerPlanner helps hosts use clean rounded payout amounts, then keeps the total aligned with the actual prize pool.'],
+    ],
+    faq: [
+      ...sharedFaq,
+      {
+        q: 'How many places should a home poker tournament pay?',
+        a: 'Small home tournaments often pay two or three places. Larger fields can pay more, but paying too many places can make the win feel too flat.',
+      },
+      {
+        q: 'Should bounties count toward the normal payout pool?',
+        a: 'Usually no. Most bounty formats separate bounty money from placement payouts so knockouts and final finishes are easier to understand.',
+      },
+    ],
+  },
+  {
+    slug: 'poker-bounty-tournament',
+    title: 'Poker Bounty Tournament Rules for Home Games | ThePokerPlanner',
+    description: 'Run a home poker bounty tournament with clear knockout rules, mystery bounties, prize pools, tracking, payouts, and TV display.',
+    h1: 'Poker Bounty Tournament Rules for Home Games',
+    eyebrow: 'Bounty formats',
+    primaryKeyword: 'poker bounty tournament rules home game',
+    screenshot: 'bounty-tournament.svg',
+    screenshotAlt: 'Poker bounty tournament tracker showing bounty pool, claimed bounties, and remaining prize money',
+    intro: 'Bounty tournaments are fun because every knockout matters, but they also create extra admin work. ThePokerPlanner helps hosts define the bounty format, track claims, separate bounty money from payouts, and keep players informed while the tournament is running.',
+    sections: [
+      ['Choose the bounty type before the game', 'The simplest format gives each player the same fixed bounty. Mystery bounty formats add more excitement, but they need clearer rules for when bounties become live, how amounts are assigned, and how claims are revealed. ThePokerPlanner gives the host a place to manage those details instead of improvising at the table.'],
+      ['Separate bounty money from placement payouts', 'Players should know how much of the buy-in goes to bounties and how much goes to the regular prize pool. If those pools are mixed together, payout questions get messy fast. ThePokerPlanner keeps bounty totals, claimed bounties, and regular payouts visible as separate pieces of the tournament.'],
+      ['Track who knocked out whom', 'Bounty disputes often come down to credit. If two players are involved in an all-in hand, the host needs a clear way to record who earned the bounty. ThePokerPlanner supports knockout and bounty tracking so the host can resolve claims cleanly and move the game along.'],
+      ['Make bounty moments feel bigger', 'A bounty format should add energy to the night. Pairing bounty tracking with the tournament clock, TV board, and player history makes knockouts visible to the room and gives players a reason to stay engaged even before the final table.'],
+    ],
+    faq: [
+      ...sharedFaq,
+      {
+        q: 'What is a poker bounty tournament?',
+        a: 'A bounty tournament awards part of the prize pool for knocking out players, in addition to regular payouts for top finishers.',
+      },
+      {
+        q: 'When should mystery bounties start?',
+        a: 'Many hosts wait until a later stage, such as after registration closes or near the money, so the format creates late-tournament excitement without overwhelming the early levels.',
+      },
+    ],
+  },
+  {
+    slug: 'poker-rebuy-add-on-rules',
+    title: 'Rebuy and Add-On Poker Tournament Rules | ThePokerPlanner',
+    description: 'Set clear home poker rebuy and add-on rules with cutoff levels, chip amounts, prize pool updates, player tracking, and announcements.',
+    h1: 'Rebuy and Add-On Poker Tournament Rules',
+    eyebrow: 'Rebuy structure',
+    primaryKeyword: 'poker rebuy add-on rules home tournament',
+    screenshot: 'rebuy-addon-rules.svg',
+    screenshotAlt: 'Poker rebuy and add-on tracker showing cutoff level, entries, add-ons, and prize pool',
+    intro: 'Rebuys and add-ons can make a home tournament more forgiving, but unclear rules can also start the loudest arguments of the night. ThePokerPlanner helps hosts set the cutoff, track player actions, update the prize pool, and announce the rules before cards are dealt.',
+    sections: [
+      ['Announce the cutoff before level one', 'The most important rebuy rule is the deadline. Players should know whether rebuys are unlimited, limited, or unavailable, and exactly when the window closes. ThePokerPlanner lets hosts connect rebuy settings to the tournament structure so the cutoff is tied to the clock instead of memory.'],
+      ['Make chip amounts obvious', 'A rebuy or add-on should come with a clearly stated chip amount. If the add-on is different from the starting stack, say it early. ThePokerPlanner keeps starting chips, rebuy chips, add-on chips, and the current tournament state close together so the host can answer questions quickly.'],
+      ['Update payouts as the pool changes', 'Every rebuy and add-on changes the total prize pool. When those actions are tracked in the same workspace as payouts, players can trust that the final numbers reflect the real night. That is especially helpful for casual groups where the host is also playing.'],
+      ['Keep the rules consistent', 'Rebuy disputes often happen when a host makes an exception for one player. ThePokerPlanner gives the room a shared source of truth, which makes it easier to enforce the same rules for everyone without turning the night into a debate.'],
+    ],
+    faq: [
+      ...sharedFaq,
+      {
+        q: 'What is the difference between a rebuy and an add-on?',
+        a: 'A rebuy usually lets a player buy more chips after busting or falling below a threshold. An add-on is usually a one-time extra chip purchase at a scheduled break.',
+      },
+      {
+        q: 'Should rebuys close before the first break?',
+        a: 'Many home games close rebuys at the first break or after a set level. The right cutoff depends on the desired tournament length and how much variance the group wants.',
+      },
+    ],
+  },
+  {
+    slug: 'home-poker-league',
+    title: 'How to Run a Home Poker League | ThePokerPlanner',
+    description: 'Run a home poker league with schedules, seasons, points, standings, guest players, payments, final tables, and recurring events.',
+    h1: 'How to Run a Home Poker League',
+    eyebrow: 'League tracking',
+    primaryKeyword: 'how to run a home poker league',
+    screenshot: 'home-poker-league.svg',
+    screenshotAlt: 'Home poker league standings with points, events, members, and final table settings',
+    intro: 'A home poker league turns a casual game into a season. The fun comes from standings, rivalries, finals, and stories that carry from one night to the next. ThePokerPlanner helps hosts track members, events, points, payments, guest players, and results without living in a spreadsheet.',
+    sections: [
+      ['Pick a scoring system players understand', 'League points should reward showing up, finishing well, and staying engaged through the season. Complicated formulas can work, but they need to be visible and consistent. ThePokerPlanner supports point charts, show-up bonuses, best-finish counts, and standings so the rules are easier to explain.'],
+      ['Schedule events around the group', 'A poker league needs predictable dates and clear communication. Hosts should know who has RSVPed, and whether guest players are allowed. ThePokerPlanner gives leagues a structured home for seasons, events, members, and player status.'],
+      ['Track payments without awkward side notes', 'League fees, event fees, and other balances are easy to lose when they live in text messages. ThePokerPlanner keeps league payment tracking near the schedule and standings so the host can follow up cleanly and avoid repeated bookkeeping.'],
+      ['Make the final table feel earned', 'Many leagues build toward a championship night or final table. ThePokerPlanner supports season history and final-table setup so recurring groups can turn weekly results into a bigger story instead of resetting the slate every game.'],
+    ],
+    faq: [
+      ...sharedFaq,
+      {
+        q: 'What is a good point system for a home poker league?',
+        a: 'A good system is easy to explain, rewards attendance, gives meaningful points for high finishes, and does not make one early win impossible to catch.',
+      },
+      {
+        q: 'Can guest players join a league event?',
+        a: 'Yes. ThePokerPlanner supports guest-player workflows so a league can include substitutes or new players without breaking season tracking.',
+      },
+    ],
+  },
+  {
+    slug: 'poker-night-checklist',
+    title: 'Poker Night Checklist for Home Game Hosts | ThePokerPlanner',
+    description: 'Use a practical poker night checklist for chips, blinds, seating, payouts, rules, rebuys, bounties, TV display, and player check-in.',
+    h1: 'Poker Night Checklist for Home Game Hosts',
+    eyebrow: 'Host checklist',
+    primaryKeyword: 'poker night checklist for home game',
+    screenshot: 'poker-night-checklist.svg',
+    screenshotAlt: 'Poker night checklist with blinds, payouts, seating, check-in, and TV display tasks',
+    intro: 'The best poker nights feel casual because the host handled the details early. ThePokerPlanner gives home-game organizers a single place to prepare blinds, players, seating, payouts, rebuys, bounties, and the TV clock before the first hand starts.',
+    sections: [
+      ['Confirm the format', 'Decide whether the night is a tournament, league event, cash game, bounty tournament, rebuy tournament, or simple sit-and-go. Clear format decisions make every later choice easier, from chip stacks to payout percentages.'],
+      ['Prepare the clock and blind structure', 'Set the starting stack, blind levels, level length, breaks, and rebuy cutoff before players arrive. ThePokerPlanner ties those choices to the tournament clock and TV board so the room can follow along without repeated announcements.'],
+      ['Set players, seats, and check-in', 'A few minutes of check-in prevents a messy start. Know who is in, who is late, who is a guest, and where everyone sits. Player-facing links and QR codes help players handle basic status without crowding the host.'],
+      ['Post payouts and rules early', 'Payouts, bounties, rebuys, add-ons, and house rules should be visible before the bubble. ThePokerPlanner keeps those details near the tournament dashboard so players know what they are playing for and how the night is supposed to run.'],
+    ],
+    faq: [
+      ...sharedFaq,
+      {
+        q: 'What should I prepare before hosting poker night?',
+        a: 'Prepare the format, blind structure, chips, seats, payout plan, rebuy and add-on rules, bounties if used, and a visible clock or TV display.',
+      },
+      {
+        q: 'How do I make a home poker night feel more organized?',
+        a: 'Use one shared source of truth for blinds, payouts, player status, seats, and rules so the host is not answering the same questions all night.',
+      },
+    ],
+  },
 ];
 
 function escapeHtml(value) {
@@ -296,6 +458,12 @@ function renderSchema(page) {
         url,
         image: defaultImage,
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        isAccessibleForFree: true,
+        featureList: softwareFeatures,
+        audience: {
+          '@type': 'Audience',
+          audienceType: 'Home poker hosts, private poker clubs, and casual tournament organizers',
+        },
         description: page.description,
         publisher: { '@id': `${siteUrl}/#organization` },
       },
@@ -304,7 +472,9 @@ function renderSchema(page) {
         '@id': `${url}#webpage`,
         url,
         name: page.title,
+        headline: page.h1,
         description: page.description,
+        keywords: page.primaryKeyword,
         isPartOf: { '@id': `${siteUrl}/#website` },
         about: { '@id': `${siteUrl}/#software` },
         primaryImageOfPage: {
@@ -395,9 +565,11 @@ function renderPage(page) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(page.title)}</title>
     <meta name="description" content="${escapeHtml(page.description)}">
+    <meta name="author" content="ThePokerPlanner">
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
     <meta name="theme-color" content="#101114">
     <link rel="canonical" href="${pageUrl(page.slug)}">
+    <link rel="alternate" href="${pageUrl(page.slug)}" hreflang="en">
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
     <meta property="og:site_name" content="ThePokerPlanner">
     <meta property="og:title" content="${escapeHtml(page.title)}">
@@ -405,6 +577,9 @@ function renderPage(page) {
     <meta property="og:type" content="website">
     <meta property="og:url" content="${pageUrl(page.slug)}">
     <meta property="og:image" content="${siteUrl}/seo-assets/${page.screenshot}">
+    <meta property="og:image:width" content="960">
+    <meta property="og:image:height" content="620">
+    <meta property="og:image:type" content="image/svg+xml">
     <meta property="og:image:alt" content="${escapeHtml(page.screenshotAlt)}">
     <meta property="og:locale" content="en_US">
     <meta name="twitter:card" content="summary_large_image">
@@ -536,9 +711,11 @@ function renderUtilityPage(page) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(page.title)}</title>
     <meta name="description" content="${escapeHtml(page.description)}">
+    <meta name="author" content="ThePokerPlanner">
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
     <meta name="theme-color" content="#101114">
     <link rel="canonical" href="${url}">
+    <link rel="alternate" href="${url}" hreflang="en">
     <link rel="sitemap" type="application/xml" href="/sitemap.xml">
     <meta property="og:site_name" content="ThePokerPlanner">
     <meta property="og:title" content="${escapeHtml(page.title)}">
@@ -546,6 +723,9 @@ function renderUtilityPage(page) {
     <meta property="og:type" content="website">
     <meta property="og:url" content="${url}">
     <meta property="og:image" content="${defaultImage}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:type" content="image/svg+xml">
     <meta property="og:image:alt" content="ThePokerPlanner poker tournament planning tools">
     <meta property="og:locale" content="en_US">
     <meta name="twitter:card" content="summary_large_image">
@@ -674,6 +854,11 @@ const screenshots = {
   'home-tournament.svg': screenshotSvg('Home Poker Tournament', 'Plan the night before cards are dealt', ['Players  10', 'Starting stack  10,000', 'Levels  18 minutes', 'Breaks  every hour'], '#ef4444'),
   'blind-schedule.svg': screenshotSvg('Blind Schedule', 'Structure levels tied to the clock', ['Level 1  100 / 200', 'Level 2  150 / 300', 'Level 3  200 / 400', 'Level 4  300 / 600']),
   'chip-calculator.svg': screenshotSvg('Chip Calculator', 'Starting stacks, rebuys, add-ons, chips in play', ['Starting stack  10,000', 'Players  12', 'Rebuy chips  5,000', 'Total chips  145,000'], '#f4b24a'),
+  'payout-calculator.svg': screenshotSvg('Payout Calculator', 'Prize pool, paid places, and rounded payouts', ['Prize pool  $1,240', '1st place  $620', '2nd place  $370', '3rd place  $250'], '#22c55e'),
+  'bounty-tournament.svg': screenshotSvg('Bounty Tournament', 'Knockout claims and bounty pool tracking', ['Bounty pool  $360', 'Claimed  $120', 'Remaining  $240', 'Next reveal  Final 8'], '#f59e0b'),
+  'rebuy-addon-rules.svg': screenshotSvg('Rebuy and Add-on Rules', 'Cutoff levels, chip amounts, and prize pool updates', ['Rebuy cutoff  Level 6', 'Rebuys  5', 'Add-ons  8', 'Updated pool  $1,420'], '#38bdf8'),
+  'home-poker-league.svg': screenshotSvg('Home Poker League', 'Season standings, payments, events, and points', ['Season leader  4,310 pts', 'Events played  6 / 10', 'Best finishes  5 count', 'Final table  Top 9'], '#a78bfa'),
+  'poker-night-checklist.svg': screenshotSvg('Poker Night Checklist', 'Blinds, seats, payouts, rules, and TV display', ['Clock ready', 'Seats assigned', 'Payouts posted', 'Rules confirmed'], '#ef4444'),
 };
 
 async function main() {
@@ -713,14 +898,20 @@ Allow: /
 Disallow: /admin/
 Disallow: /api/
 Disallow: /app
+Disallow: /addon/
+Disallow: /bust/
 Disallow: /cash-games/
+Disallow: /checkin/
+Disallow: /join/
 Disallow: /league/
 Disallow: /league-guest-claim
 Disallow: /login
+Disallow: /lobby/
 Disallow: /pay/
 Disallow: /pocket-admin/
 Disallow: /reset-password
 Disallow: /tournament/
+Disallow: /tv
 Disallow: /unsubscribe/
 
 User-agent: GPTBot

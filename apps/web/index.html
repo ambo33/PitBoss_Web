@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="ThePokerPlanner helps home poker hosts run better tournament nights with a blind timer, TV clock, player check-in, seats, payouts, and shared lobby links." />
+    <meta name="author" content="ThePokerPlanner" />
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
     <meta name="theme-color" content="#0f1014" />
     <meta name="apple-mobile-web-app-title" content="ThePokerPlanner" />
@@ -11,6 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>ThePokerPlanner | Poker Timer, Tournament Clock & Home Game Tools</title>
     <link rel="canonical" href="https://thepokerplanner.com/" />
+    <link rel="alternate" href="https://thepokerplanner.com/" hreflang="en" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     <meta property="og:site_name" content="ThePokerPlanner" />
     <meta property="og:title" content="ThePokerPlanner | Poker Timer, Tournament Clock & Home Game Tools" />
@@ -18,6 +20,9 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://thepokerplanner.com/" />
     <meta property="og:image" content="https://thepokerplanner.com/seo-assets/thepokerplanner-social-card.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/svg+xml" />
     <meta property="og:image:alt" content="ThePokerPlanner poker tournament timer and home game tools" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -46,7 +51,8 @@
               "url": "https://thepokerplanner.com/branding/the-poker-planner-logo-512.png",
               "width": 512,
               "height": 512
-            }
+            },
+            "sameAs": ["https://thepokerplanner.com/", "https://app.thepokerplanner.com/"]
           },
           {
             "@type": "WebSite",
@@ -55,6 +61,12 @@
             "url": "https://thepokerplanner.com/",
             "description": "ThePokerPlanner helps home poker hosts run better tournament nights with a blind timer, TV clock, player check-in, seats, payouts, and shared lobby links.",
             "publisher": { "@id": "https://thepokerplanner.com/#organization" },
+            "hasPart": [
+              { "@type": "WebPage", "url": "https://thepokerplanner.com/poker-timer/", "name": "Free Poker Timer" },
+              { "@type": "WebPage", "url": "https://thepokerplanner.com/poker-tournament-clock/", "name": "Poker Tournament Clock" },
+              { "@type": "WebPage", "url": "https://thepokerplanner.com/poker-payout-calculator/", "name": "Poker Payout Calculator" },
+              { "@type": "WebPage", "url": "https://thepokerplanner.com/home-poker-league/", "name": "Home Poker League Guide" }
+            ],
             "inLanguage": "en-US"
           },
           {
@@ -67,8 +79,41 @@
             "url": "https://thepokerplanner.com/",
             "image": "https://thepokerplanner.com/seo-assets/thepokerplanner-social-card.svg",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "isAccessibleForFree": true,
+            "featureList": [
+              "Poker blind timer",
+              "Tournament clock",
+              "TV display",
+              "Player check-in",
+              "Seating tools",
+              "Payout planning",
+              "Rebuy and add-on tracking",
+              "Bounty tracking",
+              "League standings",
+              "Shared lobby links"
+            ],
+            "audience": {
+              "@type": "Audience",
+              "audienceType": "Home poker hosts, private poker clubs, and casual tournament organizers"
+            },
             "description": "Run home poker tournaments with blind structures, a tournament clock, TV display, player tracking, seating, payouts, and shared lobby links.",
             "publisher": { "@id": "https://thepokerplanner.com/#organization" }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://thepokerplanner.com/#webpage",
+            "url": "https://thepokerplanner.com/",
+            "name": "ThePokerPlanner | Poker Timer, Tournament Clock & Home Game Tools",
+            "description": "ThePokerPlanner helps home poker hosts run better tournament nights with a blind timer, TV clock, player check-in, seats, payouts, and shared lobby links.",
+            "isPartOf": { "@id": "https://thepokerplanner.com/#website" },
+            "about": { "@id": "https://thepokerplanner.com/#software" },
+            "primaryImageOfPage": {
+              "@type": "ImageObject",
+              "url": "https://thepokerplanner.com/seo-assets/thepokerplanner-social-card.svg",
+              "width": 1200,
+              "height": 630
+            },
+            "inLanguage": "en-US"
           }
         ]
       }
