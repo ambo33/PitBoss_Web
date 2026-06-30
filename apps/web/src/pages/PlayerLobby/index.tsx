@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Volume2 } from 'lucide-react';
+import { Download, Share2, Skull, Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
 import { announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPoolFromAssigned } from '../../utils/bountyMath';
+import { buildTournamentRecapSvg, saveTournamentRecapImage, shareTournamentRecapImage } from '../../utils/tournamentRecapShare';
 
 interface TimerTick {
   remainingsecs: number;
@@ -360,6 +361,55 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const displayIdentity = entry?.displayname ?? entry?.emailaddress ?? user?.displayname ?? user?.emailaddress ?? (guestUserId ? 'Guest Player' : null);
   const registeredStatus = entry ? 'Registered' : 'Not registered';
   const checkInStatus = entry?.checkedin ? 'Checked in' : entry ? 'Not checked in' : 'Check-in required';
+  const personalKnockouts = Number(entry?.knockoutcount ?? 0);
+  const personalPrize = entry?.placed != null && entry.placed <= payoutPlaces ? payoutAmounts[entry.placed - 1] ?? 0 : 0;
+  const personalRecapSvg = useMemo(() => {
+    if (!entry || (entry.placed == null && personalKnockouts <= 0)) return null;
+    const playerName = entry.displayname ?? entry.emailaddress ?? 'Player';
+    return buildTournamentRecapSvg({
+      eyebrow: 'PLAYER RESULT',
+      title: playerName,
+      subtitle: tournament.name,
+      stats: [
+        { label: 'Placement', value: entry.placed != null ? ordinal(entry.placed) : 'Still in' },
+        { label: 'Prize', value: personalPrize > 0 ? formatMoney(personalPrize) : '-' },
+        { label: 'Knockouts', value: personalKnockouts },
+        { label: 'Players', value: field.registeredcount },
+      ],
+      highlight: personalKnockouts > 0
+        ? {
+            label: 'Table damage',
+            value: `${personalKnockouts} knockout${personalKnockouts === 1 ? '' : 's'}`,
+            detail: entry.placed != null ? `${ordinal(entry.placed)} place` : 'Still battling',
+          }
+        : undefined,
+      placements: [
+        {
+          place: entry.placed != null ? ordinal(entry.placed) : 'Live',
+          name: playerName,
+          amount: personalPrize > 0 ? formatMoney(personalPrize) : '',
+          knockouts: personalKnockouts,
+        },
+      ],
+    });
+  }, [entry, field.registeredcount, personalKnockouts, personalPrize, tournament.name]);
+
+  async function handleSharePersonalRecap(downloadOnly = false) {
+    if (!entry || !personalRecapSvg) return;
+    const playerName = entry.displayname ?? entry.emailaddress ?? 'player';
+    const safeName = playerName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'player';
+    const fileName = `${safeName}-tournament-result.png`;
+    if (downloadOnly) {
+      await saveTournamentRecapImage(personalRecapSvg, fileName);
+      return;
+    }
+    await shareTournamentRecapImage(
+      personalRecapSvg,
+      fileName,
+      `${playerName} tournament result`,
+      `${playerName} finished ${entry.placed != null ? ordinal(entry.placed) : 'the tournament'}${personalKnockouts > 0 ? ` with ${personalKnockouts} knockouts` : ''}.`
+    );
+  }
 
   return (
     <div className="min-h-screen bg-pit-bg p-3 text-white">
@@ -504,6 +554,43 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
           </div>
         </section>
 
+        {entry && personalRecapSvg && (
+          <section className="card space-y-3 overflow-hidden p-0">
+            <div className="bg-gradient-to-br from-pit-teal/18 via-pit-card to-pit-bg p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-pit-teal">Shareable result</p>
+              <div className="mt-2 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-white">
+                    {entry.placed != null ? `${ordinal(entry.placed)} place` : 'Still in the hunt'}
+                  </h2>
+                  <p className="mt-1 text-sm text-pit-text">
+                    {personalPrize > 0 ? `${formatMoney(personalPrize)} locked up` : 'Result card ready'}
+                    {personalKnockouts > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-amber-200">
+                        <Skull size={14} /> {personalKnockouts}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-pit-teal/30 bg-pit-teal/10 px-3 py-2 text-right">
+                  <p className="text-[10px] uppercase tracking-wide text-pit-muted">Players</p>
+                  <p className="text-lg font-black text-white">{field.registeredcount}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 p-3 sm:flex-row">
+              <button type="button" className="btn-primary flex-1 gap-2" onClick={() => void handleSharePersonalRecap(false)}>
+                <Share2 size={16} />
+                Share result
+              </button>
+              <button type="button" className="btn-ghost flex-1 gap-2" onClick={() => void handleSharePersonalRecap(true)}>
+                <Download size={16} />
+                Save image
+              </button>
+            </div>
+          </section>
+        )}
+
         {checkInMode && !entry ? (
           <div className="grid gap-4">
             <section className="card space-y-3 p-3">
@@ -640,11 +727,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
             {declineMutation.error && <p className="text-sm text-red-400">{declineMutation.error.message}</p>}
             {guestRegisterMutation.error && <p className="text-sm text-red-400">{guestRegisterMutation.error.message}</p>}
           </section>
-        ) : entry?.placed != null ? (
-          <section className="card p-3">
-            <p className="text-sm text-pit-text">You have already finished in place #{entry?.placed}.</p>
-          </section>
-        ) : checkInMode && !entry?.checkedin ? (
+        ) : entry?.placed != null ? null : checkInMode && !entry?.checkedin ? (
           <section className="card space-y-3 p-3">
             <h2 className="text-base font-semibold text-white">Checking you in</h2>
             <p className="text-sm text-pit-text">

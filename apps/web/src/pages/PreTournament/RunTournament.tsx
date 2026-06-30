@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Menu, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, Share2, Skull, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playMysteryBountyReveal, playMysteryBountySpin, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
+import { buildTournamentRecapSvg, saveTournamentRecapImage, shareTournamentRecapImage } from '../../utils/tournamentRecapShare';
 
 interface TimerTick {
   remainingsecs: number;
@@ -1191,6 +1192,48 @@ export default function RunTournament({
       .sort((a, b) => (a.placed ?? 999) - (b.placed ?? 999)),
     [players, payoutPlaces]
   );
+  const knockoutCountsByUserId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const player of players) {
+      if (!player.knockedoutbyuserid) continue;
+      counts.set(player.knockedoutbyuserid, (counts.get(player.knockedoutbyuserid) ?? 0) + 1);
+    }
+    return counts;
+  }, [players]);
+  const tournamentComplete = players.some((player) => Number(player.placed) === 1);
+  const finalPaidPlacements = useMemo(
+    () => Array.from({ length: payoutPlaces }, (_, index) => {
+      const place = index + 1;
+      const finisher = players.find((player) => Number(player.placed) === place);
+      return {
+        place,
+        player: finisher ?? null,
+        amount: toNumber(payouts[index] ?? 0),
+        knockouts: finisher ? knockoutCountsByUserId.get(finisher.userid) ?? 0 : 0,
+      };
+    }),
+    [knockoutCountsByUserId, payoutPlaces, payouts, players]
+  );
+  const finalRecapSvg = useMemo(() => {
+    if (!tournamentComplete) return null;
+    return buildTournamentRecapSvg({
+      eyebrow: 'FINAL TOURNAMENT RECAP',
+      title: tournament.name,
+      subtitle: `${fieldSize} players - ${formatMoney(totalPot)} prize pool`,
+      stats: [
+        { label: 'Players', value: fieldSize },
+        { label: 'Prize Pool', value: formatMoney(totalPot) },
+        { label: 'Rebuys', value: totalRebuys },
+        { label: 'Add-Ons', value: totalAddons },
+      ],
+      placements: finalPaidPlacements.map((placement) => ({
+        place: ordinal(placement.place),
+        name: placement.player ? playerNameWithMedals(placement.player) : 'TBD',
+        amount: formatMoney(placement.amount),
+        knockouts: placement.knockouts,
+      })),
+    });
+  }, [fieldSize, finalPaidPlacements, totalAddons, totalPot, totalRebuys, tournament.name, tournamentComplete]);
   const bountyClaimSummaries = useMemo(() => {
     if (!tournament.bountyenabled) return [];
 
@@ -1296,6 +1339,22 @@ export default function RunTournament({
     && demoStartCoachActive
     && !timerState?.running
     && !demoStartCoachDismissed;
+
+  async function handleShareFinalRecap(downloadOnly = false) {
+    if (!finalRecapSvg) return;
+    const safeName = tournament.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tournament';
+    const fileName = `${safeName}-final-recap.png`;
+    if (downloadOnly) {
+      await saveTournamentRecapImage(finalRecapSvg, fileName);
+      return;
+    }
+    await shareTournamentRecapImage(
+      finalRecapSvg,
+      fileName,
+      `${tournament.name} final recap`,
+      `${tournament.name} final results: ${fieldSize} players, ${formatMoney(totalPot)} prize pool.`
+    );
+  }
 
   return (
     <div
@@ -2026,6 +2085,70 @@ export default function RunTournament({
           </>
         ) : (
           <p className="py-8 text-center text-pit-text">No blind structure yet.</p>
+        )}
+
+        {showAdminControls && !displayMode && tournamentComplete && finalRecapSvg && (
+          <section className="rounded-2xl border border-pit-teal/30 bg-pit-card/92 p-4 shadow-2xl shadow-pit-teal/5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-pit-teal">Final tournament recap</p>
+                <h2 className="mt-1 text-2xl font-black text-white">{tournament.name}</h2>
+                <p className="mt-1 text-sm text-pit-text">
+                  Share the paid results, player count, rebuys, add-ons, and tracked knockouts.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button type="button" className="btn-primary gap-2" onClick={() => void handleShareFinalRecap(false)}>
+                  <Share2 size={16} />
+                  Share recap
+                </button>
+                <button type="button" className="btn-ghost gap-2" onClick={() => void handleShareFinalRecap(true)}>
+                  <Download size={16} />
+                  Save image
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              {[
+                { label: 'Total Players', value: fieldSize },
+                { label: 'Prize Pool', value: formatMoney(totalPot), accent: true },
+                { label: 'Total Rebuys', value: totalRebuys },
+                { label: 'Total Add-Ons', value: totalAddons },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-xl border border-pit-border bg-pit-bg/50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">{stat.label}</p>
+                  <p className={`mt-1 text-lg font-black ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-pit-border">
+              <div className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] bg-pit-bg/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">
+                <span>Place</span>
+                <span>Player</span>
+                <span>Knockouts</span>
+                <span className="text-right">Won</span>
+              </div>
+              {finalPaidPlacements.map((placement) => {
+                const playerName = placement.player ? playerNameWithMedals(placement.player) : 'TBD';
+                return (
+                  <div
+                    key={placement.place}
+                    className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] items-center border-t border-pit-border bg-pit-surface/35 px-3 py-2 text-sm"
+                  >
+                    <span className="font-black text-pit-teal">{ordinal(placement.place)}</span>
+                    <span className="min-w-0 truncate font-semibold text-white">{playerName}</span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-200">
+                      <Skull size={14} />
+                      {placement.knockouts}
+                    </span>
+                    <span className="text-right font-black text-pit-teal">{formatMoney(placement.amount)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {displayMode && activeGreeting && tvGreetingDisplayEnabled && (

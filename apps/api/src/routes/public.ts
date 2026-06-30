@@ -400,6 +400,12 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
               tp.bountyclaimedbyuserid,
               COALESCE(bm.nickname, NULLIF(trim(concat(coalesce(bm.firstname, ''), ' ', coalesce(bm.lastname, ''))), ''), bu.emailaddress) AS bountyclaimedbyname,
               tp.bountyclaimedat,
+              CAST((
+                SELECT count(*)
+                FROM tournamentplayers ko
+                WHERE ko.tournamentid = tp.tournamentid
+                  AND ko.knockedoutbyuserid = tp.userid
+              ) AS INT) AS knockoutcount,
               CAST(ts."Table" AS INT) AS tablenumber,
               ts.seat
        FROM tournamentplayers tp

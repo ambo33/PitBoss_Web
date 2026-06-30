@@ -11,7 +11,6 @@ import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
 import { useAuthStore } from '../../store/auth';
 import PushNotificationSettings from '../../components/PushNotificationSettings';
 import PwaPushPrompt from '../../components/PwaPushPrompt';
-import FirstRunTutorial from '../../components/FirstRunTutorial';
 import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 
 type MainView = 'command' | 'profile' | 'admin';
@@ -21,8 +20,6 @@ export default function MainPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, updateUser } = useAuthStore();
-  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const newUserFlowPreview = searchParams.get('newUserFlow') === '1' || searchParams.get('onboardingPreview') === '1';
   const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
     ? location.state.tab as NavTab
     : undefined;
@@ -38,7 +35,6 @@ export default function MainPage() {
   const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; token: number } | null>(null);
   const [leagueDeepLinkId, setLeagueDeepLinkId] = useState<string | undefined>(requestedLeagueId || undefined);
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
-  const [previewTourDismissed, setPreviewTourDismissed] = useState(false);
 
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
@@ -61,12 +57,6 @@ export default function MainPage() {
     },
     onError: () => setShowTour(false),
   });
-
-  useEffect(() => {
-    if (newUserFlowPreview) {
-      setPreviewTourDismissed(false);
-    }
-  }, [newUserFlowPreview]);
 
   useEffect(() => {
     if (requestedLeagueId) {
@@ -145,26 +135,6 @@ export default function MainPage() {
     setCreateGameRequestId((value) => value + 1);
   };
 
-  const finishTutorial = () => {
-    if (!newUserFlowPreview) {
-      completeTourMutation.mutate();
-      return;
-    }
-    setPreviewTourDismissed(true);
-    setShowTour(false);
-    const nextParams = new URLSearchParams(location.search);
-    nextParams.delete('newUserFlow');
-    nextParams.delete('onboardingPreview');
-    const nextSearch = nextParams.toString();
-    navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, {
-      replace: true,
-      state: location.state,
-    });
-  };
-
-  const isDemoUser = currentProfile?.isdemo ?? user?.isdemo ?? false;
-  const tutorialVisible = !isDemoUser && (showTour || (newUserFlowPreview && !previewTourDismissed));
-
   const currentTab: NavTab = view === 'command'
     ? commandSection === 'groups'
       ? 'groups'
@@ -196,7 +166,7 @@ export default function MainPage() {
             onSectionChange={handleCommandSectionChange}
             hideDashboard={commandDetailOpen}
             onCreateFlowChange={setCreateTournamentOpen}
-            onboardingActive={false}
+            onboardingActive={showTour}
             createGameRequestId={createGameRequestId}
             onStartGroupCreate={startGroupCreate}
             onStartGroupInvite={startGroupInvite}
@@ -218,13 +188,6 @@ export default function MainPage() {
         {view === 'profile' && <ProfilePanel onReturn={() => setView('command')} />}
         {view === 'admin' && <AdminPanel />}
       </Layout>
-      {tutorialVisible && (
-        <FirstRunTutorial
-          displayName={currentProfile?.displayname ?? user?.displayname}
-          completing={!newUserFlowPreview && completeTourMutation.isPending}
-          onComplete={finishTutorial}
-        />
-      )}
     </>
   );
 }

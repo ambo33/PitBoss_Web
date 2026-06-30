@@ -7,9 +7,10 @@ interface Props {
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  mobilePlacement?: 'bottom' | 'center';
 }
 
-export default function Modal({ title, open, onClose, children, footer }: Props) {
+export default function Modal({ title, open, onClose, children, footer, mobilePlacement = 'bottom' }: Props) {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -23,12 +24,17 @@ export default function Modal({ title, open, onClose, children, footer }: Props)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
-                 bg-black/70 backdrop-blur-sm px-0 sm:px-4"
+      className={`fixed inset-0 z-50 flex justify-center bg-black/70 backdrop-blur-sm ${
+        mobilePlacement === 'center'
+          ? 'items-center px-4 py-4'
+          : 'items-end px-0 sm:items-center sm:px-4'
+      }`}
     >
-      <div className="bg-pit-surface border border-pit-border w-full sm:max-w-md
-                      rounded-t-2xl sm:rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.6)]
-                      flex flex-col max-h-[90dvh]">
+      <div className={`bg-pit-surface border border-pit-border w-full sm:max-w-md
+                      shadow-[0_24px_64px_rgba(0,0,0,0.6)]
+                      flex flex-col max-h-[90dvh] ${
+                        mobilePlacement === 'center' ? 'rounded-2xl' : 'rounded-t-2xl sm:rounded-2xl'
+                      }`}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-pit-border shrink-0">
           <h2 className="font-bold text-white">{title}</h2>

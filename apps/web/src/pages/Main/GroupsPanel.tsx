@@ -44,7 +44,14 @@ export default function GroupsPanel({
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; approvalneeded: boolean }) => api.createGroup(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); setShowCreate(false); },
+    onSuccess: async (result) => {
+      const refreshed = await qc.fetchQuery({ queryKey: ['groups'], queryFn: api.getGroups });
+      const createdGroup = refreshed.find((group) => group.groupid === result.groupid);
+      setShowCreate(false);
+      if (createdGroup) {
+        setSelected(createdGroup);
+      }
+    },
   });
   const joinMutation = useMutation({
     mutationFn: (code: string) => api.joinGroup(code),
@@ -274,7 +281,7 @@ function CreateGroupModal({ open, onClose, onSubmit, loading, error }: {
   }
 
   return (
-    <Modal title="Create Group" open={open} onClose={onClose}
+    <Modal title="Create Group" open={open} onClose={onClose} mobilePlacement="center"
       footer={<>
         <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn-primary" form="create-group" disabled={loading}>
@@ -517,6 +524,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['group', group.groupid] });
       qc.invalidateQueries({ queryKey: ['groups'] });
+      qc.invalidateQueries({ queryKey: ['push', 'notifications'] });
     },
   });
   const removeMutation = useMutation({
@@ -874,162 +882,194 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
         )}
 
         {detailTab === 'info' && (
-          <div className="space-y-4">
-        {/* Invite code */}
-        {!demoMode && <div className="flex flex-col gap-1 rounded-xl bg-pit-bg border border-pit-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-xs text-pit-muted">Invite code</span>
-          <span className="font-mono font-bold text-white tracking-[0.2em]">{effectiveGroup.invitecode}</span>
-        </div>}
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="space-y-3">
+              {!demoMode && (
+                <section className="rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.13),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.85),rgba(16,16,21,0.96))] p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-teal">Join code</p>
+                  <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+                    <p className="font-mono text-2xl font-black tracking-[0.22em] text-white">{effectiveGroup.invitecode}</p>
+                    <button
+                      type="button"
+                      className="btn-primary px-3 py-2 text-xs"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(joinLink);
+                        setCopyStatus('Join link copied.');
+                        setTimeout(() => setCopyStatus(''), 2000);
+                      }}
+                    >
+                      Copy invite
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-pit-muted">Share the code or copy the invite link for players.</p>
+                  {copyStatus && <p className="mt-2 text-sm text-pit-teal">{copyStatus}</p>}
+                </section>
+              )}
 
-        {group.isadmin && (
-          <div className="space-y-4 rounded-xl border border-pit-border bg-pit-bg px-4 py-4">
-            {!demoMode && <div className="space-y-3">
-              <p className="text-sm font-semibold text-white">Join link</p>
-              <div className="rounded-xl border border-pit-border bg-pit-surface px-3 py-3">
-                <p className="break-all font-mono text-xs text-pit-text">{joinLink}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn-ghost"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(joinLink);
-                    setCopyStatus('Join link copied.');
-                    setTimeout(() => setCopyStatus(''), 2000);
-                  }}
-                >
-                  Copy Link
-                </button>
-              </div>
-              {copyStatus && <p className="text-sm text-pit-teal">{copyStatus}</p>}
-              <div className="inline-block rounded-xl bg-white p-3">
-                <QRCodeSVG value={joinLink} size={150} />
-              </div>
-            </div>}
+              <section className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-pit-border bg-pit-bg px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Members</p>
+                  <p className="mt-2 text-2xl font-black text-white">{approved.length}</p>
+                </div>
+                <div className="rounded-xl border border-pit-border bg-pit-bg px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Approval</p>
+                  <p className="mt-2 text-sm font-bold text-white">{effectiveGroup.approvalneeded ? 'Required' : 'Open'}</p>
+                </div>
+              </section>
 
-            {!user?.isdemo && <div className="space-y-2">
-              <p className="text-sm font-semibold text-white">Group settings</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  className="input font-mono uppercase"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                  maxLength={12}
-                />
-                <button
-                  className="btn-primary shrink-0"
-                  onClick={() => updateGroupMutation.mutate({ invitecode: inviteCode })}
-                  disabled={updateGroupMutation.isPending || !inviteCode.trim()}
-                >
-                  <Save size={14} />
-                  {updateGroupMutation.isPending ? 'Saving...' : 'Save Code'}
-                </button>
-              </div>
-              {updateGroupMutation.error && <p className="text-sm text-red-400">{updateGroupMutation.error.message}</p>}
-            </div>}
-
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-white">Tournament defaults</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  className="input"
-                  value={canUseClubFeatures ? defaultTrackingMode : 'standard'}
-                  onChange={(event) => setDefaultTrackingMode(event.target.value as 'standard' | 'player')}
-                  disabled={!canUseClubFeatures}
-                >
-                  <option value="standard">Standard tracking</option>
-                  <option value="player">Player tracked stats</option>
-                </select>
-                <button
-                  className="btn-primary shrink-0"
-                  onClick={() => updateGroupMutation.mutate({ defaulttrackingmode: canUseClubFeatures ? defaultTrackingMode : 'standard' })}
-                  disabled={updateGroupMutation.isPending || !canUseClubFeatures}
-                >
-                  <Save size={14} />
-                  Save Default
-                </button>
-              </div>
-              <p className="text-xs text-pit-muted">
-                {canUseClubFeatures
-                  ? 'New tournaments for this group use this stats tracking mode by default.'
-                  : 'Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.'}
-              </p>
+              {!demoMode && group.isadmin && (
+                <details className="group rounded-xl border border-pit-border bg-pit-bg px-4 py-3">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-white">
+                    QR code and full link
+                    <span className="float-right text-xs text-pit-muted group-open:text-pit-teal">Open</span>
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-xl border border-pit-border bg-pit-surface px-3 py-3">
+                      <p className="break-all font-mono text-xs text-pit-text">{joinLink}</p>
+                    </div>
+                    <div className="inline-block rounded-xl bg-white p-3">
+                      <QRCodeSVG value={joinLink} size={150} />
+                    </div>
+                  </div>
+                </details>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-white">TV seating message</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  className="input"
-                  value={canUseClubFeatures ? tvSeatingMessage : (effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!')}
-                  onChange={(event) => setTvSeatingMessage(event.target.value)}
-                  disabled={!canUseClubFeatures}
-                  maxLength={180}
-                />
-                <button
-                  className="btn-primary shrink-0"
-                  onClick={() => updateGroupMutation.mutate({ tvseatingwelcomemessage: tvSeatingMessage })}
-                  disabled={updateGroupMutation.isPending || !canUseClubFeatures}
-                >
-                  <Save size={14} />
-                  Save Message
-                </button>
-              </div>
-              <p className="text-xs text-pit-muted">
-                {canUseClubFeatures
-                  ? 'Shown on the TV seating view before seats are assigned.'
-                  : 'Host accounts use the default TV seating message. Custom wording unlocks with Club or Pro.'}
-              </p>
-            </div>
+            {group.isadmin && (
+              <div className="space-y-3">
+                {!user?.isdemo && (
+                  <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">Group code</p>
+                        <p className="text-xs text-pit-muted">Change the code players use to join.</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        className="input font-mono uppercase"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                        maxLength={12}
+                      />
+                      <button
+                        className="btn-primary shrink-0"
+                        onClick={() => updateGroupMutation.mutate({ invitecode: inviteCode })}
+                        disabled={updateGroupMutation.isPending || !inviteCode.trim()}
+                      >
+                        <Save size={14} />
+                        {updateGroupMutation.isPending ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                    {updateGroupMutation.error && <p className="mt-2 text-sm text-red-400">{updateGroupMutation.error.message}</p>}
+                  </section>
+                )}
 
-            {!demoMode && <div className="space-y-3">
-              <p className="text-sm font-semibold text-white">Invite people</p>
-              <input
-                className="input"
-                placeholder="Email address"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Phone number for text"
-                value={invitePhone}
-                onChange={(e) => setInvitePhone(e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Optional note"
-                value={inviteNote}
-                onChange={(e) => setInviteNote(e.target.value)}
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn-primary"
-                  onClick={() => {
-                    setSmsStatus('');
-                    inviteMutation.mutate({ email: inviteEmail || undefined, note: inviteNote || undefined });
-                  }}
-                  disabled={inviteMutation.isPending || !inviteEmail.trim()}
-                >
-                  <Mail size={14} />
-                  Send Email
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => {
-                    setSmsStatus('');
-                    inviteMutation.mutate({ phone: invitePhone || undefined, note: inviteNote || undefined });
-                  }}
-                  disabled={inviteMutation.isPending || !invitePhone.trim()}
-                >
-                  <MessageSquare size={14} />
-                  Send Text
-                </button>
+                <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                  <p className="text-sm font-semibold text-white">Tournament defaults</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <select
+                      className="input"
+                      value={canUseClubFeatures ? defaultTrackingMode : 'standard'}
+                      onChange={(event) => setDefaultTrackingMode(event.target.value as 'standard' | 'player')}
+                      disabled={!canUseClubFeatures}
+                    >
+                      <option value="standard">Standard tracking</option>
+                      <option value="player">Player tracked stats</option>
+                    </select>
+                    <button
+                      className="btn-primary shrink-0"
+                      onClick={() => updateGroupMutation.mutate({ defaulttrackingmode: canUseClubFeatures ? defaultTrackingMode : 'standard' })}
+                      disabled={updateGroupMutation.isPending || !canUseClubFeatures}
+                    >
+                      <Save size={14} />
+                      Save
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-pit-muted">
+                    {canUseClubFeatures
+                      ? 'New tournaments use this tracking mode by default.'
+                      : 'Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.'}
+                  </p>
+                </section>
+
+                <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
+                  <p className="text-sm font-semibold text-white">TV seating message</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <input
+                      className="input"
+                      value={canUseClubFeatures ? tvSeatingMessage : (effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!')}
+                      onChange={(event) => setTvSeatingMessage(event.target.value)}
+                      disabled={!canUseClubFeatures}
+                      maxLength={180}
+                    />
+                    <button
+                      className="btn-primary shrink-0"
+                      onClick={() => updateGroupMutation.mutate({ tvseatingwelcomemessage: tvSeatingMessage })}
+                      disabled={updateGroupMutation.isPending || !canUseClubFeatures}
+                    >
+                      <Save size={14} />
+                      Save
+                    </button>
+                  </div>
+                </section>
+
+                {!demoMode && (
+                  <details className="group rounded-xl border border-pit-border bg-pit-bg p-4">
+                    <summary className="cursor-pointer list-none text-sm font-semibold text-white">
+                      Invite people
+                      <span className="float-right text-xs text-pit-muted group-open:text-pit-teal">Open</span>
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <input
+                        className="input"
+                        placeholder="Email address"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Phone number for text"
+                        value={invitePhone}
+                        onChange={(e) => setInvitePhone(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Optional note"
+                        value={inviteNote}
+                        onChange={(e) => setInviteNote(e.target.value)}
+                      />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <button
+                          className="btn-primary justify-center"
+                          onClick={() => {
+                            setSmsStatus('');
+                            inviteMutation.mutate({ email: inviteEmail || undefined, note: inviteNote || undefined });
+                          }}
+                          disabled={inviteMutation.isPending || !inviteEmail.trim()}
+                        >
+                          <Mail size={14} />
+                          Send Email
+                        </button>
+                        <button
+                          className="btn-ghost justify-center"
+                          onClick={() => {
+                            setSmsStatus('');
+                            inviteMutation.mutate({ phone: invitePhone || undefined, note: inviteNote || undefined });
+                          }}
+                          disabled={inviteMutation.isPending || !invitePhone.trim()}
+                        >
+                          <MessageSquare size={14} />
+                          Send Text
+                        </button>
+                      </div>
+                      {inviteMutation.error && <p className="text-sm text-red-400">{inviteMutation.error.message}</p>}
+                      {smsStatus && <p className="text-sm text-pit-teal">{smsStatus}</p>}
+                    </div>
+                  </details>
+                )}
               </div>
-              {inviteMutation.error && <p className="text-sm text-red-400">{inviteMutation.error.message}</p>}
-              {smsStatus && <p className="text-sm text-pit-teal">{smsStatus}</p>}
-            </div>}
-          </div>
-        )}
+            )}
           </div>
         )}
 
@@ -1428,7 +1468,7 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                   <p className="eyebrow">Pending Approval</p>
                   <button
                     className="btn-primary px-3 py-1.5 text-xs"
-                    disabled={approveAllMutation.isPending || approveMutation.isPending}
+                    disabled={approveAllMutation.isPending || approveMutation.isPending || pending.length === 0}
                     onClick={() => approveAllMutation.mutate()}
                   >
                     {approveAllMutation.isPending ? 'Approving...' : `Approve all (${pending.length})`}

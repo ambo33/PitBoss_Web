@@ -761,6 +761,7 @@ export interface LobbyEntry {
   userid: string; emailaddress: string; displayname?: string;
   awardedcoins?: PlayerCoinBadge[];
   checkedin: boolean; addedon?: boolean; placed?: number | null; tablenumber?: number | null; seat?: number | null;
+  knockoutcount?: number;
   bountyamount?: number; bountyclaimedbyuserid?: string | null; bountyclaimedbyname?: string | null; bountyclaimedat?: string | null;
 }
 export interface PublicAddonResponse {

@@ -1152,23 +1152,6 @@ groupsRouter.post('/:id/invite', async (req: Request, res: Response) => {
   });
 });
 
-groupsRouter.put('/:id/members/:userId/approve', async (req: Request, res: Response) => {
-  const admin = await queryOne(
-    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
-    [req.params.id, req.userId]
-  );
-  if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
-  const approved = await query<{ userid: string }>(
-    `UPDATE groupmembers
-     SET approved = TRUE
-     WHERE groupid = $1 AND userid = $2 AND approved IS DISTINCT FROM TRUE
-     RETURNING userid`,
-    [req.params.id, req.params.userId]
-  );
-  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
-  res.json({ success: true, approved: approved.length });
-});
-
 groupsRouter.put('/:id/members/approve-all', async (req: Request, res: Response) => {
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -1181,6 +1164,23 @@ groupsRouter.put('/:id/members/approve-all', async (req: Request, res: Response)
      WHERE groupid = $1 AND approved IS DISTINCT FROM TRUE
      RETURNING userid`,
     [req.params.id]
+  );
+  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
+  res.json({ success: true, approved: approved.length });
+});
+
+groupsRouter.put('/:id/members/:userId/approve', async (req: Request, res: Response) => {
+  const admin = await queryOne(
+    `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
+    [req.params.id, req.userId]
+  );
+  if (!admin) { res.status(403).json({ error: 'Not a group admin' }); return; }
+  const approved = await query<{ userid: string }>(
+    `UPDATE groupmembers
+     SET approved = TRUE
+     WHERE groupid = $1 AND userid = $2 AND approved IS DISTINCT FROM TRUE
+     RETURNING userid`,
+    [req.params.id, req.params.userId]
   );
   void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
   res.json({ success: true, approved: approved.length });
