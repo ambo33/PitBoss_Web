@@ -99,8 +99,6 @@ app.use('/api/tournaments', seatingRouter);
 
 const webDistPath = path.resolve(__dirname, '../../web/dist');
 if (existsSync(webDistPath)) {
-  app.use(express.static(webDistPath));
-
   const seoStaticPaths = [
     '/poker-timer',
     '/poker-tournament-clock',
@@ -116,6 +114,70 @@ if (existsSync(webDistPath)) {
     '/pricing',
     '/terms',
   ];
+  const seoStaticPathSet = new Set(seoStaticPaths);
+  const publicHostnames = new Set(['thepokerplanner.com', 'www.thepokerplanner.com']);
+  const appHostnames = new Set(['app.thepokerplanner.com']);
+  const appOnlyPathPrefixes = [
+    '/app',
+    '/login',
+    '/register',
+    '/reset-password',
+    '/tournament',
+    '/league',
+    '/league-guest-claim',
+    '/tv',
+    '/pay',
+    '/pocket-admin',
+    '/cash-games',
+    '/join',
+    '/lobby',
+    '/checkin',
+    '/bust',
+    '/addon',
+    '/blind-timer',
+    '/unsubscribe',
+  ];
+
+  function cleanHostname(req: express.Request) {
+    return req.hostname.toLowerCase().replace(/:\d+$/, '');
+  }
+
+  function pathWithoutTrailingSlash(reqPath: string) {
+    return reqPath === '/' ? '/' : reqPath.replace(/\/$/, '');
+  }
+
+  function isAppOnlyPath(reqPath: string) {
+    const normalizedPath = pathWithoutTrailingSlash(reqPath);
+    return appOnlyPathPrefixes.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`));
+  }
+
+  function queryStringFromOriginalUrl(originalUrl: string) {
+    const queryStart = originalUrl.indexOf('?');
+    return queryStart >= 0 ? originalUrl.slice(queryStart) : '';
+  }
+
+  app.use((req, res, next) => {
+    const hostname = cleanHostname(req);
+    const normalizedPath = pathWithoutTrailingSlash(req.path);
+    const originalUrl = req.originalUrl || req.url;
+
+    if (appHostnames.has(hostname)) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      if (seoStaticPathSet.has(normalizedPath)) {
+        res.redirect(301, `https://thepokerplanner.com${normalizedPath}/${queryStringFromOriginalUrl(originalUrl)}`);
+        return;
+      }
+    }
+
+    if (publicHostnames.has(hostname) && isAppOnlyPath(req.path)) {
+      res.redirect(301, `https://app.thepokerplanner.com${originalUrl}`);
+      return;
+    }
+
+    next();
+  });
+
+  app.use(express.static(webDistPath));
 
   app.get(seoStaticPaths, (req, res) => {
     res.sendFile(path.join(webDistPath, req.path, 'index.html'));
