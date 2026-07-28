@@ -895,24 +895,7 @@ ${urls.map((entry) => `  <url><loc>${absoluteUrl(entry.path)}</loc><lastmod>${la
 
   const robots = `User-agent: *
 Allow: /
-Disallow: /admin/
 Disallow: /api/
-Disallow: /app
-Disallow: /addon/
-Disallow: /bust/
-Disallow: /cash-games/
-Disallow: /checkin/
-Disallow: /join/
-Disallow: /league/
-Disallow: /league-guest-claim
-Disallow: /login
-Disallow: /lobby/
-Disallow: /pay/
-Disallow: /pocket-admin/
-Disallow: /reset-password
-Disallow: /tournament/
-Disallow: /tv
-Disallow: /unsubscribe/
 
 User-agent: GPTBot
 Allow: /
