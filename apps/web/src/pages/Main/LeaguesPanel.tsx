@@ -542,6 +542,15 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn-ghost h-10 justify-center gap-2 px-3 py-2 text-xs"
+            onClick={() => setSettingsModalOpen(true)}
+            title="Rename selected season"
+          >
+            <Pencil size={14} />
+            Rename
+          </button>
           <button className="btn-ghost h-10 justify-center gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
             <CalendarDays size={14} />
             +Season
@@ -578,7 +587,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
                   }}
                 >
                   <Pencil size={14} />
-                  Settings
+                  League & season
                 </button>
                 <button
                   type="button"
@@ -1812,7 +1821,7 @@ function LeagueMembersCard({
                 )}
               </div>
             </div>
-            {detail.league.isadmin && (
+            {detail.league.isadmin && member.isguestuser && (
               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <input
                   className="input h-9 py-2 text-xs"
@@ -1822,7 +1831,7 @@ function LeagueMembersCard({
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') submitTakeoverInvite(member);
                   }}
-                  placeholder="Email to take over spot"
+                  placeholder="Email to invite"
                 />
                 <button
                   className="btn-ghost h-9 justify-center gap-1.5 px-3 py-2 text-xs"
@@ -1831,7 +1840,7 @@ function LeagueMembersCard({
                   type="button"
                 >
                   <Mail size={12} />
-                  {inviteLoadingUserId === member.userid ? 'Sending...' : 'Invite takeover'}
+                  {inviteLoadingUserId === member.userid ? 'Sending...' : 'Invite'}
                 </button>
               </div>
             )}
@@ -2861,7 +2870,7 @@ function LeagueSettingsModal({
 
   return (
     <Modal
-      title="League Settings"
+      title="League & Season Settings"
       open={open}
       onClose={onClose}
       footer={(
@@ -2890,7 +2899,7 @@ function LeagueSettingsModal({
           <input className="input" value={leagueName} onChange={(event) => setLeagueName(event.target.value)} />
         </label>
         <label className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Current season name</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Selected season name</span>
           <input
             className="input"
             value={seasonName}
