@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
-import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -36,6 +36,8 @@ export default function LeaguesPanel({
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [joinLeagueCode, setJoinLeagueCode] = useState('');
+  const [joinClaimOptions, setJoinClaimOptions] = useState<LeagueClaimablePlayer[]>([]);
   const [selected, setSelected] = useState<Pick<League, 'leagueid'> | null>(initialLeagueId ? { leagueid: initialLeagueId } : null);
   const { data: leagues = [], isLoading } = useQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
 
@@ -48,9 +50,19 @@ export default function LeaguesPanel({
     },
   });
   const joinMutation = useMutation({
-    mutationFn: (code: string) => api.joinLeague(code),
-    onSuccess: () => {
+    mutationFn: (data: { code: string; claimuserid?: string | null }) => api.joinLeague(data.code, data.claimuserid),
+    onSuccess: (result, variables) => {
       qc.invalidateQueries({ queryKey: ['leagues'] });
+      if (!variables.claimuserid && result.claimablePlayers?.length) {
+        setJoinLeagueCode(variables.code);
+        setJoinClaimOptions(result.claimablePlayers);
+        return;
+      }
+      setJoinLeagueCode('');
+      setJoinClaimOptions([]);
+      if (variables.claimuserid && !result.pending) {
+        setSelected({ leagueid: result.leagueid });
+      }
       setShowJoin(false);
     },
   });
@@ -98,8 +110,19 @@ export default function LeaguesPanel({
       />
       <JoinLeagueModal
         open={showJoin}
-        onClose={() => setShowJoin(false)}
-        onSubmit={(code) => joinMutation.mutate(code)}
+        onClose={() => {
+          setShowJoin(false);
+          setJoinLeagueCode('');
+          setJoinClaimOptions([]);
+        }}
+        onSubmit={(code) => joinMutation.mutate({ code })}
+        claimOptions={joinClaimOptions}
+        onClaim={(userId) => joinMutation.mutate({ code: joinLeagueCode, claimuserid: userId })}
+        onSkip={() => {
+          setShowJoin(false);
+          setJoinLeagueCode('');
+          setJoinClaimOptions([]);
+        }}
         loading={joinMutation.isPending}
         error={joinMutation.error?.message}
       />
@@ -2543,14 +2566,21 @@ function CreateLeagueModal({
   );
 }
 
-function JoinLeagueModal({ open, onClose, onSubmit, loading, error }: {
+function JoinLeagueModal({ open, onClose, onSubmit, claimOptions = [], onClaim, onSkip, loading, error }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (code: string) => void;
+  claimOptions?: LeagueClaimablePlayer[];
+  onClaim: (userId: string) => void;
+  onSkip: () => void;
   loading: boolean;
   error?: string;
 }) {
   const [code, setCode] = useState('');
+  const hasClaimOptions = claimOptions.length > 0;
+  useEffect(() => {
+    if (!open) setCode('');
+  }, [open]);
   return (
     <Modal
       title="Join League"
@@ -2559,15 +2589,46 @@ function JoinLeagueModal({ open, onClose, onSubmit, loading, error }: {
       footer={(
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" disabled={loading || !code.trim()} onClick={() => onSubmit(code)}>
-            {loading ? 'Joining...' : 'Join'}
-          </button>
+          {hasClaimOptions ? (
+            <button type="button" className="btn-primary" disabled={loading} onClick={onSkip}>
+              Skip, just join
+            </button>
+          ) : (
+            <button type="button" className="btn-primary" disabled={loading || !code.trim()} onClick={() => onSubmit(code)}>
+              {loading ? 'Joining...' : 'Join'}
+            </button>
+          )}
         </>
       )}
     >
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <input className="input font-mono uppercase tracking-widest" placeholder="League code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
+        {hasClaimOptions ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-pit-teal/25 bg-pit-teal/10 p-3">
+              <p className="text-sm font-semibold text-white">Is one of these players you?</p>
+              <p className="mt-1 text-xs leading-relaxed text-pit-muted">
+                Claiming your name brings over that season's results, payments, and RSVPs. Skip this if none of these are your spot.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {claimOptions.map((player) => (
+                <button
+                  key={player.userid}
+                  type="button"
+                  className="w-full rounded-xl border border-pit-border bg-black/20 px-3 py-3 text-left transition hover:border-pit-teal/50 hover:bg-pit-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={loading}
+                  onClick={() => onClaim(player.userid)}
+                >
+                  <span className="block text-sm font-semibold text-white">{player.displayname ?? 'League player'}</span>
+                  {player.seasonname && <span className="mt-1 block text-xs text-pit-muted">{player.seasonname}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <input className="input font-mono uppercase tracking-widest" placeholder="League code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
+        )}
       </div>
     </Modal>
   );

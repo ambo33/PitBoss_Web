@@ -159,8 +159,8 @@ export const api = {
     post<{ payment: LeaguePayment | null; payments?: LeaguePayment[] }>(`/leagues/${id}/payments`, data),
   deleteLeaguePayment: (id: string, paymentId: string) =>
     del<{ success: boolean }>(`/leagues/${id}/payments/${paymentId}`),
-  joinLeague: (invitecode: string) =>
-    post<{ leagueid: string; pending: boolean }>('/leagues/join', { invitecode }),
+  joinLeague: (invitecode: string, claimuserid?: string | null) =>
+    post<JoinLeagueResponse>('/leagues/join', { invitecode, claimuserid }),
   addLeagueGuest: (id: string, displayname: string, seasonid?: string | null) =>
     post<{ member: LeagueMember }>(`/leagues/${id}/members/guest`, { displayname, seasonid }),
   addLeagueAdmin: (id: string, email: string) =>
@@ -541,6 +541,19 @@ export interface LeagueMember {
   participating: boolean;
   isguestuser?: boolean;
   pendinginviteemail?: string | null;
+}
+export interface LeagueClaimablePlayer {
+  userid: string;
+  displayname?: string | null;
+  seasonid?: string | null;
+  seasonname?: string | null;
+}
+export interface JoinLeagueResponse {
+  leagueid: string;
+  pending: boolean;
+  claimed?: boolean;
+  claimedPlayerName?: string | null;
+  claimablePlayers?: LeagueClaimablePlayer[];
 }
 export interface LeagueSeason {
   seasonid: string;

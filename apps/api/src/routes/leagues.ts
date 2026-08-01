@@ -65,6 +65,12 @@ type LeagueSeasonRow = {
   active: boolean;
   createdat: string;
 };
+type LeagueClaimablePlayer = {
+  userid: string;
+  displayname: string | null;
+  seasonid: string | null;
+  seasonname: string | null;
+};
 type LeagueEventRow = {
   eventid: string;
   leagueid: string;
@@ -430,6 +436,43 @@ async function addSeasonParticipant(client: PoolClient, leagueId: string, season
      ON CONFLICT (seasonid, userid) DO UPDATE SET participating = $4`,
     [seasonId, leagueId, userId, participating]
   );
+}
+
+async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | null): Promise<LeagueClaimablePlayer[]> {
+  const rows = await query<LeagueClaimablePlayer & { emailaddress: string | null; isguestuser: boolean | null }>(
+    seasonId
+      ? `SELECT lm.userid,
+                COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), 'Guest player') AS displayname,
+                lsp.seasonid,
+                s.name AS seasonname,
+                u.emailaddress,
+                m.isguestuser
+         FROM leaguemembers lm
+         JOIN users u ON u.guid = lm.userid
+         LEFT JOIN usermetadata m ON m.userid = u.guid
+         JOIN leagueseasonparticipants lsp ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid AND lsp.participating = TRUE
+         JOIN leagueseasons s ON s.seasonid = lsp.seasonid
+         WHERE lm.leagueid = $1
+           AND lm.approved = TRUE
+           AND lsp.seasonid = $2
+         ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress))`
+      : `SELECT lm.userid,
+                COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), 'Guest player') AS displayname,
+                NULL::UUID AS seasonid,
+                NULL::TEXT AS seasonname,
+                u.emailaddress,
+                m.isguestuser
+         FROM leaguemembers lm
+         JOIN users u ON u.guid = lm.userid
+         LEFT JOIN usermetadata m ON m.userid = u.guid
+         WHERE lm.leagueid = $1
+           AND lm.approved = TRUE
+         ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress))`,
+    seasonId ? [leagueId, seasonId] : [leagueId]
+  );
+  return rows
+    .filter((row) => Boolean(row.isguestuser) || isGuestEmail(row.emailaddress))
+    .map(({ emailaddress: _emailaddress, isguestuser: _isguestuser, ...row }) => row);
 }
 
 async function getLeagueForUser(leagueId: string, userId: string) {
@@ -854,7 +897,9 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/join', async (req: Request, res: Response) => {
-  const invitecode = normalizeInviteCode((req.body as { invitecode?: string }).invitecode);
+  const body = req.body as { invitecode?: string; claimuserid?: string | null };
+  const invitecode = normalizeInviteCode(body.invitecode);
+  const claimUserId = String(body.claimuserid ?? '').trim();
   const league = await queryOne<LeagueRow>(
     `SELECT leagueid, approvalneeded FROM leagues WHERE invitecode = $1 AND COALESCE(active, TRUE) = TRUE`,
     [invitecode]
@@ -868,9 +913,147 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
     `SELECT approved FROM leaguemembers WHERE leagueid = $1 AND userid = $2`,
     [league.leagueid, req.userId]
   );
+  const selectedSeason = await getSelectedSeason(league.leagueid);
+  const claimablePlayers = selectedSeason ? await getClaimableLeaguePlayers(league.leagueid, selectedSeason.seasonid) : [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (claimUserId) {
+      const claimablePlayer = claimablePlayers.find((player) => player.userid === claimUserId);
+      if (!claimablePlayer) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'That player spot is no longer available to claim.' });
+        return;
+      }
+      if (claimUserId === req.userId) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'This league spot is already tied to your account.' });
+        return;
+      }
+      const guestMember = await client.query<{
+        approved: boolean;
+        participating: boolean;
+        emailalertsenabled: boolean;
+        pushalertsenabled: boolean;
+      }>(
+        `SELECT approved, participating, emailalertsenabled, pushalertsenabled
+         FROM leaguemembers
+         WHERE leagueid = $1 AND userid = $2
+         LIMIT 1`,
+        [league.leagueid, claimUserId]
+      );
+      if (!guestMember.rows[0]) {
+        await client.query('ROLLBACK');
+        res.status(404).json({ error: 'Guest league profile no longer exists.' });
+        return;
+      }
+      const claimApproved = Boolean(guestMember.rows[0].approved || approved);
+      await client.query(
+        `INSERT INTO leaguemembers (leagueid, userid, admin, approved, participating, emailalertsenabled, pushalertsenabled)
+         VALUES ($1, $2, FALSE, $3, TRUE, $4, $5)
+         ON CONFLICT (leagueid, userid) DO UPDATE
+         SET approved = leaguemembers.approved OR EXCLUDED.approved,
+             participating = leaguemembers.participating OR EXCLUDED.participating,
+             emailalertsenabled = leaguemembers.emailalertsenabled OR EXCLUDED.emailalertsenabled,
+             pushalertsenabled = leaguemembers.pushalertsenabled OR EXCLUDED.pushalertsenabled`,
+        [
+          league.leagueid,
+          req.userId,
+          claimApproved,
+          guestMember.rows[0].emailalertsenabled,
+          guestMember.rows[0].pushalertsenabled,
+        ]
+      );
+      if (selectedSeason?.seasonid) {
+        const targetParticipant = await client.query(
+          `SELECT 1
+           FROM leagueseasonparticipants
+           WHERE seasonid = $1 AND userid = $2 AND participating = TRUE
+           LIMIT 1`,
+          [selectedSeason.seasonid, req.userId]
+        );
+        if (targetParticipant.rows[0]) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: 'This account is already an active player in this season.' });
+          return;
+        }
+        const targetRecords = await client.query(
+          `SELECT 1
+           FROM leagueresults r
+           JOIN leagueevents e ON e.eventid = r.eventid
+           WHERE r.leagueid = $1 AND e.seasonid = $2 AND r.userid = $3
+           UNION ALL
+           SELECT 1
+           FROM leaguepayments p
+           WHERE p.leagueid = $1 AND p.seasonid = $2 AND p.userid = $3
+           LIMIT 1`,
+          [league.leagueid, selectedSeason.seasonid, req.userId]
+        );
+        if (targetRecords.rows[0]) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: 'This account already has league records in this season.' });
+          return;
+        }
+        await addSeasonParticipant(client, league.leagueid, selectedSeason.seasonid, req.userId!, true);
+        await client.query(
+          `DELETE FROM leagueeventrsvps
+           WHERE leagueid = $1
+             AND userid = $3
+             AND eventid IN (SELECT eventid FROM leagueevents WHERE leagueid = $1 AND seasonid = $2)`,
+          [league.leagueid, selectedSeason.seasonid, req.userId]
+        );
+        const updatedResults = await client.query(
+          `UPDATE leagueresults
+           SET userid = $3
+           WHERE leagueid = $1
+             AND userid = $2
+             AND eventid IN (SELECT eventid FROM leagueevents WHERE leagueid = $1 AND seasonid = $4)`,
+          [league.leagueid, claimUserId, req.userId, selectedSeason.seasonid]
+        );
+        const updatedPayments = await client.query(
+          `UPDATE leaguepayments
+           SET userid = $3
+           WHERE leagueid = $1
+             AND userid = $2
+             AND (seasonid = $4 OR eventid IN (SELECT eventid FROM leagueevents WHERE leagueid = $1 AND seasonid = $4))`,
+          [league.leagueid, claimUserId, req.userId, selectedSeason.seasonid]
+        );
+        const updatedRsvps = await client.query(
+          `UPDATE leagueeventrsvps
+           SET userid = $3,
+               updatedat = now()
+           WHERE leagueid = $1
+             AND userid = $2
+             AND eventid IN (SELECT eventid FROM leagueevents WHERE leagueid = $1 AND seasonid = $4)`,
+          [league.leagueid, claimUserId, req.userId, selectedSeason.seasonid]
+        );
+        await addSeasonParticipant(client, league.leagueid, selectedSeason.seasonid, claimUserId, false);
+        await recordLeagueAudit(client, {
+          leagueId: league.leagueid,
+          seasonId: selectedSeason.seasonid,
+          actorId: req.userId,
+          targetUserId: req.userId,
+          action: 'season_spot_claimed',
+          summary: 'Season spot was claimed by a registered user.',
+          details: {
+            previousUserId: claimUserId,
+            previousName: claimablePlayer.displayname,
+            resultsTransferred: updatedResults.rowCount ?? 0,
+            paymentsTransferred: updatedPayments.rowCount ?? 0,
+            rsvpsTransferred: updatedRsvps.rowCount ?? 0,
+            source: 'join_code',
+          },
+        });
+      }
+      await client.query('COMMIT');
+      res.json({
+        leagueid: league.leagueid,
+        pending: !claimApproved,
+        claimed: true,
+        claimedPlayerName: claimablePlayer.displayname,
+      });
+      return;
+    }
     await client.query(
       `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
        VALUES ($1, $2, FALSE, $3)
@@ -894,7 +1077,11 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
   } finally {
     client.release();
   }
-  res.json({ leagueid: league.leagueid, pending: Boolean(league.approvalneeded) });
+  res.json({
+    leagueid: league.leagueid,
+    pending: Boolean(league.approvalneeded),
+    claimablePlayers,
+  });
 });
 
 leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
