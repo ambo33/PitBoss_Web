@@ -248,6 +248,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [editingEvent, setEditingEvent] = useState<LeagueEvent | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
+  const [mobileRankUserId, setMobileRankUserId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
@@ -497,6 +498,12 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
     if (!detail || !currentEvent) return [];
     return detail.results.filter((result) => result.eventid === currentEvent.eventid);
   }, [currentEvent, detail]);
+  const selectRankedUser = (userId: string) => {
+    setSelectedRankUserId(userId);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileRankUserId(userId);
+    }
+  };
 
   if (isLoading || !detail) return <LoadingSpinner className="mt-16" />;
   const activeMembers = detail.members.filter((member) => member.approved && member.participating);
@@ -510,7 +517,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         selectedUserId={selectedRankUserId}
         selectedSeason={selectedSeason}
         onBack={onBack}
-        onSelectUser={setSelectedRankUserId}
+        onSelectUser={selectRankedUser}
         onSeasonChange={(seasonId) => {
           setSelectedSeasonId(seasonId);
           setSelectedEvent(null);
@@ -706,13 +713,17 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         </div>
         {activeDetailTab === 'overview' && (
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={setSelectedRankUserId} />
-            <div className="lg:sticky lg:top-4 lg:self-start">
+            <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={selectRankedUser} />
+            <div className="hidden lg:sticky lg:top-4 lg:block lg:self-start">
               <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} floating />
             </div>
           </div>
         )}
       </section>
+
+      <Modal title="Player Journey" open={Boolean(mobileRankUserId)} onClose={() => setMobileRankUserId(null)} mobilePlacement="center">
+        <PlayerLeagueProfile detail={detail} userId={mobileRankUserId} />
+      </Modal>
 
       {activeDetailTab === 'fees' && (
         <PaymentTracker
@@ -1342,6 +1353,7 @@ function MemberLeagueView({
   onSelectUser: (userId: string) => void;
   onSeasonChange: (seasonId: string) => void;
 }) {
+  const [mobileProfileUserId, setMobileProfileUserId] = useState<string | null>(null);
   const rankedStandings = getRankedStandings(detail);
   const viewedUserId = selectedUserId && rankedStandings.some((item) => item.userid === selectedUserId)
     ? selectedUserId
@@ -1376,6 +1388,12 @@ function MemberLeagueView({
     : 0;
   const openBalance = Math.max(0, totalDueToDate - totalPaid);
   const canViewLeagueLedger = Boolean(detail.league.memberledgervisible);
+  const selectProfileUser = (userId: string) => {
+    onSelectUser(userId);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileProfileUserId(userId);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -1497,7 +1515,7 @@ function MemberLeagueView({
                 <button
                   key={item.userid}
                   type="button"
-                  onClick={() => onSelectUser(item.userid)}
+                  onClick={() => selectProfileUser(item.userid)}
                   className={`grid w-full grid-cols-[42px_minmax(0,1fr)_82px] items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
                     item.userid === viewedUserId ? 'border-pit-teal bg-pit-teal/10' : 'border-pit-border bg-pit-card/60 hover:border-pit-teal/45 hover:bg-pit-card'
                   }`}
@@ -1517,6 +1535,10 @@ function MemberLeagueView({
           </section>
         </div>
       </section>
+
+      <Modal title="Player Journey" open={Boolean(mobileProfileUserId)} onClose={() => setMobileProfileUserId(null)} mobilePlacement="center">
+        <PlayerLeagueProfile detail={detail} userId={mobileProfileUserId} />
+      </Modal>
 
       {canViewLeagueLedger && <LeagueAuditTrail detail={detail} compact />}
     </div>

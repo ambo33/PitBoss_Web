@@ -16,7 +16,7 @@ import {
   type LeagueResultRow,
   type SerializedLeagueForFinals,
 } from '../leagues/scoring';
-import { encryptEmail, hashEmail, isGuestEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
+import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 import { sendLeagueNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
 import { sendLeagueGuestClaimEmail } from '../services/email';
 
@@ -438,9 +438,15 @@ async function addSeasonParticipant(client: PoolClient, leagueId: string, season
   );
 }
 
+function isLeagueGuestPlaceholderEmail(email: string | null | undefined) {
+  const normalized = normalizeEmail(email);
+  return normalized.startsWith('guest+')
+    && (normalized.endsWith('@guest.thepokerplanner.com') || normalized.endsWith('@guest.pokerplanner.bet'));
+}
+
 function isLeagueGuestProfile(row: { isguestuser?: boolean | null; emailaddress?: string | null; emailencrypted?: string | null }) {
   const visibleEmail = publicEmail(row.emailencrypted, row.emailaddress ?? null);
-  return Boolean(row.isguestuser) || (!visibleEmail && isGuestEmail(row.emailaddress));
+  return !visibleEmail && (Boolean(row.isguestuser) || isLeagueGuestPlaceholderEmail(row.emailaddress));
 }
 
 async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | null): Promise<LeagueClaimablePlayer[]> {
@@ -2158,7 +2164,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     const visibleEmail = publicEmail(emailencrypted, member.emailaddress);
     const claimedByEmail = publicEmail(claimedbyemailencrypted, member.claimedbyemailaddress ?? null);
     const hasClaimedOwner = Boolean(member.claimedbyuserid);
-    const isGuest = !hasClaimedOwner && (Boolean(member.isguestuser) || (!visibleEmail && isGuestEmail(member.emailaddress)));
+    const isGuest = !hasClaimedOwner && !visibleEmail && (Boolean(member.isguestuser) || isLeagueGuestPlaceholderEmail(member.emailaddress));
     const displayname = safeMember.displayname === member.emailaddress && visibleEmail
       ? visibleEmail
       : safeMember.displayname;
@@ -2265,7 +2271,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
       showupbonuspoints: dnf ? 0 : currentShowupBonus,
     };
   });
-  const standings = buildStandings(members, normalizedResults, Number(effectiveLeague.bestfinishcount || 7));
+  const seasonStandingsMembers = members.filter((member) => Boolean(member.participating));
+  const standings = buildStandings(seasonStandingsMembers, normalizedResults, Number(effectiveLeague.bestfinishcount || 7));
 
   const canViewLeagueLedger = Boolean(league.isadmin || league.memberledgervisible);
 
@@ -2279,7 +2286,6 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     payments: payments.map((payment) => ({ ...payment, amount: Number(payment.amount || 0) })),
     rsvps: rsvps.map((rsvp) => {
       const visibleEmail = publicEmail(rsvp.emailencrypted, rsvp.emailaddress ?? null);
-      const isGuest = !visibleEmail && isGuestEmail(rsvp.emailaddress);
       return {
         ...rsvp,
         emailencrypted: undefined,
