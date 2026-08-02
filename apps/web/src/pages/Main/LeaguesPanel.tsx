@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -1043,7 +1043,6 @@ function LeagueEventRsvpPanel({ detail, event }: { detail: LeagueDetail; event: 
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const exportRows = eventRsvps.map((rsvp) => ({
     name: rsvp.displayname ?? 'Player',
-    email: rsvp.emailaddress ?? '',
     status: rsvp.status === 'going' ? 'Going' : "Can't go",
     updated: rsvp.updatedat,
   }));
@@ -1101,7 +1100,6 @@ function RsvpList({
           {rsvps.map((rsvp) => (
             <div key={rsvp.rsvpid} className="flex items-center justify-between gap-2 rounded-md bg-pit-bg/70 px-2 py-1.5 text-xs">
               <span className="truncate font-semibold text-white">{rsvp.displayname ?? 'Player'}</span>
-              {rsvp.emailaddress && <span className="hidden shrink-0 text-pit-muted sm:block">{rsvp.emailaddress}</span>}
             </div>
           ))}
         </div>
@@ -1799,24 +1797,21 @@ function LeagueMembersCard({
           <div key={member.userid} className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
+                <p className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-white">
+                  {member.isguestuser ? (
+                    <Ghost size={15} className="shrink-0 text-pit-muted" aria-label="Guest player" />
+                  ) : (
+                    <BadgeCheck size={15} className="shrink-0 text-pit-teal" aria-label="Verified account" />
+                  )}
+                  <span className="truncate">{member.displayname ?? 'Player'}</span>
+                </p>
                 <p className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-pit-muted">
-                  <Mail size={11} className="shrink-0 text-pit-teal" />
-                  {member.claimedbyuserid
-                    ? `Claimed by ${member.claimedbydisplayname ?? member.claimedbyemailaddress ?? 'registered account'}`
-                    : member.isguestuser
-                    ? member.pendinginviteemail
-                      ? `Invite pending: ${member.pendinginviteemail}`
-                      : 'Guest player'
-                    : member.emailaddress ?? 'No email on file'}
+                  {member.isguestuser
+                    ? member.haspendinginvite ? 'Invite pending' : 'Guest player'
+                    : 'Verified account'}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {member.claimedbyuserid && (
-                  <span className="badge border border-pit-teal/30 bg-pit-teal/10 text-pit-teal">
-                    Claimed
-                  </span>
-                )}
                 {member.isadmin && (
                   <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
                     <Crown size={9} className="mr-0.5" /> Admin
@@ -3332,10 +3327,10 @@ function formatPercentOfField(value: number, total: number) {
   return `${((value / total) * 100).toFixed(1)}% field`;
 }
 
-function exportLeagueEventRsvps(event: LeagueEvent, rows: Array<{ name: string; email: string; status: string; updated: string }>) {
+function exportLeagueEventRsvps(event: LeagueEvent, rows: Array<{ name: string; status: string; updated: string }>) {
   const csv = [
-    ['Name', 'Email', 'Status', 'Updated'],
-    ...rows.map((row) => [row.name, row.email, row.status, row.updated]),
+    ['Name', 'Status', 'Updated'],
+    ...rows.map((row) => [row.name, row.status, row.updated]),
   ]
     .map((row) => row.map(csvCell).join(','))
     .join('\r\n');

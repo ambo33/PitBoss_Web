@@ -534,16 +534,14 @@ export interface League {
 }
 export interface LeagueMember {
   userid: string;
-  emailaddress?: string | null;
   displayname?: string | null;
   isadmin: boolean;
   approved: boolean;
   participating: boolean;
   isguestuser?: boolean;
-  pendinginviteemail?: string | null;
+  haspendinginvite?: boolean;
   claimedbyuserid?: string | null;
   claimedbydisplayname?: string | null;
-  claimedbyemailaddress?: string | null;
 }
 export interface LeagueClaimablePlayer {
   userid: string;
@@ -588,7 +586,6 @@ export interface LeagueEventRsvp {
   leagueid: string;
   userid: string;
   displayname?: string | null;
-  emailaddress?: string | null;
   status: LeagueEventRsvpStatus | string;
   createdat: string;
   updatedat: string;

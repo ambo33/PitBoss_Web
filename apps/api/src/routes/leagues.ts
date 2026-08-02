@@ -2156,29 +2156,27 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   );
   const members = memberRows.map((member) => {
     const {
+      emailaddress,
       emailencrypted,
       pendinginviteencrypted,
+      claimedbyemailaddress,
       claimedbyemailencrypted,
       ...safeMember
     } = member;
-    const visibleEmail = publicEmail(emailencrypted, member.emailaddress);
-    const claimedByEmail = publicEmail(claimedbyemailencrypted, member.claimedbyemailaddress ?? null);
     const hasClaimedOwner = Boolean(member.claimedbyuserid);
-    const isGuest = !hasClaimedOwner && !visibleEmail && (Boolean(member.isguestuser) || isLeagueGuestPlaceholderEmail(member.emailaddress));
-    const displayname = safeMember.displayname === member.emailaddress && visibleEmail
-      ? visibleEmail
+    const isGuest = !hasClaimedOwner && isLeagueGuestProfile(member);
+    const displayname = safeMember.displayname === emailaddress
+      ? isGuest ? 'Guest player' : 'Registered player'
       : safeMember.displayname;
-    const claimedByDisplayName = safeMember.claimedbydisplayname === member.claimedbyemailaddress && claimedByEmail
-      ? claimedByEmail
+    const claimedByDisplayName = safeMember.claimedbydisplayname === claimedbyemailaddress
+      ? 'Registered account'
       : safeMember.claimedbydisplayname;
     return {
       ...safeMember,
       displayname,
       isguestuser: isGuest,
-      emailaddress: isGuest ? null : visibleEmail,
-      pendinginviteemail: publicEmail(pendinginviteencrypted, null),
+      haspendinginvite: Boolean(pendinginviteencrypted),
       claimedbydisplayname: claimedByDisplayName,
-      claimedbyemailaddress: claimedByEmail,
     };
   });
   const events = await query<LeagueEventRow>(
@@ -2285,12 +2283,10 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     results: normalizedResults,
     payments: payments.map((payment) => ({ ...payment, amount: Number(payment.amount || 0) })),
     rsvps: rsvps.map((rsvp) => {
-      const visibleEmail = publicEmail(rsvp.emailencrypted, rsvp.emailaddress ?? null);
+      const { emailaddress, emailencrypted, ...safeRsvp } = rsvp;
       return {
-        ...rsvp,
-        emailencrypted: undefined,
-        emailaddress: visibleEmail,
-        displayname: rsvp.displayname === rsvp.emailaddress && visibleEmail ? visibleEmail : rsvp.displayname,
+        ...safeRsvp,
+        displayname: rsvp.displayname === emailaddress ? 'Registered player' : rsvp.displayname,
       };
     }),
     auditlog: canViewLeagueLedger ? auditlog.map(serializeLeagueAudit) : [],

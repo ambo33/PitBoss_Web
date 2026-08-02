@@ -9,8 +9,8 @@ export type LeagueMemberRow = {
   approved: boolean;
   participating: boolean;
   isguestuser?: boolean;
-  pendinginviteemail?: string | null;
   pendinginviteencrypted?: string | null;
+  haspendinginvite?: boolean;
   claimedbyuserid?: string | null;
   claimedbydisplayname?: string | null;
   claimedbyemailaddress?: string | null;
