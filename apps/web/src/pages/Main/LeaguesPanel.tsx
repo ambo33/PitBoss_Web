@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, CalendarDays, CheckCircle2, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MoreVertical, Pencil, Plus, Save, ScrollText, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, Save, ScrollText, Send, Settings, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -24,7 +24,7 @@ const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
 ];
 const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 const FULL_FIELD_FIRST_PLACE_SHARE = Number(BASE_POINTS_LOOKUP.find((rule) => rule.place === 1)?.points ?? 0) / BASE_POINT_TOTAL;
-type LeagueDetailTab = 'overview' | 'events' | 'fees' | 'audit' | 'players';
+type LeagueDetailTab = 'overview' | 'events' | 'board' | 'fees' | 'audit' | 'players';
 
 export default function LeaguesPanel({
   initialLeagueId,
@@ -694,6 +694,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
+            { id: 'board', label: 'Board' },
             { id: 'fees', label: 'Fee Tracker' },
             { id: 'audit', label: 'Audit Trail' },
           ].map((tab) => (
@@ -734,6 +735,10 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
           settingsError={updatePaymentSettingsMutation.error?.message}
           deleteLoading={deletePaymentMutation.isPending}
         />
+      )}
+
+      {activeDetailTab === 'board' && (
+        <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin />
       )}
 
       {activeDetailTab === 'players' && (
@@ -1534,12 +1539,172 @@ function MemberLeagueView({
         </div>
       </section>
 
+      <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin={false} />
+
       <Modal title="Player Journey" open={Boolean(mobileProfileUserId)} onClose={() => setMobileProfileUserId(null)} mobilePlacement="center">
         <PlayerLeagueProfile detail={detail} userId={mobileProfileUserId} />
       </Modal>
 
       {canViewLeagueLedger && <LeagueAuditTrail detail={detail} compact />}
     </div>
+  );
+}
+
+function LeagueBoard({ leagueId, seasonId, isAdmin }: { leagueId: string; seasonId: string; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [message, setMessage] = useState('');
+  const [notifyMembers, setNotifyMembers] = useState(true);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [deletePostId, setDeletePostId] = useState<string | null>(null);
+  const queryKey = ['league-posts', leagueId, seasonId];
+  const { data, isLoading, error } = useQuery({
+    queryKey,
+    queryFn: () => api.getLeaguePosts(leagueId, seasonId),
+  });
+  const createMutation = useMutation({
+    mutationFn: () => api.createLeaguePost(leagueId, seasonId, { message: message.trim(), notifyMembers }),
+    onSuccess: () => {
+      setMessage('');
+      qc.invalidateQueries({ queryKey });
+    },
+  });
+  const replyMutation = useMutation({
+    mutationFn: ({ postId, reply }: { postId: string; reply: string }) => api.createLeaguePostComment(leagueId, seasonId, postId, reply),
+    onSuccess: (_, variables) => {
+      setReplyDrafts((current) => ({ ...current, [variables.postId]: '' }));
+      qc.invalidateQueries({ queryKey });
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (postId: string) => api.deleteLeaguePost(leagueId, seasonId, postId),
+    onSuccess: () => {
+      setDeletePostId(null);
+      qc.invalidateQueries({ queryKey });
+    },
+  });
+  const posts = data?.posts ?? [];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
+      <div className="flex items-center justify-between gap-3 border-b border-pit-border px-4 py-3 sm:px-5">
+        <div>
+          <p className="eyebrow">Season conversation</p>
+          <h3 className="mt-1 flex items-center gap-2 text-lg font-bold text-white"><MessageSquare size={17} className="text-pit-teal" />League Board</h3>
+        </div>
+        <span className="chip">{posts.length} {posts.length === 1 ? 'post' : 'posts'}</span>
+      </div>
+
+      {isAdmin && (
+        <div className="space-y-3 border-b border-pit-border bg-pit-bg/35 p-4 sm:p-5">
+          <textarea
+            className="input min-h-24 resize-y"
+            value={message}
+            maxLength={1600}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="Share an update with this season..."
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${notifyMembers ? 'border-pit-teal/45 bg-pit-teal/10 text-pit-teal' : 'border-pit-border text-pit-muted'}`}
+              onClick={() => setNotifyMembers((current) => !current)}
+              aria-pressed={notifyMembers}
+            >
+              <BellRing size={14} />
+              {notifyMembers ? 'Email and push on' : 'Post silently'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary gap-2"
+              disabled={!message.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              <Send size={14} />
+              {createMutation.isPending ? 'Posting...' : 'Post update'}
+            </button>
+          </div>
+          {createMutation.error && <p className="text-xs text-red-300">{createMutation.error.message}</p>}
+        </div>
+      )}
+
+      <div className="space-y-3 p-4 sm:p-5">
+        {isLoading && <LoadingSpinner className="py-8" />}
+        {error && <p className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-200">{error.message}</p>}
+        {!isLoading && !error && posts.length === 0 && (
+          <p className="rounded-lg border border-dashed border-pit-border px-4 py-8 text-center text-sm text-pit-muted">No season updates yet.</p>
+        )}
+        {posts.map((post) => (
+          <article key={post.postid} className="rounded-xl border border-pit-border bg-pit-bg/45 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-white">{post.displayname ?? 'League admin'}</p>
+                <p className="mt-0.5 text-xs text-pit-muted">{new Date(post.createdat).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+              </div>
+              {isAdmin && (
+                <button type="button" className="icon-btn text-red-300" title="Delete post" onClick={() => setDeletePostId(post.postid)}>
+                  <Trash2 size={15} />
+                </button>
+              )}
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-pit-text">{post.message}</p>
+
+            {post.comments.length > 0 && (
+              <div className="mt-4 space-y-2 border-l-2 border-pit-teal/30 pl-3">
+                {post.comments.map((comment) => (
+                  <div key={comment.commentid} className="rounded-lg bg-black/20 px-3 py-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="text-xs font-semibold text-white">{comment.displayname ?? 'League member'}</p>
+                      <p className="text-[10px] text-pit-muted">{new Date(comment.createdat).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-pit-text">{comment.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              <input
+                className="input min-w-0 flex-1"
+                value={replyDrafts[post.postid] ?? ''}
+                maxLength={800}
+                onChange={(event) => setReplyDrafts((current) => ({ ...current, [post.postid]: event.target.value }))}
+                placeholder="Write a reply"
+                onKeyDown={(event) => {
+                  const reply = (replyDrafts[post.postid] ?? '').trim();
+                  if (event.key === 'Enter' && !event.shiftKey && reply && !replyMutation.isPending) {
+                    event.preventDefault();
+                    replyMutation.mutate({ postId: post.postid, reply });
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="icon-btn shrink-0 text-pit-teal"
+                title="Send reply"
+                disabled={!String(replyDrafts[post.postid] ?? '').trim() || replyMutation.isPending}
+                onClick={() => replyMutation.mutate({ postId: post.postid, reply: String(replyDrafts[post.postid] ?? '').trim() })}
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </article>
+        ))}
+        {replyMutation.error && <p className="text-xs text-red-300">{replyMutation.error.message}</p>}
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(deletePostId)}
+        title="Delete league post?"
+        message="This removes the post and its replies from this season board."
+        confirmLabel="Delete post"
+        tone="danger"
+        loading={deleteMutation.isPending}
+        onClose={() => setDeletePostId(null)}
+        onConfirm={() => {
+          if (deletePostId) deleteMutation.mutate(deletePostId);
+        }}
+      />
+    </section>
   );
 }
 
@@ -1667,7 +1832,7 @@ function LeagueMembersCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="eyebrow">Season roster</p>
-          <h3 className="text-xl font-bold text-white">Player Management</h3>
+          <h3 className="text-xl font-bold text-white">Players</h3>
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="chip">{approvedMembers.length}/{detail.league.expectedplayercount} active</span>
@@ -1676,8 +1841,13 @@ function LeagueMembersCard({
       </div>
 
       {detail.league.isadmin && (
-        <div className="grid gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3 xl:grid-cols-2">
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end xl:col-span-2">
+        <details className="group rounded-xl border border-pit-border bg-pit-bg/45">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2"><Users size={15} className="text-pit-teal" />Player Management</span>
+            <ChevronDown size={15} className="text-pit-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid gap-3 border-t border-pit-border p-3 xl:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end xl:col-span-2">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add league members to this season</span>
               <select
@@ -1709,8 +1879,8 @@ function LeagueMembersCard({
                 No approved league members are waiting for this season.
               </p>
             )}
-          </div>
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add player</span>
               <input
@@ -1727,8 +1897,8 @@ function LeagueMembersCard({
               <UserPlus size={13} />
               {addLoading ? 'Adding...' : 'Add player'}
             </button>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
             <label className="space-y-1.5">
               <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Add league admin</span>
               <input
@@ -1746,28 +1916,18 @@ function LeagueMembersCard({
               <Crown size={13} />
               {addAdminLoading ? 'Adding...' : 'Add admin'}
             </button>
+            </div>
+            {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300 xl:col-span-2">{error}</p>}
           </div>
-          <div className="xl:col-span-2">
-            {error ? (
-              <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>
-            ) : (
-              <p className="text-sm leading-6 text-pit-muted">
-                Each season has its own roster. Add league members here only when they are playing this selected season.
-              </p>
-            )}
-          </div>
-        </div>
+        </details>
       )}
 
-      <div className="rounded-xl border border-pit-border bg-pit-bg/45 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="eyebrow">League admins</p>
-            <p className="text-sm text-pit-muted">People who can manage this league.</p>
-          </div>
-          <span className="chip">{leagueAdmins.length} admins</span>
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <details className="group rounded-xl border border-pit-border bg-pit-bg/45">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Crown size={15} className="text-pit-gold" />League Admins <span className="text-xs font-normal text-pit-muted">{leagueAdmins.length}</span></span>
+          <ChevronDown size={15} className="text-pit-muted transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-2 border-t border-pit-border p-3 sm:grid-cols-2 xl:grid-cols-3">
           {leagueAdmins.map((member) => (
             <div key={member.userid} className="flex items-center justify-between gap-3 rounded-lg border border-pit-border bg-pit-card/70 px-3 py-2">
               <div className="min-w-0">
@@ -1790,7 +1950,7 @@ function LeagueMembersCard({
             </div>
           ))}
         </div>
-      </div>
+      </details>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {approvedMembers.map((member) => (
@@ -1799,17 +1959,13 @@ function LeagueMembersCard({
               <div className="min-w-0">
                 <p className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-white">
                   {member.isguestuser ? (
-                    <Ghost size={15} className="shrink-0 text-pit-muted" aria-label="Guest player" />
+                    <span className="shrink-0" title="Guest player"><Ghost size={15} className="text-pit-muted" aria-label="Guest player" /></span>
                   ) : (
-                    <BadgeCheck size={15} className="shrink-0 text-pit-teal" aria-label="Verified account" />
+                    <span className="shrink-0" title="Verified account"><BadgeCheck size={15} className="text-pit-teal" aria-label="Verified account" /></span>
                   )}
                   <span className="truncate">{member.displayname ?? 'Player'}</span>
                 </p>
-                <p className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-pit-muted">
-                  {member.isguestuser
-                    ? member.haspendinginvite ? 'Invite pending' : 'Guest player'
-                    : 'Verified account'}
-                </p>
+                {member.isguestuser && member.haspendinginvite && <p className="mt-1 text-[11px] text-pit-muted">Invite pending</p>}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {member.isadmin && (

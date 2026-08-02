@@ -114,5 +114,10 @@ pushRouter.post('/test', async (req: Request, res: Response) => {
     tag: `push-test-${Date.now()}`,
   }, { skipPreferences: true, dedupe: false, entityType: 'user', entityId: req.userId! });
 
+  if (result.sent === 0) {
+    res.status(502).json({ error: 'This device subscription could not receive the test alert. Disable alerts, enable them again, and retry.' });
+    return;
+  }
+
   res.json({ success: true, attempted: result.attempted, sent: result.sent });
 });

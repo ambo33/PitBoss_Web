@@ -455,6 +455,29 @@ export async function sendLeagueEventReminderEmail(
   });
 }
 
+export async function sendLeagueBoardPostEmail(
+  email: string,
+  leagueId: string,
+  leagueName: string,
+  seasonName: string,
+  authorName: string,
+  message: string
+): Promise<void> {
+  const leagueUrl = `${appUrl}/?tab=leagues&league=${encodeURIComponent(leagueId)}`;
+  await sendMail({
+    to: email,
+    subject: `${leagueName}: new ${seasonName} update`,
+    html: emailLayout({
+      eyebrow: 'League Board',
+      title: `${leagueName} - ${seasonName}`,
+      intro: `${authorName} posted an update.`,
+      body: `<p style="margin:0;white-space:pre-wrap;">${escapeHtml(message)}</p>`,
+      ctaHref: leagueUrl,
+      ctaLabel: 'Open League Board',
+    }),
+  });
+}
+
 export async function sendTournamentCancelledEmail(
   email: string,
   tournamentName: string,

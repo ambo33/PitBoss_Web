@@ -186,6 +186,14 @@ export const api = {
     del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}`),
   notifyLeagueStandings: (id: string, seasonId: string) =>
     post<{ success: boolean; recipients: number; attempted: number; sent: number; skipped: number }>(`/leagues/${id}/seasons/${seasonId}/standings-notification`, {}),
+  getLeaguePosts: (id: string, seasonId: string) =>
+    get<{ posts: LeaguePost[] }>(`/leagues/${id}/seasons/${seasonId}/posts`),
+  createLeaguePost: (id: string, seasonId: string, data: { message: string; notifyMembers?: boolean }) =>
+    post<{ post: LeaguePost }>(`/leagues/${id}/seasons/${seasonId}/posts`, data),
+  createLeaguePostComment: (id: string, seasonId: string, postId: string, message: string) =>
+    post<{ comment: LeaguePostComment }>(`/leagues/${id}/seasons/${seasonId}/posts/${postId}/comments`, { message }),
+  deleteLeaguePost: (id: string, seasonId: string, postId: string) =>
+    del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}/posts/${postId}`),
   markLeagueEventPaid: (id: string, eventId: string, data: { userId?: string; all?: boolean; paidat?: string }) =>
     post<{ payments: LeaguePayment[]; updatedCount: number }>(`/leagues/${id}/events/${eventId}/payments/mark-paid`, data),
   createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null }) =>
@@ -648,6 +656,24 @@ export interface LeagueAuditLog {
   summary: string;
   details?: Record<string, unknown>;
   createdat: string;
+}
+export interface LeaguePostComment {
+  commentid: string;
+  postid: string;
+  userid: string;
+  displayname?: string | null;
+  message: string;
+  createdat: string;
+}
+export interface LeaguePost {
+  postid: string;
+  leagueid: string;
+  seasonid: string;
+  createdby: string;
+  displayname?: string | null;
+  message: string;
+  createdat: string;
+  comments: LeaguePostComment[];
 }
 export interface LeagueStanding {
   userid: string;

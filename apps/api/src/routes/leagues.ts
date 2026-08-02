@@ -17,8 +17,8 @@ import {
   type SerializedLeagueForFinals,
 } from '../leagues/scoring';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
-import { sendLeagueNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
-import { sendLeagueGuestClaimEmail } from '../services/email';
+import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers } from '../lib/server/notifications/notificationService';
+import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -110,6 +110,23 @@ type LeagueEventRsvpRow = {
   status: string;
   createdat: string;
   updatedat: string;
+};
+type LeaguePostRow = {
+  postid: string;
+  leagueid: string;
+  seasonid: string;
+  createdby: string;
+  displayname: string | null;
+  message: string;
+  createdat: string;
+};
+type LeaguePostCommentRow = {
+  commentid: string;
+  postid: string;
+  userid: string;
+  displayname: string | null;
+  message: string;
+  createdat: string;
 };
 type LeagueAuditRow = {
   auditid: string;
@@ -2094,6 +2111,192 @@ leaguesRouter.delete('/:id/members/:userId', async (req: Request, res: Response)
   } finally {
     client.release();
   }
+});
+
+leaguesRouter.get('/:id/seasons/:seasonId/posts', async (req: Request, res: Response) => {
+  const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
+  const season = await getSelectedSeason(req.params.id, req.params.seasonId);
+  if (!leagueRow || !season) {
+    res.status(404).json({ error: 'League season not found.' });
+    return;
+  }
+  const league = serializeLeague(leagueRow);
+  if (!league.isadmin && !await requireLeagueSeasonParticipant(req.params.id, season.seasonid, req.userId!)) {
+    res.status(403).json({ error: 'League season participant required.' });
+    return;
+  }
+  const posts = await query<LeaguePostRow>(
+    `SELECT p.postid, p.leagueid, p.seasonid, p.createdby,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname,
+            p.message, p.createdat
+     FROM leagueposts p
+     JOIN users u ON u.guid = p.createdby
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE p.leagueid = $1 AND p.seasonid = $2 AND COALESCE(p.active, TRUE) = TRUE
+     ORDER BY p.createdat DESC`,
+    [req.params.id, season.seasonid]
+  );
+  const postIds = posts.map((post) => post.postid);
+  const comments = postIds.length > 0
+    ? await query<LeaguePostCommentRow>(
+      `SELECT c.commentid, c.postid, c.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              c.message, c.createdat
+       FROM leaguepostcomments c
+       JOIN users u ON u.guid = c.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       WHERE c.postid = ANY($1::UUID[])
+       ORDER BY c.createdat ASC`,
+      [postIds]
+    )
+    : [];
+  res.json({
+    posts: posts.map((post) => ({
+      ...post,
+      comments: comments.filter((comment) => comment.postid === post.postid),
+    })),
+  });
+});
+
+leaguesRouter.post('/:id/seasons/:seasonId/posts', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const season = await getSelectedSeason(req.params.id, req.params.seasonId);
+  const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
+  if (!season || !leagueRow) {
+    res.status(404).json({ error: 'League season not found.' });
+    return;
+  }
+  const message = String((req.body as { message?: string }).message ?? '').trim().slice(0, 1600);
+  const notifyMembers = (req.body as { notifyMembers?: boolean }).notifyMembers !== false;
+  if (!message) {
+    res.status(400).json({ error: 'Message required.' });
+    return;
+  }
+  const post = await queryOne<LeaguePostRow>(
+    `WITH inserted AS (
+       INSERT INTO leagueposts (leagueid, seasonid, createdby, message)
+       VALUES ($1, $2, $3, $4)
+       RETURNING postid, leagueid, seasonid, createdby, message, createdat
+     )
+     SELECT inserted.*,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname
+     FROM inserted
+     JOIN users u ON u.guid = inserted.createdby
+     LEFT JOIN usermetadata m ON m.userid = u.guid`,
+    [req.params.id, season.seasonid, req.userId, message]
+  );
+  if (!post) {
+    res.status(500).json({ error: 'League post could not be created.' });
+    return;
+  }
+  res.status(201).json({ post: { ...post, comments: [] } });
+
+  if (notifyMembers) {
+    const league = serializeLeague(leagueRow);
+    void (async () => {
+      const recipients = await query<{ userid: string; emailaddress: string | null; emailencrypted: string | null }>(
+      `WITH season_recipients AS (
+         SELECT DISTINCT COALESCE(
+           (SELECT c.claimedby
+            FROM leagueguestclaims c
+            WHERE c.leagueid = lsp.leagueid
+              AND c.guestuserid = lsp.userid
+              AND c.claimedat IS NOT NULL
+            ORDER BY c.claimedat DESC
+            LIMIT 1),
+           lsp.userid
+         ) AS userid
+         FROM leagueseasonparticipants lsp
+         JOIN leaguemembers lm ON lm.leagueid = lsp.leagueid AND lm.userid = lsp.userid
+         WHERE lsp.leagueid = $1
+           AND lsp.seasonid = $2
+           AND lsp.participating = TRUE
+           AND lm.approved = TRUE
+       )
+       SELECT sr.userid, u.emailaddress, u.emailencrypted
+       FROM season_recipients sr
+       JOIN users u ON u.guid = sr.userid
+       WHERE sr.userid <> $3`,
+      [req.params.id, season.seasonid, req.userId]
+    );
+      const recipientUserIds = [...new Set(recipients.map((recipient) => recipient.userid))];
+      const emails = [...new Set(recipients.map((recipient) => publicEmail(recipient.emailencrypted, recipient.emailaddress)).filter((email): email is string => Boolean(email)))];
+      const authorName = post.displayname ?? 'League admin';
+      await Promise.allSettled([
+        sendNotificationToUsers(recipientUserIds, 'league_announcement_posted', {
+          leagueId: req.params.id,
+          leagueName: league.name,
+          seasonName: season.name,
+          announcementPreview: message.slice(0, 180),
+          tag: `league-${req.params.id}-season-${season.seasonid}-post-${post.postid}`,
+        }, { entityType: 'league_post', entityId: post.postid }),
+        ...emails.map((email) => sendLeagueBoardPostEmail(email, req.params.id, league.name, season.name, authorName, message)),
+      ]);
+    })().catch((error) => console.error('League board notification failed', error));
+  }
+});
+
+leaguesRouter.post('/:id/seasons/:seasonId/posts/:postId/comments', async (req: Request, res: Response) => {
+  const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
+  const season = await getSelectedSeason(req.params.id, req.params.seasonId);
+  if (!leagueRow || !season) {
+    res.status(404).json({ error: 'League season not found.' });
+    return;
+  }
+  const league = serializeLeague(leagueRow);
+  if (!league.isadmin && !await requireLeagueSeasonParticipant(req.params.id, season.seasonid, req.userId!)) {
+    res.status(403).json({ error: 'League season participant required.' });
+    return;
+  }
+  const post = await queryOne(
+    `SELECT 1 FROM leagueposts
+     WHERE postid = $1 AND leagueid = $2 AND seasonid = $3 AND COALESCE(active, TRUE) = TRUE`,
+    [req.params.postId, req.params.id, season.seasonid]
+  );
+  if (!post) {
+    res.status(404).json({ error: 'League post not found.' });
+    return;
+  }
+  const message = String((req.body as { message?: string }).message ?? '').trim().slice(0, 800);
+  if (!message) {
+    res.status(400).json({ error: 'Reply required.' });
+    return;
+  }
+  const comment = await queryOne<LeaguePostCommentRow>(
+    `WITH inserted AS (
+       INSERT INTO leaguepostcomments (postid, userid, message)
+       VALUES ($1, $2, $3)
+       RETURNING commentid, postid, userid, message, createdat
+     )
+     SELECT inserted.*,
+            ${leagueDisplayNameSql('m', 'u')} AS displayname
+     FROM inserted
+     JOIN users u ON u.guid = inserted.userid
+     LEFT JOIN usermetadata m ON m.userid = u.guid`,
+    [req.params.postId, req.userId, message]
+  );
+  res.status(201).json({ comment });
+});
+
+leaguesRouter.delete('/:id/seasons/:seasonId/posts/:postId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const deleted = await queryOne<{ postid: string }>(
+    `UPDATE leagueposts SET active = FALSE
+     WHERE postid = $1 AND leagueid = $2 AND seasonid = $3 AND COALESCE(active, TRUE) = TRUE
+     RETURNING postid`,
+    [req.params.postId, req.params.id, req.params.seasonId]
+  );
+  if (!deleted) {
+    res.status(404).json({ error: 'League post not found.' });
+    return;
+  }
+  res.json({ success: true });
 });
 
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {

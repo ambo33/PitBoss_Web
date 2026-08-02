@@ -165,6 +165,10 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTempla
     title: 'Your rank changed',
     body: 'You are now #{rank} in {leagueName}.',
   },
+  league_announcement_posted: {
+    title: '{leagueName} update',
+    body: '{announcementPreview}',
+  },
   season_milestone: {
     title: 'Season update',
     body: '{message}',

@@ -76,6 +76,14 @@ export function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function subscriptionUsesCurrentVapidKey(subscription: PushSubscription) {
+  const currentKey = subscription.options.applicationServerKey;
+  if (!currentKey || !vapidPublicKey) return false;
+  const expected = urlBase64ToUint8Array(vapidPublicKey);
+  const current = new Uint8Array(currentKey);
+  return current.length === expected.length && current.every((value, index) => value === expected[index]);
+}
+
 export async function getExistingPushSubscription() {
   if (!isPushSupported()) return null;
   const registration = await registerServiceWorker();
@@ -90,13 +98,20 @@ export async function subscribeToPushNotifications(userId?: string): Promise<Pus
 
   try {
     const registration = await registerServiceWorker();
-    const existing = await registration.pushManager.getSubscription();
+    let existing = await registration.pushManager.getSubscription();
+    if (existing && !subscriptionUsesCurrentVapidKey(existing)) {
+      await postJson('/api/push/unsubscribe', { endpoint: existing.endpoint }).catch(() => undefined);
+      await existing.unsubscribe();
+      existing = null;
+    }
     if (existing) {
       await postJson('/api/push/subscribe', { subscription: existing.toJSON(), userId });
       return { status: 'already-subscribed', subscription: existing };
     }
 
-    const permission = await Notification.requestPermission();
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
     if (permission !== 'granted') {
       return { status: 'permission-denied' };
     }

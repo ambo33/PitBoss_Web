@@ -27,6 +27,7 @@ export const NOTIFICATION_TYPES = [
   'tournament_finalized',
   'league_standings_updated',
   'league_rank_changed',
+  'league_announcement_posted',
   'season_milestone',
   'new_tournament_created',
   'seats_almost_full',
@@ -115,6 +116,7 @@ export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCa
   tournament_finalized: 'league',
   league_standings_updated: 'league',
   league_rank_changed: 'league',
+  league_announcement_posted: 'league',
   season_milestone: 'league',
 
   new_tournament_created: 'social',

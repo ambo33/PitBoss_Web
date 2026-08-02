@@ -725,6 +725,34 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS leagueposts (
+        postid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        seasonid UUID NOT NULL REFERENCES leagueseasons(seasonid) ON DELETE CASCADE,
+        createdby UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        message STRING(1600) NOT NULL,
+        active BOOL DEFAULT TRUE,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueposts_season_created
+      ON leagueposts (leagueid, seasonid, createdat DESC)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaguepostcomments (
+        commentid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        postid UUID NOT NULL REFERENCES leagueposts(postid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        message STRING(800) NOT NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leaguepostcomments_post_created
+      ON leaguepostcomments (postid, createdat ASC)
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS leagueresults (
         resultid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         eventid UUID NOT NULL REFERENCES leagueevents(eventid) ON DELETE CASCADE,

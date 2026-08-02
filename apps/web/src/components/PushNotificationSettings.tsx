@@ -61,11 +61,21 @@ export default function PushNotificationSettings() {
     let cancelled = false;
     setStatus('checking');
     getExistingPushSubscription()
-      .then((subscription) => {
+      .then(async (subscription) => {
         if (cancelled) return;
-        setSubscribed(Boolean(subscription));
+        if (!subscription) {
+          setSubscribed(false);
+          setPermission(Notification.permission);
+          setStatus('idle');
+          return;
+        }
+        const result = await subscribeToPushNotifications(userId);
+        if (cancelled) return;
+        const active = result.status === 'subscribed' || result.status === 'already-subscribed';
+        setSubscribed(active);
         setPermission(Notification.permission);
-        setStatus(subscription ? 'already-subscribed' : 'idle');
+        setStatus(result.status);
+        setMessage(result.message ?? null);
       })
       .catch(() => {
         if (!cancelled) setStatus('idle');
@@ -73,7 +83,7 @@ export default function PushNotificationSettings() {
     return () => {
       cancelled = true;
     };
-  }, [supported]);
+  }, [supported, userId]);
 
   async function enable() {
     setLoading(true);
@@ -101,6 +111,10 @@ export default function PushNotificationSettings() {
     setLoading(true);
     setMessage(null);
     try {
+      const synced = await subscribeToPushNotifications(userId);
+      if (synced.status !== 'subscribed' && synced.status !== 'already-subscribed') {
+        throw new Error(synced.message ?? 'This device could not restore its push subscription.');
+      }
       await sendTestPushNotification();
       setMessage('Test alert sent to this device.');
     } catch (err) {
