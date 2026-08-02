@@ -11,6 +11,10 @@ export type LeagueMemberRow = {
   isguestuser?: boolean;
   pendinginviteemail?: string | null;
   pendinginviteencrypted?: string | null;
+  claimedbyuserid?: string | null;
+  claimedbydisplayname?: string | null;
+  claimedbyemailaddress?: string | null;
+  claimedbyemailencrypted?: string | null;
 };
 export type LeagueResultRow = {
   resultid?: string;

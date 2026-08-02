@@ -541,6 +541,9 @@ export interface LeagueMember {
   participating: boolean;
   isguestuser?: boolean;
   pendinginviteemail?: string | null;
+  claimedbyuserid?: string | null;
+  claimedbydisplayname?: string | null;
+  claimedbyemailaddress?: string | null;
 }
 export interface LeagueClaimablePlayer {
   userid: string;

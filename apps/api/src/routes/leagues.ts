@@ -438,14 +438,20 @@ async function addSeasonParticipant(client: PoolClient, leagueId: string, season
   );
 }
 
+function isLeagueGuestProfile(row: { isguestuser?: boolean | null; emailaddress?: string | null; emailencrypted?: string | null }) {
+  const visibleEmail = publicEmail(row.emailencrypted, row.emailaddress ?? null);
+  return Boolean(row.isguestuser) || (!visibleEmail && isGuestEmail(row.emailaddress));
+}
+
 async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | null): Promise<LeagueClaimablePlayer[]> {
-  const rows = await query<LeagueClaimablePlayer & { emailaddress: string | null; isguestuser: boolean | null }>(
+  const rows = await query<LeagueClaimablePlayer & { emailaddress: string | null; emailencrypted: string | null; isguestuser: boolean | null }>(
     seasonId
       ? `SELECT lm.userid,
                 COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), 'Guest player') AS displayname,
                 lsp.seasonid,
                 s.name AS seasonname,
                 u.emailaddress,
+                u.emailencrypted,
                 m.isguestuser
          FROM leaguemembers lm
          JOIN users u ON u.guid = lm.userid
@@ -455,24 +461,39 @@ async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | n
          WHERE lm.leagueid = $1
            AND lm.approved = TRUE
            AND lsp.seasonid = $2
+           AND NOT EXISTS (
+             SELECT 1
+             FROM leagueguestclaims c
+             WHERE c.leagueid = lm.leagueid
+               AND c.guestuserid = lm.userid
+               AND c.claimedat IS NOT NULL
+           )
          ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress))`
       : `SELECT lm.userid,
                 COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), 'Guest player') AS displayname,
                 NULL::UUID AS seasonid,
                 NULL::TEXT AS seasonname,
                 u.emailaddress,
+                u.emailencrypted,
                 m.isguestuser
          FROM leaguemembers lm
          JOIN users u ON u.guid = lm.userid
          LEFT JOIN usermetadata m ON m.userid = u.guid
          WHERE lm.leagueid = $1
            AND lm.approved = TRUE
+           AND NOT EXISTS (
+             SELECT 1
+             FROM leagueguestclaims c
+             WHERE c.leagueid = lm.leagueid
+               AND c.guestuserid = lm.userid
+               AND c.claimedat IS NOT NULL
+           )
          ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress))`,
     seasonId ? [leagueId, seasonId] : [leagueId]
   );
   return rows
-    .filter((row) => Boolean(row.isguestuser) || isGuestEmail(row.emailaddress))
-    .map(({ emailaddress: _emailaddress, isguestuser: _isguestuser, ...row }) => row);
+    .filter((row) => isLeagueGuestProfile(row))
+    .map(({ emailaddress: _emailaddress, emailencrypted: _emailencrypted, isguestuser: _isguestuser, ...row }) => row);
 }
 
 async function getLeagueForUser(leagueId: string, userId: string) {
@@ -1511,9 +1532,10 @@ leaguesRouter.post('/:id/members/:guestUserId/claim-invite', async (req: Request
     res.status(404).json({ error: 'League not found.' });
     return;
   }
-  const guest = await queryOne<{ userid: string; emailaddress: string | null; displayname: string | null; isguestuser: boolean }>(
+  const guest = await queryOne<{ userid: string; emailaddress: string | null; emailencrypted: string | null; displayname: string | null; isguestuser: boolean }>(
     `SELECT lm.userid,
             u.emailaddress,
+            u.emailencrypted,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
             COALESCE(m.isguestuser, FALSE) AS isguestuser
      FROM leaguemembers lm
@@ -1526,7 +1548,7 @@ leaguesRouter.post('/:id/members/:guestUserId/claim-invite', async (req: Request
     res.status(404).json({ error: 'League player not found.' });
     return;
   }
-  if (!guest.isguestuser && !isGuestEmail(guest.emailaddress)) {
+  if (!isLeagueGuestProfile(guest)) {
     res.status(400).json({ error: 'Only guest players can be claimed.' });
     return;
   }
@@ -1602,10 +1624,20 @@ leaguesRouter.post('/:id/members/:userId/takeover-invite', async (req: Request, 
     res.status(404).json({ error: 'League not found.' });
     return;
   }
-  const member = await queryOne<{ userid: string; displayname: string | null; participating: boolean }>(
+  const member = await queryOne<{ userid: string; emailaddress: string | null; emailencrypted: string | null; displayname: string | null; participating: boolean; isguestuser: boolean; alreadyclaimed: boolean }>(
     `SELECT lm.userid,
+            u.emailaddress,
+            u.emailencrypted,
             COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress) AS displayname,
-            COALESCE(lsp.participating, FALSE) AS participating
+            COALESCE(lsp.participating, FALSE) AS participating,
+            COALESCE(m.isguestuser, FALSE) AS isguestuser,
+            EXISTS (
+              SELECT 1
+              FROM leagueguestclaims c
+              WHERE c.leagueid = lm.leagueid
+                AND c.guestuserid = lm.userid
+                AND c.claimedat IS NOT NULL
+            ) AS alreadyclaimed
      FROM leaguemembers lm
      JOIN users u ON u.guid = lm.userid
      LEFT JOIN usermetadata m ON m.userid = u.guid
@@ -1615,6 +1647,14 @@ leaguesRouter.post('/:id/members/:userId/takeover-invite', async (req: Request, 
   );
   if (!member || !member.participating) {
     res.status(404).json({ error: 'Season player not found.' });
+    return;
+  }
+  if (member.alreadyclaimed) {
+    res.status(400).json({ error: 'This player has already been claimed.' });
+    return;
+  }
+  if (!isLeagueGuestProfile(member)) {
+    res.status(400).json({ error: 'This player is already tied to an account.' });
     return;
   }
   const inviteHasAccount = Boolean(await queryOne<{ guid: string }>(
@@ -2073,6 +2113,10 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
             ${leagueDisplayNameSql('m', 'u')} AS displayname,
             lm.admin AS isadmin, lm.approved, COALESCE(lsp.participating, FALSE) AS participating,
             COALESCE(m.isguestuser, FALSE) AS isguestuser,
+            claimed.claimedby AS claimedbyuserid,
+            ${leagueDisplayNameSql('claimed_meta', 'claimed_user')} AS claimedbydisplayname,
+            claimed_user.emailaddress AS claimedbyemailaddress,
+            claimed_user.emailencrypted AS claimedbyemailencrypted,
             (
               SELECT c.emailencrypted
               FROM leagueguestclaims c
@@ -2086,6 +2130,18 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      FROM leaguemembers lm
      JOIN users u ON u.guid = lm.userid
      LEFT JOIN usermetadata m ON m.userid = u.guid
+     LEFT JOIN (
+       SELECT leagueid, guestuserid, claimedby, claimedat
+       FROM (
+         SELECT c.leagueid, c.guestuserid, c.claimedby, c.claimedat,
+                row_number() OVER (PARTITION BY c.leagueid, c.guestuserid ORDER BY c.claimedat DESC) AS rn
+         FROM leagueguestclaims c
+         WHERE c.claimedat IS NOT NULL
+       ) ranked
+       WHERE rn = 1
+     ) claimed ON claimed.leagueid = lm.leagueid AND claimed.guestuserid = lm.userid
+     LEFT JOIN users claimed_user ON claimed_user.guid = claimed.claimedby
+     LEFT JOIN usermetadata claimed_meta ON claimed_meta.userid = claimed_user.guid
      LEFT JOIN leagueseasonparticipants lsp ON lsp.seasonid = $2 AND lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
      WHERE lm.leagueid = $1
        AND ($3::BOOL = TRUE OR lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)
@@ -2096,19 +2152,27 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     const {
       emailencrypted,
       pendinginviteencrypted,
+      claimedbyemailencrypted,
       ...safeMember
     } = member;
-    const isGuest = Boolean(member.isguestuser) || isGuestEmail(member.emailaddress);
-    const visibleEmail = isGuest ? '' : publicEmail(emailencrypted, member.emailaddress);
+    const visibleEmail = publicEmail(emailencrypted, member.emailaddress);
+    const claimedByEmail = publicEmail(claimedbyemailencrypted, member.claimedbyemailaddress ?? null);
+    const hasClaimedOwner = Boolean(member.claimedbyuserid);
+    const isGuest = !hasClaimedOwner && (Boolean(member.isguestuser) || (!visibleEmail && isGuestEmail(member.emailaddress)));
     const displayname = safeMember.displayname === member.emailaddress && visibleEmail
       ? visibleEmail
       : safeMember.displayname;
+    const claimedByDisplayName = safeMember.claimedbydisplayname === member.claimedbyemailaddress && claimedByEmail
+      ? claimedByEmail
+      : safeMember.claimedbydisplayname;
     return {
       ...safeMember,
       displayname,
       isguestuser: isGuest,
       emailaddress: isGuest ? null : visibleEmail,
       pendinginviteemail: publicEmail(pendinginviteencrypted, null),
+      claimedbydisplayname: claimedByDisplayName,
+      claimedbyemailaddress: claimedByEmail,
     };
   });
   const events = await query<LeagueEventRow>(
@@ -2214,8 +2278,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     results: normalizedResults,
     payments: payments.map((payment) => ({ ...payment, amount: Number(payment.amount || 0) })),
     rsvps: rsvps.map((rsvp) => {
-      const isGuest = isGuestEmail(rsvp.emailaddress);
-      const visibleEmail = isGuest ? null : publicEmail(rsvp.emailencrypted, rsvp.emailaddress ?? null);
+      const visibleEmail = publicEmail(rsvp.emailencrypted, rsvp.emailaddress ?? null);
+      const isGuest = !visibleEmail && isGuestEmail(rsvp.emailaddress);
       return {
         ...rsvp,
         emailencrypted: undefined,

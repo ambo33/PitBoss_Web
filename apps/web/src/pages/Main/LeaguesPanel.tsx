@@ -1612,7 +1612,7 @@ function LeagueMembersCard({
     .filter((member) => member.approved && member.participating)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const seasonCandidates = detail.members
-    .filter((member) => member.approved && !member.participating)
+    .filter((member) => member.approved && !member.participating && !member.claimedbyuserid)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const leagueAdmins = detail.members
     .filter((member) => member.approved && member.isadmin)
@@ -1780,7 +1780,9 @@ function LeagueMembersCard({
                 <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
                 <p className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-pit-muted">
                   <Mail size={11} className="shrink-0 text-pit-teal" />
-                  {member.isguestuser
+                  {member.claimedbyuserid
+                    ? `Claimed by ${member.claimedbydisplayname ?? member.claimedbyemailaddress ?? 'registered account'}`
+                    : member.isguestuser
                     ? member.pendinginviteemail
                       ? `Invite pending: ${member.pendinginviteemail}`
                       : 'Guest player'
@@ -1788,6 +1790,11 @@ function LeagueMembersCard({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
+                {member.claimedbyuserid && (
+                  <span className="badge border border-pit-teal/30 bg-pit-teal/10 text-pit-teal">
+                    Claimed
+                  </span>
+                )}
                 {member.isadmin && (
                   <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
                     <Crown size={9} className="mr-0.5" /> Admin
@@ -1821,7 +1828,7 @@ function LeagueMembersCard({
                 )}
               </div>
             </div>
-            {detail.league.isadmin && member.isguestuser && (
+            {detail.league.isadmin && member.isguestuser && !member.claimedbyuserid && (
               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <input
                   className="input h-9 py-2 text-xs"
