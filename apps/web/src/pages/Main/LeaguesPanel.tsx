@@ -1215,7 +1215,6 @@ function StandingsTable({
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow">Final game outlook</p>
-              <p className="mt-1 text-xs text-pit-muted">Calculated live from current standings.</p>
             </div>
             <Trophy size={16} className="shrink-0 text-pit-gold" />
           </div>
