@@ -1794,7 +1794,7 @@ function LeagueMembersCard({
         </div>
       </div>
 
-      <div className="grid max-h-[62vh] gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {approvedMembers.map((member) => (
           <div key={member.userid} className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
             <div className="flex items-start justify-between gap-2">
