@@ -683,14 +683,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         PRIMARY KEY (seasonid, userid)
       )
     `);
-    await client.query(`
-      INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-      SELECT s.seasonid, s.leagueid, lm.userid, COALESCE(lm.participating, TRUE)
-      FROM leagueseasons s
-      JOIN leaguemembers lm ON lm.leagueid = s.leagueid
-      WHERE lm.approved = TRUE
-      ON CONFLICT (seasonid, userid) DO NOTHING
-    `);
+    // Season rosters are explicit. Never backfill them from the league-wide member list.
     await client.query(`
       CREATE TABLE IF NOT EXISTS leagueevents (
         eventid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
