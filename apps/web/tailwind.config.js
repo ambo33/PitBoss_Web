@@ -14,7 +14,7 @@ module.exports = {
           surface: '#1c1c21',
           card: '#212127',
           border: '#2e2e38',
-          muted: '#b0b0c0',
+          muted: '#c0c0cc',
           text: '#d0d0dc',
           teal: '#0ea5a5',
           'teal-hover': '#0c9292',
