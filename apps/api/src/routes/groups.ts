@@ -800,6 +800,8 @@ groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
     } else {
       void sendGroupNotification(req.params.id, 'host_announcement_posted', {
         announcementPreview: announcementPreview(trimmedMessage),
+        groupId: req.params.id,
+        postId: post.id,
         entityId: post.id,
         tag: `group-${req.params.id}-post-${post.id}`,
       }, {
@@ -840,6 +842,8 @@ groupsRouter.put('/:id/posts/:postId/moderate', async (req: Request, res: Respon
   if (status === 'approved') {
     void sendGroupNotification(req.params.id, 'host_announcement_posted', {
       announcementPreview: announcementPreview(row.message),
+      groupId: req.params.id,
+      postId: row.id,
       entityId: row.id,
       tag: `group-${req.params.id}-post-${row.id}`,
     }, {

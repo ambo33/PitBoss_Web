@@ -415,6 +415,7 @@ tournamentsRouter.post('/', async (req: Request, res: Response) => {
   if (groupid && notifygroup !== false) {
     void sendTournamentNotification(row.tournamentid, 'new_tournament_created', {
       tournamentName: name,
+      url: `/?section=upcoming&tournament=${encodeURIComponent(row.tournamentid)}`,
       tag: `tournament-${row.tournamentid}-created`,
     }, {
       audience: 'group-members',

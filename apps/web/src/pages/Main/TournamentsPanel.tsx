@@ -23,6 +23,7 @@ interface TournamentsPanelProps {
   onStartGroupInvite?: (groupId: string) => void;
   onStartFirstGame?: () => void;
   onCompleteOnboarding?: () => void;
+  focusScheduleItemId?: string;
 }
 
 export default function TournamentsPanel({
@@ -37,6 +38,7 @@ export default function TournamentsPanel({
   onStartGroupInvite,
   onStartFirstGame,
   onCompleteOnboarding,
+  focusScheduleItemId,
 }: TournamentsPanelProps = {}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -307,12 +309,12 @@ export default function TournamentsPanel({
           )}
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pit-muted">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b8b8c7]">
                 {scheduleView === 'history' ? 'Tournament history' : 'Upcoming games'}
               </p>
             </div>
             {scheduleList.length > 0 && (
-              <span className="rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-pit-text">
+              <span className="rounded-full border border-white/15 bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da]">
                 {scheduleView === 'history' ? `${scheduleList.length} history` : `${scheduleList.length} upcoming`}
               </span>
             )}
@@ -323,6 +325,7 @@ export default function TournamentsPanel({
           ) : (
             <ScheduleList
               items={scheduleList}
+              focusItemId={focusScheduleItemId}
               view={scheduleView}
               loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending || cashRsvpMutation.isPending}
               onOpen={(item) => {
@@ -644,7 +647,7 @@ function DashboardStat({
 }) {
   const content = (
     <>
-      <div className="flex items-center gap-2 text-pit-muted">
+      <div className="flex items-center gap-2 text-[#b8b8c7]">
         <Icon size={12} />
         <span className="text-[11px] font-medium">{label}</span>
       </div>
@@ -715,6 +718,7 @@ type ScheduleItem =
 
 function ScheduleList({
   items,
+  focusItemId,
   view,
   loading,
   onOpen,
@@ -724,6 +728,7 @@ function ScheduleList({
   onCashRsvp,
 }: {
   items: ScheduleItem[];
+  focusItemId?: string;
   view: 'upcoming' | 'history';
   loading: boolean;
   onOpen: (item: ScheduleItem) => void;
@@ -732,11 +737,19 @@ function ScheduleList({
   onLeagueRsvp: (item: Extract<ScheduleItem, { kind: 'league' }>, status: 'going' | 'not_going') => void;
   onCashRsvp: (item: Extract<ScheduleItem, { kind: 'cash' }>, status: 'going' | 'not_going') => void;
 }) {
+  useEffect(() => {
+    if (!focusItemId || items.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`schedule-item-${focusItemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusItemId, items]);
+
   if (items.length === 0) return <EmptyState view={view} />;
 
   return (
     <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
-      <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
+      <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
         <span>Name</span>
         <span>Type</span>
         <span>Date / time</span>
@@ -749,6 +762,7 @@ function ScheduleList({
           <ScheduleRow
             key={item.id}
             item={item}
+            focused={item.id === focusItemId}
             view={view}
             loading={loading}
             onOpen={() => onOpen(item)}
@@ -765,6 +779,7 @@ function ScheduleList({
 
 function ScheduleRow({
   item,
+  focused,
   view,
   loading,
   onOpen,
@@ -774,6 +789,7 @@ function ScheduleRow({
   onCashRsvp,
 }: {
   item: ScheduleItem;
+  focused?: boolean;
   view: 'upcoming' | 'history';
   loading: boolean;
   onOpen: () => void;
@@ -811,7 +827,11 @@ function ScheduleRow({
 
   return (
     <div
+      id={`schedule-item-${item.id}`}
       className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+        focused
+          ? 'border-pit-teal bg-pit-teal/10 shadow-[inset_0_0_0_1px_rgba(20,184,166,0.35),0_0_24px_rgba(20,184,166,0.12)]'
+          :
         isDeclined
           ? 'border-red-300/60 bg-red-500/[0.035] md:bg-red-500/10'
           : isRegistered
@@ -829,7 +849,7 @@ function ScheduleRow({
           {item.name}
         </button>
         {item.parentName && (
-          <p className="mt-1 w-full min-w-0 truncate text-xs text-pit-muted" title={item.parentName}>{item.parentName}</p>
+          <p className="mt-1 w-full min-w-0 truncate text-xs text-[#b3b3c2]" title={item.parentName}>{item.parentName}</p>
         )}
       </div>
 
@@ -839,7 +859,7 @@ function ScheduleRow({
         </span>
       </div>
 
-      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-pit-text md:col-auto md:row-auto md:block md:space-y-1 md:text-xs">
+      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-[#c6c6d2] md:col-auto md:row-auto md:block md:space-y-1 md:text-xs">
         <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
           <Calendar size={11} />
           {item.date ?? 'Date TBD'}
@@ -872,7 +892,7 @@ function ScheduleRow({
           </span>
         )}
         {fieldCount && (
-          <span className="inline-flex h-7 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 text-xs font-semibold text-pit-text">
+          <span className="inline-flex h-7 items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 text-xs font-semibold text-[#d0d0da]">
             <Users size={12} />
             {fieldCount}
           </span>
@@ -928,13 +948,13 @@ function ScheduleRow({
               <X size={16} />
             </button>
             {showLeagueRsvp && (
-              <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={onOpen}>
+              <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onOpen}>
                 View
               </button>
             )}
           </>
         ) : (
-          <button type="button" className={item.canManage && isTournament ? 'btn-primary gap-2 px-3 py-2 text-xs' : 'btn-ghost px-3 py-2 text-xs'} onClick={onOpen}>
+          <button type="button" className={item.canManage && isTournament ? 'btn-primary gap-2 px-3 py-2 text-xs' : 'btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white'} onClick={onOpen}>
             {item.canManage && isTournament && view === 'upcoming' && <PlayCircle size={14} />}
             {item.canManage && isTournament ? (view === 'upcoming' ? 'Run' : 'Open') : 'View'}
           </button>

@@ -28,9 +28,15 @@ type LeagueDetailTab = 'overview' | 'events' | 'board' | 'fees' | 'audit' | 'pla
 
 export default function LeaguesPanel({
   initialLeagueId,
+  initialSeasonId,
+  initialTab,
+  initialPostId,
   onDetailStateChange,
 }: {
   initialLeagueId?: string;
+  initialSeasonId?: string;
+  initialTab?: LeagueDetailTab;
+  initialPostId?: string;
   onDetailStateChange?: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
@@ -72,10 +78,22 @@ export default function LeaguesPanel({
     return () => onDetailStateChange?.(false);
   }, [onDetailStateChange, selected]);
 
+  useEffect(() => {
+    if (initialLeagueId) setSelected({ leagueid: initialLeagueId });
+  }, [initialLeagueId]);
+
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
   if (selected) {
-    return <LeagueDetailView league={selected} onBack={() => setSelected(null)} />;
+    return (
+      <LeagueDetailView
+        league={selected}
+        initialSeasonId={initialSeasonId}
+        initialTab={initialTab}
+        initialPostId={initialPostId}
+        onBack={() => setSelected(null)}
+      />
+    );
   }
 
   return (
@@ -232,7 +250,19 @@ function LeagueEmptyState({ onJoin, onCreate }: { onJoin: () => void; onCreate: 
   );
 }
 
-function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>; onBack: () => void }) {
+function LeagueDetailView({
+  league,
+  initialSeasonId,
+  initialTab,
+  initialPostId,
+  onBack,
+}: {
+  league: Pick<League, 'leagueid'>;
+  initialSeasonId?: string;
+  initialTab?: LeagueDetailTab;
+  initialPostId?: string;
+  onBack: () => void;
+}) {
   const qc = useQueryClient();
   const currentUserId = useAuthStore((state) => state.user?.guid ?? null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
@@ -246,12 +276,18 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
   const [removeMemberTarget, setRemoveMemberTarget] = useState<LeagueMember | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
   const [editingEvent, setEditingEvent] = useState<LeagueEvent | null>(null);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(initialSeasonId ?? null);
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [mobileRankUserId, setMobileRankUserId] = useState<string | null>(null);
-  const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>('overview');
+  const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>(initialTab ?? 'overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (initialSeasonId) setSelectedSeasonId(initialSeasonId);
+    if (initialTab) setActiveDetailTab(initialTab);
+  }, [initialPostId, initialSeasonId, initialTab]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
     queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
@@ -516,6 +552,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
         currentUserId={currentUserId}
         selectedUserId={selectedRankUserId}
         selectedSeason={selectedSeason}
+        focusPostId={initialPostId}
         onBack={onBack}
         onSelectUser={selectRankedUser}
         onSeasonChange={(seasonId) => {
@@ -738,7 +775,7 @@ function LeagueDetailView({ league, onBack }: { league: Pick<League, 'leagueid'>
       )}
 
       {activeDetailTab === 'board' && (
-        <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin />
+        <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin focusPostId={initialPostId} />
       )}
 
       {activeDetailTab === 'players' && (
@@ -1344,6 +1381,7 @@ function MemberLeagueView({
   currentUserId,
   selectedUserId,
   selectedSeason,
+  focusPostId,
   onBack,
   onSelectUser,
   onSeasonChange,
@@ -1352,6 +1390,7 @@ function MemberLeagueView({
   currentUserId: string | null;
   selectedUserId: string | null;
   selectedSeason?: LeagueDetail['seasons'][number];
+  focusPostId?: string;
   onBack: () => void;
   onSelectUser: (userId: string) => void;
   onSeasonChange: (seasonId: string) => void;
@@ -1539,7 +1578,7 @@ function MemberLeagueView({
         </div>
       </section>
 
-      <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin={false} />
+      <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin={false} focusPostId={focusPostId} />
 
       <Modal title="Player Journey" open={Boolean(mobileProfileUserId)} onClose={() => setMobileProfileUserId(null)} mobilePlacement="center">
         <PlayerLeagueProfile detail={detail} userId={mobileProfileUserId} />
@@ -1550,7 +1589,17 @@ function MemberLeagueView({
   );
 }
 
-function LeagueBoard({ leagueId, seasonId, isAdmin }: { leagueId: string; seasonId: string; isAdmin: boolean }) {
+function LeagueBoard({
+  leagueId,
+  seasonId,
+  isAdmin,
+  focusPostId,
+}: {
+  leagueId: string;
+  seasonId: string;
+  isAdmin: boolean;
+  focusPostId?: string;
+}) {
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
   const [notifyMembers, setNotifyMembers] = useState(true);
@@ -1583,6 +1632,14 @@ function LeagueBoard({ leagueId, seasonId, isAdmin }: { leagueId: string; season
     },
   });
   const posts = data?.posts ?? [];
+
+  useEffect(() => {
+    if (!focusPostId || isLoading) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`league-post-${focusPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusPostId, isLoading, posts]);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
@@ -1634,7 +1691,11 @@ function LeagueBoard({ leagueId, seasonId, isAdmin }: { leagueId: string; season
           <p className="rounded-lg border border-dashed border-pit-border px-4 py-8 text-center text-sm text-pit-muted">No season updates yet.</p>
         )}
         {posts.map((post) => (
-          <article key={post.postid} className="rounded-xl border border-pit-border bg-pit-bg/45 p-4">
+          <article
+            id={`league-post-${post.postid}`}
+            key={post.postid}
+            className={`rounded-xl border bg-pit-bg/45 p-4 transition ${focusPostId === post.postid ? 'border-pit-teal shadow-[0_0_0_1px_rgba(20,184,166,0.3),0_0_24px_rgba(20,184,166,0.16)]' : 'border-pit-border'}`}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold text-white">{post.displayname ?? 'League admin'}</p>

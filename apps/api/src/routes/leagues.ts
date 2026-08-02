@@ -2228,6 +2228,8 @@ leaguesRouter.post('/:id/seasons/:seasonId/posts', async (req: Request, res: Res
       await Promise.allSettled([
         sendNotificationToUsers(recipientUserIds, 'league_announcement_posted', {
           leagueId: req.params.id,
+          seasonId: season.seasonid,
+          postId: post.postid,
           leagueName: league.name,
           seasonName: season.name,
           announcementPreview: message.slice(0, 180),

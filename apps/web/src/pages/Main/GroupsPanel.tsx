@@ -18,7 +18,7 @@ import {
   DEFAULT_ONE_MINUTE_ANNOUNCEMENT,
 } from '../../utils/timerAudio';
 
-type GroupOpenRequest = { groupId: string; token: number } | null;
+type GroupOpenRequest = { groupId: string; tab?: 'posts'; postId?: string; token: number } | null;
 
 export default function GroupsPanel({
   onDetailStateChange,
@@ -31,7 +31,7 @@ export default function GroupsPanel({
 }) {
   const qc = useQueryClient();
   const lastCreateRequestRef = useRef(createRequestId);
-  const lastOpenRequestRef = useRef(openGroupRequest?.token ?? 0);
+  const lastOpenRequestRef = useRef(0);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [selected, setSelected] = useState<Group | null>(null);
@@ -85,7 +85,14 @@ export default function GroupsPanel({
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
   if (selected) {
-    return <GroupDetailView group={selected} onBack={() => setSelected(null)} />;
+    return (
+      <GroupDetailView
+        group={selected}
+        initialTab={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.tab : undefined}
+        focusPostId={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.postId : undefined}
+        onBack={() => setSelected(null)}
+      />
+    );
   }
 
   return (
@@ -440,11 +447,21 @@ function announcerPreviewUrl(preset: AnnouncerPreset): string {
   return `/sounds/ai-demo/custom/${preset.replace(/_/g, '-')}.mp3`;
 }
 
-function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }) {
+function GroupDetailView({
+  group,
+  initialTab,
+  focusPostId,
+  onBack,
+}: {
+  group: Group;
+  initialTab?: 'posts';
+  focusPostId?: string;
+  onBack: () => void;
+}) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [detailTab, setDetailTab] = useState<DetailTab>('info');
+  const [detailTab, setDetailTab] = useState<DetailTab>(initialTab ?? 'info');
   const [inviteCode, setInviteCode] = useState(group.invitecode);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
@@ -477,6 +494,10 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
   const [awardNote, setAwardNote] = useState('');
   const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
   const [deletePostTarget, setDeletePostTarget] = useState<GroupPost | null>(null);
+
+  useEffect(() => {
+    if (initialTab) setDetailTab(initialTab);
+  }, [initialTab, focusPostId]);
 
   const { data } = useQuery({
     queryKey: ['group', group.groupid],
@@ -519,6 +540,14 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
     mutationFn: (uid: string) => api.approveMember(group.groupid, uid),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid] }),
   });
+
+  useEffect(() => {
+    if (!focusPostId || detailTab !== 'posts' || loadingPosts) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`group-post-${focusPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detailTab, focusPostId, loadingPosts, postsData]);
   const approveAllMutation = useMutation({
     mutationFn: () => api.approveAllMembers(group.groupid),
     onSuccess: () => {
@@ -1348,7 +1377,11 @@ function GroupDetailView({ group, onBack }: { group: Group; onBack: () => void }
                 {(postsData?.posts ?? []).filter((post) => post.status !== 'pending').map((post) => {
                   const totalVotes = (post.options ?? []).reduce((sum, option) => sum + Number(option.votecount ?? 0), 0);
                   return (
-                    <article key={post.id} className="rounded-xl border border-pit-border bg-pit-bg p-3">
+                    <article
+                      id={`group-post-${post.id}`}
+                      key={post.id}
+                      className={`rounded-xl border bg-pit-bg p-3 transition ${focusPostId === post.id ? 'border-pit-teal shadow-[0_0_0_1px_rgba(20,184,166,0.3),0_0_24px_rgba(20,184,166,0.16)]' : 'border-pit-border'}`}
+                    >
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-white">{post.displayname ?? 'Group admin'}</p>

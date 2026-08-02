@@ -201,16 +201,33 @@ function entityUrl(type: NotificationType, data: NotificationTemplateData): stri
   if (typeof data.url === 'string' && data.url.trim()) return data.url.trim();
   const tournamentId = stringValue(data.tournamentId);
   const leagueId = stringValue(data.leagueId);
+  const seasonId = stringValue(data.seasonId);
+  const postId = stringValue(data.postId ?? data.entityId);
   const groupId = stringValue(data.groupId ?? data.clubId);
-  if (COMMAND_CENTER_NOTIFICATION_TYPES.has(type)) return '/';
   if (tournamentId) {
     if (TOURNAMENT_LOBBY_NOTIFICATION_TYPES.has(type)) {
       return `/lobby/${tournamentId}`;
     }
-    return `/tournaments/${tournamentId}`;
+    return `/?section=upcoming&tournament=${encodeURIComponent(tournamentId)}`;
   }
-  if (leagueId) return `/leagues/${leagueId}`;
-  if (groupId) return `/groups/${groupId}`;
+  if (type === 'league_announcement_posted' && leagueId) {
+    const params = new URLSearchParams({ section: 'leagues', league: leagueId, leagueTab: 'board' });
+    if (seasonId) params.set('season', seasonId);
+    if (postId) params.set('post', postId);
+    return `/?${params.toString()}`;
+  }
+  if (type === 'host_announcement_posted' && groupId) {
+    const params = new URLSearchParams({ section: 'groups', group: groupId, groupTab: 'posts' });
+    if (postId) params.set('post', postId);
+    return `/?${params.toString()}`;
+  }
+  if (leagueId) {
+    const params = new URLSearchParams({ section: 'leagues', league: leagueId });
+    if (seasonId) params.set('season', seasonId);
+    return `/?${params.toString()}`;
+  }
+  if (groupId) return `/?section=groups&group=${encodeURIComponent(groupId)}`;
+  if (COMMAND_CENTER_NOTIFICATION_TYPES.has(type)) return '/?section=upcoming';
   return '/';
 }
 

@@ -26,14 +26,23 @@ export default function MainPage() {
   const requestedLeagueId = location.state && typeof location.state === 'object' && 'leagueId' in location.state
     ? String(location.state.leagueId ?? '')
     : '';
+  const deepLink = parseCommandCenterDeepLink(location.search);
   const [view, setView] = useState<MainView>(requestedTab === 'profile' || requestedTab === 'admin' ? requestedTab : 'command');
-  const [commandSection, setCommandSection] = useState<CommandCenterSection>(sectionFromTab(requestedTab));
+  const [commandSection, setCommandSection] = useState<CommandCenterSection>(deepLink.section ?? sectionFromTab(requestedTab));
   const [commandDetailOpen, setCommandDetailOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [createGameRequestId, setCreateGameRequestId] = useState(0);
   const [groupCreateRequestId, setGroupCreateRequestId] = useState(0);
-  const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; token: number } | null>(null);
-  const [leagueDeepLinkId, setLeagueDeepLinkId] = useState<string | undefined>(requestedLeagueId || undefined);
+  const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; tab?: 'posts'; postId?: string; token: number } | null>(() => (
+    deepLink.groupId ? { groupId: deepLink.groupId, tab: deepLink.groupTab, postId: deepLink.postId, token: 1 } : null
+  ));
+  const [leagueDeepLink, setLeagueDeepLink] = useState(() => ({
+    leagueId: deepLink.leagueId ?? (requestedLeagueId || undefined),
+    seasonId: deepLink.seasonId,
+    tab: deepLink.leagueTab,
+    postId: deepLink.postId,
+  }));
+  const handledSearchRef = useRef(location.search);
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
 
   useLayoutEffect(() => {
@@ -60,7 +69,7 @@ export default function MainPage() {
 
   useEffect(() => {
     if (requestedLeagueId) {
-      setLeagueDeepLinkId(requestedLeagueId);
+      setLeagueDeepLink((current) => ({ ...current, leagueId: requestedLeagueId }));
     }
     if (requestedTab) {
       if (requestedTab === 'profile' || requestedTab === 'admin') {
@@ -74,6 +83,22 @@ export default function MainPage() {
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, navigate, requestedLeagueId, requestedTab]);
+
+  useEffect(() => {
+    if (!location.search || handledSearchRef.current === location.search) return;
+    handledSearchRef.current = location.search;
+    const next = parseCommandCenterDeepLink(location.search);
+    if (!next.section) return;
+    setView('command');
+    setCommandDetailOpen(false);
+    setCommandSection(next.section);
+    if (next.groupId) {
+      setGroupOpenRequest({ groupId: next.groupId, tab: next.groupTab, postId: next.postId, token: Date.now() });
+    }
+    if (next.leagueId) {
+      setLeagueDeepLink({ leagueId: next.leagueId, seasonId: next.seasonId, tab: next.leagueTab, postId: next.postId });
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (user && user.onboardingcomplete === false && !user.isdemo) {
@@ -107,7 +132,7 @@ export default function MainPage() {
 
   const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
     if (nextSection !== 'leagues') {
-      setLeagueDeepLinkId(undefined);
+      setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined });
     }
     setCommandDetailOpen(false);
     setView('command');
@@ -168,6 +193,7 @@ export default function MainPage() {
             onCreateFlowChange={setCreateTournamentOpen}
             onboardingActive={showTour}
             createGameRequestId={createGameRequestId}
+            focusScheduleItemId={deepLink.scheduleItemId}
             onStartGroupCreate={startGroupCreate}
             onStartGroupInvite={startGroupInvite}
             onStartFirstGame={startGameCreate}
@@ -181,7 +207,15 @@ export default function MainPage() {
                     openGroupRequest={groupOpenRequest}
                   />
                 )
-                : <LeaguesPanel initialLeagueId={leagueDeepLinkId} onDetailStateChange={setCommandDetailOpen} />
+                : (
+                  <LeaguesPanel
+                    initialLeagueId={leagueDeepLink.leagueId}
+                    initialSeasonId={leagueDeepLink.seasonId}
+                    initialTab={leagueDeepLink.tab}
+                    initialPostId={leagueDeepLink.postId}
+                    onDetailStateChange={setCommandDetailOpen}
+                  />
+                )
             )}
           />
         )}
@@ -190,6 +224,33 @@ export default function MainPage() {
       </Layout>
     </>
   );
+}
+
+function parseCommandCenterDeepLink(search: string): {
+  section?: CommandCenterSection;
+  groupId?: string;
+  groupTab?: 'posts';
+  leagueId?: string;
+  seasonId?: string;
+  leagueTab?: 'board';
+  postId?: string;
+  scheduleItemId?: string;
+} {
+  const params = new URLSearchParams(search);
+  const rawSection = params.get('section');
+  const section = rawSection === 'groups' || rawSection === 'leagues' || rawSection === 'history' || rawSection === 'upcoming'
+    ? rawSection
+    : undefined;
+  return {
+    section,
+    groupId: params.get('group') || undefined,
+    groupTab: params.get('groupTab') === 'posts' ? 'posts' : undefined,
+    leagueId: params.get('league') || undefined,
+    seasonId: params.get('season') || undefined,
+    leagueTab: params.get('leagueTab') === 'board' ? 'board' : undefined,
+    postId: params.get('post') || undefined,
+    scheduleItemId: params.get('tournament') || params.get('game') || undefined,
+  };
 }
 
 function sectionFromTab(tab?: NavTab): CommandCenterSection {

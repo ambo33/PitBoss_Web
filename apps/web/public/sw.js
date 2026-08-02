@@ -50,6 +50,21 @@ self.addEventListener('notificationclick', (event) => {
         return;
       }
     }
+
+    const targetOrigin = new URL(targetUrl).origin;
+    const appWindow = windows.find((client) => {
+      try {
+        return new URL(client.url).origin === targetOrigin;
+      } catch {
+        return false;
+      }
+    });
+    if (appWindow && 'navigate' in appWindow) {
+      await appWindow.navigate(targetUrl);
+      await appWindow.focus();
+      return;
+    }
+
     await self.clients.openWindow(targetUrl);
   })());
 });
