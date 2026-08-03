@@ -21,6 +21,7 @@ import PaymentTrackerPage from './pages/PaymentTracker';
 import PocketAdminPage from './pages/PocketAdmin';
 import CashGameAdminPage from './pages/CashGameAdmin';
 import JoinGroupPage from './pages/JoinGroup';
+import JoinLeaguePage from './pages/JoinLeague';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -88,6 +89,8 @@ export default function App() {
         <Route path="/reset-password" element={<AppSubdomainRedirect />} />
         <Route path="/" element={<HomeRoute />} />
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />
+        <Route path="/join/group/:inviteCode" element={<JoinGroupPage />} />
+        <Route path="/join/league/:inviteCode" element={<JoinLeaguePage />} />
         <Route path="/join/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
         <Route path="/checkin/:id" element={<PlayerLobbyPage mode="checkin" />} />

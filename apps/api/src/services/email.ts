@@ -161,8 +161,15 @@ function emailLayout({
   `;
 }
 
-export async function sendVerificationEmail(email: string, pin: string): Promise<void> {
-  const verifyLink = `${appUrl}/login?verifyEmail=${encodeURIComponent(email)}&code=${encodeURIComponent(pin)}`;
+export async function sendVerificationEmail(email: string, pin: string, returnPath?: string): Promise<void> {
+  const safeReturnPath = typeof returnPath === 'string'
+    && returnPath.startsWith('/join/')
+    && !returnPath.startsWith('//')
+    ? returnPath
+    : '';
+  const verifyParams = new URLSearchParams({ verifyEmail: email, code: pin });
+  if (safeReturnPath) verifyParams.set('next', safeReturnPath);
+  const verifyLink = `${appUrl}/login?${verifyParams.toString()}`;
   await sendMail({
     to: email,
     subject: 'Verify your ThePokerPlanner account',

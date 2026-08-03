@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Trash2, Upload, Vote } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
+import JoinShareDialog from '../../components/JoinShareDialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
@@ -483,7 +483,7 @@ function GroupDetailView({
   const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [smsStatus, setSmsStatus] = useState('');
-  const [copyStatus, setCopyStatus] = useState('');
+  const [shareInviteOpen, setShareInviteOpen] = useState(false);
   const [coinName, setCoinName] = useState('');
   const [coinDescription, setCoinDescription] = useState('');
   const [coinImageData, setCoinImageData] = useState<string | null>(null);
@@ -744,7 +744,7 @@ function GroupDetailView({
     [members]
   );
   const currentMember = members.find((member) => member.userid === user?.guid);
-  const joinLink = `${window.location.origin}/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
+  const joinPath = `/join/group/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
   const demoMode = Boolean(user?.isdemo);
   const canUseClubFeatures = Boolean(account?.issuperadmin || account?.canuseclubfeatures || account?.tierid === 2 || account?.tierid === 3);
@@ -913,25 +913,27 @@ function GroupDetailView({
         {detailTab === 'info' && (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="space-y-3">
-              {!demoMode && (
+              {!demoMode && group.isadmin && (
                 <section className="rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.13),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.85),rgba(16,16,21,0.96))] p-4">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-teal">Join code</p>
                   <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-                    <p className="font-mono text-2xl font-black tracking-[0.22em] text-white">{effectiveGroup.invitecode}</p>
+                    <button
+                      type="button"
+                      className="rounded-lg font-mono text-2xl font-black tracking-[0.22em] text-white transition hover:text-pit-teal focus:outline-none focus:ring-2 focus:ring-pit-teal/60"
+                      onClick={() => setShareInviteOpen(true)}
+                      title="Share group invite"
+                    >
+                      {effectiveGroup.invitecode}
+                    </button>
                     <button
                       type="button"
                       className="btn-primary px-3 py-2 text-xs"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(joinLink);
-                        setCopyStatus('Join link copied.');
-                        setTimeout(() => setCopyStatus(''), 2000);
-                      }}
+                      onClick={() => setShareInviteOpen(true)}
                     >
-                      Copy invite
+                      Share invite
                     </button>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-pit-muted">Share the code or copy the invite link for players.</p>
-                  {copyStatus && <p className="mt-2 text-sm text-pit-teal">{copyStatus}</p>}
+                  <p className="mt-2 text-xs leading-5 text-pit-muted">Tap the code for a direct link or QR code.</p>
                 </section>
               )}
 
@@ -946,22 +948,6 @@ function GroupDetailView({
                 </div>
               </section>
 
-              {!demoMode && group.isadmin && (
-                <details className="group rounded-xl border border-pit-border bg-pit-bg px-4 py-3">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-white">
-                    QR code and full link
-                    <span className="float-right text-xs text-pit-muted group-open:text-pit-teal">Open</span>
-                  </summary>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-xl border border-pit-border bg-pit-surface px-3 py-3">
-                      <p className="break-all font-mono text-xs text-pit-text">{joinLink}</p>
-                    </div>
-                    <div className="inline-block rounded-xl bg-white p-3">
-                      <QRCodeSVG value={joinLink} size={150} />
-                    </div>
-                  </div>
-                </details>
-              )}
             </div>
 
             {group.isadmin && (
@@ -1826,6 +1812,14 @@ function GroupDetailView({
           </div>
         )}
       </div>
+      <JoinShareDialog
+        open={shareInviteOpen}
+        onClose={() => setShareInviteOpen(false)}
+        kind="group"
+        name={effectiveGroup.name}
+        inviteCode={effectiveGroup.invitecode}
+        joinPath={joinPath}
+      />
       <ConfirmDialog
         open={deleteGroupConfirmOpen}
         title="Delete group?"

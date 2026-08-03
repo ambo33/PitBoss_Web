@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
-import { clearPendingGroupInvite, setPendingGroupInvite } from '../../utils/invites';
+import { clearPendingGroupInvite, clearPendingJoinPath, setPendingGroupInvite, setPendingJoinPath } from '../../utils/invites';
 
 export default function JoinGroupPage() {
   const { inviteCode = '' } = useParams<{ inviteCode: string }>();
@@ -12,6 +12,7 @@ export default function JoinGroupPage() {
   const normalizedCode = inviteCode.trim().toUpperCase();
   const [message, setMessage] = useState('Preparing your group invite...');
   const [error, setError] = useState('');
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   useEffect(() => {
     async function join() {
@@ -21,21 +22,34 @@ export default function JoinGroupPage() {
       }
 
       if (!token) {
+        const joinPath = `/join/group/${encodeURIComponent(normalizedCode)}`;
         setPendingGroupInvite(normalizedCode);
-        navigate(`/login?invite=${encodeURIComponent(normalizedCode)}`, { replace: true });
+        setPendingJoinPath(joinPath);
+        navigate(`/login?next=${encodeURIComponent(joinPath)}`, { replace: true });
         return;
       }
 
       setMessage('Joining group...');
       try {
-        await api.joinGroup(normalizedCode);
+        const result = await api.joinGroup(normalizedCode);
         clearPendingGroupInvite();
-        navigate('/', { replace: true, state: { tab: 'groups' } });
+        clearPendingJoinPath();
+        if (result.pending) {
+          setPendingApproval(true);
+          setMessage('Your request was sent to the group admins for approval.');
+          return;
+        }
+        navigate(`/?section=groups&group=${encodeURIComponent(result.groupid)}`, { replace: true });
       } catch (err) {
         const messageText = err instanceof Error ? err.message : 'Failed to join group';
         if (messageText === 'Already a member') {
           clearPendingGroupInvite();
-          navigate('/', { replace: true, state: { tab: 'groups' } });
+          clearPendingJoinPath();
+          const groups = await api.getGroups();
+          const existingGroup = groups.find((group) => group.invitecode.toUpperCase() === normalizedCode);
+          navigate(existingGroup
+            ? `/?section=groups&group=${encodeURIComponent(existingGroup.groupid)}`
+            : '/?section=groups', { replace: true });
           return;
         }
         setError(messageText);
@@ -53,7 +67,14 @@ export default function JoinGroupPage() {
         </div>
         <h1 className="text-xl font-bold text-white">Group Invite</h1>
         {!error ? (
-          <p className="mt-3 text-sm text-pit-text">{message}</p>
+          <div className="mt-3 space-y-4">
+            <p className="text-sm text-pit-text">{message}</p>
+            {pendingApproval && (
+              <button className="btn-primary w-full" onClick={() => navigate('/?section=groups', { replace: true })}>
+                Return to Command Center
+              </button>
+            )}
+          </div>
         ) : (
           <div className="mt-3 space-y-4">
             <p className="text-sm text-red-400">{error}</p>

@@ -4,9 +4,21 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
 import { useAuthStore } from '../../store/auth';
-import { getPendingGroupInvite, setPendingGroupInvite } from '../../utils/invites';
+import { getPendingGroupInvite, getPendingJoinPath, normalizeJoinPath, setPendingGroupInvite, setPendingJoinPath } from '../../utils/invites';
 
 type View = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
+type InvitationKind = 'group' | 'league' | null;
+
+function normalizeInternalPath(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
+}
+
+function invitationKindFromPath(path: string | null): InvitationKind {
+  if (path?.startsWith('/join/league/')) return 'league';
+  if (path?.startsWith('/join/group/') || path?.startsWith('/join/')) return 'group';
+  return null;
+}
 
 export default function LoginPage() {
   const [view, setView] = useState<View>('login');
@@ -22,17 +34,22 @@ export default function LoginPage() {
   const verifyEmail = searchParams.get('verifyEmail');
   const verifyCode = searchParams.get('code');
   const inviteCode = searchParams.get('invite') ?? getPendingGroupInvite() ?? '';
-  const nextPath = searchParams.get('next');
+  const requestedNextPath = normalizeInternalPath(searchParams.get('next'));
+  const legacyInvitePath = inviteCode ? `/join/group/${encodeURIComponent(inviteCode)}` : null;
+  const storedJoinPath = requestedMode === 'verify' || Boolean(verifyEmail) ? getPendingJoinPath() : null;
+  const nextPath = requestedNextPath ?? legacyInvitePath ?? storedJoinPath;
+  const invitationKind = invitationKindFromPath(nextPath);
 
   function resolveSuccessPath() {
     if (nextPath) return nextPath;
-    if (inviteCode) return `/join/${encodeURIComponent(inviteCode)}`;
     return '/';
   }
 
   useEffect(() => {
     if (inviteCode) setPendingGroupInvite(inviteCode);
-  }, [inviteCode]);
+    const joinPath = normalizeJoinPath(nextPath);
+    if (joinPath) setPendingJoinPath(joinPath);
+  }, [inviteCode, nextPath]);
 
   useEffect(() => {
     if (verifyEmail) setPendingEmail(verifyEmail);
@@ -114,7 +131,7 @@ export default function LoginPage() {
           <div className="p-6">
             {view === 'login' && (
               <LoginForm
-                inviteCode={inviteCode}
+                invitationKind={invitationKind}
                 resetSuccess={resetStatus === 'success'}
                 onSwitch={setView}
                 onSuccess={() => navigate(resolveSuccessPath())}
@@ -122,6 +139,8 @@ export default function LoginPage() {
             )}
             {view === 'register' && (
               <RegisterForm
+                invitationKind={invitationKind}
+                returnPath={normalizeJoinPath(nextPath) ?? undefined}
                 onSuccess={(email) => {
                   setPendingEmail(email);
                   setView('verify');
@@ -132,7 +151,7 @@ export default function LoginPage() {
             {view === 'verify' && (
               <VerifyForm
                 email={pendingEmail}
-                inviteCode={inviteCode}
+                invitationKind={invitationKind}
                 autoMessage={autoVerifyMessage}
                 onSuccess={() => navigate(resolveSuccessPath())}
               />
@@ -158,12 +177,12 @@ function ErrorBanner({ msg }: { msg: string }) {
 }
 
 function LoginForm({
-  inviteCode,
+  invitationKind,
   resetSuccess,
   onSwitch,
   onSuccess,
 }: {
-  inviteCode: string;
+  invitationKind: InvitationKind;
   resetSuccess?: boolean;
   onSwitch: (v: View) => void;
   onSuccess: () => void;
@@ -196,7 +215,7 @@ function LoginForm({
   return (
     <form onSubmit={submit} className="space-y-4">
       <h2 className="mb-5 text-xl font-bold text-white">Sign in</h2>
-      {inviteCode && <p className="text-sm text-pit-text">Sign in to join your invited group.</p>}
+      {invitationKind && <p className="text-sm text-pit-text">Sign in to accept your {invitationKind} invitation.</p>}
       {resetSuccess && (
         <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
           Password reset successful. Sign in with your new password.
@@ -220,7 +239,17 @@ function LoginForm({
   );
 }
 
-function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => void; onSwitch: (v: View) => void }) {
+function RegisterForm({
+  invitationKind,
+  returnPath,
+  onSuccess,
+  onSwitch,
+}: {
+  invitationKind: InvitationKind;
+  returnPath?: string;
+  onSuccess: (email: string) => void;
+  onSwitch: (v: View) => void;
+}) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [displayname, setDisplayname] = useState('');
@@ -247,7 +276,7 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
     setError('');
     setLoading(true);
     try {
-      await api.register({ email, password, name: name.trim(), displayname: displayname.trim(), acceptterms: acceptTerms });
+      await api.register({ email, password, name: name.trim(), displayname: displayname.trim(), acceptterms: acceptTerms, returnpath: returnPath });
       onSuccess(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -259,6 +288,11 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
   return (
     <form onSubmit={submit} className="space-y-3">
       <h2 className="mb-5 text-xl font-bold text-white">Create account</h2>
+      {invitationKind && (
+        <p className="text-sm leading-5 text-pit-text">
+          Create and verify your account. We will bring you back to join the {invitationKind} automatically.
+        </p>
+      )}
       {error && <ErrorBanner msg={error} />}
       <input className="input" type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
       <input className="input" type="text" placeholder="Table nickname" value={displayname} onChange={(e) => setDisplayname(e.target.value)} required />
@@ -294,7 +328,17 @@ function RegisterForm({ onSuccess, onSwitch }: { onSuccess: (email: string) => v
   );
 }
 
-function VerifyForm({ email, inviteCode, autoMessage, onSuccess }: { email: string; inviteCode: string; autoMessage?: string; onSuccess: () => void }) {
+function VerifyForm({
+  email,
+  invitationKind,
+  autoMessage,
+  onSuccess,
+}: {
+  email: string;
+  invitationKind: InvitationKind;
+  autoMessage?: string;
+  onSuccess: () => void;
+}) {
   const setAuth = useAuthStore((s) => s.setAuth);
   const queryClient = useQueryClient();
   const [pin, setPin] = useState('');
@@ -325,7 +369,7 @@ function VerifyForm({ email, inviteCode, autoMessage, onSuccess }: { email: stri
       <p className="text-sm text-pit-muted">
         Enter the 6-digit code sent to <span className="font-medium text-white">{email}</span>
       </p>
-      {inviteCode && <p className="text-sm text-pit-text">After verification, your group join will continue automatically.</p>}
+      {invitationKind && <p className="text-sm text-pit-text">After verification, your {invitationKind} join will continue automatically.</p>}
       {autoMessage && (
         <p className="rounded-lg border border-pit-teal/20 bg-pit-teal/10 px-3 py-2 text-sm text-pit-text">
           {autoMessage}

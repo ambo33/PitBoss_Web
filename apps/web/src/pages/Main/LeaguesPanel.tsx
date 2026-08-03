@@ -5,6 +5,7 @@ import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, Leagu
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import JoinShareDialog from '../../components/JoinShareDialog';
 import { useAuthStore } from '../../store/auth';
 
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
@@ -271,6 +272,7 @@ function LeagueDetailView({
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [shareInviteOpen, setShareInviteOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSeasonConfirmOpen, setDeleteSeasonConfirmOpen] = useState(false);
   const [removeMemberTarget, setRemoveMemberTarget] = useState<LeagueMember | null>(null);
@@ -564,14 +566,21 @@ function LeagueDetailView({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5">
       <div className="space-y-3 md:flex md:items-start md:justify-between md:gap-3 md:space-y-0">
         <button className="inline-flex h-10 w-full items-center justify-start gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white md:w-auto md:shrink-0" onClick={onBack} type="button">
           <ArrowLeft size={15} />
           Back to Leagues
         </button>
         <div className="grid min-w-0 grid-cols-2 gap-2 md:ml-auto md:flex md:flex-wrap md:items-center md:justify-end">
-          <span className="chip h-10 justify-center font-mono">{detail.league.invitecode}</span>
+          <button
+            type="button"
+            className="chip h-10 justify-center font-mono transition hover:border-pit-teal/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-pit-teal/50"
+            onClick={() => setShareInviteOpen(true)}
+            title="Share league invite"
+          >
+            {detail.league.invitecode}
+          </button>
           <select
             className="input h-10 min-w-0 py-2 text-xs md:w-44"
             value={detail.selectedseasonid}
@@ -709,7 +718,7 @@ function LeagueDetailView({
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
         <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-4 sm:p-5">
           <p className="eyebrow">League standings</p>
           <h2 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl">{detail.league.name}</h2>
@@ -727,7 +736,7 @@ function LeagueDetailView({
             <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3">
+        <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
@@ -907,6 +916,14 @@ function LeagueDetailView({
         error={createPaymentMutation.error?.message}
         onClose={() => setPaymentModalOpen(false)}
         onSubmit={(payload) => createPaymentMutation.mutate(payload)}
+      />
+      <JoinShareDialog
+        open={shareInviteOpen}
+        onClose={() => setShareInviteOpen(false)}
+        kind="league"
+        name={detail.league.name}
+        inviteCode={detail.league.invitecode}
+        joinPath={`/join/league/${encodeURIComponent(detail.league.invitecode)}`}
       />
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -1888,7 +1905,7 @@ function LeagueMembersCard({
   };
 
   return (
-    <section className="card space-y-4">
+    <section className="card min-w-0 max-w-full space-y-4 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="eyebrow">Season roster</p>
@@ -2012,10 +2029,10 @@ function LeagueMembersCard({
         </div>
       </details>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {approvedMembers.map((member) => (
-          <div key={member.userid} className="rounded-xl border border-pit-border bg-pit-bg/60 p-3">
-            <div className="flex items-start justify-between gap-2">
+          <div key={member.userid} className="min-w-0 rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div className="min-w-0">
                 <p className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-white">
                   {member.isguestuser ? (
@@ -2025,14 +2042,14 @@ function LeagueMembersCard({
                   )}
                   <span className="truncate">{member.displayname ?? 'Player'}</span>
                 </p>
-                {member.isguestuser && member.haspendinginvite && <p className="mt-1 text-[11px] text-pit-muted">Invite pending</p>}
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
                 {member.isadmin && (
-                  <span className="badge border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
+                  <span className="badge mt-1.5 w-fit border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
                     <Crown size={9} className="mr-0.5" /> Admin
                   </span>
                 )}
+                {member.isguestuser && member.haspendinginvite && <p className="mt-1 text-[11px] text-pit-muted">Invite pending</p>}
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
                 {detail.league.isadmin && (
                   <>
                     {member.userid !== detail.league.ownerid && (

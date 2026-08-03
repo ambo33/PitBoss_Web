@@ -26,8 +26,8 @@ function normalizePhoneNumber(value: unknown): string | null | undefined {
 }
 
 authRouter.post('/register', async (req: Request, res: Response) => {
-  const { email, password, displayname, name, acceptterms } = req.body as {
-    email: string; password: string; displayname?: string; name?: string; acceptterms?: boolean;
+  const { email, password, displayname, name, acceptterms, returnpath } = req.body as {
+    email: string; password: string; displayname?: string; name?: string; acceptterms?: boolean; returnpath?: string;
   };
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !password) { res.status(400).json({ error: 'Email and password required' }); return; }
@@ -62,7 +62,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   await syncSuperAdminByEmail(row.guid);
 
   try {
-    await sendVerificationEmail(normalizedEmail, pin);
+    await sendVerificationEmail(normalizedEmail, pin, returnpath);
   } catch (err) {
     console.error('Verification email failed', err instanceof Error ? err.message : err);
   }

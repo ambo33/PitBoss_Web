@@ -42,7 +42,7 @@ const del = <T>(path: string, body?: unknown) =>
 
 export const api = {
   // Auth
-  register: (data: { email: string; password: string; name: string; displayname: string; acceptterms?: boolean }) =>
+  register: (data: { email: string; password: string; name: string; displayname: string; acceptterms?: boolean; returnpath?: string }) =>
     post('/auth/register', data),
   verifyEmail: (data: { email: string; pin: string }) =>
     post<{ token: string }>('/auth/verify-email', data),
