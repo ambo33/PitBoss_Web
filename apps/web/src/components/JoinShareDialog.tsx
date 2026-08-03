@@ -101,9 +101,6 @@ export default function JoinShareDialog({
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-text">Join code</span>
           <span className="font-mono font-black tracking-[0.16em] text-white">{inviteCode}</span>
         </div>
-        <p className="text-xs leading-5 text-pit-muted">
-          The link and QR code take players straight to this {label.toLowerCase()}. New players can create an account and return here automatically.
-        </p>
       </div>
     </Modal>
   );
