@@ -95,7 +95,7 @@ export default function JoinLeaguePage() {
             <div className="mt-5 space-y-4">
               <div className="text-center">
                 <h2 className="font-bold text-white">Is one of these players you?</h2>
-                <p className="mt-1 text-sm leading-5 text-pit-muted">Claim your existing season history, or join as a new player.</p>
+              <p className="mt-1 text-sm leading-5 text-pit-muted">Claim your existing league history, or join as a new player.</p>
               </div>
               <div className="max-h-[42vh] space-y-2 overflow-y-auto pr-1">
                 {claimablePlayers.map((player) => (
@@ -108,7 +108,7 @@ export default function JoinLeaguePage() {
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-semibold text-white">{player.displayname ?? 'League player'}</span>
-                      {player.seasonname && <span className="mt-0.5 block text-xs text-pit-muted">{player.seasonname}</span>}
+                      {player.seasonname && <span className="mt-0.5 block text-xs text-pit-muted">Seasons: {player.seasonname}</span>}
                     </span>
                     <UserRoundCheck size={18} className="shrink-0 text-pit-teal" />
                   </button>

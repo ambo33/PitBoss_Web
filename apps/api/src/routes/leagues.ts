@@ -495,13 +495,15 @@ async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | n
       : `SELECT lm.userid,
                 COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), 'Guest player') AS displayname,
                 NULL::UUID AS seasonid,
-                NULL::TEXT AS seasonname,
+                string_agg(DISTINCT s.name, ', ') AS seasonname,
                 u.emailaddress,
                 u.emailencrypted,
                 m.isguestuser
          FROM leaguemembers lm
          JOIN users u ON u.guid = lm.userid
          LEFT JOIN usermetadata m ON m.userid = u.guid
+         LEFT JOIN leagueseasonparticipants lsp ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid AND lsp.participating = TRUE
+         LEFT JOIN leagueseasons s ON s.seasonid = lsp.seasonid
          WHERE lm.leagueid = $1
            AND lm.approved = TRUE
            AND NOT EXISTS (
@@ -511,6 +513,7 @@ async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | n
                AND c.guestuserid = lm.userid
                AND c.claimedat IS NOT NULL
            )
+         GROUP BY lm.userid, m.nickname, m.firstname, m.lastname, u.emailaddress, u.emailencrypted, m.isguestuser
          ORDER BY lower(COALESCE(m.nickname, NULLIF(trim(concat(coalesce(m.firstname, ''), ' ', coalesce(m.lastname, ''))), ''), u.emailaddress))`,
     seasonId ? [leagueId, seasonId] : [leagueId]
   );
@@ -958,7 +961,9 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
     [league.leagueid, req.userId]
   );
   const selectedSeason = await getSelectedSeason(league.leagueid);
-  const claimablePlayers = selectedSeason ? await getClaimableLeaguePlayers(league.leagueid, selectedSeason.seasonid) : [];
+  // Takeover is a league identity operation. A person may have played in an
+  // older season while the newest season has a different roster.
+  const claimablePlayers = await getClaimableLeaguePlayers(league.leagueid);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1008,7 +1013,7 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
           guestMember.rows[0].pushalertsenabled,
         ]
       );
-      if (selectedSeason?.seasonid) {
+      if (claimablePlayer.seasonid && selectedSeason?.seasonid) {
         const targetParticipant = await client.query(
           `SELECT 1
            FROM leagueseasonparticipants
@@ -1085,6 +1090,91 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
             resultsTransferred: updatedResults.rowCount ?? 0,
             paymentsTransferred: updatedPayments.rowCount ?? 0,
             rsvpsTransferred: updatedRsvps.rowCount ?? 0,
+            source: 'join_code',
+          },
+        });
+      }
+      if (!claimablePlayer.seasonid) {
+        await client.query(
+          `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+           SELECT seasonid, leagueid, $3, participating
+           FROM leagueseasonparticipants
+           WHERE leagueid = $1 AND userid = $2
+           ON CONFLICT (seasonid, userid) DO UPDATE
+           SET participating = leagueseasonparticipants.participating OR EXCLUDED.participating`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `DELETE FROM leagueresults guest_result
+           WHERE guest_result.leagueid = $1
+             AND guest_result.userid = $2
+             AND EXISTS (
+               SELECT 1
+               FROM leagueresults real_result
+               WHERE real_result.eventid = guest_result.eventid
+                 AND real_result.userid = $3
+             )`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leagueresults SET userid = $3 WHERE leagueid = $1 AND userid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leaguepayments SET userid = $3 WHERE leagueid = $1 AND userid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leagueeventrsvps
+           SET userid = $3,
+               updatedat = now()
+           WHERE leagueid = $1 AND userid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leagueposts SET createdby = $3 WHERE leagueid = $1 AND createdby = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leaguepostcomments SET userid = $3
+           WHERE postid IN (SELECT postid FROM leagueposts WHERE leagueid = $1)
+             AND userid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leagueauditlogs SET targetuserid = $3 WHERE leagueid = $1 AND targetuserid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `UPDATE leagueauditlogs SET actorid = $3 WHERE leagueid = $1 AND actorid = $2`,
+          [league.leagueid, claimUserId, req.userId]
+        );
+        await client.query(
+          `DELETE FROM leagueseasonparticipants WHERE leagueid = $1 AND userid = $2`,
+          [league.leagueid, claimUserId]
+        );
+        await client.query(
+          `DELETE FROM leaguemembers WHERE leagueid = $1 AND userid = $2`,
+          [league.leagueid, claimUserId]
+        );
+        await client.query(
+          `UPDATE leagueguestclaims
+           SET claimedby = $2,
+               claimedat = now()
+           WHERE leagueid = $1
+             AND guestuserid = $3
+             AND claimedat IS NULL`,
+          [league.leagueid, req.userId, claimUserId]
+        );
+        await recordLeagueAudit(client, {
+          leagueId: league.leagueid,
+          actorId: req.userId,
+          targetUserId: req.userId,
+          action: 'guest_profile_claimed',
+          summary: 'Guest player profile was claimed by a registered user.',
+          details: {
+            guestUserId: claimUserId,
+            guestName: claimablePlayer.displayname,
             source: 'join_code',
           },
         });
@@ -1950,6 +2040,23 @@ leaguesRouter.post('/guest-claims/:token/claim', async (req: Request, res: Respo
       [claim.leagueid, claim.guestuserid, req.userId]
     );
     await client.query(
+      `UPDATE leagueeventrsvps
+       SET userid = $3,
+           updatedat = now()
+       WHERE leagueid = $1 AND userid = $2`,
+      [claim.leagueid, claim.guestuserid, req.userId]
+    );
+    await client.query(
+      `UPDATE leagueposts SET createdby = $3 WHERE leagueid = $1 AND createdby = $2`,
+      [claim.leagueid, claim.guestuserid, req.userId]
+    );
+    await client.query(
+      `UPDATE leaguepostcomments SET userid = $3
+       WHERE postid IN (SELECT postid FROM leagueposts WHERE leagueid = $1)
+         AND userid = $2`,
+      [claim.leagueid, claim.guestuserid, req.userId]
+    );
+    await client.query(
       `UPDATE leagueauditlogs SET targetuserid = $3 WHERE leagueid = $1 AND targetuserid = $2`,
       [claim.leagueid, claim.guestuserid, req.userId]
     );
@@ -1969,8 +2076,10 @@ leaguesRouter.post('/guest-claims/:token/claim', async (req: Request, res: Respo
       `UPDATE leagueguestclaims
        SET claimedby = $2,
            claimedat = now()
-       WHERE claimid = $1`,
-      [claim.claimid, req.userId]
+       WHERE leagueid = $1
+         AND guestuserid = $3
+         AND claimedat IS NULL`,
+      [claim.leagueid, req.userId, claim.guestuserid]
     );
     await recordLeagueAudit(client, {
       leagueId: claim.leagueid,

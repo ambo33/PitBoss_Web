@@ -2874,10 +2874,10 @@ function JoinLeagueModal({ open, onClose, onSubmit, claimOptions = [], onClaim, 
             <div className="rounded-xl border border-pit-teal/25 bg-pit-teal/10 p-3">
               <p className="text-sm font-semibold text-white">Is one of these players you?</p>
               <p className="mt-1 text-xs leading-relaxed text-pit-muted">
-                Claiming your name brings over that season's results, payments, and RSVPs. Skip this if none of these are your spot.
+                Claiming your name brings over that league player's results, payments, RSVPs, and season history. Skip this if none of these are your spot.
               </p>
             </div>
-            <div className="space-y-2">
+            <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
               {claimOptions.map((player) => (
                 <button
                   key={player.userid}
@@ -2887,7 +2887,7 @@ function JoinLeagueModal({ open, onClose, onSubmit, claimOptions = [], onClaim, 
                   onClick={() => onClaim(player.userid)}
                 >
                   <span className="block text-sm font-semibold text-white">{player.displayname ?? 'League player'}</span>
-                  {player.seasonname && <span className="mt-1 block text-xs text-pit-muted">{player.seasonname}</span>}
+                  {player.seasonname && <span className="mt-1 block text-xs text-pit-muted">Seasons: {player.seasonname}</span>}
                 </button>
               ))}
             </div>
