@@ -149,7 +149,7 @@ export const api = {
   // Leagues
   getLeagues: () => get<League[]>('/leagues'),
   getLeagueSchedule: () => get<LeagueScheduleEvent[]>('/leagues/schedule'),
-  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[]; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string }) =>
+  createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[]; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string; eventsasgames?: boolean }) =>
     post<{ leagueid: string; invitecode: string; seasonid: string }>('/leagues', data),
   updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible'>>) =>
     patch<{ league: League; recalculatedResults?: number }>(`/leagues/${id}`, data),
@@ -178,9 +178,9 @@ export const api = {
   removeLeagueMember: (id: string, userId: string, seasonid?: string | null) =>
     del<{ success: boolean }>(`/leagues/${id}/members/${userId}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
   getLeague: (id: string, seasonid?: string | null) => get<LeagueDetail>(`/leagues/${id}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
-  createLeagueSeason: (id: string, data: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number }) =>
+  createLeagueSeason: (id: string, data: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean }) =>
     post<{ season: LeagueSeason; events: LeagueEvent[] }>(`/leagues/${id}/seasons`, data),
-  updateLeagueSeason: (id: string, seasonId: string, data: { name?: string; begindate?: string; enddate?: string; pereventfee?: number }) =>
+  updateLeagueSeason: (id: string, seasonId: string, data: { name?: string; begindate?: string; enddate?: string; pereventfee?: number; eventsasgames?: boolean }) =>
     patch<{ season: LeagueSeason }>(`/leagues/${id}/seasons/${seasonId}`, data),
   deleteLeagueSeason: (id: string, seasonId: string) =>
     del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}`),
@@ -571,6 +571,7 @@ export interface LeagueSeason {
   begindate: string;
   enddate: string;
   pereventfee: number;
+  eventsasgames?: boolean;
   active: boolean;
   createdat: string;
 }
@@ -583,6 +584,7 @@ export interface LeagueEvent {
   eventtime?: string | null;
   eventnumber?: number | null;
   eventfee?: number | null;
+  tournamentid?: string | null;
   resultcount?: number;
   active: boolean;
   createdat: string;
@@ -607,6 +609,7 @@ export interface LeagueScheduleEvent {
   eventtime?: string | null;
   eventnumber?: number | null;
   eventfee?: number | null;
+  tournamentid?: string | null;
   isadmin?: boolean;
   participating?: boolean;
   rsvpstatus?: LeagueEventRsvpStatus | string | null;

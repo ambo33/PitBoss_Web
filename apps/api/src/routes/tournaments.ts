@@ -73,6 +73,14 @@ async function canManageTournament(tournamentId: string, userId: string): Promis
             AND gm.approved = TRUE
             AND gm.admin = TRUE
         ) THEN TRUE
+        WHEN EXISTS (
+          SELECT 1
+          FROM leagueevents le
+          JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $2
+          WHERE le.tournamentid = t.tournamentid
+            AND lm.approved = TRUE
+            AND lm.admin = TRUE
+        ) THEN TRUE
         ELSE FALSE
       END AS canmanage
      FROM tournaments t
@@ -176,6 +184,11 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             CASE
               WHEN t.userid = $1 THEN TRUE
               WHEN t.groupid IS NOT NULL AND gm.admin = TRUE THEN TRUE
+              WHEN EXISTS (
+                SELECT 1 FROM leagueevents le
+                JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $1
+                WHERE le.tournamentid = t.tournamentid AND lm.approved = TRUE AND lm.admin = TRUE
+              ) THEN TRUE
               ELSE FALSE
             END AS canmanage,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -186,8 +199,13 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
        ON gm.groupid = t.groupid
       AND gm.userid = $1
       AND gm.approved = TRUE
-     WHERE t.userid = $1
-        OR (t.groupid IS NOT NULL AND gm.userid IS NOT NULL)
+     WHERE NOT EXISTS (
+            SELECT 1 FROM leagueevents linked_event WHERE linked_event.tournamentid = t.tournamentid
+          )
+       AND (
+         t.userid = $1
+         OR (t.groupid IS NOT NULL AND gm.userid IS NOT NULL)
+       )
      ORDER BY t.createdate DESC`,
     [req.userId]
   );
@@ -472,6 +490,11 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
               WHEN $3 = TRUE THEN TRUE
               WHEN t.userid = $2 THEN TRUE
               WHEN t.groupid IS NOT NULL AND gm.admin = TRUE THEN TRUE
+              WHEN EXISTS (
+                SELECT 1 FROM leagueevents le
+                JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $2
+                WHERE le.tournamentid = t.tournamentid AND lm.approved = TRUE AND lm.admin = TRUE
+              ) THEN TRUE
               ELSE FALSE
             END AS canmanage,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
@@ -736,6 +759,23 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
      seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination,
      bountystartplace !== undefined || forceBountyStartPlace, effectiveStartPlace ?? null, normalizedBountyMinPayout]
   );
+  await query(
+    `UPDATE leagueevents
+     SET name = COALESCE($2, name),
+         eventdate = COALESCE($3::DATE, eventdate),
+         eventtime = COALESCE(NULLIF(left($4::STRING, 5), ''), eventtime)
+     WHERE tournamentid = $1`,
+    [req.params.id, name ?? null, tourneydate ?? null, tourneytime ?? null]
+  );
+  await query(
+    `UPDATE tournaments t
+     SET buyin = COALESCE(s.pereventfee, t.buyin)
+     FROM leagueevents e
+     JOIN leagueseasons s ON s.seasonid = e.seasonid
+     WHERE e.tournamentid = t.tournamentid
+       AND t.tournamentid = $1`,
+    [req.params.id]
+  );
   if (bountyenabled === false) {
     await query(
       `UPDATE tournamentplayers
@@ -901,6 +941,14 @@ tournamentsRouter.post('/:id/bounties/mystery-assign', async (req: Request, res:
 tournamentsRouter.delete('/:id', async (req: Request, res: Response) => {
   if (!await canManageTournament(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'Forbidden' }); return;
+  }
+  const linkedLeagueEvent = await queryOne<{ eventid: string }>(
+    `SELECT eventid FROM leagueevents WHERE tournamentid = $1 LIMIT 1`,
+    [req.params.id]
+  );
+  if (linkedLeagueEvent) {
+    res.status(409).json({ error: 'League event tournaments are managed from their league season and cannot be deleted separately.' });
+    return;
   }
   const { notifyPlayers = false } = (req.body ?? {}) as { notifyPlayers?: boolean };
 

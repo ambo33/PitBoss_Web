@@ -605,6 +605,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         showupbonuspoints INT,
         bestfinishcount INT,
         pointslookup JSONB,
+        eventsasgames BOOL DEFAULT FALSE,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
@@ -615,6 +616,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS showupbonuspoints INT`);
     await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS bestfinishcount INT`);
     await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS pointslookup JSONB`);
+    await client.query(`ALTER TABLE leagueseasons ADD COLUMN IF NOT EXISTS eventsasgames BOOL DEFAULT FALSE`);
+    await client.query(`UPDATE leagueseasons SET eventsasgames = FALSE WHERE eventsasgames IS NULL`);
     await client.query(`
       UPDATE leagueseasons s
       SET pereventfee = COALESCE(l.pereventfee, 0)
@@ -694,6 +697,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         eventtime STRING(5),
         eventnumber INT,
         eventfee DECIMAL(10,2),
+        tournamentid UUID REFERENCES tournaments(tournamentid) ON DELETE SET NULL,
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
@@ -701,6 +705,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS seasonid UUID REFERENCES leagueseasons(seasonid) ON DELETE CASCADE`);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventtime STRING(5)`);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventfee DECIMAL(10,2)`);
+    await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS tournamentid UUID REFERENCES tournaments(tournamentid) ON DELETE SET NULL`);
     await client.query(`
       UPDATE leagueevents e
       SET seasonid = (
@@ -799,6 +804,10 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueevents_league
       ON leagueevents (leagueid, eventnumber)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueevents_tournament
+      ON leagueevents (tournamentid)
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueeventrsvps_event

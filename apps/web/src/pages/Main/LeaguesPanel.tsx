@@ -304,7 +304,7 @@ function LeagueDetailView({
     },
   });
   const createSeasonMutation = useMutation({
-    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number }) => api.createLeagueSeason(league.leagueid, payload),
+    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean }) => api.createLeagueSeason(league.leagueid, payload),
     onSuccess: (created) => {
       setSelectedSeasonId(created.season.seasonid);
       setSelectedEvent(null);
@@ -417,10 +417,10 @@ function LeagueDetailView({
     },
   });
   const updateNamesMutation = useMutation({
-    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean }) => {
+    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean; eventsasgames?: boolean }) => {
       await api.updateLeague(league.leagueid, { name: payload.leagueName, memberledgervisible: payload.memberledgervisible });
       if (payload.seasonId && payload.seasonName) {
-        await api.updateLeagueSeason(league.leagueid, payload.seasonId, { name: payload.seasonName });
+        await api.updateLeagueSeason(league.leagueid, payload.seasonId, { name: payload.seasonName, eventsasgames: payload.eventsasgames });
       }
     },
     onSuccess: async () => {
@@ -828,6 +828,7 @@ function LeagueDetailView({
                 currentEventId={currentEvent?.eventid ?? null}
                 onSelect={setSelectedEvent}
                 onEdit={setEditingEvent}
+                showRunLinks={Boolean(selectedSeason?.eventsasgames)}
               />
             )}
           </div>
@@ -837,6 +838,7 @@ function LeagueDetailView({
               currentEventId={currentEvent?.eventid ?? null}
               onSelect={setSelectedEvent}
               onEdit={setEditingEvent}
+              showRunLinks={Boolean(selectedSeason?.eventsasgames)}
             />
             <EventTrackerCard
               detail={detail}
@@ -977,11 +979,13 @@ function LeagueEventListCard({
   currentEventId,
   onSelect,
   onEdit,
+  showRunLinks,
 }: {
   events: LeagueEvent[];
   currentEventId: string | null;
   onSelect: (event: LeagueEvent) => void;
   onEdit: (event: LeagueEvent) => void;
+  showRunLinks: boolean;
 }) {
   return (
     <section className="card space-y-3">
@@ -1017,6 +1021,15 @@ function LeagueEventListCard({
               >
                 <Pencil size={13} />
               </button>
+              {showRunLinks && event.tournamentid && (
+                <a
+                  className="btn-primary h-8 shrink-0 px-2.5 py-1.5 text-xs"
+                  href={`/tournament/${event.tournamentid}`}
+                  onClick={(clickEvent) => clickEvent.stopPropagation()}
+                >
+                  Run
+                </a>
+              )}
             </div>
           ))}
         </div>
@@ -1062,9 +1075,9 @@ function EventTrackerCard({
         </div>
         <div className="flex flex-wrap gap-2">
           {event && (
-            <a className="chip hover:border-pit-teal/50 hover:text-white" href={`/league/${leagueId}/event/${event.eventid}`}>
+            <a className="chip hover:border-pit-teal/50 hover:text-white" href={event.tournamentid ? `/tournament/${event.tournamentid}` : `/league/${leagueId}/event/${event.eventid}`}>
               <Copy size={13} />
-              Player lobby
+              {event.tournamentid ? 'Run tournament' : 'Player lobby'}
             </a>
           )}
           <span className="chip">{resultsCount} finishes</span>
@@ -1073,15 +1086,22 @@ function EventTrackerCard({
       {event ? (
         <>
           <LeagueEventRsvpPanel detail={detail} event={event} />
-          <EventRosterLogger
-            detail={detail}
-            event={event}
-            onLog={onLog}
-            onMarkAllPaid={onMarkAllPaid}
-            onTogglePaid={onTogglePaid}
-            loading={loading}
-            error={error}
-          />
+          {event.tournamentid ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-pit-teal/25 bg-pit-teal/5 p-3">
+              <p className="text-sm text-pit-text">Check-ins, payments, seating, and finishes are tracked in the tournament runner.</p>
+              <a className="btn-primary px-3 py-2 text-xs" href={`/tournament/${event.tournamentid}`}>Open runner</a>
+            </div>
+          ) : (
+            <EventRosterLogger
+              detail={detail}
+              event={event}
+              onLog={onLog}
+              onMarkAllPaid={onMarkAllPaid}
+              onTogglePaid={onTogglePaid}
+              loading={loading}
+              error={error}
+            />
+          )}
         </>
       ) : (
         <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
@@ -2665,7 +2685,7 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number; seasonname: string; seasonbegindate: string; seasonenddate: string }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number; seasonname: string; seasonbegindate: string; seasonenddate: string; eventsasgames: boolean }) => void;
   loading: boolean;
   error?: string;
 }) {
@@ -2684,6 +2704,7 @@ function CreateLeagueModal({
   const [showupbonuspoints, setShowupbonuspoints] = useState('300');
   const [bestfinishcount, setBestfinishcount] = useState('7');
   const [eventcount, setEventcount] = useState('10');
+  const [eventsasgames, setEventsasgames] = useState(false);
   const [pointslookup, setPointslookup] = useState<LeaguePointRule[]>(() => generateLeaguePoints(36));
   const playerCount = Math.max(2, Number(expectedplayercount) || 36);
   const totalEventCount = Math.max(1, Math.min(100, Number(eventcount) || 1));
@@ -2716,6 +2737,7 @@ function CreateLeagueModal({
               seasonname,
               seasonbegindate,
               seasonenddate,
+              eventsasgames,
             })}
           >
             {loading ? 'Creating...' : 'Create League'}
@@ -2826,6 +2848,20 @@ function CreateLeagueModal({
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" checked={approvalneeded} onChange={(event) => setApprovalneeded(event.target.checked)} />
           <span className="text-sm text-pit-text">Require approval to join</span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-pit-teal/25 bg-pit-teal/5 p-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-pit-teal"
+            checked={eventsasgames}
+            onChange={(event) => setEventsasgames(event.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-semibold text-white">Run season events as tournaments</span>
+            <span className="mt-1 block text-xs leading-5 text-pit-text">
+              Give every event the standard check-in, blind timer, seating, payment, knockout, and TV board flow.
+            </span>
+          </span>
         </label>
       </div>
     </Modal>
@@ -3028,7 +3064,7 @@ function CreateSeasonModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; begindate: string; enddate: string; eventcount?: number }) => void;
+  onSubmit: (data: { name: string; begindate: string; enddate: string; eventcount?: number; eventsasgames?: boolean }) => void;
   nextSeasonNumber: number;
   loading: boolean;
   error?: string;
@@ -3041,6 +3077,7 @@ function CreateSeasonModal({
     return date.toISOString().slice(0, 10);
   });
   const [eventcount, setEventcount] = useState('10');
+  const [eventsasgames, setEventsasgames] = useState(false);
   useEffect(() => {
     if (!open) return;
     setName(`Season ${nextSeasonNumber}`);
@@ -3049,6 +3086,7 @@ function CreateSeasonModal({
     date.setMonth(date.getMonth() + 6);
     setEnddate(date.toISOString().slice(0, 10));
     setEventcount('10');
+    setEventsasgames(false);
   }, [nextSeasonNumber, open]);
 
   return (
@@ -3063,7 +3101,7 @@ function CreateSeasonModal({
             type="button"
             className="btn-primary"
             disabled={loading || !name.trim() || !begindate || !enddate || enddate < begindate}
-            onClick={() => onSubmit({ name, begindate, enddate, eventcount: Math.max(0, Math.min(100, Number(eventcount) || 0)) })}
+            onClick={() => onSubmit({ name, begindate, enddate, eventcount: Math.max(0, Math.min(100, Number(eventcount) || 0)), eventsasgames })}
           >
             {loading ? 'Creating...' : 'Create Season'}
           </button>
@@ -3086,6 +3124,20 @@ function CreateSeasonModal({
         <label className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Total events</span>
           <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
+        </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-pit-teal/25 bg-pit-teal/5 p-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-pit-teal"
+            checked={eventsasgames}
+            onChange={(event) => setEventsasgames(event.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-semibold text-white">Run season events as tournaments</span>
+            <span className="mt-1 block text-xs leading-5 text-pit-text">
+              Create live tournament runners for this season's events with check-in, blinds, seating, payments, knockouts, and TV display.
+            </span>
+          </span>
         </label>
         <p className="text-sm leading-6 text-pit-text">
           A season is its own roster, standings, events, and fee ledger. After creating it, add only the league members who are playing this season.
@@ -3110,18 +3162,20 @@ function LeagueSettingsModal({
   loading: boolean;
   error?: string;
   onClose: () => void;
-  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean }) => void;
+  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean; eventsasgames?: boolean }) => void;
 }) {
   const [leagueName, setLeagueName] = useState(league.name);
   const [seasonName, setSeasonName] = useState(season?.name ?? '');
   const [memberLedgerVisible, setMemberLedgerVisible] = useState(Boolean(league.memberledgervisible));
+  const [eventsasgames, setEventsasgames] = useState(Boolean(season?.eventsasgames));
 
   useEffect(() => {
     if (!open) return;
     setLeagueName(league.name);
     setSeasonName(season?.name ?? '');
     setMemberLedgerVisible(Boolean(league.memberledgervisible));
-  }, [league.memberledgervisible, league.name, open, season?.name]);
+    setEventsasgames(Boolean(season?.eventsasgames));
+  }, [league.memberledgervisible, league.name, open, season?.eventsasgames, season?.name]);
 
   const canSave = leagueName.trim().length > 0 && (!season || seasonName.trim().length > 0);
 
@@ -3142,6 +3196,7 @@ function LeagueSettingsModal({
               seasonId: season?.seasonid ?? null,
               seasonName: season ? seasonName.trim() : undefined,
               memberledgervisible: memberLedgerVisible,
+              eventsasgames,
             })}
           >
             {loading ? 'Saving...' : 'Save Settings'}
@@ -3179,6 +3234,25 @@ function LeagueSettingsModal({
             </span>
           </span>
         </label>
+        {season && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-pit-teal/25 bg-pit-teal/5 p-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-pit-teal"
+              checked={eventsasgames}
+              disabled={Boolean(season.eventsasgames)}
+              onChange={(event) => setEventsasgames(event.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-semibold text-white">Run season events as tournaments</span>
+              <span className="mt-1 block text-xs leading-5 text-pit-text">
+                {season.eventsasgames
+                  ? 'Tournament runners are active for this season and remain attached to preserve event history.'
+                  : "Create and connect tournament runners for this season's events. Existing events are linked when you save."}
+              </span>
+            </span>
+          </label>
+        )}
       </div>
     </Modal>
   );

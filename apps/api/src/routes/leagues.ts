@@ -53,6 +53,7 @@ type SerializedLeague = Omit<LeagueRow, 'pointslookup' | 'finalmultiplierlookup'
 type LeagueSeasonRow = {
   seasonid: string;
   leagueid: string;
+  ownerid?: string;
   name: string;
   begindate: string;
   enddate: string;
@@ -62,6 +63,7 @@ type LeagueSeasonRow = {
   showupbonuspoints?: number | null;
   bestfinishcount?: number | null;
   pointslookup?: LeaguePointRule[] | string | null;
+  eventsasgames?: boolean | null;
   active: boolean;
   createdat: string;
 };
@@ -80,6 +82,7 @@ type LeagueEventRow = {
   eventtime: string | null;
   eventnumber: number | null;
   eventfee: number | null;
+  tournamentid?: string | null;
   resultcount?: number;
   active: boolean;
   createdat: string;
@@ -296,6 +299,7 @@ function serializeSeason(row: LeagueSeasonRow) {
       : typeof row.pointslookup === 'string'
         ? JSON.parse(row.pointslookup) as LeaguePointRule[]
         : row.pointslookup,
+    eventsasgames: Boolean(row.eventsasgames),
   };
 }
 
@@ -405,6 +409,7 @@ async function getLeagueSeasons(leagueId: string) {
             showupbonuspoints,
             bestfinishcount,
             pointslookup,
+            COALESCE(eventsasgames, FALSE) AS eventsasgames,
             active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
@@ -423,6 +428,7 @@ async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
               showupbonuspoints,
               bestfinishcount,
               pointslookup,
+              COALESCE(eventsasgames, FALSE) AS eventsasgames,
               active, createdat
        FROM leagueseasons
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
@@ -437,6 +443,7 @@ async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
             showupbonuspoints,
             bestfinishcount,
             pointslookup,
+            COALESCE(eventsasgames, FALSE) AS eventsasgames,
             active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
@@ -453,6 +460,123 @@ async function addSeasonParticipant(client: PoolClient, leagueId: string, season
      ON CONFLICT (seasonid, userid) DO UPDATE SET participating = $4`,
     [seasonId, leagueId, userId, participating]
   );
+  if (participating) {
+    await client.query(
+      `INSERT INTO tournamentplayers (tournamentid, userid)
+       SELECT e.tournamentid, $3
+       FROM leagueevents e
+       WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.tournamentid IS NOT NULL
+       ON CONFLICT DO NOTHING`,
+      [leagueId, seasonId, userId]
+    );
+  } else {
+    await client.query(
+      `DELETE FROM tournamentplayers tp
+       WHERE tp.userid = $3
+         AND tp.tournamentid IN (
+           SELECT e.tournamentid
+           FROM leagueevents e
+           WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.tournamentid IS NOT NULL
+         )`,
+      [leagueId, seasonId, userId]
+    );
+  }
+}
+
+const LEAGUE_EVENT_BLINDS = [
+  [1, 25, 50], [2, 50, 100], [3, 75, 150], [4, 100, 200],
+  [5, 150, 300], [6, 200, 400], [7, 300, 600], [8, 500, 1000],
+  [9, 800, 1600], [10, 1200, 2400], [11, 1800, 3600], [12, 2500, 5000],
+] as const;
+
+async function createLeagueEventTournament(client: PoolClient, event: LeagueEventRow): Promise<string> {
+  const season = await client.query<LeagueSeasonRow>(
+    `SELECT s.seasonid, s.leagueid, l.userid AS ownerid, s.name, s.begindate, s.enddate,
+            COALESCE(s.expectedplayercount, l.expectedplayercount, 0) AS expectedplayercount,
+            CAST(COALESCE(s.pereventfee, l.pereventfee, 0) AS DECIMAL) AS pereventfee,
+            COALESCE(s.eventsasgames, FALSE) AS eventsasgames
+     FROM leagueseasons s
+     JOIN leagues l ON l.leagueid = s.leagueid
+     WHERE s.seasonid = $1`,
+    [event.seasonid]
+  );
+  const seasonRow = season.rows[0];
+  if (!seasonRow) throw new Error('League season not found for event.');
+  const fee = Number(seasonRow.pereventfee ?? 0);
+  const maxPlayers = Math.max(0, Number(seasonRow.expectedplayercount ?? 0));
+  const payoutStructure = JSON.stringify({ mode: 'count', value: Math.min(3, Math.max(1, maxPlayers || 1)) });
+  const created = await client.query<{ tournamentid: string }>(
+    `INSERT INTO tournaments
+       (userid, name, date, time, buyin, adjustment, rebuycost, rebuychips, addoncost, addonchips,
+        maxplayers, playerselftracking, groupid, payoutstructure, bountyenabled, bountymode, bountyprizepool,
+        bountypooltype, bountyroundingdenomination)
+     VALUES ($1, $2, $3::DATE, $4, $5, 0, 0, 0, 0, 0, $6, TRUE, NULL, $7, FALSE, 'manual', 0, 'amount', 5)
+     RETURNING tournamentid`,
+    [seasonRow.ownerid, event.name, event.eventdate, event.eventtime, fee, maxPlayers, payoutStructure]
+  );
+  const tournamentId = created.rows[0]?.tournamentid;
+  if (!tournamentId) throw new Error('Failed to create league event tournament.');
+
+  const blindValues: unknown[] = [];
+  const placeholders = LEAGUE_EVENT_BLINDS.map(([level, smallBlind, bigBlind], index) => {
+    const offset = index * 8;
+    blindValues.push(tournamentId, level, `Level ${level}`, smallBlind, bigBlind, bigBlind, 20, level === LEAGUE_EVENT_BLINDS.length);
+    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7},$${offset + 8})`;
+  }).join(',');
+  await client.query(
+    `INSERT INTO blindstructure (tournamentid, level, label, smallblind, bigblind, ante, minutes, islastlevel)
+     VALUES ${placeholders}`,
+    blindValues
+  );
+
+  const participants = await client.query<{ userid: string }>(
+    `SELECT lsp.userid
+     FROM leagueseasonparticipants lsp
+     JOIN leaguemembers lm ON lm.leagueid = lsp.leagueid AND lm.userid = lsp.userid
+     WHERE lsp.seasonid = $1 AND lsp.leagueid = $2
+       AND lsp.participating = TRUE AND lm.approved = TRUE`,
+    [event.seasonid, event.leagueid]
+  );
+  for (const participant of participants.rows) {
+    await client.query(
+      `INSERT INTO tournamentplayers (tournamentid, userid) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [tournamentId, participant.userid]
+    );
+  }
+  await client.query(
+    `UPDATE tournamentplayers tp
+     SET placed = r.placed,
+         checkedin = CASE WHEN COALESCE(r.dnf, FALSE) THEN FALSE ELSE TRUE END,
+         paid = COALESCE((
+           SELECT SUM(p.amount) FROM leaguepayments p
+           WHERE p.leagueid = $1 AND p.seasonid = $2 AND p.eventid = $3
+             AND p.userid = tp.userid AND p.paymenttype = 'event'
+         ), 0) >= COALESCE((SELECT s2.pereventfee FROM leagueseasons s2 WHERE s2.seasonid = $2), 0)
+     FROM leagueresults r
+     WHERE tp.tournamentid = $4 AND r.eventid = $3 AND r.userid = tp.userid`,
+    [event.leagueid, event.seasonid, event.eventid, tournamentId]
+  );
+  await client.query(
+    `UPDATE leagueevents SET tournamentid = $2 WHERE eventid = $1`,
+    [event.eventid, tournamentId]
+  );
+  return tournamentId;
+}
+
+async function ensureLeagueEventTournament(client: PoolClient, eventId: string): Promise<string | null> {
+  const result = await client.query<LeagueEventRow>(
+    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber,
+            CAST(e.eventfee AS DECIMAL) AS eventfee, e.tournamentid
+     FROM leagueevents e
+     JOIN leagueseasons s ON s.seasonid = e.seasonid AND COALESCE(s.eventsasgames, FALSE) = TRUE
+     WHERE e.eventid = $1 AND e.active = TRUE
+     FOR UPDATE`,
+    [eventId]
+  );
+  const event = result.rows[0];
+  if (!event) return null;
+  if (event.tournamentid) return event.tournamentid;
+  return createLeagueEventTournament(client, event);
 }
 
 function isLeagueGuestPlaceholderEmail(email: string | null | undefined) {
@@ -553,10 +677,21 @@ async function createLeagueEventStubs(client: PoolClient, leagueId: string, seas
     const result = await client.query<LeagueEventRow>(
       `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventtime, eventnumber)
        VALUES ($1, $2, $3, NULL, NULL, $4)
-       RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
+       RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                 CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat`,
       [leagueId, seasonId, `Event #${number}`, number]
     );
-    if (result.rows[0]) rows.push(result.rows[0]);
+    if (result.rows[0]) {
+      const event = result.rows[0];
+      await ensureLeagueEventTournament(client, event.eventid);
+      const refreshed = await client.query<LeagueEventRow>(
+        `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
+         FROM leagueevents WHERE eventid = $1`,
+        [event.eventid]
+      );
+      if (refreshed.rows[0]) rows.push(refreshed.rows[0]);
+    }
   }
   return rows;
 }
@@ -618,6 +753,7 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     eventtime: string | null;
     eventnumber: number | null;
     eventfee: number | null;
+    tournamentid: string | null;
     isadmin: boolean;
     participating: boolean;
     rsvpstatus: string | null;
@@ -630,6 +766,7 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
             e.eventtime,
             e.eventnumber,
             CAST(COALESCE(s.pereventfee, l.pereventfee, 0) AS DECIMAL) AS eventfee,
+            e.tournamentid,
             lm.admin AS isadmin,
             COALESCE(self_lsp.participating, FALSE) AS participating,
             rsvp.status AS rsvpstatus
@@ -846,12 +983,30 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  await query(`UPDATE leagues SET active = FALSE WHERE leagueid = $1`, [req.params.id]);
-  res.json({ success: true });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM tournaments
+       WHERE tournamentid IN (
+         SELECT tournamentid FROM leagueevents
+         WHERE leagueid = $1 AND tournamentid IS NOT NULL
+       )`,
+      [req.params.id]
+    );
+    await client.query(`UPDATE leagues SET active = FALSE WHERE leagueid = $1`, [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
-  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string };
+  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string; eventsasgames?: boolean };
   const name = String(body.name ?? '').trim().slice(0, 160);
   if (!name) {
     res.status(400).json({ error: 'League name required.' });
@@ -897,10 +1052,11 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
         [league.leagueid, req.userId]
       );
       const seasonResult = await client.query<LeagueSeasonRow>(
-        `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat`,
-        [league.leagueid, seasonName, seasonBeginDate, seasonEndDate, perEventFee]
+        `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee, eventsasgames)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+                   COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
+        [league.leagueid, seasonName, seasonBeginDate, seasonEndDate, perEventFee, Boolean(body.eventsasgames)]
       );
       const season = seasonResult.rows[0];
       await addSeasonParticipant(client, league.leagueid, season.seasonid, req.userId!, true);
@@ -924,6 +1080,7 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
           leagueFee,
           perEventFee,
           showupBonus,
+          eventsAsGames: Boolean(body.eventsasgames),
         },
       });
       await client.query('COMMIT');
@@ -1223,7 +1380,7 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; begindate?: string; enddate?: string; eventcount?: number; pereventfee?: number };
+  const body = req.body as { name?: string; begindate?: string; enddate?: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean };
   const name = String(body.name ?? 'New Season').trim().slice(0, 160) || 'New Season';
   const today = new Date().toISOString().slice(0, 10);
   const beginDate = isoDate(body.begindate, today);
@@ -1239,10 +1396,11 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
   try {
     await client.query('BEGIN');
     const seasonResult = await client.query<LeagueSeasonRow>(
-      `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat`,
-      [req.params.id, name, beginDate, endDate, perEventFee]
+      `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee, eventsasgames)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+                 COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
+      [req.params.id, name, beginDate, endDate, perEventFee, Boolean(body.eventsasgames)]
     );
     const season = seasonResult.rows[0];
     const events = eventCount > 0 ? await createLeagueEventStubs(client, req.params.id, season.seasonid, 1, eventCount) : [];
@@ -1276,9 +1434,10 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; begindate?: string; enddate?: string; pereventfee?: number };
+  const body = req.body as { name?: string; begindate?: string; enddate?: string; pereventfee?: number; eventsasgames?: boolean };
   const existing = await queryOne<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat
+    `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+            COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
     [req.params.id, req.params.seasonId]
@@ -1291,6 +1450,7 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
   const hasBeginDate = Object.prototype.hasOwnProperty.call(body, 'begindate');
   const hasEndDate = Object.prototype.hasOwnProperty.call(body, 'enddate');
   const hasPerEventFee = Object.prototype.hasOwnProperty.call(body, 'pereventfee');
+  const hasEventsAsGames = Object.prototype.hasOwnProperty.call(body, 'eventsasgames');
   const name = hasName ? String(body.name ?? '').trim().slice(0, 160) : existing.name;
   if (!name) {
     res.status(400).json({ error: 'Season name required.' });
@@ -1303,6 +1463,11 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     return;
   }
   const perEventFee = hasPerEventFee ? Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100) : Number(existing.pereventfee || 0);
+  const eventsAsGames = hasEventsAsGames ? Boolean(body.eventsasgames) : Boolean(existing.eventsasgames);
+  if (Boolean(existing.eventsasgames) && !eventsAsGames) {
+    res.status(409).json({ error: 'Tournament runners cannot be disabled after they are created for a season.' });
+    return;
+  }
 
   const client = await pool.connect();
   try {
@@ -1312,12 +1477,37 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
        SET name = $3,
            begindate = $4::DATE,
            enddate = $5::DATE,
-           pereventfee = $6
+           pereventfee = $6,
+           eventsasgames = $7
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE
-       RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee, active, createdat`,
-      [req.params.id, req.params.seasonId, name, beginDate, endDate, perEventFee]
+       RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+                 COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
+      [req.params.id, req.params.seasonId, name, beginDate, endDate, perEventFee, eventsAsGames]
     );
     const row = updated.rows[0];
+    if (hasPerEventFee) {
+      await client.query(
+        `UPDATE leagueevents SET eventfee = $3
+         WHERE leagueid = $1 AND seasonid = $2 AND active = TRUE`,
+        [req.params.id, req.params.seasonId, perEventFee]
+      );
+      await client.query(
+        `UPDATE tournaments t SET buyin = $3
+         FROM leagueevents e
+         WHERE e.tournamentid = t.tournamentid
+           AND e.leagueid = $1
+           AND e.seasonid = $2
+           AND e.active = TRUE`,
+        [req.params.id, req.params.seasonId, perEventFee]
+      );
+    }
+    if (eventsAsGames) {
+      const events = await client.query<{ eventid: string }>(
+        `SELECT eventid FROM leagueevents WHERE leagueid = $1 AND seasonid = $2 AND active = TRUE AND tournamentid IS NULL`,
+        [req.params.id, req.params.seasonId]
+      );
+      for (const event of events.rows) await ensureLeagueEventTournament(client, event.eventid);
+    }
     await recordLeagueAudit(client, {
       leagueId: req.params.id,
       seasonId: req.params.seasonId,
@@ -1330,12 +1520,14 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
           begindate: existing.begindate,
           enddate: existing.enddate,
           pereventfee: Number(existing.pereventfee || 0),
+          eventsasgames: Boolean(existing.eventsasgames),
         },
         current: {
           name: row.name,
           begindate: row.begindate,
           enddate: row.enddate,
           pereventfee: Number(row.pereventfee || 0),
+          eventsasgames: Boolean(row.eventsasgames),
         },
       },
     });
@@ -1397,6 +1589,14 @@ leaguesRouter.post('/:id/seasons/:seasonId/members', async (req: Request, res: R
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM tournaments
+       WHERE tournamentid IN (
+         SELECT tournamentid FROM leagueevents
+         WHERE leagueid = $1 AND seasonid = $2 AND tournamentid IS NOT NULL
+       )`,
+      [req.params.id, req.params.seasonId]
+    );
     await client.query(
       `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
        SELECT $2, $1, unnest($3::UUID[]), TRUE
@@ -2494,7 +2694,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     };
   });
   const events = await query<LeagueEventRow>(
-    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber, CAST(e.eventfee AS DECIMAL) AS eventfee, e.active, e.createdat,
+    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber,
+            CAST(e.eventfee AS DECIMAL) AS eventfee, e.tournamentid, e.active, e.createdat,
             (SELECT count(*) FROM leagueresults WHERE eventid = e.eventid) AS resultcount
      FROM leagueevents e
      WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.active = TRUE
@@ -2665,7 +2866,8 @@ leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
       }
       let remaining = amount;
       const events = await client.query<LeagueEventRow>(
-        `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat
+        `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
          FROM leagueevents
          WHERE leagueid = $1 AND seasonid = $2 AND active = TRUE
          ORDER BY eventnumber ASC NULLS LAST, eventdate ASC NULLS LAST, eventtime ASC NULLS LAST, createdat ASC`,
@@ -2822,7 +3024,8 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-paid', async (req: Reques
   }
   const body = req.body as { userId?: string; all?: boolean; paidat?: string };
   const event = await queryOne<LeagueEventRow>(
-    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
      FROM leagueevents
      WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
     [req.params.id, req.params.eventId]
@@ -2949,21 +3152,34 @@ leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
       const inserted = await client.query<LeagueEventRow>(
         `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventtime, eventnumber, eventfee)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
+         RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                   CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat`,
         [req.params.id, season.seasonid, name, date, time, eventNumber, eventFee]
       );
       const row = inserted.rows[0] ?? null;
+      if (row) {
+        await ensureLeagueEventTournament(client, row.eventid);
+      }
+      const refreshed = row
+        ? await client.query<LeagueEventRow>(
+          `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                  CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
+           FROM leagueevents WHERE eventid = $1`,
+          [row.eventid]
+        )
+        : null;
+      const outputRow = refreshed?.rows[0] ?? row;
       await recordLeagueAudit(client, {
         leagueId: req.params.id,
         seasonId: season.seasonid,
-        eventId: row?.eventid ?? null,
+        eventId: outputRow?.eventid ?? null,
         actorId: req.userId,
         action: 'event_created',
         summary: 'League event was created.',
         details: { name, eventdate: date, eventtime: time, eventnumber: eventNumber, eventfee: eventFee },
       });
       await client.query('COMMIT');
-      res.status(201).json({ event: row, events: row ? [row] : [] });
+      res.status(201).json({ event: outputRow, events: outputRow ? [outputRow] : [] });
       return;
     } catch (err) {
       await client.query('ROLLBACK');
@@ -3016,7 +3232,8 @@ leaguesRouter.patch('/:id/events/:eventId', async (req: Request, res: Response) 
   const eventNumber = hasNumber && body.eventnumber != null ? Math.max(1, Math.round(Number(body.eventnumber) || 1)) : null;
   const eventFee = hasFee && body.eventfee != null ? Math.max(0, Math.round(Number(body.eventfee) * 100) / 100) : null;
   const existingEvent = await queryOne<LeagueEventRow>(
-    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
      FROM leagueevents
      WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
     [req.params.id, req.params.eventId]
@@ -3036,7 +3253,8 @@ leaguesRouter.patch('/:id/events/:eventId', async (req: Request, res: Response) 
            eventnumber = CASE WHEN $9 THEN $10::INT ELSE eventnumber END,
            eventfee = CASE WHEN $11 THEN $12::DECIMAL ELSE eventfee END
        WHERE leagueid = $1 AND eventid = $2 AND active = TRUE
-       RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber, CAST(eventfee AS DECIMAL) AS eventfee, active, createdat`,
+       RETURNING eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+                 CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat`,
       [
         req.params.id,
         req.params.eventId,
@@ -3057,6 +3275,21 @@ leaguesRouter.patch('/:id/events/:eventId', async (req: Request, res: Response) 
       await client.query('ROLLBACK');
       res.status(404).json({ error: 'League event not found.' });
       return;
+    }
+    if (row.tournamentid) {
+      await client.query(
+        `UPDATE tournaments t
+         SET name = $2,
+             date = $3::DATE,
+             time = $4,
+             buyin = COALESCE((
+               SELECT s.pereventfee
+               FROM leagueseasons s
+               WHERE s.seasonid = $5
+             ), buyin)
+         WHERE t.tournamentid = $1`,
+        [row.tournamentid, row.name, row.eventdate, row.eventtime, row.seasonid]
+      );
     }
     await recordLeagueAudit(client, {
       leagueId: req.params.id,
@@ -3125,7 +3358,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
   }
   const event = await queryOne<LeagueEventRow>(
     `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
-            CAST(eventfee AS DECIMAL) AS eventfee, active, createdat
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
      FROM leagueevents
      WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
     [req.params.eventId, req.params.id]
@@ -3206,6 +3439,16 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       [event.eventid, req.params.id, targetUserId, placed, dnf, points, showupBonus, req.userId]
     );
     row = inserted.rows[0] ?? null;
+    if (event.tournamentid) {
+      await client.query(
+        `INSERT INTO tournamentplayers (tournamentid, userid, checkedin, placed)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tournamentid, userid) DO UPDATE SET
+           checkedin = EXCLUDED.checkedin,
+           placed = EXCLUDED.placed`,
+        [event.tournamentid, targetUserId, !dnf, placed]
+      );
+    }
     let removedEventFeePayments = 0;
     if (dnf) {
       const deletedPayments = await client.query(

@@ -340,6 +340,13 @@ export default function TournamentsPanel({
                   navigate(`/cash-games/${item.game.id}/admin`);
                   return;
                 }
+                if (item.tournamentId) {
+                  navigate(
+                    item.canManage ? `/tournament/${item.tournamentId}` : `/lobby/${item.tournamentId}`,
+                    item.canManage ? { state: { tab: 'run' } } : undefined
+                  );
+                  return;
+                }
                 navigate('/', { state: { tab: 'leagues', leagueId: item.leagueId } });
               }}
               onRegister={(tournament) => registerMutation.mutate(tournament)}
@@ -699,6 +706,7 @@ type ScheduleItem =
       canManage: boolean;
       leagueId: string;
       eventId: string;
+      tournamentId?: string | null;
       isParticipant: boolean;
       rsvpStatus?: string | null;
     }
@@ -1591,6 +1599,7 @@ function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
     canManage: Boolean(event.isadmin),
     leagueId: event.leagueid,
     eventId: event.eventid,
+    tournamentId: event.tournamentid ?? null,
     isParticipant: Boolean(event.participating),
     rsvpStatus: event.rsvpstatus ?? null,
   };

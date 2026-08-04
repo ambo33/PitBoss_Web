@@ -281,10 +281,13 @@ export async function getOwnedGroupCount(userId: string): Promise<number> {
 export async function getUpcomingHostedTournamentCount(userId: string): Promise<number> {
   const row = await queryOne<{ count: string }>(
     `SELECT count(*)::STRING AS count
-     FROM tournaments
-     WHERE userid = $1
-       AND date IS NOT NULL
-       AND CAST(date AS STRING) >= $2`,
+     FROM tournaments t
+     WHERE t.userid = $1
+       AND t.date IS NOT NULL
+       AND CAST(t.date AS STRING) >= $2
+       AND NOT EXISTS (
+         SELECT 1 FROM leagueevents le WHERE le.tournamentid = t.tournamentid
+       )`,
     [userId, todayInAppTimezone()]
   );
   return Number(row?.count ?? 0);

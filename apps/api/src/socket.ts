@@ -156,6 +156,11 @@ async function canControlTournamentTimer(
             AND gm.approved = TRUE
             AND gm.admin = TRUE
         ) THEN TRUE
+        WHEN EXISTS (
+          SELECT 1 FROM leagueevents le
+          JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $2
+          WHERE le.tournamentid = t.tournamentid AND lm.approved = TRUE AND lm.admin = TRUE
+        ) THEN TRUE
         ELSE FALSE
       END AS canmanage
      FROM tournaments t

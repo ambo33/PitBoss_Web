@@ -11,6 +11,7 @@ import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { normalizePointsLookup, pointsForPlace, type LeaguePointRule } from '../leagues/scoring';
 
 export const playersRouter = Router();
 playersRouter.use(requireAuth);
@@ -39,7 +40,14 @@ async function isGroupAdmin(tournamentId: string, userId: string): Promise<boole
        AND gm.admin = TRUE`,
     [tournamentId, userId]
   );
-  return !!row;
+  if (row) return true;
+  return Boolean(await queryOne(
+    `SELECT 1
+     FROM leagueevents le
+     JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $2
+     WHERE le.tournamentid = $1 AND lm.approved = TRUE AND lm.admin = TRUE`,
+    [tournamentId, userId]
+  ));
 }
 
 async function canManagePlayers(tournamentId: string, userId: string): Promise<boolean> {
@@ -49,6 +57,97 @@ async function canManagePlayers(tournamentId: string, userId: string): Promise<b
 async function canUsePlayerAccounting(userId: string): Promise<boolean> {
   const profile = await getAccountProfile(userId);
   return Boolean(profile?.canuseclubfeatures);
+}
+
+async function syncLinkedLeagueEvent(tournamentId: string, loggedBy: string): Promise<void> {
+  const link = await queryOne<{
+    eventid: string;
+    leagueid: string;
+    seasonid: string;
+    pereventfee: number | null;
+    showupbonuspoints: number | null;
+    pointslookup: LeaguePointRule[] | string | null;
+  }>(
+    `SELECT e.eventid, e.leagueid, e.seasonid,
+            CAST(s.pereventfee AS DECIMAL) AS pereventfee,
+            s.showupbonuspoints, s.pointslookup
+     FROM leagueevents e
+     JOIN leagueseasons s ON s.seasonid = e.seasonid
+     WHERE e.tournamentid = $1`,
+    [tournamentId]
+  );
+  if (!link) return;
+
+  const lookup = normalizePointsLookup(link.pointslookup ?? []);
+  const players = await query<{ userid: string; placed: number | null; checkedin: boolean; paid: boolean }>(
+    `SELECT userid, CAST(placed AS INT) AS placed,
+            COALESCE(checkedin, FALSE) AS checkedin,
+            COALESCE(paid, FALSE) AS paid
+     FROM tournamentplayers
+     WHERE tournamentid = $1`,
+    [tournamentId]
+  );
+  await query(
+    `DELETE FROM leagueresults r
+     WHERE r.eventid = $1
+       AND r.leagueid = $2
+       AND COALESCE(r.dnf, FALSE) = FALSE
+       AND NOT EXISTS (
+         SELECT 1
+         FROM tournamentplayers tp
+         WHERE tp.tournamentid = $3
+           AND tp.userid = r.userid
+           AND (COALESCE(tp.checkedin, FALSE) = TRUE OR tp.placed IS NOT NULL)
+       )`,
+    [link.eventid, link.leagueid, tournamentId]
+  );
+  for (const player of players) {
+    if (player.placed == null && !player.checkedin) continue;
+    const placed = player.placed == null ? null : Number(player.placed);
+    const showup = player.checkedin ? Math.max(0, Number(link.showupbonuspoints || 0)) : 0;
+    const points = pointsForPlace(lookup, placed, false);
+    await query(
+      `INSERT INTO leagueresults (eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby)
+       VALUES ($1, $2, $3, $4, FALSE, $5, $6, $7)
+       ON CONFLICT (eventid, userid) DO UPDATE SET
+         placed = EXCLUDED.placed,
+         dnf = FALSE,
+         points = EXCLUDED.points,
+         showupbonuspoints = EXCLUDED.showupbonuspoints,
+         loggedby = EXCLUDED.loggedby,
+         updatedat = now()`,
+      [link.eventid, link.leagueid, player.userid, placed, points, showup, loggedBy]
+    );
+    if (Number(link.pereventfee || 0) > 0) {
+      const autoPaymentNote = 'Synced from tournament payment status';
+      if (!player.paid) {
+        await query(
+          `DELETE FROM leaguepayments
+           WHERE leagueid = $1
+             AND seasonid = $2
+             AND eventid = $3
+             AND userid = $4
+             AND paymenttype = 'event'
+             AND note = $5`,
+          [link.leagueid, link.seasonid, link.eventid, player.userid, autoPaymentNote]
+        );
+        continue;
+      }
+      const paid = await queryOne<{ amount: number }>(
+        `SELECT COALESCE(SUM(amount), 0) AS amount
+         FROM leaguepayments
+         WHERE leagueid = $1 AND seasonid = $2 AND eventid = $3 AND userid = $4 AND paymenttype = 'event'`,
+        [link.leagueid, link.seasonid, link.eventid, player.userid]
+      );
+      if (Number(paid?.amount || 0) < Number(link.pereventfee || 0)) {
+        await query(
+          `INSERT INTO leaguepayments (leagueid, seasonid, userid, eventid, paymenttype, amount, note, recordedby)
+           VALUES ($1, $2, $3, $4, 'event', $5, $6, $7)`,
+          [link.leagueid, link.seasonid, player.userid, link.eventid, Number(link.pereventfee || 0) - Number(paid?.amount || 0), autoPaymentNote, loggedBy]
+        );
+      }
+    }
+  }
 }
 
 function parsePlaced(value: unknown): number | null {
@@ -354,6 +453,7 @@ playersRouter.put('/:tid/players/:uid/checkin', async (req: Request, res: Respon
     await clearSeatForPlayer(req.params.tid, req.params.uid);
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
+  await syncLinkedLeagueEvent(req.params.tid, req.userId!);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'checkin' });
   res.json({ success: true, checkedin: updated.checkedin });
 });
@@ -763,6 +863,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     await assignMysteryBountyForKnockout(req.params.tid, req.params.uid, nextPlaced, creditedKnockoutByUserId);
   }
   await redistributeMysteryBountiesForTournament(req.params.tid);
+  await syncLinkedLeagueEvent(req.params.tid, req.userId!);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
   if (nextPlaced != null) {
     const knockedOutPlayer = await queryOne<{
@@ -832,6 +933,7 @@ playersRouter.put('/:tid/players/:uid/paid', async (req: Request, res: Response)
     res.status(404).json({ error: 'Player not found' });
     return;
   }
+  await syncLinkedLeagueEvent(req.params.tid, req.userId!);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'payment' });
   res.json({ success: true, paid: updated.paid });
 });

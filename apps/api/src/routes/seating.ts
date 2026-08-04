@@ -13,7 +13,7 @@ async function isOwner(tid: string, uid: string): Promise<boolean> {
 }
 
 async function isGroupAdmin(tid: string, uid: string): Promise<boolean> {
-  return !!(await queryOne(
+  if (await queryOne(
     `SELECT 1
      FROM tournaments t
      JOIN groupmembers gm ON gm.groupid = t.groupid
@@ -21,6 +21,13 @@ async function isGroupAdmin(tid: string, uid: string): Promise<boolean> {
        AND gm.userid = $2
        AND gm.approved = TRUE
        AND gm.admin = TRUE`,
+    [tid, uid]
+  )) return true;
+  return !!(await queryOne(
+    `SELECT 1
+     FROM leagueevents le
+     JOIN leaguemembers lm ON lm.leagueid = le.leagueid AND lm.userid = $2
+     WHERE le.tournamentid = $1 AND lm.approved = TRUE AND lm.admin = TRUE`,
     [tid, uid]
   ));
 }
