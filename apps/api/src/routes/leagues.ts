@@ -1589,19 +1589,24 @@ leaguesRouter.post('/:id/seasons/:seasonId/members', async (req: Request, res: R
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      `DELETE FROM tournaments
-       WHERE tournamentid IN (
-         SELECT tournamentid FROM leagueevents
-         WHERE leagueid = $1 AND seasonid = $2 AND tournamentid IS NOT NULL
-       )`,
-      [req.params.id, req.params.seasonId]
-    );
+    const eligibleUserIds = eligible.map((member) => member.userid);
     await client.query(
       `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
        SELECT $2, $1, unnest($3::UUID[]), TRUE
        ON CONFLICT (seasonid, userid) DO UPDATE SET participating = TRUE`,
-      [req.params.id, season.seasonid, eligible.map((member) => member.userid)]
+      [req.params.id, season.seasonid, eligibleUserIds]
+    );
+    await client.query(
+      `INSERT INTO tournamentplayers (tournamentid, userid)
+       SELECT event.tournamentid, participant.userid
+       FROM leagueevents event
+       CROSS JOIN unnest($3::UUID[]) AS participant(userid)
+       WHERE event.leagueid = $1
+         AND event.seasonid = $2
+         AND event.tournamentid IS NOT NULL
+         AND COALESCE(event.active, TRUE) = TRUE
+       ON CONFLICT DO NOTHING`,
+      [req.params.id, season.seasonid, eligibleUserIds]
     );
     await recordLeagueAudit(client, {
       leagueId: req.params.id,

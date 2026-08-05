@@ -31,10 +31,15 @@ adminRouter.get('/feedback', async (_req: Request, res: Response) => {
     useragent: string | null;
     status: string;
     createdat: string;
+    source: string;
+    occurrencecount: number | string;
+    lastoccurredat: string | null;
+    details: Record<string, unknown> | null;
   }>(
     `SELECT f.id, f.userid, u.emailaddress, u.emailencrypted,
             COALESCE(um.nickname, NULLIF(trim(concat(coalesce(um.firstname, ''), ' ', coalesce(um.lastname, ''))), ''), u.emailaddress) AS displayname,
-            f.type, f.message, f.pageurl, f.useragent, f.status, f.createdat
+            f.type, f.message, f.pageurl, f.useragent, f.status, f.createdat,
+            f.source, f.occurrencecount, f.lastoccurredat, f.details
      FROM feedback f
      LEFT JOIN users u ON u.guid = f.userid
      LEFT JOIN usermetadata um ON um.userid = u.guid
@@ -53,6 +58,7 @@ adminRouter.get('/feedback', async (_req: Request, res: Response) => {
       const emailaddress = publicEmail(row.emailencrypted, row.emailaddress);
       return {
         ...row,
+        occurrencecount: Number(row.occurrencecount ?? 1),
         emailaddress,
         displayname: row.displayname === row.emailaddress ? emailaddress : row.displayname,
       };

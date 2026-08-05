@@ -1,3 +1,5 @@
+import { reportClientIssue } from '../lib/errorReporting';
+
 const BASE = '/api';
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -7,6 +9,7 @@ function getToken(): string | null {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const method = String(options.method ?? 'GET').toUpperCase();
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const res = await fetch(`${BASE}${path}`, {
@@ -19,12 +22,37 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   }).catch((error) => {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Request timed out. Please refresh and try again.');
+      if (controller.signal.aborted) {
+        reportClientIssue({
+          kind: 'request_timeout',
+          message: `Request exceeded ${REQUEST_TIMEOUT_MS / 1000} seconds`,
+          method,
+          requestPath: path,
+        });
+        throw new Error('Request timed out. Please refresh and try again.');
+      }
+      throw error;
     }
+    reportClientIssue({
+      kind: 'network_error',
+      message: error instanceof Error ? error.message : 'Network request failed',
+      method,
+      requestPath: path,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }).finally(() => window.clearTimeout(timeout));
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
+    if (res.status >= 500 && res.headers.get('X-Issue-Reported') !== 'server') {
+      reportClientIssue({
+        kind: 'server_response',
+        message: body.error ?? res.statusText ?? 'Server request failed',
+        method,
+        requestPath: path,
+        status: res.status,
+      });
+    }
     throw new Error(body.error ?? 'Request failed');
   }
   return res.json() as Promise<T>;
@@ -944,6 +972,10 @@ export interface AdminFeedback {
   useragent: string | null;
   status: AdminFeedbackStatus | string;
   createdat: string;
+  source?: 'user' | 'client' | 'server' | 'server_runtime' | string;
+  occurrencecount?: number;
+  lastoccurredat?: string | null;
+  details?: Record<string, unknown> | null;
 }
 
 export type AdminFeedbackStatus = 'new' | 'looked_at' | 'closed';

@@ -491,6 +491,30 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`
+      ALTER TABLE feedback
+      ADD COLUMN IF NOT EXISTS source STRING(30) NOT NULL DEFAULT 'user'
+    `);
+    await client.query(`
+      ALTER TABLE feedback
+      ADD COLUMN IF NOT EXISTS fingerprint STRING(64)
+    `);
+    await client.query(`
+      ALTER TABLE feedback
+      ADD COLUMN IF NOT EXISTS occurrencecount INT NOT NULL DEFAULT 1
+    `);
+    await client.query(`
+      ALTER TABLE feedback
+      ADD COLUMN IF NOT EXISTS lastoccurredat TIMESTAMPTZ DEFAULT now()
+    `);
+    await client.query(`
+      ALTER TABLE feedback
+      ADD COLUMN IF NOT EXISTS details JSONB
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_feedback_fingerprint
+      ON feedback (fingerprint)
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS groupcoins (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         groupid UUID NOT NULL REFERENCES groups(groupid) ON DELETE CASCADE,

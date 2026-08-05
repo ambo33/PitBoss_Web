@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test:automatic-issues": "tsx tests/automatic-issues.test.ts",
     "test:league-workflows": "tsx tests/league-workflows.test.ts"
   },
   "dependencies": {

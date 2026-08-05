@@ -27,12 +27,20 @@ import { getAllowedClientUrls } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
+import { reportAutomaticIssueSafely } from './services/issueReporter';
 
 dotenv.config();
 dotenv.config({ path: path.resolve(__dirname, '../../../.env'), override: false });
 
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled promise rejection', err);
+  reportAutomaticIssueSafely({
+    source: 'server_runtime',
+    kind: 'unhandled_promise_rejection',
+    message: err instanceof Error ? err.message : String(err),
+    requestPath: 'node:process',
+    stack: err instanceof Error ? err.stack : null,
+  });
 });
 
 const app = express();

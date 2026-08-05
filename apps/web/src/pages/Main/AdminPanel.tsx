@@ -614,6 +614,16 @@ function FeedbackCard({
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${feedbackTypeClass(item.type)}`}>
               {item.type}
             </span>
+            {item.source && item.source !== 'user' && (
+              <span className="rounded-full border border-amber-300/20 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200">
+                Automatic
+              </span>
+            )}
+            {(item.occurrencecount ?? 1) > 1 && (
+              <span className="rounded-full border border-pit-border bg-pit-bg/70 px-2 py-0.5 text-[10px] font-bold text-pit-text">
+                {item.occurrencecount} occurrences
+              </span>
+            )}
             {isNew ? (
               <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
                 New
@@ -664,6 +674,9 @@ function FeedbackCard({
         <span>{item.displayname || 'Unknown user'}</span>
         <span>{formatEmail(item.emailaddress)}</span>
         <span>{formatDateTime(item.createdat)}</span>
+        {item.lastoccurredat && item.lastoccurredat !== item.createdat && (
+          <span>Last seen {formatDateTime(item.lastoccurredat)}</span>
+        )}
         {item.pageurl && (
           <a href={item.pageurl} target="_blank" rel="noreferrer" className="text-pit-teal hover:text-white">
             {compactUrl(item.pageurl)}
