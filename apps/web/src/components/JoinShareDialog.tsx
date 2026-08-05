@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Link2, QrCode, Share2 } from 'lucide-react';
+import { Check, Copy, Link2, QrCode, Share } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Modal from './Modal';
 
@@ -84,7 +84,7 @@ export default function JoinShareDialog({
                 {copied ? 'Copied' : 'Copy link'}
               </button>
               <button type="button" className="btn-ghost h-11 justify-center gap-2" onClick={() => void shareLink()}>
-                <Share2 size={16} /> Share
+                <Share size={16} /> Share
               </button>
             </div>
           </div>

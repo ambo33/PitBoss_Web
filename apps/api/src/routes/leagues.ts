@@ -1554,16 +1554,7 @@ leaguesRouter.post('/:id/seasons/:seasonId/members', async (req: Request, res: R
     res.status(400).json({ error: 'Choose at least one league member for this season.' });
     return;
   }
-  const season = await queryOne<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate,
-            expectedplayercount, leaguefee, CAST(pereventfee AS DECIMAL) AS pereventfee,
-            showupbonuspoints, bestfinishcount, pointslookup,
-            finalenabled, finalmultiplierlookup, finalchiprounding, finalstartingbigblind,
-            active, createdat
-     FROM leagueseasons
-     WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
-    [req.params.id, req.params.seasonId]
-  );
+  const season = await getSelectedSeason(req.params.id, req.params.seasonId);
   if (!season) {
     res.status(404).json({ error: 'Season not found.' });
     return;

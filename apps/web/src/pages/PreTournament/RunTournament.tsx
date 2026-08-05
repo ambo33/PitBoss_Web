@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, Share2, Skull, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, Share, Skull, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
@@ -2099,7 +2099,7 @@ export default function RunTournament({
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button type="button" className="btn-primary gap-2" onClick={() => void handleShareFinalRecap(false)}>
-                  <Share2 size={16} />
+                  <Share size={16} />
                   Share recap
                 </button>
                 <button type="button" className="btn-ghost gap-2" onClick={() => void handleShareFinalRecap(true)}>

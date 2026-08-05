@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Share2, Skull, Volume2 } from 'lucide-react';
+import { Download, Share, Skull, Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
@@ -580,7 +580,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
             </div>
             <div className="flex flex-col gap-2 p-3 sm:flex-row">
               <button type="button" className="btn-primary flex-1 gap-2" onClick={() => void handleSharePersonalRecap(false)}>
-                <Share2 size={16} />
+                <Share size={16} />
                 Share result
               </button>
               <button type="button" className="btn-ghost flex-1 gap-2" onClick={() => void handleSharePersonalRecap(true)}>

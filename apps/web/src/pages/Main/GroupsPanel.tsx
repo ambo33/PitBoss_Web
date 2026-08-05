@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Share2, Trash2, Upload, Vote } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -923,7 +923,7 @@ function GroupDetailView({
                       onClick={() => setShareInviteOpen(true)}
                       title="Share group invite"
                     >
-                      <Share2 size={18} className="shrink-0" aria-hidden="true" />
+                      <Share size={18} className="shrink-0" aria-hidden="true" />
                       {effectiveGroup.invitecode}
                     </button>
                     <button

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, Save, ScrollText, Send, Settings, Share2, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -579,7 +579,7 @@ function LeagueDetailView({
             onClick={() => setShareInviteOpen(true)}
             title="Share league invite"
           >
-            <Share2 size={14} aria-hidden="true" />
+            <Share size={14} aria-hidden="true" />
             {detail.league.invitecode}
           </button>
           <select
