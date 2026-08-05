@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Trophy, UserMinus, XCircle } from 'lucide-react';
+import { CheckCircle2, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api } from '../../api/client';
@@ -13,7 +13,7 @@ export default function LeagueEventLobbyPage() {
   const user = useAuthStore((state) => state.user);
   const [place, setPlace] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['league', leagueId],
     queryFn: () => api.getLeague(leagueId!),
     enabled: Boolean(leagueId),
@@ -84,7 +84,19 @@ export default function LeagueEventLobbyPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-pit-bg px-4 py-8 text-white">
       <section className="w-full max-w-lg rounded-2xl border border-pit-border bg-pit-card p-5 shadow-2xl">
-        <BrandLockup compact showSlogan={false} />
+        <div className="flex items-center justify-between gap-3">
+          <BrandLockup compact showSlogan={false} />
+          <button
+            type="button"
+            className="btn-ghost shrink-0 px-3 py-2 text-xs"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+            title="Refresh event players and results"
+          >
+            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
         <div className="mt-6 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 p-5 text-center">
           <Trophy className="mx-auto text-pit-teal" size={34} />
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-pit-teal">{data.league.name}</p>

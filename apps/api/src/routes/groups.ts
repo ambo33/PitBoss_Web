@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { query, queryOne, pool } from '../db';
 import { getAccountProfile, getOwnedGroupCount } from '../account';
 import { requireAuth } from '../middleware/auth';
@@ -7,21 +7,10 @@ import { BlindLevel, Group, GroupCoin, GroupCoinAward, GroupComment, GroupMember
 import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/email';
 import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
 import { sendGroupNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
+import { generateGroupInviteCode, isValidGroupInviteCode, normalizeGroupInviteCode } from '../groupInviteCode';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
-
-function generateInviteCode(length = 6): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
-function normalizeInviteCode(value: string | undefined): string {
-  return (value ?? '')
-    .toUpperCase()
-    .replace(/^ +| +$/g, '')
-    .replace(/ {2,}/g, ' ');
-}
 
 function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
   if (!Array.isArray(levels)) return [];
@@ -246,7 +235,7 @@ groupsRouter.post('/', async (req: Request, res: Response) => {
   }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const invitecode = generateInviteCode();
+    const invitecode = generateGroupInviteCode();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -384,7 +373,7 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
   res.json({ ...group, members });
 });
 
-groupsRouter.put('/:id', async (req: Request, res: Response) => {
+groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt, aiannouncerclassicmode, postapprovalrequired } = req.body as {
     name?: string;
     approvalneeded?: boolean;
@@ -451,9 +440,9 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
   const normalizedAiPreset = normalizeAnnouncerPreset(aiannouncerpreset);
   const normalizedAiPrompt = aiannouncercustomprompt == null ? null : aiannouncercustomprompt.trim().slice(0, 500);
 
-  const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
+  const normalizedInviteCode = invitecode == null ? null : normalizeGroupInviteCode(invitecode);
   if (normalizedInviteCode != null) {
-    if (!/^[A-Z0-9 ]{1,10}$/.test(normalizedInviteCode)) {
+    if (!isValidGroupInviteCode(normalizedInviteCode)) {
       res.status(400).json({ error: 'Group join code must be 1-10 letters, numbers, or spaces.' });
       return;
     }
@@ -529,7 +518,7 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
       res.status(409).json({ error: 'That invite code is already in use.' });
       return;
     }
-    throw err;
+    next(err);
   }
 });
 
@@ -1049,7 +1038,7 @@ groupsRouter.post('/:id/coins/:coinId/awards', async (req: Request, res: Respons
 
 groupsRouter.post('/join', async (req: Request, res: Response) => {
   const { invitecode } = req.body as { invitecode: string };
-  const normalizedInviteCode = normalizeInviteCode(invitecode);
+  const normalizedInviteCode = normalizeGroupInviteCode(invitecode);
   const group = await queryOne<{ groupid: string; approvalneeded: boolean }>(
     `SELECT groupid, approvalneeded FROM groups WHERE invitecode = $1 AND active = TRUE`,
     [normalizedInviteCode]

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS groups (
   groupid        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ownerid        UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
   name           STRING(255) NOT NULL,
-  invitecode     STRING(50) UNIQUE NOT NULL,
+  invitecode     STRING(10) UNIQUE NOT NULL,
   approvalneeded BOOL DEFAULT FALSE,
   active         BOOL DEFAULT TRUE,
   createdat      TIMESTAMPTZ DEFAULT now()

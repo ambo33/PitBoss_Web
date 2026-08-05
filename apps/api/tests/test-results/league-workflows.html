@@ -148,26 +148,26 @@
       <h1>League Workflow Regression Report</h1>
       <p>Saved workflow checks for league creation math, player finishes, point chart changes, standings, show-up bonuses, DNF handling, and final table multipliers.</p>
       <div class="summary">
-        <div class="metric"><span>Total scenarios</span><strong>12</strong></div>
-        <div class="metric"><span>Passed</span><strong style="color: var(--green)">12</strong></div>
+        <div class="metric"><span>Total scenarios</span><strong>14</strong></div>
+        <div class="metric"><span>Passed</span><strong style="color: var(--green)">14</strong></div>
         <div class="metric"><span>Failed</span><strong style="color: var(--green)">0</strong></div>
       </div>
-      <div class="stamp">Generated 5/25/2026, 2:01:54 PM</div>
+      <div class="stamp">Generated 8/4/2026, 11:05:23 PM</div>
     </section>
     <section class="grid">
       
         <article class="case ">
           <h2>1. Help-me-decide point chart creates one score per player and totals player count x 100</h2>
           <div class="status"><span class="dot"></span>Passed</div>
-          
+
         </article>
-      
+
         <article class="case ">
           <h2>2. Generated placement scores are monotonic so 9th never beats 8th</h2>
           <div class="status"><span class="dot"></span>Passed</div>
-          
+
         </article>
-      
+
         <article class="case ">
           <h2>3. Spreadsheet-style 36-player chart preserves the known 4,311-point payout shape</h2>
           <div class="status"><span class="dot"></span>Passed</div>
@@ -228,6 +228,18 @@
           
         </article>
       
+        <article class="case ">
+          <h2>13. League fee installments divide evenly across season events</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+
+        </article>
+
+        <article class="case ">
+          <h2>14. Uneven league fee installments preserve cents and never exceed the remaining balance</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+
+        </article>
+
     </section>
   </main>
 </body>

@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test:automatic-issues": "tsx tests/automatic-issues.test.ts",
+    "test:group-invite-codes": "tsx tests/group-invite-codes.test.ts",
     "test:league-workflows": "tsx tests/league-workflows.test.ts"
   },
   "dependencies": {

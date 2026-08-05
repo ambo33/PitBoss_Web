@@ -1,5 +1,5 @@
 import { pool } from './db';
-import { encryptEmail, hashEmail, isPrivateEmailPlaceholder, privateEmailPlaceholder } from './privacy';
+import { encryptEmail, hashEmail, isGuestEmail, privateEmailPlaceholder } from './privacy';
 
 function generateTvCode(existing: Set<string>): string {
   let code = '';
@@ -410,6 +410,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       );
     }
 
+    const groupInviteCodeColumn = await client.query<{ character_maximum_length: number | string | null }>(`
+      SELECT character_maximum_length
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'groups'
+        AND column_name = 'invitecode'
+    `);
+    const groupInviteCodeLimit = groupInviteCodeColumn.rows[0]?.character_maximum_length;
+    if (groupInviteCodeLimit != null && Number(groupInviteCodeLimit) < 10) {
+      await client.query(`ALTER TABLE groups ALTER COLUMN invitecode TYPE STRING(10)`);
+    }
+
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS unique_invitecode
       ON groups (invitecode)
@@ -418,10 +430,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       SELECT guid, emailaddress, emailhash, emailencrypted
       FROM users
       WHERE emailaddress IS NOT NULL
+        AND lower(emailaddress) NOT LIKE '%@private.thepokerplanner.com'
+        AND lower(emailaddress) NOT LIKE '%@private.pokerplanner.bet'
+        AND lower(emailaddress) NOT LIKE '%@guest.thepokerplanner.com'
+        AND lower(emailaddress) NOT LIKE '%@guest.pokerplanner.bet'
     `);
     for (const row of emailRows.rows) {
       if (!row.emailaddress) continue;
-      const sourceEmail = isPrivateEmailPlaceholder(row.emailaddress) ? null : row.emailaddress;
+      const sourceEmail = isGuestEmail(row.emailaddress) ? null : row.emailaddress;
       const nextHash = row.emailhash ?? (sourceEmail ? hashEmail(sourceEmail) : null);
       const nextEncrypted = row.emailencrypted ?? (sourceEmail ? encryptEmail(sourceEmail) : null);
       await client.query(
@@ -429,8 +445,9 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
          SET emailhash = COALESCE($2, emailhash),
              emailencrypted = COALESCE($3, emailencrypted),
              emailaddress = $4
-         WHERE guid = $1`,
-        [row.guid, nextHash, nextEncrypted, privateEmailPlaceholder(row.guid)]
+         WHERE guid = $1
+           AND emailaddress = $5`,
+        [row.guid, nextHash, nextEncrypted, privateEmailPlaceholder(row.guid), row.emailaddress]
       );
     }
     await client.query(`

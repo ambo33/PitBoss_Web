@@ -16,6 +16,7 @@ import {
   type LeagueResultRow,
   type SerializedLeagueForFinals,
 } from '../leagues/scoring';
+import { calculateLeagueFeeInstallment } from '../leagues/payments';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers } from '../lib/server/notifications/notificationService';
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
@@ -757,6 +758,8 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     isadmin: boolean;
     participating: boolean;
     rsvpstatus: string | null;
+    goingcount: number | string;
+    seasonplayercount: number | string;
   }>(
     `SELECT l.leagueid,
             l.name AS leaguename,
@@ -769,7 +772,16 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
             e.tournamentid,
             lm.admin AS isadmin,
             COALESCE(self_lsp.participating, FALSE) AS participating,
-            rsvp.status AS rsvpstatus
+            rsvp.status AS rsvpstatus,
+            (SELECT count(*)
+             FROM leagueeventrsvps event_rsvp
+             WHERE event_rsvp.eventid = e.eventid
+               AND event_rsvp.status = 'going') AS goingcount,
+            (SELECT count(*)
+             FROM leagueseasonparticipants season_player
+             WHERE season_player.leagueid = l.leagueid
+               AND season_player.seasonid = s.seasonid
+               AND season_player.participating = TRUE) AS seasonplayercount
      FROM leagues l
      JOIN leaguemembers lm ON lm.leagueid = l.leagueid AND lm.userid = $1
      JOIN leagueseasons s
@@ -801,6 +813,8 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     ...row,
     eventnumber: row.eventnumber == null ? null : Number(row.eventnumber),
     eventfee: Number(row.eventfee || 0),
+    goingcount: Number(row.goingcount || 0),
+    seasonplayercount: Number(row.seasonplayercount || 0),
   })));
 });
 
@@ -3120,6 +3134,128 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-paid', async (req: Reques
   }
 });
 
+leaguesRouter.post('/:id/events/:eventId/payments/mark-league-fee-paid', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as { userId?: string; paidat?: string };
+  const userId = String(body.userId ?? '');
+  const event = await queryOne<LeagueEventRow>(
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
+     FROM leagueevents
+     WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
+    [req.params.id, req.params.eventId]
+  );
+  if (!event?.seasonid) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  if (!await requireLeagueSeasonParticipant(req.params.id, event.seasonid, userId)) {
+    res.status(400).json({ error: 'Player is not active in this season.' });
+    return;
+  }
+  const [leagueRow, season] = await Promise.all([
+    getLeagueForUser(req.params.id, req.userId!),
+    getSelectedSeason(req.params.id, event.seasonid),
+  ]);
+  if (!leagueRow || !season) {
+    res.status(404).json({ error: 'League season not found.' });
+    return;
+  }
+  const leagueFee = Math.max(0, Math.round(leagueWithSeasonSettings(serializeLeague(leagueRow), season).leaguefee * 100) / 100);
+  if (!leagueFee) {
+    res.status(400).json({ error: 'Set the league fee before recording an installment.' });
+    return;
+  }
+  const seasonEvents = await query<{ eventid: string }>(
+    `SELECT eventid
+     FROM leagueevents
+     WHERE leagueid = $1 AND seasonid = $2 AND active = TRUE
+     ORDER BY eventnumber ASC NULLS LAST, eventdate ASC NULLS LAST, eventtime ASC NULLS LAST, createdat ASC`,
+    [req.params.id, event.seasonid]
+  );
+  const eventIndex = seasonEvents.findIndex((item) => item.eventid === event.eventid);
+  if (eventIndex < 0 || !seasonEvents.length) {
+    res.status(400).json({ error: 'No active season events found.' });
+    return;
+  }
+  const paidAt = body.paidat ? String(body.paidat).slice(0, 10) : null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
+      [`${req.params.id}:${event.seasonid}`, `${event.eventid}:${userId}:league-fee`]
+    );
+    const existing = await client.query<{ paymentid: string }>(
+      `SELECT paymentid
+       FROM leaguepayments
+       WHERE leagueid = $1 AND seasonid = $2 AND eventid = $3 AND userid = $4 AND paymenttype = 'league'
+       LIMIT 1`,
+      [req.params.id, event.seasonid, event.eventid, userId]
+    );
+    if (existing.rows[0]) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'This event already has a league-fee installment recorded for that player.' });
+      return;
+    }
+    const paid = await client.query<{ amount: string | number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS amount
+       FROM leaguepayments
+       WHERE leagueid = $1 AND seasonid = $2 AND userid = $3 AND paymenttype = 'league'`,
+      [req.params.id, event.seasonid, userId]
+    );
+    const installmentStatus = calculateLeagueFeeInstallment(
+      leagueFee,
+      seasonEvents.length,
+      eventIndex,
+      Number(paid.rows[0]?.amount || 0),
+    );
+    const { remaining, amount } = installmentStatus;
+    if (!remaining) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'This player has no league fee remaining.' });
+      return;
+    }
+    if (!amount) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'This event does not have a league-fee installment to record.' });
+      return;
+    }
+    const inserted = await client.query<LeaguePaymentRow>(
+      `INSERT INTO leaguepayments (leagueid, seasonid, userid, eventid, paymenttype, amount, paidat, note, recordedby)
+       VALUES ($1, $2, $3, $4, 'league', $5, COALESCE($6::DATE, current_date()), $7, $8)
+       RETURNING paymentid, leagueid, seasonid, userid, eventid, paymenttype, CAST(amount AS DECIMAL) AS amount, paidat, note, recordedby, createdat`,
+      [req.params.id, event.seasonid, userId, event.eventid, amount, paidAt, 'League fee installment', req.userId]
+    );
+    await recordLeagueAudit(client, {
+      leagueId: req.params.id,
+      seasonId: event.seasonid,
+      eventId: event.eventid,
+      actorId: req.userId,
+      targetUserId: userId,
+      action: 'league_fee_installment_paid',
+      summary: 'A league fee installment was recorded.',
+      details: {
+        eventName: event.name,
+        amount,
+        leagueFee,
+        remainingBeforePayment: remaining,
+      },
+    });
+    await client.query('COMMIT');
+    const payment = inserted.rows[0] ?? null;
+    res.status(201).json({ payment: payment ? { ...payment, amount: Number(payment.amount || 0) } : null });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
 leaguesRouter.post('/:id/events', async (req: Request, res: Response) => {
   if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
     res.status(403).json({ error: 'League admin required.' });
@@ -3517,6 +3653,66 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
 
 leaguesRouter.put('/:id/events/:eventId/results/:userId', async (req: Request, res: Response) => {
   await upsertResult(req, res, req.params.userId);
+});
+
+leaguesRouter.delete('/:id/events/:eventId/results/:userId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const event = await queryOne<LeagueEventRow>(
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
+     FROM leagueevents
+     WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
+    [req.params.eventId, req.params.id]
+  );
+  if (!event?.seasonid) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  const previous = await queryOne<LeagueResultRow>(
+    `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
+     FROM leagueresults
+     WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
+    [event.eventid, req.params.id, req.params.userId]
+  );
+  if (!previous) {
+    res.status(404).json({ error: 'No finish is logged for this player.' });
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM leagueresults WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
+      [event.eventid, req.params.id, req.params.userId]
+    );
+    await recordLeagueAudit(client, {
+      leagueId: req.params.id,
+      seasonId: event.seasonid,
+      eventId: event.eventid,
+      actorId: req.userId,
+      targetUserId: req.params.userId,
+      action: previous.dnf ? 'dnf_removed' : 'placement_removed',
+      summary: previous.dnf ? 'Player DNF was removed.' : 'Player placement was removed.',
+      details: {
+        previous: {
+          placed: previous.placed == null ? null : Number(previous.placed),
+          dnf: Boolean(previous.dnf),
+          points: Number(previous.points || 0),
+          showupbonuspoints: Number(previous.showupbonuspoints || 0),
+        },
+      },
+    });
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 leaguesRouter.put('/:id/events/:eventId/self-result', async (req: Request, res: Response) => {

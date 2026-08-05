@@ -347,7 +347,11 @@ export default function TournamentsPanel({
                   );
                   return;
                 }
-                navigate('/', { state: { tab: 'leagues', leagueId: item.leagueId } });
+                if (item.canManage) {
+                  navigate(`/?section=leagues&league=${encodeURIComponent(item.leagueId)}&leagueTab=events&event=${encodeURIComponent(item.eventId)}`);
+                  return;
+                }
+                navigate(`/league/${encodeURIComponent(item.leagueId)}/event/${encodeURIComponent(item.eventId)}`);
               }}
               onRegister={(tournament) => registerMutation.mutate(tournament)}
               onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
@@ -709,6 +713,8 @@ type ScheduleItem =
       tournamentId?: string | null;
       isParticipant: boolean;
       rsvpStatus?: string | null;
+      goingCount: number;
+      seasonPlayerCount: number;
     }
   | {
       kind: 'cash';
@@ -825,7 +831,11 @@ function ScheduleRow({
   const showTournamentLobby = showRsvp && isRegistered;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
   const statusLabel = item.canManage && (isTournament || isCash) ? 'Host' : null;
-  const fieldCount = isTournament ? formatFieldCount(item.tournament) : isCash ? formatCashGameCount(item.game) : null;
+  const fieldCount = isTournament
+    ? formatFieldCount(item.tournament)
+    : isCash
+      ? formatCashGameCount(item.game)
+      : `${item.goingCount}/${item.seasonPlayerCount}`;
   const typePillClass = isCash
     ? 'border-[#F5B84B]/45 bg-[#F5B84B]/12 text-[#F5B84B]'
     : isLeague
@@ -878,7 +888,7 @@ function ScheduleRow({
             {formatTime12Hour(item.time)}
           </span>
         )}
-        {(isTournament || isCash) && (
+        {fieldCount && (
           <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:hidden">
             <Users size={11} />
             {fieldCount}
@@ -1602,6 +1612,8 @@ function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
     tournamentId: event.tournamentid ?? null,
     isParticipant: Boolean(event.participating),
     rsvpStatus: event.rsvpstatus ?? null,
+    goingCount: Number(event.goingcount ?? 0),
+    seasonPlayerCount: Number(event.seasonplayercount ?? 0),
   };
 }
 

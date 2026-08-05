@@ -12,6 +12,7 @@ import {
   type LeaguePointRule,
   type LeagueResultRow,
 } from '../src/leagues/scoring';
+import { calculateLeagueFeeInstallment } from '../src/leagues/payments';
 
 type TestCase = {
   name: string;
@@ -238,6 +239,22 @@ const tests: TestCase[] = [
       assert.equal(multipliers[0].place, 1);
       assert.ok(multipliers[0].multiplier > multipliers[1].multiplier);
       assert.ok(multipliers[0].multiplier > 0);
+    },
+  },
+  {
+    name: '13. League fee installments divide evenly across season events',
+    run: () => {
+      const installment = calculateLeagueFeeInstallment(1000, 10, 4);
+      assert.deepEqual(installment, { installment: 100, remaining: 1000, amount: 100 });
+    },
+  },
+  {
+    name: '14. Uneven league fee installments preserve cents and never exceed the remaining balance',
+    run: () => {
+      const installments = [0, 1, 2].map((eventIndex) => calculateLeagueFeeInstallment(1000, 3, eventIndex).installment);
+      assert.deepEqual(installments, [333.34, 333.33, 333.33]);
+      assert.equal(installments.reduce((sum, amount) => sum + amount, 0), 1000);
+      assert.deepEqual(calculateLeagueFeeInstallment(1000, 3, 2, 990), { installment: 333.33, remaining: 10, amount: 10 });
     },
   },
 ];

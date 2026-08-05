@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -32,12 +32,14 @@ export default function LeaguesPanel({
   initialSeasonId,
   initialTab,
   initialPostId,
+  initialEventId,
   onDetailStateChange,
 }: {
   initialLeagueId?: string;
   initialSeasonId?: string;
   initialTab?: LeagueDetailTab;
   initialPostId?: string;
+  initialEventId?: string;
   onDetailStateChange?: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
@@ -92,6 +94,7 @@ export default function LeaguesPanel({
         initialSeasonId={initialSeasonId}
         initialTab={initialTab}
         initialPostId={initialPostId}
+        initialEventId={initialEventId}
         onBack={() => setSelected(null)}
       />
     );
@@ -256,15 +259,18 @@ function LeagueDetailView({
   initialSeasonId,
   initialTab,
   initialPostId,
+  initialEventId,
   onBack,
 }: {
   league: Pick<League, 'leagueid'>;
   initialSeasonId?: string;
   initialTab?: LeagueDetailTab;
   initialPostId?: string;
+  initialEventId?: string;
   onBack: () => void;
 }) {
   const qc = useQueryClient();
+  const appliedInitialEventRef = useRef<string | null>(null);
   const currentUserId = useAuthStore((state) => state.user?.guid ?? null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [seasonModalOpen, setSeasonModalOpen] = useState(false);
@@ -290,10 +296,19 @@ function LeagueDetailView({
     if (initialTab) setActiveDetailTab(initialTab);
   }, [initialPostId, initialSeasonId, initialTab]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
     queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
   });
+
+  useEffect(() => {
+    if (!initialEventId || !data || appliedInitialEventRef.current === initialEventId) return;
+    const event = data.events.find((item) => item.eventid === initialEventId);
+    if (!event) return;
+    appliedInitialEventRef.current = initialEventId;
+    setSelectedEvent(event);
+    setActiveDetailTab('events');
+  }, [data, initialEventId]);
 
   const createEventMutation = useMutation({
     mutationFn: (payload: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
@@ -366,6 +381,13 @@ function LeagueDetailView({
   const resultMutation = useMutation({
     mutationFn: ({ eventId, userId, placed, dnf }: { eventId: string; userId: string; placed?: number | null; dnf?: boolean }) =>
       api.logLeagueResult(league.leagueid, eventId, userId, { placed, dnf }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+    },
+  });
+  const clearResultMutation = useMutation({
+    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
+      api.clearLeagueResult(league.leagueid, eventId, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
     },
@@ -460,6 +482,11 @@ function LeagueDetailView({
       );
       await Promise.all(payments.map((payment) => api.deleteLeaguePayment(league.leagueid, payment.paymentid)));
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+  });
+  const markLeagueFeeInstallmentMutation = useMutation({
+    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
+      api.markLeagueFeeInstallmentPaid(league.leagueid, eventId, userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const deleteLeagueMutation = useMutation({
@@ -820,8 +847,12 @@ function LeagueDetailView({
                 onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, placed, dnf })}
                 onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, all: true })}
                 onTogglePaid={(userId, paid) => toggleEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, paid })}
-                loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-                error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+                onMarkLeagueFeePaid={(userId) => markLeagueFeeInstallmentMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId })}
+                onClearResult={(userId) => clearResultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId })}
+                onRefresh={() => void refetch()}
+                refreshing={isFetching}
+                loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending}
+                error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message}
               />
             ) : (
               <LeagueEventListCard
@@ -849,8 +880,12 @@ function LeagueDetailView({
               onLog={(userId, placed, dnf) => currentEvent && resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
               onMarkAllPaid={() => currentEvent && markEventPaidMutation.mutate({ eventId: currentEvent.eventid, all: true })}
               onTogglePaid={(userId, paid) => currentEvent && toggleEventPaidMutation.mutate({ eventId: currentEvent.eventid, userId, paid })}
-              loading={resultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending}
-              error={resultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message}
+              onMarkLeagueFeePaid={(userId) => currentEvent && markLeagueFeeInstallmentMutation.mutate({ eventId: currentEvent.eventid, userId })}
+              onClearResult={(userId) => currentEvent && clearResultMutation.mutate({ eventId: currentEvent.eventid, userId })}
+              onRefresh={() => void refetch()}
+              refreshing={isFetching}
+              loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending}
+              error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message}
             />
           </div>
         </div>
@@ -1048,6 +1083,10 @@ function EventTrackerCard({
   onLog,
   onMarkAllPaid,
   onTogglePaid,
+  onMarkLeagueFeePaid,
+  onClearResult,
+  onRefresh,
+  refreshing,
   loading,
   error,
 }: {
@@ -1059,6 +1098,10 @@ function EventTrackerCard({
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
+  onMarkLeagueFeePaid: (userId: string) => void;
+  onClearResult: (userId: string) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
   loading: boolean;
   error?: string;
 }) {
@@ -1075,6 +1118,16 @@ function EventTrackerCard({
           <h3 className="text-xl font-bold text-white">{event ? event.name : 'No event selected'}</h3>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="chip hover:border-pit-teal/50 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="Refresh event players, RSVPs, payments, and finishes"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            Refresh
+          </button>
           {event && (
             <a className="chip hover:border-pit-teal/50 hover:text-white" href={event.tournamentid ? `/tournament/${event.tournamentid}` : `/league/${leagueId}/event/${event.eventid}`}>
               <Copy size={13} />
@@ -1099,6 +1152,8 @@ function EventTrackerCard({
               onLog={onLog}
               onMarkAllPaid={onMarkAllPaid}
               onTogglePaid={onTogglePaid}
+              onMarkLeagueFeePaid={onMarkLeagueFeePaid}
+              onClearResult={onClearResult}
               loading={loading}
               error={error}
             />
@@ -2332,6 +2387,8 @@ function EventRosterLogger({
   onLog,
   onMarkAllPaid,
   onTogglePaid,
+  onMarkLeagueFeePaid,
+  onClearResult,
   loading,
   error,
 }: {
@@ -2340,6 +2397,8 @@ function EventRosterLogger({
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
+  onMarkLeagueFeePaid: (userId: string) => void;
+  onClearResult: (userId: string) => void;
   loading: boolean;
   error?: string;
 }) {
@@ -2372,7 +2431,7 @@ function EventRosterLogger({
           onClick={onMarkAllPaid}
         >
           <CheckCircle2 size={13} />
-          Mark all paid
+          Mark all event fees paid
         </button>
       </div>
       {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
@@ -2380,6 +2439,7 @@ function EventRosterLogger({
         {approvedMembers.map((member) => {
           const existing = resultByUser.get(member.userid);
           const paymentStatus = getEventPaymentStatus(detail, event, member.userid);
+          const leagueFeeStatus = getLeagueFeeInstallmentStatus(detail, event, member.userid);
           const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
           const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
           const maxPlace = Math.max(1, approvedMembers.length);
@@ -2407,11 +2467,11 @@ function EventRosterLogger({
                   <p className="mt-1 inline-flex rounded-full border border-red-300/25 bg-red-400/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-200">
                     DNF
                   </p>
-                ) : (
+                ) : existing?.placed != null ? (
                   <p className="mt-1 text-xs text-pit-muted">
-                    {existing ? `${existing.placed}${ordinal(existing.placed)} place - ${formatNumber(totalPoints)} pts` : 'No finish logged'}
+                    {existing.placed}{ordinal(existing.placed)} place - {formatNumber(totalPoints)} pts
                   </p>
-                )}
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -2422,10 +2482,27 @@ function EventRosterLogger({
                   title={paymentStatus.due <= 0 ? 'DNF players do not owe event fees' : paymentStatus.paid ? 'Click to mark unpaid' : 'Click to mark paid'}
                 >
                   <CheckCircle2 size={13} />
-                  {paymentStatus.due <= 0 ? 'No fee' : paymentStatus.paid ? 'Paid' : 'Flag paid'}
+                  Paid Event
                 </button>
                 <button
-                  className="btn-ghost justify-center px-3 py-2 text-xs"
+                  type="button"
+                  className={`justify-center px-3 py-2 text-xs ${leagueFeeStatus.paidForEvent ? 'btn-primary' : 'btn-ghost'}`}
+                  disabled={loading || leagueFeeStatus.remaining <= 0 || leagueFeeStatus.installment <= 0 || leagueFeeStatus.paidForEvent}
+                  onClick={() => onMarkLeagueFeePaid(member.userid)}
+                  title={
+                    leagueFeeStatus.remaining <= 0
+                      ? 'League fee is fully paid'
+                      : leagueFeeStatus.paidForEvent
+                        ? 'League fee installment recorded for this event'
+                        : `Record ${formatCurrency(Math.min(leagueFeeStatus.installment, leagueFeeStatus.remaining))} toward the league fee`
+                  }
+                >
+                  <DollarSign size={13} />
+                  Paid League Fee
+                </button>
+                <button
+                  type="button"
+                  className={`btn-ghost col-span-2 justify-center px-3 py-2 text-xs ${existing?.dnf ? 'border-red-300/30 bg-red-400/10 text-red-200' : ''}`}
                   disabled={loading}
                   onClick={() => {
                     setDrafts((current) => {
@@ -2433,11 +2510,12 @@ function EventRosterLogger({
                       delete next[member.userid];
                       return next;
                     });
-                    onLog(member.userid, null, true);
+                    if (existing?.dnf) onClearResult(member.userid);
+                    else onLog(member.userid, null, true);
                   }}
                 >
-                  <UserMinus size={13} />
-                  DNF
+                  {existing?.dnf ? <RotateCcw size={13} /> : <UserMinus size={13} />}
+                  {existing?.dnf ? 'Undo DNF' : 'DNF'}
                 </button>
               </div>
               <select
@@ -2445,7 +2523,17 @@ function EventRosterLogger({
                 value={value}
                 disabled={loading}
                 onChange={(eventValue) => {
-                  const nextPlace = Number(eventValue.target.value);
+                  const nextValue = eventValue.target.value;
+                  if (nextValue === 'clear') {
+                    setDrafts((current) => {
+                      const next = { ...current };
+                      delete next[member.userid];
+                      return next;
+                    });
+                    onClearResult(member.userid);
+                    return;
+                  }
+                  const nextPlace = Number(nextValue);
                   if (!nextPlace) return;
                   setDrafts((current) => ({ ...current, [member.userid]: String(nextPlace) }));
                   onLog(member.userid, nextPlace, false);
@@ -2455,10 +2543,8 @@ function EventRosterLogger({
                 {availablePlaces.map((place) => (
                   <option key={place} value={place}>{place}{ordinal(place)}</option>
                 ))}
+                {existing?.placed != null && <option value="clear">Clear placement</option>}
               </select>
-              <p className="text-[11px] text-pit-muted">
-                Paid {formatCurrency(paymentStatus.amount)} / {formatCurrency(paymentStatus.due)}
-              </p>
             </div>
           );
         })}
@@ -2952,7 +3038,10 @@ function RecordPaymentModal({
   onClose: () => void;
   onSubmit: (data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) => void;
 }) {
-  const members = detail.members.filter((member) => member.approved && member.participating);
+  const members = useMemo(
+    () => detail.members.filter((member) => member.approved && member.participating),
+    [detail.members]
+  );
   const [userid, setUserid] = useState(members[0]?.userid ?? '');
   const [paymenttype, setPaymenttype] = useState<LeaguePaymentType>('league');
   const [eventid, setEventid] = useState('');
@@ -3711,6 +3800,30 @@ function getEventPaymentStatus(detail: LeagueDetail, event: LeagueEvent, userId:
     amount,
     due,
     paid: due > 0 && amount + 0.001 >= due,
+  };
+}
+
+function getLeagueFeeInstallmentStatus(detail: LeagueDetail, event: LeagueEvent, userId: string) {
+  const totalFeeCents = Math.max(0, Math.round(Number(detail.league.leaguefee || 0) * 100));
+  const orderedEvents = [...detail.events].sort((a, b) => {
+    const eventNumberDifference = Number(a.eventnumber ?? Number.MAX_SAFE_INTEGER) - Number(b.eventnumber ?? Number.MAX_SAFE_INTEGER);
+    if (eventNumberDifference) return eventNumberDifference;
+    const dateDifference = String(a.eventdate ?? '').localeCompare(String(b.eventdate ?? ''));
+    if (dateDifference) return dateDifference;
+    const timeDifference = String(a.eventtime ?? '').localeCompare(String(b.eventtime ?? ''));
+    if (timeDifference) return timeDifference;
+    return String(a.createdat ?? '').localeCompare(String(b.createdat ?? ''));
+  });
+  const eventIndex = orderedEvents.findIndex((item) => item.eventid === event.eventid);
+  const baseInstallmentCents = orderedEvents.length ? Math.floor(totalFeeCents / orderedEvents.length) : 0;
+  const remainderCents = orderedEvents.length ? totalFeeCents % orderedEvents.length : 0;
+  const installmentCents = eventIndex < 0 ? 0 : baseInstallmentCents + (eventIndex < remainderCents ? 1 : 0);
+  const leaguePayments = detail.payments.filter((payment) => payment.userid === userId && payment.paymenttype === 'league');
+  const paidCents = Math.round(leaguePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) * 100);
+  return {
+    installment: installmentCents / 100,
+    remaining: Math.max(0, totalFeeCents - paidCents) / 100,
+    paidForEvent: leaguePayments.some((payment) => payment.eventid === event.eventid),
   };
 }
 

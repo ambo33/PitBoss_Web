@@ -224,6 +224,8 @@ export const api = {
     del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}/posts/${postId}`),
   markLeagueEventPaid: (id: string, eventId: string, data: { userId?: string; all?: boolean; paidat?: string }) =>
     post<{ payments: LeaguePayment[]; updatedCount: number }>(`/leagues/${id}/events/${eventId}/payments/mark-paid`, data),
+  markLeagueFeeInstallmentPaid: (id: string, eventId: string, userId: string) =>
+    post<{ payment: LeaguePayment | null }>(`/leagues/${id}/events/${eventId}/payments/mark-league-fee-paid`, { userId }),
   createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null }) =>
     post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
   updateLeagueEvent: (id: string, eventId: string, data: { name?: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number | null; eventfee?: number | null }) =>
@@ -232,6 +234,8 @@ export const api = {
     put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status }),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
+  clearLeagueResult: (leagueId: string, eventId: string, userId: string) =>
+    del<{ success: boolean }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`),
   logLeagueSelfResult: (leagueId: string, eventId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/self-result`, data),
 
@@ -641,6 +645,8 @@ export interface LeagueScheduleEvent {
   isadmin?: boolean;
   participating?: boolean;
   rsvpstatus?: LeagueEventRsvpStatus | string | null;
+  goingcount?: number;
+  seasonplayercount?: number;
 }
 export interface LeagueResult {
   resultid: string;

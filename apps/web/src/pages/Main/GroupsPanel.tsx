@@ -834,16 +834,28 @@ function GroupDetailView({
             <ArrowLeft size={15} />
             Back to Groups
           </button>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-2xl font-bold text-white">{effectiveGroup.name}</h2>
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white sm:flex-none">{effectiveGroup.name}</h2>
             {group.isadmin && (
-              <span className="badge bg-pit-gold/10 border border-pit-gold/20 text-pit-gold">
+              <span className="badge shrink-0 bg-pit-gold/10 border border-pit-gold/20 text-pit-gold">
                 <Crown size={9} className="mr-0.5" /> Admin
               </span>
             )}
+            {group.isadmin && (
+              <button
+                type="button"
+                className="ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200 sm:hidden"
+                onClick={() => setDeleteGroupConfirmOpen(true)}
+                disabled={deleteGroupMutation.isPending}
+                aria-label="Delete group"
+                title="Delete group"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 sm:justify-end">
+        <div className={`flex flex-wrap gap-2 sm:justify-end ${group.isadmin ? 'hidden sm:flex' : ''}`}>
           {group.isadmin && (
             <button
               className="btn-ghost justify-center gap-1.5 text-red-300 hover:border-red-400/40 hover:text-red-200 sm:shrink-0"
@@ -1758,7 +1770,7 @@ function GroupDetailView({
         title="Delete group?"
         message={(
           <>
-            Delete <span className="font-semibold text-white">{effectiveGroup.name}</span>? This hides the group from members and removes it from group lists.
+            Delete <span className="font-semibold text-white">{effectiveGroup.name}</span>?
           </>
         )}
         confirmLabel="Delete group"

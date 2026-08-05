@@ -41,6 +41,7 @@ export default function MainPage() {
     seasonId: deepLink.seasonId,
     tab: deepLink.leagueTab,
     postId: deepLink.postId,
+    eventId: deepLink.eventId,
   }));
   const handledSearchRef = useRef(location.search);
   const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
@@ -96,7 +97,7 @@ export default function MainPage() {
       setGroupOpenRequest({ groupId: next.groupId, tab: next.groupTab, postId: next.postId, token: Date.now() });
     }
     if (next.leagueId) {
-      setLeagueDeepLink({ leagueId: next.leagueId, seasonId: next.seasonId, tab: next.leagueTab, postId: next.postId });
+      setLeagueDeepLink({ leagueId: next.leagueId, seasonId: next.seasonId, tab: next.leagueTab, postId: next.postId, eventId: next.eventId });
     }
   }, [location.search]);
 
@@ -132,7 +133,7 @@ export default function MainPage() {
 
   const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
     if (nextSection !== 'leagues') {
-      setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined });
+      setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
     }
     setCommandDetailOpen(false);
     setView('command');
@@ -213,6 +214,7 @@ export default function MainPage() {
                     initialSeasonId={leagueDeepLink.seasonId}
                     initialTab={leagueDeepLink.tab}
                     initialPostId={leagueDeepLink.postId}
+                    initialEventId={leagueDeepLink.eventId}
                     onDetailStateChange={setCommandDetailOpen}
                   />
                 )
@@ -232,8 +234,9 @@ function parseCommandCenterDeepLink(search: string): {
   groupTab?: 'posts';
   leagueId?: string;
   seasonId?: string;
-  leagueTab?: 'board';
+  leagueTab?: 'board' | 'events';
   postId?: string;
+  eventId?: string;
   scheduleItemId?: string;
 } {
   const params = new URLSearchParams(search);
@@ -247,8 +250,11 @@ function parseCommandCenterDeepLink(search: string): {
     groupTab: params.get('groupTab') === 'posts' ? 'posts' : undefined,
     leagueId: params.get('league') || undefined,
     seasonId: params.get('season') || undefined,
-    leagueTab: params.get('leagueTab') === 'board' ? 'board' : undefined,
+    leagueTab: params.get('leagueTab') === 'board' || params.get('leagueTab') === 'events'
+      ? params.get('leagueTab') as 'board' | 'events'
+      : undefined,
     postId: params.get('post') || undefined,
+    eventId: params.get('event') || undefined,
     scheduleItemId: params.get('tournament') || params.get('game') || undefined,
   };
 }
