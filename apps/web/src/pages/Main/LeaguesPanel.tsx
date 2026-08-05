@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -59,17 +60,17 @@ export default function LeaguesPanel({
     },
   });
   const joinMutation = useMutation({
-    mutationFn: (data: { code: string; claimuserid?: string | null }) => api.joinLeague(data.code, data.claimuserid),
+    mutationFn: (data: { code: string; claimuserid?: string | null; skipclaim?: boolean }) => api.joinLeague(data.code, data.claimuserid, Boolean(data.skipclaim)),
     onSuccess: (result, variables) => {
       qc.invalidateQueries({ queryKey: ['leagues'] });
-      if (!variables.claimuserid && result.claimablePlayers?.length) {
+      if (!variables.claimuserid && !variables.skipclaim && result.claimablePlayers?.length) {
         setJoinLeagueCode(variables.code);
         setJoinClaimOptions(result.claimablePlayers);
         return;
       }
       setJoinLeagueCode('');
       setJoinClaimOptions([]);
-      if (variables.claimuserid && !result.pending) {
+      if (!result.pending && result.seasonJoined) {
         setSelected({ leagueid: result.leagueid });
       }
       setShowJoin(false);
@@ -141,9 +142,7 @@ export default function LeaguesPanel({
         claimOptions={joinClaimOptions}
         onClaim={(userId) => joinMutation.mutate({ code: joinLeagueCode, claimuserid: userId })}
         onSkip={() => {
-          setShowJoin(false);
-          setJoinLeagueCode('');
-          setJoinClaimOptions([]);
+          joinMutation.mutate({ code: joinLeagueCode, skipclaim: true });
         }}
         loading={joinMutation.isPending}
         error={joinMutation.error?.message}
@@ -296,7 +295,7 @@ function LeagueDetailView({
     if (initialTab) setActiveDetailTab(initialTab);
   }, [initialPostId, initialSeasonId, initialTab]);
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch, error: detailError } = useQuery({
     queryKey: ['league', league.leagueid, selectedSeasonId],
     queryFn: () => api.getLeague(league.leagueid, selectedSeasonId),
   });
@@ -319,7 +318,7 @@ function LeagueDetailView({
     },
   });
   const createSeasonMutation = useMutation({
-    mutationFn: (payload: { name: string; begindate: string; enddate: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean }) => api.createLeagueSeason(league.leagueid, payload),
+    mutationFn: (payload: { name: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean }) => api.createLeagueSeason(league.leagueid, payload),
     onSuccess: (created) => {
       setSelectedSeasonId(created.season.seasonid);
       setSelectedEvent(null);
@@ -410,8 +409,6 @@ function LeagueDetailView({
         const selectedSeason = data?.seasons.find((season) => season.seasonid === seasonId);
         await api.updateLeagueSeason(league.leagueid, seasonId, {
           name: selectedSeason?.name,
-          begindate: selectedSeason ? String(selectedSeason.begindate).slice(0, 10) : undefined,
-          enddate: selectedSeason ? String(selectedSeason.enddate).slice(0, 10) : undefined,
           pereventfee: nextSeasonEventFee,
         });
       }
@@ -570,7 +567,16 @@ function LeagueDetailView({
     }
   };
 
-  if (isLoading || !detail) return <LoadingSpinner className="mt-16" />;
+  if (isLoading) return <LoadingSpinner className="mt-16" />;
+  if (detailError || !detail) {
+    return (
+      <div className="mx-auto mt-10 max-w-lg rounded-xl border border-red-400/20 bg-red-400/10 p-5 text-center">
+        <p className="font-semibold text-white">League unavailable</p>
+        <p className="mt-2 text-sm text-red-200">{detailError instanceof Error ? detailError.message : 'This league could not be loaded.'}</p>
+        <button type="button" className="btn-ghost mt-4" onClick={onBack}>Back to Leagues</button>
+      </div>
+    );
+  }
   const activeMembers = detail.members.filter((member) => member.approved && member.participating);
   const selectedSeason = detail.seasons.find((season) => season.seasonid === detail.selectedseasonid);
 
@@ -1105,6 +1111,15 @@ function EventTrackerCard({
   loading: boolean;
   error?: string;
 }) {
+  const [showKnockoutQr, setShowKnockoutQr] = useState(false);
+  const knockoutLobbyUrl = event
+    ? `${window.location.origin}/league/${leagueId}/event/${event.eventid}`
+    : '';
+
+  useEffect(() => {
+    setShowKnockoutQr(false);
+  }, [event?.eventid]);
+
   return (
     <section className="card space-y-4">
       {onBack && (
@@ -1134,11 +1149,41 @@ function EventTrackerCard({
               {event.tournamentid ? 'Run tournament' : 'Player lobby'}
             </a>
           )}
+          {event && (
+            <button
+              type="button"
+              className="chip hover:border-pit-teal/50 hover:text-white"
+              onClick={() => setShowKnockoutQr((current) => !current)}
+              aria-expanded={showKnockoutQr}
+            >
+              <QrCode size={13} />
+              Knockout QR
+            </button>
+          )}
           <span className="chip">{resultsCount} finishes</span>
         </div>
       </div>
       {event ? (
         <>
+          {showKnockoutQr && (
+            <div className="grid gap-4 rounded-xl border border-pit-teal/30 bg-pit-teal/5 p-4 sm:grid-cols-[auto_1fr] sm:items-center">
+              <div className="w-fit rounded-lg bg-white p-2">
+                <QRCodeSVG value={knockoutLobbyUrl} size={132} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-white">Player knockout page</p>
+                <p className="mt-1 text-sm leading-6 text-pit-text">
+                  Players scan this at event time, then report their own finish with one tap.
+                </p>
+                <a
+                  className="mt-3 block truncate text-xs text-pit-teal hover:text-white"
+                  href={knockoutLobbyUrl}
+                >
+                  {knockoutLobbyUrl}
+                </a>
+              </div>
+            </div>
+          )}
           <LeagueEventRsvpPanel detail={detail} event={event} />
           {event.tournamentid ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-pit-teal/25 bg-pit-teal/5 p-3">
@@ -1179,7 +1224,6 @@ function LeagueEventRsvpPanel({ detail, event }: { detail: LeagueDetail; event: 
   const exportRows = eventRsvps.map((rsvp) => ({
     name: rsvp.displayname ?? 'Player',
     status: rsvp.status === 'going' ? 'Going' : "Can't go",
-    updated: rsvp.updatedat,
   }));
 
   return (
@@ -2442,7 +2486,8 @@ function EventRosterLogger({
           const leagueFeeStatus = getLeagueFeeInstallmentStatus(detail, event, member.userid);
           const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
           const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
-          const maxPlace = Math.max(1, approvedMembers.length);
+          const otherDnfCount = eventResults.filter((result) => result.userid !== member.userid && result.dnf).length;
+          const maxPlace = Math.max(1, approvedMembers.length - otherDnfCount);
           const usedPlaces = new Set(
             eventResults
               .filter((result) => result.userid !== member.userid && !result.dnf && result.placed != null)
@@ -2772,18 +2817,12 @@ function CreateLeagueModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number; seasonname: string; seasonbegindate: string; seasonenddate: string; eventsasgames: boolean }) => void;
+  onSubmit: (data: { name: string; approvalneeded: boolean; expectedplayercount: number; leaguefee: number; pereventfee: number; showupbonuspoints: number; bestfinishcount: number; pointslookup: LeaguePointRule[]; eventcount: number; seasonname: string; eventsasgames: boolean }) => void;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState('Season Championship League');
   const [seasonname, setSeasonname] = useState('Season 1');
-  const [seasonbegindate, setSeasonbegindate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [seasonenddate, setSeasonenddate] = useState(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + 6);
-    return date.toISOString().slice(0, 10);
-  });
   const [approvalneeded, setApprovalneeded] = useState(false);
   const [expectedplayercount, setExpectedplayercount] = useState('36');
   const [leaguefee, setLeaguefee] = useState('0');
@@ -2822,8 +2861,6 @@ function CreateLeagueModal({
               pointslookup,
               eventcount: totalEventCount,
               seasonname,
-              seasonbegindate,
-              seasonenddate,
               eventsasgames,
             })}
           >
@@ -2835,18 +2872,10 @@ function CreateLeagueModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" placeholder="League name" value={name} onChange={(event) => setName(event.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">First season</span>
             <input className="input" value={seasonname} onChange={(event) => setSeasonname(event.target.value)} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Begin date</span>
-            <input className="input" type="date" value={seasonbegindate} onChange={(event) => setSeasonbegindate(event.target.value)} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">End date</span>
-            <input className="input" type="date" value={seasonenddate} onChange={(event) => setSeasonenddate(event.target.value)} />
           </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -3154,27 +3183,17 @@ function CreateSeasonModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; begindate: string; enddate: string; eventcount?: number; eventsasgames?: boolean }) => void;
+  onSubmit: (data: { name: string; eventcount?: number; eventsasgames?: boolean }) => void;
   nextSeasonNumber: number;
   loading: boolean;
   error?: string;
 }) {
   const [name, setName] = useState(`Season ${nextSeasonNumber}`);
-  const [begindate, setBegindate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [enddate, setEnddate] = useState(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + 6);
-    return date.toISOString().slice(0, 10);
-  });
   const [eventcount, setEventcount] = useState('10');
   const [eventsasgames, setEventsasgames] = useState(false);
   useEffect(() => {
     if (!open) return;
     setName(`Season ${nextSeasonNumber}`);
-    setBegindate(new Date().toISOString().slice(0, 10));
-    const date = new Date();
-    date.setMonth(date.getMonth() + 6);
-    setEnddate(date.toISOString().slice(0, 10));
     setEventcount('10');
     setEventsasgames(false);
   }, [nextSeasonNumber, open]);
@@ -3190,8 +3209,8 @@ function CreateSeasonModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || !name.trim() || !begindate || !enddate || enddate < begindate}
-            onClick={() => onSubmit({ name, begindate, enddate, eventcount: Math.max(0, Math.min(100, Number(eventcount) || 0)), eventsasgames })}
+            disabled={loading || !name.trim()}
+            onClick={() => onSubmit({ name, eventcount: Math.max(0, Math.min(100, Number(eventcount) || 0)), eventsasgames })}
           >
             {loading ? 'Creating...' : 'Create Season'}
           </button>
@@ -3201,16 +3220,6 @@ function CreateSeasonModal({
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Season name" />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Begin date</span>
-            <input className="input" type="date" value={begindate} onChange={(event) => setBegindate(event.target.value)} />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">End date</span>
-            <input className="input" type="date" value={enddate} onChange={(event) => setEnddate(event.target.value)} />
-          </label>
-        </div>
         <label className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Total events</span>
           <input className="input" inputMode="numeric" value={eventcount} onChange={(event) => setEventcount(event.target.value.replace(/\D/g, ''))} />
@@ -3724,10 +3733,10 @@ function formatPercentOfField(value: number, total: number) {
   return `${((value / total) * 100).toFixed(1)}% field`;
 }
 
-function exportLeagueEventRsvps(event: LeagueEvent, rows: Array<{ name: string; status: string; updated: string }>) {
+function exportLeagueEventRsvps(event: LeagueEvent, rows: Array<{ name: string; status: string }>) {
   const csv = [
-    ['Name', 'Status', 'Updated'],
-    ...rows.map((row) => [row.name, row.status, row.updated]),
+    ['Name', 'Status'],
+    ...rows.map((row) => [row.name, row.status]),
   ]
     .map((row) => row.map(csvCell).join(','))
     .join('\r\n');

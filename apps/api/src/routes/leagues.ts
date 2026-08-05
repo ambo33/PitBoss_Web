@@ -17,9 +17,12 @@ import {
   type SerializedLeagueForFinals,
 } from '../leagues/scoring';
 import { calculateLeagueFeeInstallment } from '../leagues/payments';
+import { shouldJoinCurrentSeason } from '../leagues/membership';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers } from '../lib/server/notifications/notificationService';
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
+import { hasTournamentStarted } from '../schedule';
+import { getAvailableLeaguePlacements } from '../leagues/placements';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -403,7 +406,9 @@ async function sendLeagueResultLoggedPush(args: {
 
 async function getLeagueSeasons(leagueId: string) {
   return query<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate,
+    `SELECT s.seasonid, s.leagueid, s.name,
+            COALESCE((SELECT MIN(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.begindate) AS begindate,
+            COALESCE((SELECT MAX(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.enddate) AS enddate,
             expectedplayercount,
             CAST(leaguefee AS DECIMAL) AS leaguefee,
             CAST(pereventfee AS DECIMAL) AS pereventfee,
@@ -412,9 +417,9 @@ async function getLeagueSeasons(leagueId: string) {
             pointslookup,
             COALESCE(eventsasgames, FALSE) AS eventsasgames,
             active, createdat
-     FROM leagueseasons
-     WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
-     ORDER BY begindate DESC, createdat DESC`,
+     FROM leagueseasons s
+     WHERE s.leagueid = $1 AND COALESCE(s.active, TRUE) = TRUE
+     ORDER BY COALESCE((SELECT MAX(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.begindate) DESC, s.createdat DESC`,
     [leagueId]
   );
 }
@@ -422,7 +427,9 @@ async function getLeagueSeasons(leagueId: string) {
 async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
   if (seasonId) {
     return queryOne<LeagueSeasonRow>(
-      `SELECT seasonid, leagueid, name, begindate, enddate,
+      `SELECT s.seasonid, s.leagueid, s.name,
+              COALESCE((SELECT MIN(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.begindate) AS begindate,
+              COALESCE((SELECT MAX(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.enddate) AS enddate,
               expectedplayercount,
               CAST(leaguefee AS DECIMAL) AS leaguefee,
               CAST(pereventfee AS DECIMAL) AS pereventfee,
@@ -431,13 +438,15 @@ async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
               pointslookup,
               COALESCE(eventsasgames, FALSE) AS eventsasgames,
               active, createdat
-       FROM leagueseasons
-       WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
+       FROM leagueseasons s
+       WHERE s.leagueid = $1 AND s.seasonid = $2 AND COALESCE(s.active, TRUE) = TRUE`,
       [leagueId, seasonId]
     );
   }
   return queryOne<LeagueSeasonRow>(
-    `SELECT seasonid, leagueid, name, begindate, enddate,
+    `SELECT s.seasonid, s.leagueid, s.name,
+            COALESCE((SELECT MIN(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.begindate) AS begindate,
+            COALESCE((SELECT MAX(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.enddate) AS enddate,
             expectedplayercount,
             CAST(leaguefee AS DECIMAL) AS leaguefee,
             CAST(pereventfee AS DECIMAL) AS pereventfee,
@@ -446,9 +455,9 @@ async function getSelectedSeason(leagueId: string, seasonId?: string | null) {
             pointslookup,
             COALESCE(eventsasgames, FALSE) AS eventsasgames,
             active, createdat
-     FROM leagueseasons
-     WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
-     ORDER BY begindate DESC, createdat DESC
+     FROM leagueseasons s
+     WHERE s.leagueid = $1 AND COALESCE(s.active, TRUE) = TRUE
+     ORDER BY COALESCE((SELECT MAX(e.eventdate) FROM leagueevents e WHERE e.seasonid = s.seasonid AND e.active = TRUE AND e.eventdate IS NOT NULL), s.begindate) DESC, s.createdat DESC
      LIMIT 1`,
     [leagueId]
   );
@@ -1020,7 +1029,7 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
-  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown; eventcount?: number; seasonname?: string; seasonbegindate?: string; seasonenddate?: string; eventsasgames?: boolean };
+  const body = req.body as { name?: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: unknown; eventcount?: number; seasonname?: string; eventsasgames?: boolean };
   const name = String(body.name ?? '').trim().slice(0, 160);
   if (!name) {
     res.status(400).json({ error: 'League name required.' });
@@ -1028,12 +1037,10 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
   }
   const today = new Date().toISOString().slice(0, 10);
   const seasonName = String(body.seasonname ?? 'Season 1').trim().slice(0, 160) || 'Season 1';
-  const seasonBeginDate = isoDate(body.seasonbegindate, today);
-  const seasonEndDate = isoDate(body.seasonenddate, daysFromNow(365));
-  if (seasonEndDate < seasonBeginDate) {
-    res.status(400).json({ error: 'Season end date must be after the begin date.' });
-    return;
-  }
+  // These are storage fallbacks for seasons without dated events. Reads derive
+  // the visible range from the earliest and latest active event dates.
+  const seasonBeginDate = today;
+  const seasonEndDate = daysFromNow(365);
   const expectedPlayerCount = Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount ?? 36))));
   const leagueFee = Math.max(0, Math.round(Number(body.leaguefee ?? 0) * 100) / 100);
   const perEventFee = Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100);
@@ -1115,7 +1122,7 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
 });
 
 leaguesRouter.post('/join', async (req: Request, res: Response) => {
-  const body = req.body as { invitecode?: string; claimuserid?: string | null };
+  const body = req.body as { invitecode?: string; claimuserid?: string | null; skipclaim?: boolean };
   const invitecode = normalizeInviteCode(body.invitecode);
   const claimUserId = String(body.claimuserid ?? '').trim();
   const league = await queryOne<LeagueRow>(
@@ -1350,21 +1357,41 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
           },
         });
       }
+      const joinedCurrentSeason = claimApproved && selectedSeason?.seasonid
+        ? await client.query(
+            `SELECT 1
+             FROM leagueseasonparticipants
+             WHERE leagueid = $1 AND seasonid = $2 AND userid = $3 AND participating = TRUE
+             LIMIT 1`,
+            [league.leagueid, selectedSeason.seasonid, req.userId]
+          )
+        : null;
       await client.query('COMMIT');
       res.json({
         leagueid: league.leagueid,
         pending: !claimApproved,
+        seasonJoined: Boolean(joinedCurrentSeason?.rows[0]),
         claimed: true,
         claimedPlayerName: claimablePlayer.displayname,
       });
       return;
     }
+    const membershipApproved = Boolean(existingMembership?.approved || approved);
     await client.query(
       `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
        VALUES ($1, $2, FALSE, $3)
        ON CONFLICT (leagueid, userid) DO UPDATE SET approved = CASE WHEN leaguemembers.approved THEN TRUE ELSE $3 END`,
       [league.leagueid, req.userId, approved]
     );
+    const shouldJoinSeason = shouldJoinCurrentSeason({
+      membershipApproved,
+      hasSelectedSeason: Boolean(selectedSeason?.seasonid),
+      claimablePlayerCount: claimablePlayers.length,
+      skipClaim: Boolean(body.skipclaim),
+    });
+    if (shouldJoinSeason && selectedSeason?.seasonid) {
+      await addSeasonParticipant(client, league.leagueid, selectedSeason.seasonid, req.userId!, true);
+    }
     if (!existingMembership || (approved && !existingMembership.approved)) {
       await recordLeagueAudit(client, {
         leagueId: league.leagueid,
@@ -1384,7 +1411,13 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
   }
   res.json({
     leagueid: league.leagueid,
-    pending: Boolean(league.approvalneeded),
+    pending: !Boolean(existingMembership?.approved || approved),
+    seasonJoined: shouldJoinCurrentSeason({
+      membershipApproved: Boolean(existingMembership?.approved || approved),
+      hasSelectedSeason: Boolean(selectedSeason?.seasonid),
+      claimablePlayerCount: claimablePlayers.length,
+      skipClaim: Boolean(body.skipclaim),
+    }),
     claimablePlayers,
   });
 });
@@ -1394,15 +1427,11 @@ leaguesRouter.post('/:id/seasons', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; begindate?: string; enddate?: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean };
+  const body = req.body as { name?: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean };
   const name = String(body.name ?? 'New Season').trim().slice(0, 160) || 'New Season';
   const today = new Date().toISOString().slice(0, 10);
-  const beginDate = isoDate(body.begindate, today);
-  const endDate = isoDate(body.enddate, daysFromNow(365));
-  if (endDate < beginDate) {
-    res.status(400).json({ error: 'Season end date must be after the begin date.' });
-    return;
-  }
+  const beginDate = today;
+  const endDate = daysFromNow(365);
   const eventCount = Math.max(0, Math.min(100, Math.round(Number(body.eventcount ?? 0))));
   const league = await getLeagueForUser(req.params.id, req.userId!);
   const perEventFee = Math.max(0, Math.round(Number(body.pereventfee ?? league?.pereventfee ?? 0) * 100) / 100);
@@ -1448,7 +1477,7 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; begindate?: string; enddate?: string; pereventfee?: number; eventsasgames?: boolean };
+  const body = req.body as { name?: string; pereventfee?: number; eventsasgames?: boolean };
   const existing = await queryOne<LeagueSeasonRow>(
     `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
             COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat
@@ -1461,19 +1490,11 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     return;
   }
   const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
-  const hasBeginDate = Object.prototype.hasOwnProperty.call(body, 'begindate');
-  const hasEndDate = Object.prototype.hasOwnProperty.call(body, 'enddate');
   const hasPerEventFee = Object.prototype.hasOwnProperty.call(body, 'pereventfee');
   const hasEventsAsGames = Object.prototype.hasOwnProperty.call(body, 'eventsasgames');
   const name = hasName ? String(body.name ?? '').trim().slice(0, 160) : existing.name;
   if (!name) {
     res.status(400).json({ error: 'Season name required.' });
-    return;
-  }
-  const beginDate = hasBeginDate ? isoDate(body.begindate, String(existing.begindate).slice(0, 10)) : String(existing.begindate).slice(0, 10);
-  const endDate = hasEndDate ? isoDate(body.enddate, String(existing.enddate).slice(0, 10)) : String(existing.enddate).slice(0, 10);
-  if (endDate < beginDate) {
-    res.status(400).json({ error: 'Season end date must be after the begin date.' });
     return;
   }
   const perEventFee = hasPerEventFee ? Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100) : Number(existing.pereventfee || 0);
@@ -1489,14 +1510,12 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     const updated = await client.query<LeagueSeasonRow>(
       `UPDATE leagueseasons
        SET name = $3,
-           begindate = $4::DATE,
-           enddate = $5::DATE,
-           pereventfee = $6,
-           eventsasgames = $7
+           pereventfee = $4,
+           eventsasgames = $5
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE
        RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
                  COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
-      [req.params.id, req.params.seasonId, name, beginDate, endDate, perEventFee, eventsAsGames]
+      [req.params.id, req.params.seasonId, name, perEventFee, eventsAsGames]
     );
     const row = updated.rows[0];
     if (hasPerEventFee) {
@@ -3482,6 +3501,78 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
   res.json({ rsvp: row });
 });
 
+leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Response) => {
+  const league = await getLeagueForUser(req.params.id, req.userId!);
+  if (!league) {
+    res.status(404).json({ error: 'League not found.' });
+    return;
+  }
+  const event = await queryOne<LeagueEventRow>(
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, active, createdat
+     FROM leagueevents
+     WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
+    [req.params.eventId, req.params.id]
+  );
+  if (!event?.seasonid) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+
+  const [participantCount, isParticipant, results, myRsvp] = await Promise.all([
+    getLeagueSeasonParticipantCount(req.params.id, event.seasonid),
+    requireLeagueSeasonParticipant(req.params.id, event.seasonid, req.userId!),
+    query<LeagueResultRow>(
+      `SELECT r.resultid, r.eventid, r.leagueid, r.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
+       FROM leagueresults r
+       JOIN users u ON u.guid = r.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       WHERE r.leagueid = $1 AND r.eventid = $2
+       ORDER BY r.updatedat DESC`,
+      [req.params.id, event.eventid]
+    ),
+    queryOne<LeagueEventRsvpRow>(
+      `SELECT rsvpid, eventid, leagueid, userid, status, createdat, updatedat
+       FROM leagueeventrsvps
+       WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
+      [event.eventid, req.params.id, req.userId]
+    ),
+  ]);
+
+  const normalizedResults = results.map((result) => ({
+    ...result,
+    placed: result.placed == null ? null : Number(result.placed),
+    dnf: Boolean(result.dnf),
+    points: Number(result.points || 0),
+    showupbonuspoints: Number(result.showupbonuspoints || 0),
+  }));
+  const myResult = normalizedResults.find((result) => result.userid === req.userId) ?? null;
+  const { nextPlace } = getAvailableLeaguePlacements(participantCount, normalizedResults, req.userId!);
+  const hasStarted = hasTournamentStarted(event.eventdate, event.eventtime);
+
+  res.json({
+    league: {
+      leagueid: league.leagueid,
+      name: league.name,
+      isadmin: Boolean(league.isadmin),
+    },
+    event: {
+      ...event,
+      eventfee: event.eventfee == null ? null : Number(event.eventfee),
+      hasstarted: hasStarted,
+    },
+    participantcount: participantCount,
+    isparticipant: isParticipant,
+    canselflog: hasStarted && isParticipant && !myResult && nextPlace != null,
+    nextplace: nextPlace,
+    myresult: myResult,
+    myrsvp: myRsvp,
+    results: normalizedResults,
+  });
+});
+
 async function upsertResult(req: Request, res: Response, targetUserId: string, allowSelfLog = false) {
   const leagueRow = await getLeagueForUser(req.params.id, req.userId!);
   if (!leagueRow) {
@@ -3511,52 +3602,87 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     return;
   }
 
-  const body = req.body as { placed?: number | null; dnf?: boolean };
+  const body = req.body as { placed?: number | null; dnf?: boolean; auto?: boolean };
   const dnf = Boolean(body.dnf);
-  const placed = dnf ? null : Math.max(1, Math.round(Number(body.placed ?? 0)));
-  if (!dnf && !placed) {
-    res.status(400).json({ error: 'Place required.' });
+  const autoPlace = Boolean(body.auto) && allowSelfLog && isSelf && !dnf;
+  if (allowSelfLog && isSelf && !hasTournamentStarted(event.eventdate, event.eventtime)) {
+    res.status(403).json({ error: 'Knockout reporting opens when the event starts.' });
     return;
   }
-  if (!dnf) {
-    const finishPlace = placed ?? 0;
-    const participantCount = await getLeagueSeasonParticipantCount(req.params.id, event.seasonid);
-    if (finishPlace > participantCount) {
-      res.status(400).json({ error: `Place must be between 1 and ${participantCount}.` });
-      return;
-    }
-    const existingPlacement = await queryOne<{ userid: string }>(
-      `SELECT userid
-       FROM leagueresults
-       WHERE eventid = $1
-         AND leagueid = $2
-         AND placed = $3
-         AND COALESCE(dnf, FALSE) = FALSE
-         AND userid <> $4
-       LIMIT 1`,
-      [event.eventid, req.params.id, finishPlace, targetUserId]
-    );
-    if (existingPlacement) {
-      res.status(409).json({ error: `Place ${placed} is already assigned.` });
-      return;
-    }
-  }
   const pointsLookup = normalizePointsLookup(effectiveLeague.pointslookup);
-  const points = pointsForPlace(pointsLookup, placed, dnf);
-  const showupBonus = dnf ? 0 : Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
-  const previousResult = await queryOne<LeagueResultRow>(
-    `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
-     FROM leagueresults
-     WHERE eventid = $1 AND leagueid = $2 AND userid = $3
-     LIMIT 1`,
-    [event.eventid, req.params.id, targetUserId]
-  );
 
   const client = await pool.connect();
   let row: LeagueResultRow | null = null;
   let resultChanged = false;
   try {
     await client.query('BEGIN');
+    await client.query(
+      `SELECT eventid FROM leagueevents WHERE eventid = $1 AND leagueid = $2 FOR UPDATE`,
+      [event.eventid, req.params.id]
+    );
+    const previousQuery = await client.query<LeagueResultRow>(
+      `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
+       FROM leagueresults
+       WHERE eventid = $1 AND leagueid = $2 AND userid = $3
+       LIMIT 1`,
+      [event.eventid, req.params.id, targetUserId]
+    );
+    const previousResult = previousQuery.rows[0] ?? null;
+    const participantQuery = await client.query<{ count: string | number }>(
+      `SELECT count(*) AS count
+       FROM leaguemembers lm
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
+       WHERE lm.leagueid = $1
+         AND lsp.seasonid = $2
+         AND lm.approved = TRUE
+         AND lsp.participating = TRUE`,
+      [req.params.id, event.seasonid]
+    );
+    const participantCount = Number(participantQuery.rows[0]?.count || 0);
+    const eventResultsQuery = await client.query<{ userid: string; placed: number | null; dnf: boolean }>(
+      `SELECT userid, placed, COALESCE(dnf, FALSE) AS dnf
+       FROM leagueresults
+       WHERE eventid = $1 AND leagueid = $2 AND userid <> $3`,
+      [event.eventid, req.params.id, targetUserId]
+    );
+    const placementState = getAvailableLeaguePlacements(
+      participantCount,
+      eventResultsQuery.rows,
+      targetUserId
+    );
+    const { placementLimit, usedPlaces } = placementState;
+    let placed: number | null = null;
+    const preservingExistingAutoPlace = autoPlace && previousResult?.placed != null && !previousResult.dnf;
+    if (!dnf) {
+      if (autoPlace) {
+        if (preservingExistingAutoPlace) {
+          placed = Number(previousResult.placed);
+        } else {
+          placed = placementState.nextPlace;
+        }
+      } else {
+        const requestedPlace = Math.round(Number(body.placed ?? 0));
+        placed = Number.isFinite(requestedPlace) && requestedPlace > 0 ? requestedPlace : null;
+      }
+      if (!placed) {
+        await client.query('ROLLBACK');
+        res.status(409).json({ error: autoPlace ? 'No finish places remain.' : 'Place required.' });
+        return;
+      }
+      if (placed > placementLimit && !preservingExistingAutoPlace) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: `Place must be between 1 and ${placementLimit}.` });
+        return;
+      }
+      if (usedPlaces.has(placed)) {
+        await client.query('ROLLBACK');
+        res.status(409).json({ error: `Place ${placed} is already assigned.` });
+        return;
+      }
+    }
+    const points = pointsForPlace(pointsLookup, placed, dnf);
+    const showupBonus = dnf ? 0 : Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
     const inserted = await client.query<LeagueResultRow>(
       `INSERT INTO leagueresults (eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

@@ -1,89 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, Users, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { api } from '../../api/client';
-import { useAuthStore } from '../../store/auth';
+import { api, type LeagueResult } from '../../api/client';
 
 export default function LeagueEventLobbyPage() {
   const { leagueId, eventId } = useParams();
   const qc = useQueryClient();
-  const user = useAuthStore((state) => state.user);
-  const [place, setPlace] = useState('');
+  const queryKey = ['league-event-lobby', leagueId, eventId];
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['league', leagueId],
-    queryFn: () => api.getLeague(leagueId!),
-    enabled: Boolean(leagueId),
+    queryKey,
+    queryFn: () => api.getLeagueEventLobby(leagueId!, eventId!),
+    enabled: Boolean(leagueId && eventId),
+    refetchInterval: (query) => query.state.data?.event.hasstarted ? 10_000 : 30_000,
+    refetchOnWindowFocus: true,
   });
 
-  const event = useMemo(
-    () => data?.events.find((candidate) => candidate.eventid === eventId) ?? null,
-    [data, eventId]
-  );
-  const myResult = useMemo(
-    () => data?.results.find((result) => result.eventid === eventId && result.userid === user?.guid) ?? null,
-    [data, eventId, user?.guid]
-  );
-  const myRsvp = useMemo(
-    () => data?.rsvps.find((rsvp) => rsvp.eventid === eventId && rsvp.userid === user?.guid) ?? null,
-    [data?.rsvps, eventId, user?.guid]
-  );
-  const eventResults = useMemo(
+  const placedResults = useMemo(
     () => (data?.results ?? [])
-      .filter((result) => result.eventid === eventId && !result.dnf && result.placed != null)
-      .sort((a, b) => Number(b.placed || 0) - Number(a.placed || 0)),
-    [data?.results, eventId]
+      .filter((result) => !result.dnf && result.placed != null)
+      .sort((a, b) => new Date(b.updatedat).getTime() - new Date(a.updatedat).getTime()),
+    [data?.results]
   );
-  const activePlayerCount = useMemo(
-    () => (data?.members ?? []).filter((member) => member.approved && member.participating).length,
-    [data?.members]
+  const dnfCount = useMemo(
+    () => (data?.results ?? []).filter((result) => result.dnf).length,
+    [data?.results]
   );
-  const nextOpenPlace = useMemo(() => {
-    if (myResult?.placed) return Number(myResult.placed);
-    if (!activePlayerCount) return '';
-    const usedPlaces = new Set(
-      eventResults
-        .filter((result) => result.userid !== user?.guid)
-        .map((result) => Number(result.placed || 0))
-        .filter(Boolean)
-    );
-    for (let placeValue = activePlayerCount; placeValue >= 1; placeValue -= 1) {
-      if (!usedPlaces.has(placeValue)) return String(placeValue);
-    }
-    return '';
-  }, [activePlayerCount, eventResults, myResult?.placed, user?.guid]);
-
-  useEffect(() => {
-    if (nextOpenPlace) setPlace(String(nextOpenPlace));
-  }, [nextOpenPlace]);
+  const playersRemaining = Math.max(0, Number(data?.participantcount ?? 0) - dnfCount - placedResults.length);
 
   const logMutation = useMutation({
-    mutationFn: () => api.logLeagueSelfResult(leagueId!, eventId!, { placed: Number(place), dnf: false }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', leagueId] }),
+    mutationFn: () => api.logLeagueSelfResult(leagueId!, eventId!, { auto: true }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey });
+      await qc.invalidateQueries({ queryKey: ['league', leagueId] });
+    },
+    onError: () => void refetch(),
   });
   const rsvpMutation = useMutation({
     mutationFn: (status: 'going' | 'not_going') => api.rsvpLeagueEvent(leagueId!, eventId!, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', leagueId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
-  if (!data || !event) {
+  if (!data) {
     return (
       <main className="min-h-screen bg-pit-bg p-4 text-white">
-        <div className="mx-auto max-w-lg rounded-xl border border-pit-border bg-pit-card p-5">
+        <div className="mx-auto mt-16 max-w-lg rounded-xl border border-pit-border bg-pit-card p-5">
           <p className="font-semibold">League event not found.</p>
-          <Link className="mt-4 inline-flex text-sm text-pit-teal" to="/">Back to app</Link>
+          <Link className="mt-4 inline-flex text-sm text-pit-teal" to="/">Return to Command Center</Link>
         </div>
       </main>
     );
   }
 
+  const { event, league, myresult: myResult, myrsvp: myRsvp } = data;
+  const error = logMutation.error ?? rsvpMutation.error;
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-pit-bg px-4 py-8 text-white">
-      <section className="w-full max-w-lg rounded-2xl border border-pit-border bg-pit-card p-5 shadow-2xl">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10">
+      <section className="mx-auto w-full max-w-3xl">
         <div className="flex items-center justify-between gap-3">
           <BrandLockup compact showSlogan={false} />
           <button
@@ -91,127 +69,172 @@ export default function LeagueEventLobbyPage() {
             className="btn-ghost shrink-0 px-3 py-2 text-xs"
             disabled={isFetching}
             onClick={() => void refetch()}
-            title="Refresh event players and results"
+            title="Refresh knockouts and placements"
           >
             <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
-        <div className="mt-6 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 p-5 text-center">
-          <Trophy className="mx-auto text-pit-teal" size={34} />
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-pit-teal">{data.league.name}</p>
-          <h1 className="mt-2 text-3xl font-black">{event.name}</h1>
-          <p className="mt-2 text-sm text-pit-text">No timer, no board. Just log your finish for league points.</p>
-        </div>
 
-        {myResult && (
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-200">
-            <CheckCircle2 size={18} />
-            <span>
-              Logged: {myResult.placed}{ordinal(myResult.placed)} place, {Number(myResult.points || 0) + Number(myResult.showupbonuspoints || 0)} points.
-            </span>
-          </div>
-        )}
-
-        <div className="mt-4 rounded-xl border border-pit-border bg-pit-bg/60 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">RSVP</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost'}`}
-              disabled={rsvpMutation.isPending}
-              onClick={() => rsvpMutation.mutate('going')}
-            >
-              <CheckCircle2 size={16} />
-              Going
-            </button>
-            <button
-              type="button"
-              className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
-              disabled={rsvpMutation.isPending}
-              onClick={() => rsvpMutation.mutate('not_going')}
-            >
-              <XCircle size={16} />
-              Can't go
-            </button>
-          </div>
-          {myRsvp && (
-            <p className="mt-2 text-xs text-pit-muted">
-              Saved as {myRsvp.status === 'going' ? 'going' : "can't go"}.
-            </p>
-          )}
-        </div>
-
-        {logMutation.error && (
-          <p className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-            {logMutation.error.message}
-          </p>
-        )}
-        {rsvpMutation.error && (
-          <p className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-            {rsvpMutation.error.message}
-          </p>
-        )}
-
-        <div className="mt-5 space-y-3">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">I was knocked out in place</span>
-            <input
-              className="input text-center text-3xl font-black"
-              inputMode="numeric"
-              placeholder="9"
-              value={place}
-              onChange={(eventValue) => setPlace(eventValue.target.value.replace(/\D/g, ''))}
-            />
-          </label>
-          <button
-            className="btn-primary w-full py-3"
-            type="button"
-            disabled={logMutation.isPending || !place}
-            onClick={() => logMutation.mutate()}
-          >
-            <UserMinus size={17} />
-            {logMutation.isPending ? 'Logging...' : `Knock me out${place ? ` in ${place}${ordinal(Number(place))}` : ''}`}
-          </button>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-pit-border bg-pit-bg/60 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-bold uppercase tracking-[0.16em] text-white">Knockout tracker</h2>
-            <span className="chip">{eventResults.length} out</span>
-          </div>
-          {eventResults.length === 0 ? (
-            <p className="mt-3 text-sm text-pit-text">No knockouts logged yet.</p>
-          ) : (
-            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-              {eventResults.map((result) => {
-                const points = Number(result.points || 0) + Number(result.showupbonuspoints || 0);
-                const isMe = result.userid === user?.guid;
-                return (
-                  <div
-                    key={result.resultid ?? `${result.userid}-${result.placed}`}
-                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${
-                      isMe ? 'border-pit-teal/40 bg-pit-teal/10' : 'border-pit-border bg-pit-card/65'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{result.displayname ?? 'Player'}</p>
-                      <p className="mt-1 text-xs text-pit-muted">{result.placed}{ordinal(result.placed)} place</p>
-                    </div>
-                    <span className="shrink-0 font-mono text-sm font-bold text-pit-teal">{points.toLocaleString()} pts</span>
-                  </div>
-                );
-              })}
+        <div className="mt-6 overflow-hidden rounded-2xl border border-pit-border bg-pit-card shadow-2xl">
+          <header className="border-b border-pit-border bg-pit-teal/10 px-5 py-5 sm:px-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pit-teal">{league.name}</p>
+                <h1 className="mt-2 text-2xl font-black sm:text-3xl">{event.name}</h1>
+                <p className="mt-2 text-sm text-pit-text">{formatEventSchedule(event.eventdate, event.eventtime)}</p>
+              </div>
+              <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                event.hasstarted
+                  ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-200'
+                  : 'border-pit-border bg-pit-bg/70 text-pit-text'
+              }`}>
+                {event.hasstarted ? <Radio size={13} /> : <CalendarClock size={13} />}
+                {event.hasstarted ? 'Event live' : 'Scheduled'}
+              </span>
             </div>
-          )}
+          </header>
+
+          <div className="grid grid-cols-3 border-b border-pit-border bg-pit-bg/45">
+            <EventStat label="Season field" value={data.participantcount} />
+            <EventStat label="Players left" value={playersRemaining} />
+            <EventStat label="Finishes" value={placedResults.length} />
+          </div>
+
+          <div className="space-y-5 p-5 sm:p-6">
+            {error && (
+              <p className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+                {error.message}
+              </p>
+            )}
+
+            {!data.isparticipant ? (
+              <Notice title="You are not on this season's roster">
+                Contact a league admin if you should be participating in this event.
+              </Notice>
+            ) : myResult ? (
+              <div className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-5 text-center">
+                <CheckCircle2 className="mx-auto text-emerald-300" size={34} />
+                <p className="mt-3 text-lg font-black text-white">Your finish is recorded</p>
+                <p className="mt-1 text-sm text-emerald-100">
+                  {myResult.dnf
+                    ? 'DNF'
+                    : `${myResult.placed}${ordinal(myResult.placed)} place - ${resultPoints(myResult).toLocaleString()} points`}
+                </p>
+              </div>
+            ) : !event.hasstarted ? (
+              <Notice title="Knockout reporting opens at event time">
+                Come back when play begins. This page will refresh automatically.
+              </Notice>
+            ) : data.nextplace ? (
+              <div className="rounded-2xl border border-red-300/25 bg-red-400/[0.07] p-5 text-center sm:p-6">
+                <UserMinus className="mx-auto text-red-300" size={34} />
+                <p className="mt-3 text-sm text-pit-text">Just got knocked out?</p>
+                <p className="mt-1 text-3xl font-black text-white">Next finish: {data.nextplace}{ordinal(data.nextplace)}</p>
+                <button
+                  className="mt-5 w-full justify-center rounded-xl bg-red-500 px-4 py-3.5 font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-60"
+                  type="button"
+                  disabled={logMutation.isPending || !data.canselflog}
+                  onClick={() => logMutation.mutate()}
+                >
+                  <UserMinus size={18} />
+                  {logMutation.isPending ? 'Recording finish...' : `Knock me out in ${data.nextplace}${ordinal(data.nextplace)}`}
+                </button>
+              </div>
+            ) : (
+              <Notice title="All finishes are recorded">The event field is complete.</Notice>
+            )}
+
+            <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">RSVP</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost'}`}
+                  disabled={rsvpMutation.isPending}
+                  onClick={() => rsvpMutation.mutate('going')}
+                >
+                  <CheckCircle2 size={16} />
+                  Going
+                </button>
+                <button
+                  type="button"
+                  className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
+                  disabled={rsvpMutation.isPending}
+                  onClick={() => rsvpMutation.mutate('not_going')}
+                >
+                  <XCircle size={16} />
+                  Can't go
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">Recent knockouts</p>
+                  <p className="mt-1 text-sm text-pit-text">Latest finishes update automatically.</p>
+                </div>
+                <span className="chip"><Users size={13} />{placedResults.length}</span>
+              </div>
+              {placedResults.length === 0 ? (
+                <p className="mt-4 rounded-lg border border-dashed border-pit-border px-3 py-5 text-center text-sm text-pit-muted">
+                  No knockouts logged yet.
+                </p>
+              ) : (
+                <div className="mt-4 divide-y divide-pit-border overflow-hidden rounded-lg border border-pit-border">
+                  {placedResults.slice(0, 12).map((result) => (
+                    <div key={result.resultid} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 bg-pit-card/65 px-3 py-3">
+                      <span className="font-black text-pit-teal">{result.placed}{ordinal(result.placed)}</span>
+                      <span className="min-w-0 truncate text-sm font-semibold text-white">{result.displayname ?? 'Player'}</span>
+                      <span className="font-mono text-xs font-bold text-pit-text">{resultPoints(result).toLocaleString()} pts</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <Link className="mt-5 inline-flex text-sm text-pit-muted hover:text-white" to="/">
-          Back to PokerPlanner
+          Return to Command Center
         </Link>
       </section>
     </main>
   );
+}
+
+function EventStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="border-r border-pit-border px-2 py-3 text-center last:border-r-0 sm:py-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted sm:text-xs">{label}</p>
+      <p className="mt-1 text-xl font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+function Notice({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-pit-teal/25 bg-pit-teal/[0.07] p-5 text-center">
+      <Trophy className="mx-auto text-pit-teal" size={32} />
+      <p className="mt-3 text-lg font-black text-white">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-pit-text">{children}</p>
+    </div>
+  );
+}
+
+function resultPoints(result: LeagueResult) {
+  return Number(result.points || 0) + Number(result.showupbonuspoints || 0);
+}
+
+function formatEventSchedule(dateValue?: string | null, timeValue?: string | null) {
+  if (!dateValue) return 'Date and time not set';
+  const date = new Date(`${String(dateValue).slice(0, 10)}T12:00:00`);
+  const dateText = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  if (!timeValue) return dateText;
+  const [hour, minute] = String(timeValue).slice(0, 5).split(':').map(Number);
+  const clock = new Date(2000, 0, 1, hour, minute);
+  return `${dateText} at ${clock.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }
 
 function ordinal(value?: number | null) {

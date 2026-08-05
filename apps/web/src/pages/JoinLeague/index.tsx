@@ -36,7 +36,9 @@ export default function JoinLeaguePage() {
 
   function finish(joinResult: JoinLeagueResponse) {
     clearPendingJoinPath();
-    navigate(`/?section=leagues&league=${encodeURIComponent(joinResult.leagueid)}`, { replace: true });
+    navigate(joinResult.seasonJoined
+      ? `/?section=leagues&league=${encodeURIComponent(joinResult.leagueid)}`
+      : '/?section=leagues', { replace: true });
   }
 
   async function claimPlayer(player: LeagueClaimablePlayer) {
@@ -46,6 +48,17 @@ export default function JoinLeaguePage() {
       finish(await api.joinLeague(normalizedCode, player.userid));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not claim that player spot.');
+      setClaimingId(null);
+    }
+  }
+
+  async function skipClaim() {
+    setError('');
+    setClaimingId('skip');
+    try {
+      finish(await api.joinLeague(normalizedCode, null, true));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not join this league.');
       setClaimingId(null);
     }
   }
@@ -114,7 +127,7 @@ export default function JoinLeaguePage() {
                   </button>
                 ))}
               </div>
-              <button type="button" className="btn-ghost w-full justify-center" onClick={() => finish(result)} disabled={Boolean(claimingId)}>
+              <button type="button" className="btn-ghost w-full justify-center" onClick={() => void skipClaim()} disabled={Boolean(claimingId)}>
                 None of these are me
               </button>
             </div>

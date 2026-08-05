@@ -13,6 +13,8 @@ import {
   type LeagueResultRow,
 } from '../src/leagues/scoring';
 import { calculateLeagueFeeInstallment } from '../src/leagues/payments';
+import { getAvailableLeaguePlacements } from '../src/leagues/placements';
+import { shouldJoinCurrentSeason } from '../src/leagues/membership';
 
 type TestCase = {
   name: string;
@@ -255,6 +257,84 @@ const tests: TestCase[] = [
       assert.deepEqual(installments, [333.34, 333.33, 333.33]);
       assert.equal(installments.reduce((sum, amount) => sum + amount, 0), 1000);
       assert.deepEqual(calculateLeagueFeeInstallment(1000, 3, 2, 990), { installment: 333.33, remaining: 10, amount: 10 });
+    },
+  },
+  {
+    name: '15. DNF results remove the lowest available finish slots from the event field',
+    run: () => {
+      const state = getAvailableLeaguePlacements(15, [
+        { userid: 'dnf-1', placed: null, dnf: true },
+        { userid: 'dnf-2', placed: null, dnf: true },
+      ], 'target');
+      assert.equal(state.placementLimit, 13);
+      assert.equal(state.nextPlace, 13);
+      assert.deepEqual(state.availablePlaces, Array.from({ length: 13 }, (_, index) => index + 1));
+    },
+  },
+  {
+    name: '16. Assigned finishes disappear from every other player placement list',
+    run: () => {
+      const state = getAvailableLeaguePlacements(8, [
+        { userid: 'fifth-place', placed: 5, dnf: false },
+        { userid: 'eighth-place', placed: 8, dnf: false },
+      ], 'target');
+      assert.deepEqual(state.availablePlaces, [1, 2, 3, 4, 6, 7]);
+      assert.equal(state.nextPlace, 7);
+    },
+  },
+  {
+    name: '17. A player can retain or replace their own existing finish',
+    run: () => {
+      const state = getAvailableLeaguePlacements(8, [
+        { userid: 'target', placed: 5, dnf: false },
+        { userid: 'other', placed: 8, dnf: false },
+      ], 'target');
+      assert.ok(state.availablePlaces.includes(5));
+      assert.ok(!state.availablePlaces.includes(8));
+    },
+  },
+  {
+    name: '18. Approved league joins enter the current season when no guest spots need review',
+    run: () => {
+      assert.equal(shouldJoinCurrentSeason({
+        membershipApproved: true,
+        hasSelectedSeason: true,
+        claimablePlayerCount: 0,
+        skipClaim: false,
+      }), true);
+    },
+  },
+  {
+    name: '19. Guest takeover choices pause season enrollment until the player decides',
+    run: () => {
+      assert.equal(shouldJoinCurrentSeason({
+        membershipApproved: true,
+        hasSelectedSeason: true,
+        claimablePlayerCount: 3,
+        skipClaim: false,
+      }), false);
+    },
+  },
+  {
+    name: '20. Skipping guest takeover joins the approved member to the current season',
+    run: () => {
+      assert.equal(shouldJoinCurrentSeason({
+        membershipApproved: true,
+        hasSelectedSeason: true,
+        claimablePlayerCount: 3,
+        skipClaim: true,
+      }), true);
+    },
+  },
+  {
+    name: '21. Pending league members cannot enter a season before approval',
+    run: () => {
+      assert.equal(shouldJoinCurrentSeason({
+        membershipApproved: false,
+        hasSelectedSeason: true,
+        claimablePlayerCount: 0,
+        skipClaim: true,
+      }), false);
     },
   },
 ];
