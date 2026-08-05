@@ -17,7 +17,10 @@ function generateInviteCode(length = 6): string {
 }
 
 function normalizeInviteCode(value: string | undefined): string {
-  return (value ?? '').trim().toUpperCase();
+  return (value ?? '')
+    .toUpperCase()
+    .replace(/^ +| +$/g, '')
+    .replace(/ {2,}/g, ' ');
 }
 
 function sanitizeBlindLevels(levels: unknown): Omit<BlindLevel, 'id'>[] {
@@ -450,8 +453,8 @@ groupsRouter.put('/:id', async (req: Request, res: Response) => {
 
   const normalizedInviteCode = invitecode == null ? null : normalizeInviteCode(invitecode);
   if (normalizedInviteCode != null) {
-    if (!/^[A-Z0-9]{4,12}$/.test(normalizedInviteCode)) {
-      res.status(400).json({ error: 'Invite code must be 4-12 letters or numbers.' });
+    if (!/^[A-Z0-9 ]{1,10}$/.test(normalizedInviteCode)) {
+      res.status(400).json({ error: 'Group join code must be 1-10 letters, numbers, or spaces.' });
       return;
     }
   }
@@ -1046,9 +1049,10 @@ groupsRouter.post('/:id/coins/:coinId/awards', async (req: Request, res: Respons
 
 groupsRouter.post('/join', async (req: Request, res: Response) => {
   const { invitecode } = req.body as { invitecode: string };
+  const normalizedInviteCode = normalizeInviteCode(invitecode);
   const group = await queryOne<{ groupid: string; approvalneeded: boolean }>(
     `SELECT groupid, approvalneeded FROM groups WHERE invitecode = $1 AND active = TRUE`,
-    [invitecode?.toUpperCase()]
+    [normalizedInviteCode]
   );
   if (!group) { res.status(404).json({ error: 'Invalid invite code' }); return; }
 

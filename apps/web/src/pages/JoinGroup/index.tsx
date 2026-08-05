@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
-import { clearPendingGroupInvite, clearPendingJoinPath, setPendingGroupInvite, setPendingJoinPath } from '../../utils/invites';
+import { clearPendingGroupInvite, clearPendingJoinPath, normalizeGroupInviteCode, setPendingGroupInvite, setPendingJoinPath } from '../../utils/invites';
 
 export default function JoinGroupPage() {
   const { inviteCode = '' } = useParams<{ inviteCode: string }>();
   const navigate = useNavigate();
   const token = useAuthStore((state) => state.token);
-  const normalizedCode = inviteCode.trim().toUpperCase();
+  const normalizedCode = normalizeGroupInviteCode(inviteCode);
   const [message, setMessage] = useState('Preparing your group invite...');
   const [error, setError] = useState('');
   const [pendingApproval, setPendingApproval] = useState(false);
@@ -46,7 +46,7 @@ export default function JoinGroupPage() {
           clearPendingGroupInvite();
           clearPendingJoinPath();
           const groups = await api.getGroups();
-          const existingGroup = groups.find((group) => group.invitecode.toUpperCase() === normalizedCode);
+          const existingGroup = groups.find((group) => normalizeGroupInviteCode(group.invitecode) === normalizedCode);
           navigate(existingGroup
             ? `/?section=groups&group=${encodeURIComponent(existingGroup.groupid)}`
             : '/?section=groups', { replace: true });

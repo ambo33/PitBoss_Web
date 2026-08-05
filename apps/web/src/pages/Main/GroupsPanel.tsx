@@ -5,6 +5,7 @@ import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trop
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
+import { formatGroupInviteCodeInput, normalizeGroupInviteCode } from '../../utils/invites';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
@@ -329,9 +330,12 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
     >
       <div className="space-y-3">
         {error && <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</p>}
-        <input className="input text-center font-mono text-lg uppercase tracking-[0.3em] py-3"
+        <input className="input text-center font-mono text-lg uppercase tracking-[0.18em] py-3"
           placeholder="XXXXXX" value={code}
-          onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8} />
+          onChange={e => setCode(formatGroupInviteCodeInput(e.target.value))}
+          onBlur={() => setCode(normalizeGroupInviteCode(code))}
+          maxLength={10}
+          aria-label="Group join code" />
         <p className="text-pit-muted text-xs text-center">Enter the invite code shared by your group admin</p>
       </div>
     </Modal>
@@ -945,12 +949,14 @@ function GroupDetailView({
                       <input
                         className="input font-mono uppercase"
                         value={inviteCode}
-                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                        maxLength={12}
+                        onChange={(e) => setInviteCode(formatGroupInviteCodeInput(e.target.value))}
+                        onBlur={() => setInviteCode(normalizeGroupInviteCode(inviteCode))}
+                        maxLength={10}
+                        aria-label="Group join code"
                       />
                       <button
                         className="btn-primary shrink-0"
-                        onClick={() => updateGroupMutation.mutate({ invitecode: inviteCode })}
+                        onClick={() => updateGroupMutation.mutate({ invitecode: normalizeGroupInviteCode(inviteCode) })}
                         disabled={updateGroupMutation.isPending || !inviteCode.trim()}
                       >
                         <Save size={14} />
