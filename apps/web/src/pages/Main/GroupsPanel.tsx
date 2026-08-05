@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, Mail, MessageSquare, Mic2, Play, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -463,9 +463,6 @@ function GroupDetailView({
   const navigate = useNavigate();
   const [detailTab, setDetailTab] = useState<DetailTab>(initialTab ?? 'info');
   const [inviteCode, setInviteCode] = useState(group.invitecode);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [invitePhone, setInvitePhone] = useState('');
-  const [inviteNote, setInviteNote] = useState('');
   const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
   const [tvSeatingMessage, setTvSeatingMessage] = useState(group.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
   const [speechFiveMinuteMessage, setSpeechFiveMinuteMessage] = useState(group.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
@@ -482,7 +479,6 @@ function GroupDetailView({
   const [postMessage, setPostMessage] = useState('');
   const [pollOptionsText, setPollOptionsText] = useState('Yes\nNo');
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  const [smsStatus, setSmsStatus] = useState('');
   const [shareInviteOpen, setShareInviteOpen] = useState(false);
   const [coinName, setCoinName] = useState('');
   const [coinDescription, setCoinDescription] = useState('');
@@ -648,20 +644,6 @@ function GroupDetailView({
   const deleteStructureMutation = useMutation({
     mutationFn: (structureId: string) => api.deleteGroupBlindStructure(group.groupid, structureId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'blind-structures'] }),
-  });
-  const inviteMutation = useMutation({
-    mutationFn: (payload: { email?: string; phone?: string; note?: string }) => api.sendGroupInvite(group.groupid, payload),
-    onSuccess: (result) => {
-      if (invitePhone.trim()) {
-        setSmsStatus('Text invite is ready.');
-        window.location.href = result.smsLink;
-      } else {
-        setSmsStatus('');
-      }
-      setInviteEmail('');
-      setInvitePhone('');
-      setInviteNote('');
-    },
   });
   const createPostMutation = useMutation({
     mutationFn: () => api.createGroupPost(group.groupid, {
@@ -934,7 +916,6 @@ function GroupDetailView({
                       Share invite
                     </button>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-pit-muted">Tap the code for a direct link or QR code.</p>
                 </section>
               )}
 
@@ -957,8 +938,7 @@ function GroupDetailView({
                   <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">Group code</p>
-                        <p className="text-xs text-pit-muted">Change the code players use to join.</p>
+                        <p className="text-sm font-semibold text-white">Group Join Code</p>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -1002,11 +982,11 @@ function GroupDetailView({
                       Save
                     </button>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-pit-muted">
-                    {canUseClubFeatures
-                      ? 'New tournaments use this tracking mode by default.'
-                      : 'Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.'}
-                  </p>
+                  {!canUseClubFeatures && (
+                    <p className="mt-2 text-xs leading-5 text-pit-muted">
+                      Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.
+                    </p>
+                  )}
                 </section>
 
                 <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
@@ -1030,60 +1010,6 @@ function GroupDetailView({
                   </div>
                 </section>
 
-                {!demoMode && (
-                  <details className="group rounded-xl border border-pit-border bg-pit-bg p-4">
-                    <summary className="cursor-pointer list-none text-sm font-semibold text-white">
-                      Invite people
-                      <span className="float-right text-xs text-pit-muted group-open:text-pit-teal">Open</span>
-                    </summary>
-                    <div className="mt-3 space-y-3">
-                      <input
-                        className="input"
-                        placeholder="Email address"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        placeholder="Phone number for text"
-                        value={invitePhone}
-                        onChange={(e) => setInvitePhone(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        placeholder="Optional note"
-                        value={inviteNote}
-                        onChange={(e) => setInviteNote(e.target.value)}
-                      />
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <button
-                          className="btn-primary justify-center"
-                          onClick={() => {
-                            setSmsStatus('');
-                            inviteMutation.mutate({ email: inviteEmail || undefined, note: inviteNote || undefined });
-                          }}
-                          disabled={inviteMutation.isPending || !inviteEmail.trim()}
-                        >
-                          <Mail size={14} />
-                          Send Email
-                        </button>
-                        <button
-                          className="btn-ghost justify-center"
-                          onClick={() => {
-                            setSmsStatus('');
-                            inviteMutation.mutate({ phone: invitePhone || undefined, note: inviteNote || undefined });
-                          }}
-                          disabled={inviteMutation.isPending || !invitePhone.trim()}
-                        >
-                          <MessageSquare size={14} />
-                          Send Text
-                        </button>
-                      </div>
-                      {inviteMutation.error && <p className="text-sm text-red-400">{inviteMutation.error.message}</p>}
-                      {smsStatus && <p className="text-sm text-pit-teal">{smsStatus}</p>}
-                    </div>
-                  </details>
-                )}
               </div>
             )}
           </div>
