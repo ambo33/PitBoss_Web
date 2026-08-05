@@ -340,18 +340,20 @@ export default function TournamentsPanel({
                   navigate(`/cash-games/${item.game.id}/admin`);
                   return;
                 }
-                if (item.tournamentId) {
-                  navigate(
-                    item.canManage ? `/tournament/${item.tournamentId}` : `/lobby/${item.tournamentId}`,
-                    item.canManage ? { state: { tab: 'run' } } : undefined
-                  );
-                  return;
-                }
                 if (item.canManage) {
                   navigate(`/?section=leagues&league=${encodeURIComponent(item.leagueId)}&leagueTab=events&event=${encodeURIComponent(item.eventId)}`);
                   return;
                 }
+                if (item.tournamentId) {
+                  navigate(`/lobby/${item.tournamentId}`);
+                  return;
+                }
                 navigate(`/league/${encodeURIComponent(item.leagueId)}/event/${encodeURIComponent(item.eventId)}`);
+              }}
+              onLeagueLobby={(item) => {
+                navigate(item.tournamentId
+                  ? `/lobby/${encodeURIComponent(item.tournamentId)}`
+                  : `/league/${encodeURIComponent(item.leagueId)}/event/${encodeURIComponent(item.eventId)}`);
               }}
               onRegister={(tournament) => registerMutation.mutate(tournament)}
               onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
@@ -739,6 +741,7 @@ function ScheduleList({
   onRegister,
   onDecline,
   onLeagueRsvp,
+  onLeagueLobby,
   onCashRsvp,
 }: {
   items: ScheduleItem[];
@@ -749,6 +752,7 @@ function ScheduleList({
   onRegister: (tournament: Tournament) => void;
   onDecline: (tournament: Tournament) => void;
   onLeagueRsvp: (item: Extract<ScheduleItem, { kind: 'league' }>, status: 'going' | 'not_going') => void;
+  onLeagueLobby: (item: Extract<ScheduleItem, { kind: 'league' }>) => void;
   onCashRsvp: (item: Extract<ScheduleItem, { kind: 'cash' }>, status: 'going' | 'not_going') => void;
 }) {
   useEffect(() => {
@@ -783,6 +787,7 @@ function ScheduleList({
             onRegister={item.kind === 'tournament' ? () => onRegister(item.tournament) : undefined}
             onDecline={item.kind === 'tournament' ? () => onDecline(item.tournament) : undefined}
             onLeagueRsvp={item.kind === 'league' ? (status) => onLeagueRsvp(item, status) : undefined}
+            onLeagueLobby={item.kind === 'league' ? () => onLeagueLobby(item) : undefined}
             onCashRsvp={item.kind === 'cash' ? (status) => onCashRsvp(item, status) : undefined}
           />
         ))}
@@ -800,6 +805,7 @@ function ScheduleRow({
   onRegister,
   onDecline,
   onLeagueRsvp,
+  onLeagueLobby,
   onCashRsvp,
 }: {
   item: ScheduleItem;
@@ -810,6 +816,7 @@ function ScheduleRow({
   onRegister?: () => void;
   onDecline?: () => void;
   onLeagueRsvp?: (status: 'going' | 'not_going') => void;
+  onLeagueLobby?: () => void;
   onCashRsvp?: (status: 'going' | 'not_going') => void;
 }) {
   const isTournament = item.kind === 'tournament';
@@ -826,7 +833,9 @@ function ScheduleRow({
       ? item.rsvpStatus === 'not_going'
       : item.rsvpStatus === 'not_going';
   const showRsvp = view === 'upcoming' && isTournament && Boolean(item.tournament.groupid) && !item.canManage;
-  const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant;
+  const leagueEventStarted = isLeague && hasScheduleStarted(item.date, item.time);
+  const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant && !leagueEventStarted;
+  const showLeagueLobby = view === 'upcoming' && isLeague && item.isParticipant && leagueEventStarted;
   const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
   const showTournamentLobby = showRsvp && isRegistered;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
@@ -918,7 +927,19 @@ function ScheduleRow({
       </div>
 
       <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
-        {showTournamentLobby ? (
+        {showLeagueLobby ? (
+          <>
+            {item.canManage && (
+              <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onOpen}>
+                View
+              </button>
+            )}
+            <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueLobby}>
+              <PlayCircle size={14} />
+              Lobby
+            </button>
+          </>
+        ) : showTournamentLobby ? (
           <>
             <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onOpen}>
               <PlayCircle size={14} />
@@ -1651,6 +1672,27 @@ function todayInAppTimezone() {
   });
   const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function nowInAppTimezone() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function hasScheduleStarted(date: string | null | undefined, time: string | null | undefined) {
+  if (!date) return false;
+  const effectiveTime = (time?.slice(0, 8) ?? '00:00:00').padEnd(8, ':00').slice(0, 8);
+  return nowInAppTimezone() >= `${String(date).slice(0, 10)}T${effectiveTime}`;
 }
 
 function formatTime12Hour(value: string | null | undefined): string {

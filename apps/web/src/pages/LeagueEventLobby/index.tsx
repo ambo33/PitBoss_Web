@@ -48,9 +48,15 @@ export default function LeagueEventLobbyPage() {
   if (!data) {
     return (
       <main className="min-h-screen bg-pit-bg p-4 text-white">
-        <div className="mx-auto mt-16 max-w-lg rounded-xl border border-pit-border bg-pit-card p-5">
-          <p className="font-semibold">League event not found.</p>
-          <Link className="mt-4 inline-flex text-sm text-pit-teal" to="/">Return to Command Center</Link>
+        <div className="mx-auto mt-16 max-w-lg overflow-hidden rounded-xl border border-pit-border bg-pit-card">
+          <Link
+            className="flex border-b border-pit-border bg-pit-bg/55 px-4 py-3 transition hover:bg-pit-teal/[0.07]"
+            to="/"
+            aria-label="Return to Command Center"
+          >
+            <BrandLockup compact showSlogan={false} />
+          </Link>
+          <p className="p-5 font-semibold">League event not found.</p>
         </div>
       </main>
     );
@@ -62,21 +68,27 @@ export default function LeagueEventLobbyPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10">
       <section className="mx-auto w-full max-w-3xl">
-        <div className="flex items-center justify-between gap-3">
-          <BrandLockup compact showSlogan={false} />
-          <button
-            type="button"
-            className="btn-ghost shrink-0 px-3 py-2 text-xs"
-            disabled={isFetching}
-            onClick={() => void refetch()}
-            title="Refresh knockouts and placements"
-          >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-        </div>
+        <div className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card shadow-2xl">
+          <div className="flex items-center justify-between gap-3 border-b border-pit-border bg-pit-bg/55 px-4 py-3 sm:px-5">
+            <Link
+              className="min-w-0 rounded-lg transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal"
+              to="/"
+              aria-label="Return to Command Center"
+            >
+              <BrandLockup compact showSlogan={false} />
+            </Link>
+            <button
+              type="button"
+              className="btn-ghost shrink-0 px-3 py-2 text-xs"
+              disabled={isFetching}
+              onClick={() => void refetch()}
+              title="Refresh knockouts and placements"
+            >
+              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
 
-        <div className="mt-6 overflow-hidden rounded-2xl border border-pit-border bg-pit-card shadow-2xl">
           <header className="border-b border-pit-border bg-pit-teal/10 px-5 py-5 sm:px-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -195,10 +207,6 @@ export default function LeagueEventLobbyPage() {
             </div>
           </div>
         </div>
-
-        <Link className="mt-5 inline-flex text-sm text-pit-muted hover:text-white" to="/">
-          Return to Command Center
-        </Link>
       </section>
     </main>
   );
