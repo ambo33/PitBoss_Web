@@ -788,7 +788,10 @@ groupsRouter.post('/:id/posts', async (req: Request, res: Response) => {
     }
     await client.query('COMMIT');
     if (status === 'pending') {
-      void notifyGroupAdminsForPost(req.params.id, post.id, groupSettings?.authorname ?? 'A member', trimmedMessage);
+      void notifyGroupAdminsForPost(req.params.id, post.id, groupSettings?.authorname ?? 'A member', trimmedMessage)
+        .catch((err) => {
+          console.error('Group post approval email failed', err instanceof Error ? err.message : err);
+        });
     } else {
       void sendGroupNotification(req.params.id, 'host_announcement_posted', {
         announcementPreview: announcementPreview(trimmedMessage),
@@ -1162,7 +1165,10 @@ groupsRouter.put('/:id/members/approve-all', async (req: Request, res: Response)
      RETURNING userid`,
     [req.params.id]
   );
-  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
+  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid))
+    .catch((err) => {
+      console.error('Group approval push failed', err instanceof Error ? err.message : err);
+    });
   res.json({ success: true, approved: approved.length });
 });
 
@@ -1179,7 +1185,10 @@ groupsRouter.put('/:id/members/:userId/approve', async (req: Request, res: Respo
      RETURNING userid`,
     [req.params.id, req.params.userId]
   );
-  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid));
+  void notifyMembersApprovedForGroup(req.params.id, approved.map((member) => member.userid))
+    .catch((err) => {
+      console.error('Group approval push failed', err instanceof Error ? err.message : err);
+    });
   res.json({ success: true, approved: approved.length });
 });
 
