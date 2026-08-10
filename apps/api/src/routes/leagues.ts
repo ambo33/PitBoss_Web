@@ -203,6 +203,16 @@ function hashClaimToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function databaseErrorCode(error: unknown): string {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as { code?: unknown }).code ?? '')
+    : '';
+}
+
+function isPaymentWriteContention(error: unknown): boolean {
+  return ['55P03', '57014', '40001'].includes(databaseErrorCode(error));
+}
+
 type LeagueAuditInput = {
   leagueId: string;
   seasonId?: string | null;
@@ -3204,6 +3214,9 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-league-fee-paid', async (
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Never let a duplicate click or concurrent admin action occupy the request for the full client timeout.
+    await client.query(`SET LOCAL lock_timeout = '4s'`);
+    await client.query(`SET LOCAL statement_timeout = '15s'`);
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
       [`${req.params.id}:${event.seasonid}`, `${event.eventid}:${userId}:league-fee`]
@@ -3269,6 +3282,10 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-league-fee-paid', async (
     res.status(201).json({ payment: payment ? { ...payment, amount: Number(payment.amount || 0) } : null });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isPaymentWriteContention(err)) {
+      res.status(409).json({ error: 'Another payment update is still being processed. Refresh the event and try again.' });
+      return;
+    }
     throw err;
   } finally {
     client.release();

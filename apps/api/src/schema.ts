@@ -863,6 +863,14 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON leaguepayments (leagueid, userid)
     `);
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leaguepayments_installment_lookup
+      ON leaguepayments (leagueid, seasonid, eventid, userid, paymenttype)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leaguepayments_season_user_type
+      ON leaguepayments (leagueid, seasonid, userid, paymenttype)
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS leagueauditlogs (
         auditid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
