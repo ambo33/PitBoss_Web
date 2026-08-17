@@ -234,8 +234,8 @@ export const api = {
     patch<{ event: LeagueEvent }>(`/leagues/${id}/events/${eventId}`, data),
   getLeagueEventLobby: (id: string, eventId: string) =>
     get<LeagueEventLobby>(`/leagues/${id}/events/${eventId}/lobby`),
-  rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus) =>
-    put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status }),
+  rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus, userId?: string) =>
+    put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status, userId }),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
   clearLeagueResult: (leagueId: string, eventId: string, userId: string) =>

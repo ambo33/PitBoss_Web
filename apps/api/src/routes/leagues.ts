@@ -245,6 +245,15 @@ async function recordLeagueAudit(client: Pick<PoolClient, 'query'>, input: Leagu
   );
 }
 
+async function rsvpLeagueEventGoingIfMissing(client: Pick<PoolClient, 'query'>, leagueId: string, eventId: string, userId: string) {
+  await client.query(
+    `INSERT INTO leagueeventrsvps (eventid, leagueid, userid, status)
+     VALUES ($1, $2, $3, 'going')
+     ON CONFLICT (eventid, userid) DO NOTHING`,
+    [eventId, leagueId, userId]
+  );
+}
+
 function serializeLeagueAudit(row: LeagueAuditRow) {
   let details = row.details;
   if (typeof details === 'string') {
@@ -2946,6 +2955,7 @@ leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
           [req.params.id, season.seasonid, userId, eventRow.eventid, applied, paidAt, note ?? 'Applied toward event fees', req.userId]
         );
         if (inserted.rows[0]) rows.push(inserted.rows[0]);
+        await rsvpLeagueEventGoingIfMissing(client, req.params.id, eventRow.eventid, userId);
         remaining = Math.round((remaining - applied) * 100) / 100;
       }
       if (remaining > 0) {
@@ -2982,6 +2992,9 @@ leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
       );
       const row = inserted.rows[0] ?? null;
       if (row) rows.push(row);
+      if (row && paymentType === 'event' && eventId) {
+        await rsvpLeagueEventGoingIfMissing(client, req.params.id, eventId, userId);
+      }
       await recordLeagueAudit(client, {
         leagueId: req.params.id,
         seasonId: season.seasonid,
@@ -3268,6 +3281,7 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-paid', async (req: Reques
         [req.params.id, season.seasonid, target.userid, event.eventid, openAmount, paidAt, 'Marked event fee paid', req.userId]
       );
       if (inserted.rows[0]) rows.push(inserted.rows[0]);
+      await rsvpLeagueEventGoingIfMissing(client, req.params.id, event.eventid, target.userid);
     }
     await recordLeagueAudit(client, {
       leagueId: req.params.id,
@@ -3627,7 +3641,9 @@ leaguesRouter.patch('/:id/events/:eventId', async (req: Request, res: Response) 
 });
 
 leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Response) => {
-  const status = (req.body as { status?: string }).status === 'not_going' ? 'not_going' : 'going';
+  const body = req.body as { status?: string; userId?: string };
+  const status = body.status === 'not_going' ? 'not_going' : 'going';
+  const targetUserId = body.userId ? String(body.userId) : req.userId!;
   const event = await queryOne<LeagueEventRow>(
     `SELECT eventid, leagueid, seasonid FROM leagueevents WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
     [req.params.id, req.params.eventId]
@@ -3636,19 +3652,46 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
     res.status(404).json({ error: 'League event not found.' });
     return;
   }
-  if (!await requireLeagueSeasonParticipant(req.params.id, event.seasonid, req.userId!)) {
+  if (targetUserId !== req.userId && !await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  if (!await requireLeagueSeasonParticipant(req.params.id, event.seasonid, targetUserId)) {
     res.status(403).json({ error: 'League season participant required.' });
     return;
   }
-  const row = await queryOne<LeagueEventRsvpRow>(
-    `INSERT INTO leagueeventrsvps (eventid, leagueid, userid, status)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (eventid, userid)
-     DO UPDATE SET status = excluded.status, updatedat = now()
-     RETURNING rsvpid, eventid, leagueid, userid, status, createdat, updatedat`,
-    [req.params.eventId, req.params.id, req.userId, status]
-  );
-  res.json({ rsvp: row });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<LeagueEventRsvpRow>(
+      `INSERT INTO leagueeventrsvps (eventid, leagueid, userid, status)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (eventid, userid)
+       DO UPDATE SET status = excluded.status, updatedat = now()
+       RETURNING rsvpid, eventid, leagueid, userid, status, createdat, updatedat`,
+      [req.params.eventId, req.params.id, targetUserId, status]
+    );
+    const row = result.rows[0] ?? null;
+    if (targetUserId !== req.userId) {
+      await recordLeagueAudit(client, {
+        leagueId: req.params.id,
+        seasonId: event.seasonid,
+        eventId: req.params.eventId,
+        actorId: req.userId,
+        targetUserId,
+        action: 'event_rsvp_updated',
+        summary: 'Event RSVP was updated for a player.',
+        details: { status },
+      });
+    }
+    await client.query('COMMIT');
+    res.json({ rsvp: row });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Response) => {

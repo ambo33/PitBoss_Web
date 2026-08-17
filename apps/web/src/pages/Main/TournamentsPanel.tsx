@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X, XCircle } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X, XCircle } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -843,11 +843,11 @@ function ScheduleRow({
   const needsLeagueRsvp = showLeagueRsvp && !isRegistered && !isDeclined;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
   const statusLabel = needsRsvp && !needsLeagueRsvp
-    ? 'RSVP needed'
+    ? 'RSVP'
     : isRegistered
-      ? "You're going"
+      ? 'RSVP'
       : isDeclined
-        ? "Can't go"
+        ? 'RSVP'
         : item.canManage && (isTournament || isCash)
           ? 'Host'
           : null;
@@ -865,7 +865,16 @@ function ScheduleRow({
     ? 'border-pit-gold/45 bg-pit-gold/15 text-pit-gold'
     : isDeclined
       ? 'border-red-300/45 bg-red-400/15 text-red-100'
-      : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
+      : isRegistered
+        ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300'
+        : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
+  const statusIcon = needsRsvp
+    ? <CalendarCheck size={12} />
+    : isDeclined
+      ? <XCircle size={12} />
+      : isRegistered
+        ? <BadgeCheck size={12} />
+        : <CheckCircle2 size={12} />;
 
   return (
     <div
@@ -920,7 +929,7 @@ function ScheduleRow({
         )}
         {statusLabel && (
           <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-semibold md:hidden ${statusPillClass}`}>
-            {needsRsvp ? <CalendarCheck size={11} /> : isDeclined ? <XCircle size={11} /> : <CheckCircle2 size={11} />}
+            {statusIcon}
             {statusLabel}
           </span>
         )}
@@ -936,7 +945,7 @@ function ScheduleRow({
       <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
         {statusLabel && (
           <span className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${statusPillClass}`}>
-            {needsRsvp ? <CalendarCheck size={12} /> : isDeclined ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
+            {statusIcon}
             {statusLabel}
           </span>
         )}

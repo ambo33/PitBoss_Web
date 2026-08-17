@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -478,6 +478,11 @@ function LeagueDetailView({
       api.markLeagueEventPaid(league.leagueid, eventId, { userId, all }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
+  const eventRsvpMutation = useMutation({
+    mutationFn: ({ eventId, userId, status }: { eventId: string; userId: string; status: LeagueEventRsvpStatus }) =>
+      api.rsvpLeagueEvent(league.leagueid, eventId, status, userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+  });
   const toggleEventPaidMutation = useMutation({
     mutationFn: async ({ eventId, userId, paid }: { eventId: string; userId: string; paid: boolean }) => {
       if (!paid) {
@@ -817,15 +822,18 @@ function LeagueDetailView({
       </Modal>
 
       {activeDetailTab === 'fees' && (
-        <PaymentTracker
-          detail={detail}
-          onSettings={(payload) => updatePaymentSettingsMutation.mutate(payload)}
-          onEditPayment={(payment) => setEditingPayment(payment)}
-          onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
-          settingsLoading={updatePaymentSettingsMutation.isPending}
-          settingsError={updatePaymentSettingsMutation.error?.message}
-          deleteLoading={deletePaymentMutation.isPending}
-        />
+        <div className="space-y-4">
+          <PaymentTracker
+            detail={detail}
+            onSettings={(payload) => updatePaymentSettingsMutation.mutate(payload)}
+            onEditPayment={(payment) => setEditingPayment(payment)}
+            onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
+            settingsLoading={updatePaymentSettingsMutation.isPending}
+            settingsError={updatePaymentSettingsMutation.error?.message}
+            deleteLoading={deletePaymentMutation.isPending}
+          />
+          <LeagueAuditTrail detail={detail} compact />
+        </div>
       )}
 
       {activeDetailTab === 'board' && (
@@ -864,12 +872,13 @@ function LeagueDetailView({
                 onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, placed, dnf })}
                 onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, all: true })}
                 onTogglePaid={(userId, paid) => toggleEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, paid })}
+                onSetRsvp={(userId, status) => eventRsvpMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, status })}
                 onMarkLeagueFeePaid={(userId) => markLeagueFeeInstallmentMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId })}
                 onClearResult={(userId) => clearResultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId })}
                 onRefresh={() => void refetch()}
                 refreshing={isFetching}
-                loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending}
-                error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message}
+                loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending || eventRsvpMutation.isPending}
+                error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message ?? eventRsvpMutation.error?.message}
               />
             ) : (
               <LeagueEventListCard
@@ -897,12 +906,13 @@ function LeagueDetailView({
               onLog={(userId, placed, dnf) => currentEvent && resultMutation.mutate({ eventId: currentEvent.eventid, userId, placed, dnf })}
               onMarkAllPaid={() => currentEvent && markEventPaidMutation.mutate({ eventId: currentEvent.eventid, all: true })}
               onTogglePaid={(userId, paid) => currentEvent && toggleEventPaidMutation.mutate({ eventId: currentEvent.eventid, userId, paid })}
+              onSetRsvp={(userId, status) => currentEvent && eventRsvpMutation.mutate({ eventId: currentEvent.eventid, userId, status })}
               onMarkLeagueFeePaid={(userId) => currentEvent && markLeagueFeeInstallmentMutation.mutate({ eventId: currentEvent.eventid, userId })}
               onClearResult={(userId) => currentEvent && clearResultMutation.mutate({ eventId: currentEvent.eventid, userId })}
               onRefresh={() => void refetch()}
               refreshing={isFetching}
-              loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending}
-              error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message}
+              loading={resultMutation.isPending || clearResultMutation.isPending || markEventPaidMutation.isPending || toggleEventPaidMutation.isPending || markLeagueFeeInstallmentMutation.isPending || eventRsvpMutation.isPending}
+              error={resultMutation.error?.message ?? clearResultMutation.error?.message ?? markEventPaidMutation.error?.message ?? toggleEventPaidMutation.error?.message ?? markLeagueFeeInstallmentMutation.error?.message ?? eventRsvpMutation.error?.message}
             />
           </div>
         </div>
@@ -1111,6 +1121,7 @@ function EventTrackerCard({
   onLog,
   onMarkAllPaid,
   onTogglePaid,
+  onSetRsvp,
   onMarkLeagueFeePaid,
   onClearResult,
   onRefresh,
@@ -1126,6 +1137,7 @@ function EventTrackerCard({
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
+  onSetRsvp: (userId: string, status: LeagueEventRsvpStatus) => void;
   onMarkLeagueFeePaid: (userId: string) => void;
   onClearResult: (userId: string) => void;
   onRefresh: () => void;
@@ -1219,6 +1231,7 @@ function EventTrackerCard({
               onLog={onLog}
               onMarkAllPaid={onMarkAllPaid}
               onTogglePaid={onTogglePaid}
+              onSetRsvp={onSetRsvp}
               onMarkLeagueFeePaid={onMarkLeagueFeePaid}
               onClearResult={onClearResult}
               loading={loading}
@@ -2282,111 +2295,127 @@ function PaymentTracker({
   const totalDue = approvedMembers.reduce((sum, member) => sum + getMemberTotalDue(member.userid), 0);
 
   return (
-    <section className="card space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="eyebrow">Payment audit</p>
-          <h3 className="text-xl font-bold text-white">League Fees</h3>
-          {selectedSeason && (
-            <p className="mt-1 text-sm text-pit-muted">{selectedSeason.name} event fee applies to every event in this season.</p>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="chip">{formatCurrency(totalPaid)} paid</span>
-          <span className="chip">{formatCurrency(Math.max(0, totalDue - totalPaid))} open</span>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-        <label className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">League fee</span>
-          <input
-            className="input"
-            inputMode="decimal"
-            placeholder="0"
-            value={leagueFee}
-            onFocus={() => leagueFee === '0' && setLeagueFee('')}
-            onChange={(event) => setLeagueFee(cleanMoneyInput(event.target.value))}
-          />
-        </label>
-        <label className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Season event fee</span>
-          <input
-            className="input"
-            inputMode="decimal"
-            placeholder="0"
-            value={perEventFee}
-            onFocus={() => perEventFee === '0' && setPerEventFee('')}
-            onChange={(event) => setPerEventFee(cleanMoneyInput(event.target.value))}
-          />
-        </label>
-        <button className="btn-primary px-3 py-2 text-sm" disabled={settingsLoading} onClick={() => onSettings({ leaguefee: Number(leagueFee) || 0, seasonEventFee: Number(perEventFee) || 0 })}>
-          <Save size={14} />
-          {settingsLoading ? 'Saving...' : 'Save Fees'}
-        </button>
-      </div>
-      {settingsError && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{settingsError}</p>}
-      <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
-        <div className="hidden gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px]">
-          <span>Player</span>
-          <span className="text-right">Due</span>
-          <span className="text-right">Paid</span>
-          <span className="text-right">Open</span>
-          <span className="text-right">Events</span>
-        </div>
-        {approvedMembers.map((member) => {
-          const paid = detail.payments.filter((payment) => payment.userid === member.userid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-          const memberDue = getMemberTotalDue(member.userid);
-          const open = Math.max(0, memberDue - paid);
-          const eventStatuses = detail.events.map((event) => getEventPaymentStatus(detail, event, member.userid));
-          const eventsOwed = eventStatuses.filter((status) => status.due > 0).length;
-          const eventsPaid = eventStatuses.filter((status) => status.due > 0 && status.paid).length;
-          return (
-            <div key={member.userid} className="border-b border-pit-border/50 p-3 text-sm last:border-0 md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px] md:items-center md:gap-2 md:px-3 md:py-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
-                <p className="mt-1 text-xs text-pit-muted md:hidden">{eventsPaid}/{eventsOwed} events paid</p>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 md:contents">
-                <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Due</p>
-                  <p className="font-semibold text-pit-text md:font-normal">{formatCurrency(memberDue)}</p>
-                </div>
-                <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Paid</p>
-                  <p className="font-semibold text-pit-teal md:font-normal">{formatCurrency(paid)}</p>
-                </div>
-                <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Open</p>
-                  <p className={`font-semibold ${open ? 'text-pit-gold' : 'text-pit-muted'}`}>{formatCurrency(open)}</p>
-                </div>
-              </div>
-              <span className="hidden text-right text-pit-text md:block">{eventsPaid}/{eventsOwed}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-        {detail.payments.map((payment) => (
-          <div key={payment.paymentid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_90px_90px_80px] sm:items-center">
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-white">{payment.displayname ?? 'Player'} <span className="text-xs font-normal text-pit-muted">({payment.paymenttype})</span></p>
-              <p className="mt-1 truncate text-xs text-pit-muted">{payment.eventname ?? 'Season'} - {String(payment.paidat).slice(0, 10)}{payment.note ? ` - ${payment.note}` : ''}</p>
-            </div>
-            <span className="font-mono text-pit-teal sm:text-right">{formatCurrency(payment.amount)}</span>
-            <span className="text-xs text-pit-muted sm:text-right">{String(payment.createdat).slice(0, 10)}</span>
-            <div className="flex justify-end gap-1">
-              <button className="btn-ghost h-9 w-9 p-0 text-pit-teal" onClick={() => onEditPayment(payment)} title="Adjust payment" aria-label={`Adjust payment for ${payment.displayname ?? 'player'}`}>
-                <Pencil size={14} />
-              </button>
-              <button className="btn-ghost h-9 w-9 p-0 text-red-300" disabled={deleteLoading} onClick={() => onDeletePayment(payment.paymentid)} title="Delete payment" aria-label={`Delete payment for ${payment.displayname ?? 'player'}`}>
-                <Trash2 size={14} />
-              </button>
-            </div>
+    <div className="space-y-4">
+      <section className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="eyebrow">Payment audit</p>
+            <h3 className="text-xl font-bold text-white">League Fees</h3>
+            {selectedSeason && (
+              <p className="mt-1 text-sm text-pit-muted">{selectedSeason.name} event fee applies to every event in this season.</p>
+            )}
           </div>
-        ))}
-        {detail.payments.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No payments recorded yet.</p>}
-      </div>
-    </section>
+          <div className="flex flex-wrap gap-2">
+            <span className="chip">{formatCurrency(totalPaid)} paid</span>
+            <span className="chip">{formatCurrency(Math.max(0, totalDue - totalPaid))} open</span>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">League fee</span>
+            <input
+              className="input"
+              inputMode="decimal"
+              placeholder="0"
+              value={leagueFee}
+              onFocus={() => leagueFee === '0' && setLeagueFee('')}
+              onChange={(event) => setLeagueFee(cleanMoneyInput(event.target.value))}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Season event fee</span>
+            <input
+              className="input"
+              inputMode="decimal"
+              placeholder="0"
+              value={perEventFee}
+              onFocus={() => perEventFee === '0' && setPerEventFee('')}
+              onChange={(event) => setPerEventFee(cleanMoneyInput(event.target.value))}
+            />
+          </label>
+          <button className="btn-primary px-3 py-2 text-sm" disabled={settingsLoading} onClick={() => onSettings({ leaguefee: Number(leagueFee) || 0, seasonEventFee: Number(perEventFee) || 0 })}>
+            <Save size={14} />
+            {settingsLoading ? 'Saving...' : 'Save Fees'}
+          </button>
+        </div>
+        {settingsError && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{settingsError}</p>}
+        <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
+          <div className="hidden gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px]">
+            <span>Player</span>
+            <span className="text-right">Due</span>
+            <span className="text-right">Paid</span>
+            <span className="text-right">Open</span>
+            <span className="text-right">Events</span>
+          </div>
+          {approvedMembers.map((member) => {
+            const paid = detail.payments.filter((payment) => payment.userid === member.userid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+            const memberDue = getMemberTotalDue(member.userid);
+            const open = Math.max(0, memberDue - paid);
+            const eventStatuses = detail.events.map((event) => getEventPaymentStatus(detail, event, member.userid));
+            const eventsOwed = eventStatuses.filter((status) => status.due > 0).length;
+            const eventsPaid = eventStatuses.filter((status) => status.due > 0 && status.paid).length;
+            return (
+              <div key={member.userid} className="border-b border-pit-border/50 p-3 text-sm last:border-0 md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px] md:items-center md:gap-2 md:px-3 md:py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
+                  <p className="mt-1 text-xs text-pit-muted md:hidden">{eventsPaid}/{eventsOwed} events paid</p>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 md:contents">
+                  <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Due</p>
+                    <p className="font-semibold text-pit-text md:font-normal">{formatCurrency(memberDue)}</p>
+                  </div>
+                  <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Paid</p>
+                    <p className="font-semibold text-pit-teal md:font-normal">{formatCurrency(paid)}</p>
+                  </div>
+                  <div className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted md:hidden">Open</p>
+                    <p className={`font-semibold ${open ? 'text-pit-gold' : 'text-pit-muted'}`}>{formatCurrency(open)}</p>
+                  </div>
+                </div>
+                <span className="hidden text-right text-pit-text md:block">{eventsPaid}/{eventsOwed}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="eyebrow">Payment records</p>
+            <h3 className="text-xl font-bold text-white">Payment Audit Records</h3>
+            <p className="mt-1 text-sm text-pit-muted">Recorded league, event, and adjustment entries for this season.</p>
+          </div>
+          <span className="chip">
+            <ScrollText size={13} />
+            {detail.payments.length} records
+          </span>
+        </div>
+        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          {detail.payments.map((payment) => (
+            <div key={payment.paymentid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_90px_90px_80px] sm:items-center">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-white">{payment.displayname ?? 'Player'} <span className="text-xs font-normal text-pit-muted">({payment.paymenttype})</span></p>
+                <p className="mt-1 truncate text-xs text-pit-muted">{payment.eventname ?? 'Season'} - {String(payment.paidat).slice(0, 10)}{payment.note ? ` - ${payment.note}` : ''}</p>
+              </div>
+              <span className="font-mono text-pit-teal sm:text-right">{formatCurrency(payment.amount)}</span>
+              <span className="text-xs text-pit-muted sm:text-right">{String(payment.createdat).slice(0, 10)}</span>
+              <div className="flex justify-end gap-1">
+                <button className="btn-ghost h-9 w-9 p-0 text-pit-teal" onClick={() => onEditPayment(payment)} title="Adjust payment" aria-label={`Adjust payment for ${payment.displayname ?? 'player'}`}>
+                  <Pencil size={14} />
+                </button>
+                <button className="btn-ghost h-9 w-9 p-0 text-red-300" disabled={deleteLoading} onClick={() => onDeletePayment(payment.paymentid)} title="Delete payment" aria-label={`Delete payment for ${payment.displayname ?? 'player'}`}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {detail.payments.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No payments recorded yet.</p>}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -2460,6 +2489,7 @@ function EventRosterLogger({
   onLog,
   onMarkAllPaid,
   onTogglePaid,
+  onSetRsvp,
   onMarkLeagueFeePaid,
   onClearResult,
   loading,
@@ -2470,6 +2500,7 @@ function EventRosterLogger({
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
+  onSetRsvp: (userId: string, status: LeagueEventRsvpStatus) => void;
   onMarkLeagueFeePaid: (userId: string) => void;
   onClearResult: (userId: string) => void;
   loading: boolean;
@@ -2513,6 +2544,9 @@ function EventRosterLogger({
           const existing = resultByUser.get(member.userid);
           const paymentStatus = getEventPaymentStatus(detail, event, member.userid);
           const leagueFeeStatus = getLeagueFeeInstallmentStatus(detail, event, member.userid);
+          const rsvp = getLeagueEventRsvp(detail, event, member.userid);
+          const rsvpGoing = rsvp?.status === 'going';
+          const rsvpNotGoing = rsvp?.status === 'not_going';
           const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
           const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
           const otherDnfCount = eventResults.filter((result) => result.userid !== member.userid && result.dnf).length;
@@ -2537,6 +2571,15 @@ function EventRosterLogger({
             <div key={member.userid} className="space-y-3 rounded-xl border border-pit-border bg-pit-bg/60 p-3">
               <div className="min-w-0">
                 <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
+                <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
+                  rsvpGoing
+                    ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal'
+                    : rsvpNotGoing
+                      ? 'border-red-300/25 bg-red-400/10 text-red-200'
+                      : 'border-pit-border bg-pit-card/70 text-pit-muted'
+                }`}>
+                  {rsvpGoing ? 'RSVP: Going' : rsvpNotGoing ? "RSVP: Can't go" : 'RSVP: No response'}
+                </p>
                 {existing?.dnf ? (
                   <p className="mt-1 inline-flex rounded-full border border-red-300/25 bg-red-400/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-200">
                     DNF
@@ -2546,6 +2589,28 @@ function EventRosterLogger({
                     {existing.placed}{ordinal(existing.placed)} place - {formatNumber(totalPoints)} pts
                   </p>
                 ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-pit-border/70 bg-pit-card/45 p-2">
+                <button
+                  type="button"
+                  className={`justify-center px-3 py-2 text-xs ${rsvpGoing ? 'btn-primary' : 'btn-ghost'}`}
+                  disabled={loading}
+                  onClick={() => onSetRsvp(member.userid, 'going')}
+                  title={`Set ${member.displayname ?? 'player'} RSVP to going`}
+                >
+                  <CheckCircle2 size={13} />
+                  Going
+                </button>
+                <button
+                  type="button"
+                  className={`btn-ghost justify-center px-3 py-2 text-xs ${rsvpNotGoing ? 'border-red-300/30 bg-red-400/10 text-red-200' : ''}`}
+                  disabled={loading}
+                  onClick={() => onSetRsvp(member.userid, 'not_going')}
+                  title={`Set ${member.displayname ?? 'player'} RSVP to can't go`}
+                >
+                  <UserMinus size={13} />
+                  Can't go
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -3758,6 +3823,7 @@ function formatAuditAction(action: string) {
     event_payment_marked_paid: 'Event payment marked paid',
     event_payments_marked_paid: 'Event payments marked paid',
     event_payments_applied: 'Event payments applied',
+    event_rsvp_updated: 'Event RSVP updated',
     placement_logged: 'Placement logged',
     placement_updated: 'Placement updated',
     dnf_logged: 'DNF logged',
@@ -3836,6 +3902,9 @@ function formatAuditDetails(entry: LeagueAuditLog) {
   }
   if (entry.action === 'event_payments_applied') {
     return `${formatCurrency(auditNumber(details.amount))} applied across ${formatNumber(auditNumber(details.paymentsCreated))} event payment records.`;
+  }
+  if (entry.action === 'event_rsvp_updated') {
+    return `RSVP set to ${details.status === 'not_going' ? "Can't go" : 'Going'}.`;
   }
   if (entry.action === 'guest_added') {
     return details.displayname ? `Guest name: ${String(details.displayname)}` : '';
@@ -3978,6 +4047,10 @@ function getEventPaymentStatus(detail: LeagueDetail, event: LeagueEvent, userId:
     due,
     paid: due > 0 && amount + 0.001 >= due,
   };
+}
+
+function getLeagueEventRsvp(detail: LeagueDetail, event: LeagueEvent, userId: string) {
+  return detail.rsvps.find((rsvp) => rsvp.eventid === event.eventid && rsvp.userid === userId) ?? null;
 }
 
 function getLeagueFeeInstallmentStatus(detail: LeagueDetail, event: LeagueEvent, userId: string) {
