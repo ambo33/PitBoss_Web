@@ -763,7 +763,7 @@ function ScheduleList({
 
   return (
     <div className="overflow-visible rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
-      <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
+      <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_10.75rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
         <span>Name</span>
         <span>Type</span>
         <span>Date / time</span>
@@ -875,11 +875,12 @@ function ScheduleRow({
       : isRegistered
         ? <BadgeCheck size={12} />
         : <CheckCircle2 size={12} />;
+  const showMobileNameStatus = Boolean(statusLabel && (isRegistered || isDeclined));
 
   return (
     <div
       id={`schedule-item-${item.id}`}
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_10.75rem_10.75rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
         focused
           ? 'border-pit-teal bg-pit-teal/10 shadow-[inset_0_0_0_1px_rgba(20,184,166,0.35),0_0_24px_rgba(20,184,166,0.12)]'
           :
@@ -891,14 +892,22 @@ function ScheduleRow({
       }`}
     >
       <div className="col-start-1 row-start-1 min-w-0 overflow-hidden md:col-auto md:row-auto">
-        <button
-          type="button"
-          className="block w-full min-w-0 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
-          onClick={onOpen}
-          title={item.name}
-        >
-          {item.name}
-        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            className="block min-w-0 flex-1 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
+            onClick={onOpen}
+            title={item.name}
+          >
+            {item.name}
+          </button>
+          {showMobileNameStatus && (
+            <span className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-black leading-none md:hidden ${statusPillClass}`}>
+              {statusIcon}
+              {statusLabel}
+            </span>
+          )}
+        </div>
         {item.parentName && (
           <p className="mt-1 w-full min-w-0 truncate text-xs text-[#b3b3c2]" title={item.parentName}>{item.parentName}</p>
         )}
@@ -927,7 +936,7 @@ function ScheduleRow({
             {fieldCount}
           </span>
         )}
-        {statusLabel && (
+        {statusLabel && !showMobileNameStatus && (
           <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-semibold md:hidden ${statusPillClass}`}>
             {statusIcon}
             {statusLabel}
@@ -944,7 +953,7 @@ function ScheduleRow({
 
       <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
         {statusLabel && (
-          <span className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${statusPillClass}`}>
+          <span className={`inline-flex h-7 min-w-[6.75rem] items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-semibold ${statusPillClass}`}>
             {statusIcon}
             {statusLabel}
           </span>
