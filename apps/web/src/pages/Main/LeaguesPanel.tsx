@@ -277,6 +277,7 @@ function LeagueDetailView({
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentSaveState, setPaymentSaveState] = useState<{ count: number; paymenttype: LeaguePaymentType }>({ count: 0, paymenttype: 'league' });
   const [shareInviteOpen, setShareInviteOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSeasonConfirmOpen, setDeleteSeasonConfirmOpen] = useState(false);
@@ -455,9 +456,9 @@ function LeagueDetailView({
   const createPaymentMutation = useMutation({
     mutationFn: (payload: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
       api.createLeaguePayment(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
-    onSuccess: () => {
+    onSuccess: (_response, variables) => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
-      setPaymentModalOpen(false);
+      setPaymentSaveState((current) => ({ count: current.count + 1, paymenttype: variables.paymenttype }));
     },
   });
   const deletePaymentMutation = useMutation({
@@ -968,6 +969,7 @@ function LeagueDetailView({
         detail={detail}
         loading={createPaymentMutation.isPending}
         error={createPaymentMutation.error?.message}
+        saveState={paymentSaveState}
         onClose={() => setPaymentModalOpen(false)}
         onSubmit={(payload) => createPaymentMutation.mutate(payload)}
       />
@@ -3189,6 +3191,7 @@ function RecordPaymentModal({
   detail,
   loading,
   error,
+  saveState,
   onClose,
   onSubmit,
 }: {
@@ -3196,6 +3199,7 @@ function RecordPaymentModal({
   detail: LeagueDetail;
   loading: boolean;
   error?: string;
+  saveState: { count: number; paymenttype: LeaguePaymentType };
   onClose: () => void;
   onSubmit: (data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) => void;
 }) {
@@ -3209,8 +3213,15 @@ function RecordPaymentModal({
   const [amount, setAmount] = useState(String(detail.league.leaguefee || ''));
   const [paidat, setPaidat] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+  const wasOpenRef = useRef(false);
+  const lastHandledSaveRef = useRef(saveState.count);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
     setUserid(members[0]?.userid ?? '');
     setPaymenttype('league');
     setEventid('');
@@ -3218,6 +3229,17 @@ function RecordPaymentModal({
     setPaidat(new Date().toISOString().slice(0, 10));
     setNote('');
   }, [detail.league.leaguefee, members, open]);
+
+  useEffect(() => {
+    if (!open || saveState.count === lastHandledSaveRef.current) return;
+    lastHandledSaveRef.current = saveState.count;
+    setNote('');
+    if (saveState.paymenttype === 'league') {
+      setPaymenttype('event');
+      setEventid('');
+      setAmount(String(getSeasonEventFee(detail) || ''));
+    }
+  }, [detail, open, saveState]);
 
   const selectedMember = members.find((member) => member.userid === userid);
   const seasonEventFee = getSeasonEventFee(detail);
