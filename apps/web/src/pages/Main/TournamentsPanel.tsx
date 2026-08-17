@@ -141,19 +141,6 @@ export default function TournamentsPanel({
       qc.invalidateQueries({ queryKey: ['tournaments'] });
     },
   });
-  const leagueRsvpMutation = useMutation({
-    mutationFn: ({ leagueId, eventId, status }: { leagueId: string; eventId: string; status: 'going' | 'not_going' }) =>
-      api.rsvpLeagueEvent(leagueId, eventId, status),
-    onSuccess: (_result, variables) => {
-      qc.setQueryData<LeagueScheduleEvent[]>(['leagues', 'schedule'], (current) => (
-        current?.map((event) => event.leagueid === variables.leagueId && event.eventid === variables.eventId
-          ? { ...event, rsvpstatus: variables.status }
-          : event
-        )
-      ));
-      qc.invalidateQueries({ queryKey: ['leagues', 'schedule'] });
-    },
-  });
   const cashRsvpMutation = useMutation({
     mutationFn: ({ gameId, status }: { gameId: string; status: 'going' | 'not_going' }) =>
       api.rsvpCashGame(gameId, status),
@@ -172,7 +159,7 @@ export default function TournamentsPanel({
       qc.invalidateQueries({ queryKey: ['games'] });
     },
   });
-  const rsvpError = registerMutation.error?.message || declineMutation.error?.message || leagueRsvpMutation.error?.message || cashRsvpMutation.error?.message;
+  const rsvpError = registerMutation.error?.message || declineMutation.error?.message || cashRsvpMutation.error?.message;
 
   const upcoming = mine.filter((t) => {
     return isUpcomingTournament(t);
@@ -327,7 +314,7 @@ export default function TournamentsPanel({
               items={scheduleList}
               focusItemId={focusScheduleItemId}
               view={scheduleView}
-              loading={registerMutation.isPending || declineMutation.isPending || leagueRsvpMutation.isPending || cashRsvpMutation.isPending}
+              loading={registerMutation.isPending || declineMutation.isPending || cashRsvpMutation.isPending}
               onOpen={(item) => {
                 if (item.kind === 'tournament') {
                   navigate(
@@ -357,7 +344,7 @@ export default function TournamentsPanel({
               }}
               onRegister={(tournament) => registerMutation.mutate(tournament)}
               onDecline={(tournament) => declineMutation.mutate(tournament.tournamentid)}
-              onLeagueRsvp={(item, status) => leagueRsvpMutation.mutate({ leagueId: item.leagueId, eventId: item.eventId, status })}
+              onLeagueEvent={(item) => navigate(`/league/${encodeURIComponent(item.leagueId)}/event/${encodeURIComponent(item.eventId)}`)}
               onCashRsvp={(item, status) => cashRsvpMutation.mutate({ gameId: item.game.id, status })}
             />
           )}
@@ -740,7 +727,7 @@ function ScheduleList({
   onOpen,
   onRegister,
   onDecline,
-  onLeagueRsvp,
+  onLeagueEvent,
   onLeagueLobby,
   onCashRsvp,
 }: {
@@ -751,7 +738,7 @@ function ScheduleList({
   onOpen: (item: ScheduleItem) => void;
   onRegister: (tournament: Tournament) => void;
   onDecline: (tournament: Tournament) => void;
-  onLeagueRsvp: (item: Extract<ScheduleItem, { kind: 'league' }>, status: 'going' | 'not_going') => void;
+  onLeagueEvent: (item: Extract<ScheduleItem, { kind: 'league' }>) => void;
   onLeagueLobby: (item: Extract<ScheduleItem, { kind: 'league' }>) => void;
   onCashRsvp: (item: Extract<ScheduleItem, { kind: 'cash' }>, status: 'going' | 'not_going') => void;
 }) {
@@ -786,7 +773,7 @@ function ScheduleList({
             onOpen={() => onOpen(item)}
             onRegister={item.kind === 'tournament' ? () => onRegister(item.tournament) : undefined}
             onDecline={item.kind === 'tournament' ? () => onDecline(item.tournament) : undefined}
-            onLeagueRsvp={item.kind === 'league' ? (status) => onLeagueRsvp(item, status) : undefined}
+            onLeagueEvent={item.kind === 'league' ? () => onLeagueEvent(item) : undefined}
             onLeagueLobby={item.kind === 'league' ? () => onLeagueLobby(item) : undefined}
             onCashRsvp={item.kind === 'cash' ? (status) => onCashRsvp(item, status) : undefined}
           />
@@ -804,7 +791,7 @@ function ScheduleRow({
   onOpen,
   onRegister,
   onDecline,
-  onLeagueRsvp,
+  onLeagueEvent,
   onLeagueLobby,
   onCashRsvp,
 }: {
@@ -815,7 +802,7 @@ function ScheduleRow({
   onOpen: () => void;
   onRegister?: () => void;
   onDecline?: () => void;
-  onLeagueRsvp?: (status: 'going' | 'not_going') => void;
+  onLeagueEvent?: () => void;
   onLeagueLobby?: () => void;
   onCashRsvp?: (status: 'going' | 'not_going') => void;
 }) {
@@ -839,9 +826,11 @@ function ScheduleRow({
   const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
   const showTournamentLobby = showRsvp && isRegistered;
   const showAnyRsvp = showRsvp || showLeagueRsvp || showCashRsvp;
+  const showRsvpChoices = showRsvp || showCashRsvp;
   const needsRsvp = showAnyRsvp && !isRegistered && !isDeclined;
+  const needsLeagueRsvp = showLeagueRsvp && !isRegistered && !isDeclined;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
-  const statusLabel = needsRsvp
+  const statusLabel = needsRsvp && !needsLeagueRsvp
     ? 'RSVP needed'
     : isRegistered
       ? "You're going"
@@ -947,7 +936,7 @@ function ScheduleRow({
         )}
       </div>
 
-      <div className={`${showAnyRsvp ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 md:col-auto md:row-auto md:mt-0 md:flex md:grid-cols-none md:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2'}`}>
+      <div className={`${showRsvpChoices ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 md:col-auto md:row-auto md:mt-0 md:flex md:grid-cols-none md:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2'}`}>
         {showLeagueLobby ? (
           <>
             {item.canManage && (
@@ -977,7 +966,16 @@ function ScheduleRow({
               <X size={16} />
             </button>
           </>
-        ) : showAnyRsvp ? (
+        ) : needsLeagueRsvp ? (
+          <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueEvent}>
+            <CalendarCheck size={14} />
+            RSVP
+          </button>
+        ) : showLeagueRsvp ? (
+          <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onLeagueEvent}>
+            View
+          </button>
+        ) : showRsvpChoices ? (
           <>
             <button
               type="button"
@@ -987,7 +985,7 @@ function ScheduleRow({
                   : 'border-pit-teal/45 bg-pit-teal/12 text-pit-teal hover:bg-pit-teal/20'
               }`}
               disabled={loading || isRegistered}
-              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('going') : showCashRsvp ? () => onCashRsvp?.('going') : onRegister}
+              onClick={showCashRsvp ? () => onCashRsvp?.('going') : onRegister}
               aria-label={`Can attend ${item.name}`}
               title="Can attend"
             >
@@ -1002,18 +1000,13 @@ function ScheduleRow({
                   : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
               }`}
               disabled={loading || isDeclined}
-              onClick={showLeagueRsvp ? () => onLeagueRsvp?.('not_going') : showCashRsvp ? () => onCashRsvp?.('not_going') : onDecline}
+              onClick={showCashRsvp ? () => onCashRsvp?.('not_going') : onDecline}
               aria-label={`Cannot attend ${item.name}`}
               title="Cannot attend"
             >
               <X size={16} />
               Can't
             </button>
-            {showLeagueRsvp && (
-              <button type="button" className="col-span-2 btn-ghost justify-center px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white md:col-auto" onClick={onOpen}>
-                View
-              </button>
-            )}
           </>
         ) : (
           <button type="button" className={item.canManage && isTournament ? 'btn-primary gap-2 px-3 py-2 text-xs' : 'btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white'} onClick={onOpen}>
