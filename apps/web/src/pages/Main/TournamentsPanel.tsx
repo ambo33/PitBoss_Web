@@ -763,7 +763,7 @@ function ScheduleList({
 
   return (
     <div className="overflow-visible rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
-      <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_10.75rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
+      <div className="hidden grid-cols-[minmax(12rem,1.35fr)_6.25rem_8.25rem_5rem_9rem_6.25rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
         <span>Name</span>
         <span>Type</span>
         <span>Date / time</span>
@@ -880,7 +880,7 @@ function ScheduleRow({
   return (
     <div
       id={`schedule-item-${item.id}`}
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_10.75rem_10.75rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(12rem,1.35fr)_6.25rem_8.25rem_5rem_9rem_6.25rem] md:items-center md:gap-3 md:border-l-0 md:px-4 md:py-3 ${
         focused
           ? 'border-pit-teal bg-pit-teal/10 shadow-[inset_0_0_0_1px_rgba(20,184,166,0.35),0_0_24px_rgba(20,184,166,0.12)]'
           :
@@ -921,18 +921,18 @@ function ScheduleRow({
 
       <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-[#c6c6d2] md:col-auto md:row-auto md:block md:space-y-1 md:text-xs">
         <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
-          <Calendar size={11} />
+          <Calendar size={13} className="shrink-0" />
           {item.date ?? 'Date TBD'}
         </span>
         {item.time && (
           <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
-            <Clock size={11} />
+            <Clock size={13} className="shrink-0" />
             {formatTime12Hour(item.time)}
           </span>
         )}
         {fieldCount && (
           <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:hidden">
-            <Users size={11} />
+            <Users size={13} className="shrink-0" />
             {fieldCount}
           </span>
         )}
@@ -960,7 +960,7 @@ function ScheduleRow({
         )}
         {fieldCount && (
           <span className="inline-flex h-7 items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 text-xs font-semibold text-[#d0d0da]">
-            <Users size={12} />
+            <Users size={13} className="shrink-0" />
             {fieldCount}
           </span>
         )}
