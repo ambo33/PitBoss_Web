@@ -845,9 +845,9 @@ function ScheduleRow({
   const statusLabel = needsRsvp && !needsLeagueRsvp
     ? 'RSVP'
     : isRegistered
-      ? 'RSVP'
+      ? 'DEAL ME IN'
       : isDeclined
-        ? 'RSVP'
+        ? "I'M OUT"
         : item.canManage && (isTournament || isCash)
           ? 'Host'
           : null;
@@ -1048,7 +1048,7 @@ function ScheduleRow({
               title="Can attend"
             >
               <CheckCircle2 size={16} />
-              Going
+              Deal me in
             </button>
             <button
               type="button"
@@ -1063,7 +1063,7 @@ function ScheduleRow({
               title="Cannot attend"
             >
               <X size={16} />
-              Can't
+              I'm out
             </button>
           </>
         ) : (
