@@ -1024,7 +1024,7 @@ function ScheduleRow({
             </button>
           </>
         ) : needsLeagueRsvp ? (
-          <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueEvent}>
+          <button type="button" className="inline-flex items-center justify-center gap-2 rounded-full border border-pit-gold/55 bg-pit-gold/20 px-3 py-2 text-xs font-black text-pit-gold shadow-[0_0_18px_rgba(244,178,74,0.14)] transition hover:bg-pit-gold/30 hover:text-yellow-100" onClick={onLeagueEvent}>
             <CalendarCheck size={14} />
             RSVP
           </button>
