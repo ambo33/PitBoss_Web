@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X, XCircle } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -762,7 +762,7 @@ function ScheduleList({
   if (items.length === 0) return <EmptyState view={view} />;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
+    <div className="overflow-visible rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
       <div className="hidden grid-cols-[minmax(0,1.35fr)_7.5rem_8.5rem_6.5rem_9rem_10.75rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
         <span>Name</span>
         <span>Type</span>
@@ -815,6 +815,7 @@ function ScheduleRow({
   onLeagueLobby?: () => void;
   onCashRsvp?: (status: 'going' | 'not_going') => void;
 }) {
+  const [leagueViewMenuOpen, setLeagueViewMenuOpen] = useState(false);
   const isTournament = item.kind === 'tournament';
   const isLeague = item.kind === 'league';
   const isCash = item.kind === 'cash';
@@ -832,6 +833,8 @@ function ScheduleRow({
   const leagueEventStarted = isLeague && hasScheduleStarted(item.date, item.time);
   const showLeagueRsvp = view === 'upcoming' && isLeague && item.isParticipant && !leagueEventStarted;
   const showLeagueLobby = view === 'upcoming' && isLeague && item.isParticipant && leagueEventStarted;
+  const showLeagueAdminOnly = view === 'upcoming' && isLeague && item.canManage && !item.isParticipant;
+  const showLeagueAdminPlayerMenu = view === 'upcoming' && isLeague && item.canManage && item.isParticipant;
   const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
   const showTournamentLobby = showRsvp && isRegistered;
   const showAnyRsvp = showRsvp || showLeagueRsvp || showCashRsvp;
@@ -946,18 +949,54 @@ function ScheduleRow({
       </div>
 
       <div className={`${showRsvpChoices ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 md:col-auto md:row-auto md:mt-0 md:flex md:grid-cols-none md:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2'}`}>
-        {showLeagueLobby ? (
-          <>
-            {item.canManage && (
-              <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onOpen}>
-                View
-              </button>
+        {showLeagueAdminPlayerMenu ? (
+          <div className="relative">
+            <button
+              type="button"
+              className="btn-ghost gap-2 px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white"
+              onClick={() => setLeagueViewMenuOpen((open) => !open)}
+              aria-expanded={leagueViewMenuOpen}
+            >
+              View
+              <ChevronDown size={13} />
+            </button>
+            {leagueViewMenuOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-pit-border bg-pit-card shadow-2xl">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-white transition hover:bg-pit-teal/10"
+                  onClick={() => {
+                    setLeagueViewMenuOpen(false);
+                    onLeagueLobby?.();
+                  }}
+                >
+                  <PlayCircle size={14} />
+                  Lobby
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 border-t border-pit-border px-3 py-2 text-left text-xs font-semibold text-white transition hover:bg-pit-teal/10"
+                  onClick={() => {
+                    setLeagueViewMenuOpen(false);
+                    onOpen();
+                  }}
+                >
+                  <Settings size={14} />
+                  Admin
+                </button>
+              </div>
             )}
-            <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueLobby}>
+          </div>
+        ) : showLeagueAdminOnly ? (
+          <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onOpen}>
+            <Settings size={14} />
+            Admin
+          </button>
+        ) : showLeagueLobby ? (
+          <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueLobby}>
               <PlayCircle size={14} />
               Lobby
-            </button>
-          </>
+          </button>
         ) : showTournamentLobby ? (
           <>
             <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onOpen}>
@@ -981,8 +1020,9 @@ function ScheduleRow({
             RSVP
           </button>
         ) : showLeagueRsvp ? (
-          <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onLeagueEvent}>
-            View
+          <button type="button" className="btn-primary gap-2 px-3 py-2 text-xs" onClick={onLeagueEvent}>
+            <PlayCircle size={14} />
+            Lobby
           </button>
         ) : showRsvpChoices ? (
           <>
