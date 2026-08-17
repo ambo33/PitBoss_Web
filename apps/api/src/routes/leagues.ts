@@ -213,6 +213,10 @@ function isPaymentWriteContention(error: unknown): boolean {
   return ['55P03', '57014', '40001'].includes(databaseErrorCode(error));
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return databaseErrorCode(error) === '23505';
+}
+
 type LeagueAuditInput = {
   leagueId: string;
   seasonId?: string | null;
@@ -3002,6 +3006,136 @@ leaguesRouter.post('/:id/payments', async (req: Request, res: Response) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: 'This event already has a league-fee installment recorded for that player.' });
+      return;
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+leaguesRouter.put('/:id/payments/:paymentId', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const body = req.body as { userid?: string; eventid?: string | null; seasonid?: string | null; paymenttype?: string; amount?: number; paidat?: string; note?: string };
+  const userId = String(body.userid ?? '');
+  const paymentType = ['league', 'event', 'other'].includes(String(body.paymenttype)) ? String(body.paymenttype) : 'league';
+  const amount = Math.max(0, Math.round(Number(body.amount ?? 0) * 100) / 100);
+  if (!amount) {
+    res.status(400).json({ error: 'Payment amount required.' });
+    return;
+  }
+
+  const existingPayment = await queryOne<LeaguePaymentRow>(
+    `SELECT paymentid, leagueid, seasonid, userid, eventid, paymenttype, CAST(amount AS DECIMAL) AS amount, paidat, note, recordedby, createdat
+     FROM leaguepayments
+     WHERE leagueid = $1 AND paymentid = $2
+     LIMIT 1`,
+    [req.params.id, req.params.paymentId]
+  );
+  if (!existingPayment) {
+    res.status(404).json({ error: 'Payment not found.' });
+    return;
+  }
+
+  const eventId = body.eventid ? String(body.eventid) : null;
+  let season = body.seasonid ? await getSelectedSeason(req.params.id, String(body.seasonid)) : await getSelectedSeason(req.params.id, existingPayment.seasonid);
+  if (eventId) {
+    const event = await queryOne<LeagueEventRow>(
+      `SELECT eventid, leagueid, seasonid, CAST(eventfee AS DECIMAL) AS eventfee
+       FROM leagueevents
+       WHERE leagueid = $1 AND eventid = $2`,
+      [req.params.id, eventId]
+    );
+    if (!event) {
+      res.status(400).json({ error: 'Event is not part of this league.' });
+      return;
+    }
+    season = event.seasonid ? await getSelectedSeason(req.params.id, event.seasonid) : season;
+    if (paymentType === 'event') {
+      const result = await queryOne<{ dnf: boolean }>(
+        `SELECT dnf FROM leagueresults WHERE leagueid = $1 AND eventid = $2 AND userid = $3 LIMIT 1`,
+        [req.params.id, eventId, userId]
+      );
+      if (result?.dnf) {
+        res.status(400).json({ error: 'DNF players do not owe this event fee.' });
+        return;
+      }
+    }
+  }
+  if (!season) {
+    res.status(400).json({ error: 'Season not found.' });
+    return;
+  }
+  if (!await requireLeagueSeasonParticipant(req.params.id, season.seasonid, userId)) {
+    res.status(400).json({ error: 'Player is not active in this season.' });
+    return;
+  }
+
+  const paidAt = body.paidat ? String(body.paidat).slice(0, 10) : null;
+  const note = String(body.note ?? '').trim().slice(0, 240) || null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query<LeaguePaymentRow>(
+      `UPDATE leaguepayments
+       SET seasonid = $3,
+           userid = $4,
+           eventid = $5,
+           paymenttype = $6,
+           amount = $7,
+           paidat = COALESCE($8::DATE, paidat),
+           note = $9
+       WHERE leagueid = $1 AND paymentid = $2
+       RETURNING paymentid, leagueid, seasonid, userid, eventid, paymenttype, CAST(amount AS DECIMAL) AS amount, paidat, note, recordedby, createdat`,
+      [req.params.id, req.params.paymentId, season.seasonid, userId, eventId, paymentType, amount, paidAt, note]
+    );
+    const payment = updated.rows[0] ?? null;
+    if (!payment) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Payment not found.' });
+      return;
+    }
+    await recordLeagueAudit(client, {
+      leagueId: req.params.id,
+      seasonId: payment.seasonid,
+      eventId: payment.eventid,
+      actorId: req.userId,
+      targetUserId: payment.userid,
+      action: 'payment_updated',
+      summary: 'Payment was adjusted.',
+      details: {
+        paymentid: payment.paymentid,
+        previous: {
+          userid: existingPayment.userid,
+          eventid: existingPayment.eventid,
+          paymenttype: existingPayment.paymenttype,
+          amount: Number(existingPayment.amount || 0),
+          paidat: existingPayment.paidat,
+          note: existingPayment.note,
+        },
+        next: {
+          userid: payment.userid,
+          eventid: payment.eventid,
+          paymenttype: payment.paymenttype,
+          amount: Number(payment.amount || 0),
+          paidat: payment.paidat,
+          note: payment.note,
+        },
+      },
+    });
+    await client.query('COMMIT');
+    res.json({ payment: { ...payment, amount: Number(payment.amount || 0) } });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: 'This event already has a league-fee installment recorded for that player.' });
+      return;
+    }
     throw err;
   } finally {
     client.release();
@@ -3215,12 +3349,7 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-league-fee-paid', async (
   try {
     await client.query('BEGIN');
     // Never let a duplicate click or concurrent admin action occupy the request for the full client timeout.
-    await client.query(`SET LOCAL lock_timeout = '4s'`);
     await client.query(`SET LOCAL statement_timeout = '15s'`);
-    await client.query(
-      `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
-      [`${req.params.id}:${event.seasonid}`, `${event.eventid}:${userId}:league-fee`]
-    );
     const existing = await client.query<{ paymentid: string }>(
       `SELECT paymentid
        FROM leaguepayments
@@ -3282,6 +3411,10 @@ leaguesRouter.post('/:id/events/:eventId/payments/mark-league-fee-paid', async (
     res.status(201).json({ payment: payment ? { ...payment, amount: Number(payment.amount || 0) } : null });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: 'This event already has a league-fee installment recorded for that player.' });
+      return;
+    }
     if (isPaymentWriteContention(err)) {
       res.status(409).json({ error: 'Another payment update is still being processed. Refresh the event and try again.' });
       return;
@@ -3536,7 +3669,7 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     return;
   }
 
-  const [participantCount, isParticipant, results, myRsvp] = await Promise.all([
+  const [participantCount, isParticipant, results, myRsvp, rsvpCounts] = await Promise.all([
     getLeagueSeasonParticipantCount(req.params.id, event.seasonid),
     requireLeagueSeasonParticipant(req.params.id, event.seasonid, req.userId!),
     query<LeagueResultRow>(
@@ -3553,8 +3686,15 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     queryOne<LeagueEventRsvpRow>(
       `SELECT rsvpid, eventid, leagueid, userid, status, createdat, updatedat
        FROM leagueeventrsvps
-       WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
+      WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
       [event.eventid, req.params.id, req.userId]
+    ),
+    query<{ status: string; count: string | number }>(
+      `SELECT status, count(*) AS count
+       FROM leagueeventrsvps
+       WHERE eventid = $1 AND leagueid = $2
+       GROUP BY status`,
+      [event.eventid, req.params.id]
     ),
   ]);
 
@@ -3568,6 +3708,8 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
   const myResult = normalizedResults.find((result) => result.userid === req.userId) ?? null;
   const { nextPlace } = getAvailableLeaguePlacements(participantCount, normalizedResults, req.userId!);
   const hasStarted = hasTournamentStarted(event.eventdate, event.eventtime);
+  const goingCount = Number(rsvpCounts.find((row) => row.status === 'going')?.count ?? 0);
+  const notGoingCount = Number(rsvpCounts.find((row) => row.status === 'not_going')?.count ?? 0);
 
   res.json({
     league: {
@@ -3586,6 +3728,10 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     nextplace: nextPlace,
     myresult: myResult,
     myrsvp: myRsvp,
+    rsvpcounts: {
+      going: goingCount,
+      notgoing: notGoingCount,
+    },
     results: normalizedResults,
   });
 });

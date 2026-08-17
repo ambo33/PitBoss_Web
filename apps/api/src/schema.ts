@@ -867,6 +867,11 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON leaguepayments (leagueid, seasonid, eventid, userid, paymenttype)
     `);
     await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_leaguepayments_league_installment
+      ON leaguepayments (leagueid, seasonid, eventid, userid)
+      WHERE paymenttype = 'league' AND eventid IS NOT NULL
+    `);
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leaguepayments_season_user_type
       ON leaguepayments (leagueid, seasonid, userid, paymenttype)
     `);

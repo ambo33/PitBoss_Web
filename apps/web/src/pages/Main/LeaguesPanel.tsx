@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -283,6 +283,7 @@ function LeagueDetailView({
   const [removeMemberTarget, setRemoveMemberTarget] = useState<LeagueMember | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<LeagueEvent | null>(null);
   const [editingEvent, setEditingEvent] = useState<LeagueEvent | null>(null);
+  const [editingPayment, setEditingPayment] = useState<LeaguePayment | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(initialSeasonId ?? null);
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [mobileRankUserId, setMobileRankUserId] = useState<string | null>(null);
@@ -462,6 +463,14 @@ function LeagueDetailView({
   const deletePaymentMutation = useMutation({
     mutationFn: (paymentId: string) => api.deleteLeaguePayment(league.leagueid, paymentId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+  });
+  const updatePaymentMutation = useMutation({
+    mutationFn: ({ paymentId, payload }: { paymentId: string; payload: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string } }) =>
+      api.updateLeaguePayment(league.leagueid, paymentId, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      setEditingPayment(null);
+    },
   });
   const markEventPaidMutation = useMutation({
     mutationFn: ({ eventId, userId, all }: { eventId: string; userId?: string; all?: boolean }) =>
@@ -810,6 +819,7 @@ function LeagueDetailView({
         <PaymentTracker
           detail={detail}
           onSettings={(payload) => updatePaymentSettingsMutation.mutate(payload)}
+          onEditPayment={(payment) => setEditingPayment(payment)}
           onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
           settingsLoading={updatePaymentSettingsMutation.isPending}
           settingsError={updatePaymentSettingsMutation.error?.message}
@@ -960,6 +970,16 @@ function LeagueDetailView({
         error={createPaymentMutation.error?.message}
         onClose={() => setPaymentModalOpen(false)}
         onSubmit={(payload) => createPaymentMutation.mutate(payload)}
+      />
+
+      <AdjustPaymentModal
+        open={Boolean(editingPayment)}
+        detail={detail}
+        payment={editingPayment}
+        loading={updatePaymentMutation.isPending}
+        error={updatePaymentMutation.error?.message}
+        onClose={() => setEditingPayment(null)}
+        onSubmit={(paymentId, payload) => updatePaymentMutation.mutate({ paymentId, payload })}
       />
       <JoinShareDialog
         open={shareInviteOpen}
@@ -2232,6 +2252,7 @@ function LeagueMembersCard({
 function PaymentTracker({
   detail,
   onSettings,
+  onEditPayment,
   onDeletePayment,
   settingsLoading,
   settingsError,
@@ -2239,6 +2260,7 @@ function PaymentTracker({
 }: {
   detail: LeagueDetail;
   onSettings: (payload: { leaguefee: number; seasonEventFee: number }) => void;
+  onEditPayment: (payment: LeaguePayment) => void;
   onDeletePayment: (paymentId: string) => void;
   settingsLoading: boolean;
   settingsError?: string;
@@ -2343,16 +2365,21 @@ function PaymentTracker({
       </div>
       <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
         {detail.payments.map((payment) => (
-          <div key={payment.paymentid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_90px_90px_36px] sm:items-center">
+          <div key={payment.paymentid} className="grid gap-2 rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_90px_90px_80px] sm:items-center">
             <div className="min-w-0">
               <p className="truncate font-semibold text-white">{payment.displayname ?? 'Player'} <span className="text-xs font-normal text-pit-muted">({payment.paymenttype})</span></p>
               <p className="mt-1 truncate text-xs text-pit-muted">{payment.eventname ?? 'Season'} - {String(payment.paidat).slice(0, 10)}{payment.note ? ` - ${payment.note}` : ''}</p>
             </div>
             <span className="font-mono text-pit-teal sm:text-right">{formatCurrency(payment.amount)}</span>
             <span className="text-xs text-pit-muted sm:text-right">{String(payment.createdat).slice(0, 10)}</span>
-            <button className="btn-ghost h-9 w-9 p-0 text-red-300" disabled={deleteLoading} onClick={() => onDeletePayment(payment.paymentid)}>
-              <Trash2 size={14} />
-            </button>
+            <div className="flex justify-end gap-1">
+              <button className="btn-ghost h-9 w-9 p-0 text-pit-teal" onClick={() => onEditPayment(payment)} title="Adjust payment" aria-label={`Adjust payment for ${payment.displayname ?? 'player'}`}>
+                <Pencil size={14} />
+              </button>
+              <button className="btn-ghost h-9 w-9 p-0 text-red-300" disabled={deleteLoading} onClick={() => onDeletePayment(payment.paymentid)} title="Delete payment" aria-label={`Delete payment for ${payment.displayname ?? 'player'}`}>
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         ))}
         {detail.payments.length === 0 && <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">No payments recorded yet.</p>}
@@ -3052,6 +3079,111 @@ function JoinLeagueModal({ open, onClose, onSubmit, claimOptions = [], onClaim, 
   );
 }
 
+function AdjustPaymentModal({
+  open,
+  detail,
+  payment,
+  loading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  detail: LeagueDetail;
+  payment: LeaguePayment | null;
+  loading: boolean;
+  error?: string;
+  onClose: () => void;
+  onSubmit: (paymentId: string, data: { userid: string; eventid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) => void;
+}) {
+  const members = useMemo(
+    () => detail.members.filter((member) => member.approved && member.participating),
+    [detail.members]
+  );
+  const [userid, setUserid] = useState('');
+  const [paymenttype, setPaymenttype] = useState<LeaguePaymentType>('league');
+  const [eventid, setEventid] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paidat, setPaidat] = useState('');
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!open || !payment) return;
+    setUserid(payment.userid);
+    setPaymenttype(normalizeLeaguePaymentType(payment.paymenttype));
+    setEventid(payment.eventid ?? '');
+    setAmount(feeInputValue(payment.amount));
+    setPaidat(String(payment.paidat).slice(0, 10));
+    setNote(payment.note ?? '');
+  }, [open, payment]);
+
+  const selectedMember = members.find((member) => member.userid === userid);
+  const selectedEvent = detail.events.find((event) => event.eventid === eventid);
+  const paymentId = payment?.paymentid ?? '';
+  return (
+    <Modal
+      title="Adjust Payment"
+      open={open}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={loading || !paymentId || !userid || !Number(amount)}
+            onClick={() => onSubmit(paymentId, { userid, eventid: eventid || null, paymenttype, amount: Number(amount) || 0, paidat, note })}
+          >
+            {loading ? 'Saving...' : 'Save Adjustment'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Player</span>
+          <select className="input" value={userid} onChange={(event) => setUserid(event.target.value)}>
+            {members.map((member: LeagueMember) => <option key={member.userid} value={member.userid}>{member.displayname ?? 'Player'}</option>)}
+          </select>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Type</span>
+            <select
+              className="input"
+              value={paymenttype}
+              onChange={(event) => setPaymenttype(event.target.value as LeaguePaymentType)}
+            >
+              <option value="league">League fee</option>
+              <option value="event">Event fee</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Amount</span>
+            <input className="input" inputMode="decimal" value={amount} onChange={(event) => setAmount(cleanMoneyInput(event.target.value))} />
+          </label>
+        </div>
+        <label className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event</span>
+          <select className="input" value={eventid} onChange={(event) => setEventid(event.target.value)}>
+            <option value="">Season-level payment</option>
+            {detail.events.map((event) => <option key={event.eventid} value={event.eventid}>{event.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-pit-muted">
+            {selectedEvent ? `Linked to ${selectedEvent.name}.` : 'Leave blank for season-level league fees or other credits.'}
+          </p>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input className="input" type="date" value={paidat} onChange={(event) => setPaidat(event.target.value)} />
+          <input className="input" placeholder={`Note for ${selectedMember?.displayname ?? 'payment'}`} value={note} onChange={(event) => setNote(event.target.value)} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function RecordPaymentModal({
   open,
   detail,
@@ -3599,6 +3731,7 @@ function formatAuditAction(action: string) {
     season_spot_claimed: 'Season spot claimed',
     member_removed_from_season: 'Member removed',
     payment_added: 'Payment added',
+    payment_updated: 'Payment adjusted',
     payment_deleted: 'Payment deleted',
     event_payment_marked_paid: 'Event payment marked paid',
     event_payments_marked_paid: 'Event payments marked paid',
@@ -3649,6 +3782,15 @@ function formatAuditDetails(entry: LeagueAuditLog) {
     const paidAt = details.paidat ? ` on ${String(details.paidat).slice(0, 10)}` : '';
     const note = details.note ? `, note: ${String(details.note)}` : '';
     return `${type} payment ${formatCurrency(auditNumber(details.amount))}${paidAt}${note}`;
+  }
+  if (entry.action === 'payment_updated') {
+    const previous = auditObject(details.previous);
+    const next = auditObject(details.next);
+    const type = String(next.paymenttype ?? previous.paymenttype ?? 'payment');
+    const previousAmount = formatCurrency(auditNumber(previous.amount));
+    const nextAmount = formatCurrency(auditNumber(next.amount));
+    const paidAt = next.paidat ? ` on ${String(next.paidat).slice(0, 10)}` : '';
+    return `${type} payment adjusted from ${previousAmount} to ${nextAmount}${paidAt}.`;
   }
   if (entry.action === 'placement_logged' || entry.action === 'placement_updated' || entry.action === 'dnf_logged' || entry.action === 'dnf_updated') {
     const previous = details.previous ? `Previous: ${formatAuditPlacement(details.previous)}. ` : '';
@@ -3798,6 +3940,10 @@ function cleanMoneyInput(value: string) {
   const decimals = rest.join('').slice(0, 2);
   const trimmedWhole = whole.replace(/^0+(?=\d)/, '');
   return rest.length ? `${trimmedWhole || '0'}.${decimals}` : trimmedWhole;
+}
+
+function normalizeLeaguePaymentType(value: unknown): LeaguePaymentType {
+  return value === 'event' || value === 'other' ? value : 'league';
 }
 
 function getEventPaymentStatus(detail: LeagueDetail, event: LeagueEvent, userId: string) {

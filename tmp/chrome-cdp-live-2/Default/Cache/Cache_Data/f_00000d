@@ -1,0 +1,223 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/Terms/index.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=c5b53804"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { Link } from "/node_modules/.vite/deps/react-router-dom.js?v=c5b53804";
+import BrandLockup from "/src/components/BrandLockup.tsx";
+const updatedDate = "May 15, 2026";
+const sections = [
+  {
+    title: "1. What ThePokerPlanner Is",
+    body: [
+      "ThePokerPlanner is a planning and tournament-management tool for poker hosts. It provides features such as blind timers, tournament clocks, seating tools, payout planning, group organization, player check-in, and related administrative tools.",
+      "ThePokerPlanner is not a gambling operator, sportsbook, casino, payment processor, escrow service, money transmitter, or betting platform. The service does not take wagers, hold player funds, settle bets, award prizes, or participate in any gambling activity."
+    ]
+  },
+  {
+    title: "2. No Illegal Gambling or Illegal Activity",
+    body: [
+      "By using ThePokerPlanner, you agree that you will not use the service to organize, facilitate, promote, manage, advertise, or participate in illegal gambling or any other illegal activity.",
+      "You are solely responsible for understanding and complying with all laws, rules, regulations, licensing requirements, venue rules, tax obligations, and private-event restrictions that may apply to your location, event, players, prizes, payments, or conduct.",
+      "You may not use ThePokerPlanner to collect unlawful wagers, operate an unlicensed gambling business, evade gaming regulations, launder money, defraud participants, or coordinate any activity prohibited by applicable law."
+    ]
+  },
+  {
+    title: "3. User Responsibility",
+    body: [
+      "ThePokerPlanner provides organizational tools only. Any decisions about whether to host an event, invite players, charge entry fees, offer prizes, allow rebuys or add-ons, or structure payouts are made by you and are your responsibility.",
+      "If you are unsure whether your planned event is legal, you should consult a qualified attorney or relevant authority before using the service for that event. Nothing on ThePokerPlanner is legal advice."
+    ]
+  },
+  {
+    title: "4. Account and Content Rules",
+    body: [
+      "You agree to provide accurate account information and to keep your login credentials secure. You are responsible for activity that occurs under your account.",
+      "ThePokerPlanner protects account credentials and email addresses using secure hashing and encryption practices. Passwords are stored as salted password hashes and are not stored in plaintext. Email addresses are hashed for lookup and encrypted at rest for account display and email delivery, so account emails are not intentionally stored as open text in the primary account record.",
+      "You may not upload, share, or create content that is unlawful, harassing, abusive, deceptive, infringing, obscene, or otherwise harmful. Uploaded avatars, audio clips, names, notes, and group content must be yours to use and appropriate for a poker group."
+    ]
+  },
+  {
+    title: "5. Suspension or Removal",
+    body: [
+      "We may suspend, limit, or remove access to ThePokerPlanner if we believe the service is being misused, if account activity creates risk for the product or other users, or if use appears to involve illegal activity, fraud, abuse, security threats, or violations of these Terms.",
+      "We may also remove content or disable features when needed to protect users, comply with law, or maintain the reliability of the service."
+    ]
+  },
+  {
+    title: "6. Beta Service and Availability",
+    body: [
+      "ThePokerPlanner is currently offered as a beta product. Features may change, break, be limited, or be removed. All features are free during the beta, and a free model will always be available, but paid plans or limits may be introduced later.",
+      "We aim to keep the service useful and reliable, but we do not guarantee uninterrupted availability, error-free operation, or that the service will meet every tournament or compliance need."
+    ]
+  },
+  {
+    title: "7. No Warranties",
+    body: [
+      'ThePokerPlanner is provided on an "as is" and "as available" basis. To the fullest extent permitted by law, we disclaim warranties of merchantability, fitness for a particular purpose, non-infringement, and any warranties arising from course of dealing or usage of trade.',
+      "You use ThePokerPlanner at your own risk, including any reliance on tournament settings, timers, payout calculations, player records, messages, or other outputs."
+    ]
+  },
+  {
+    title: "8. Limitation of Liability",
+    body: [
+      "To the fullest extent permitted by law, ThePokerPlanner and its owners, operators, contributors, and affiliates will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, lost data, event disputes, prize disputes, regulatory consequences, or claims arising from your use of the service.",
+      "Our total liability for any claim related to the service will be limited to the amount you paid to use ThePokerPlanner during the three months before the claim, or $100 if you paid nothing."
+    ]
+  },
+  {
+    title: "9. Changes to These Terms",
+    body: [
+      "We may update these Terms as ThePokerPlanner evolves. When we make material changes, we will update the date on this page and may provide additional notice inside the service.",
+      "Your continued use of ThePokerPlanner after changes become effective means you accept the updated Terms."
+    ]
+  },
+  {
+    title: "10. Contact",
+    body: [
+      "Questions about these Terms can be sent to hello@thepokerplanner.com."
+    ]
+  }
+];
+export default function TermsPage() {
+  return /* @__PURE__ */ jsxDEV("main", { className: "min-h-screen bg-pit-bg text-white", children: [
+    /* @__PURE__ */ jsxDEV("header", { className: "border-b border-pit-border bg-pit-surface/80", children: /* @__PURE__ */ jsxDEV("div", { className: "mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5", children: [
+      /* @__PURE__ */ jsxDEV(Link, { to: "/", "aria-label": "ThePokerPlanner home", children: /* @__PURE__ */ jsxDEV(BrandLockup, { compact: true }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 105,
+        columnNumber: 13
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 104,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("nav", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxDEV(Link, { className: "btn-ghost px-3 py-2 text-xs sm:text-sm", to: "/login", children: "Sign in" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+          lineNumber: 108,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV(Link, { className: "btn-primary px-3 py-2 text-xs sm:text-sm", to: "/login?mode=register", children: "Create account" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+          lineNumber: 109,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 107,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+      lineNumber: 103,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+      lineNumber: 102,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("article", { className: "mx-auto max-w-5xl px-5 py-10 sm:py-14", children: [
+      /* @__PURE__ */ jsxDEV("p", { className: "mb-3 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-xs font-semibold uppercase text-pit-teal", children: "Legal" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 115,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("h1", { className: "text-4xl font-black leading-tight sm:text-5xl", children: "Terms of Service" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 118,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "mt-3 max-w-3xl text-sm leading-6 text-pit-text", children: [
+        "Last updated: ",
+        updatedDate,
+        ". These Terms govern your access to and use of ThePokerPlanner."
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 119,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("section", { className: "mt-8 rounded-xl border border-red-400/25 bg-red-400/10 p-5", children: [
+        /* @__PURE__ */ jsxDEV("h2", { className: "text-xl font-bold text-white", children: "No Illegal Gambling" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+          lineNumber: 124,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "mt-2 text-sm leading-6 text-red-100", children: "ThePokerPlanner does not facilitate, process, promote, or operate gambling. By using this service, you agree not to use it to facilitate illegal gambling, unlawful wagering, unlicensed gaming operations, fraud, money laundering, or any other illegal activity." }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+          lineNumber: 125,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 123,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "mt-6 space-y-4", children: sections.map(
+        (section) => /* @__PURE__ */ jsxDEV("section", { className: "rounded-xl border border-pit-border bg-pit-surface p-5", children: [
+          /* @__PURE__ */ jsxDEV("h2", { className: "text-xl font-bold text-white", children: section.title }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+            lineNumber: 133,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "mt-3 space-y-3", children: section.body.map(
+            (paragraph) => /* @__PURE__ */ jsxDEV("p", { className: "text-sm leading-6 text-pit-text", children: paragraph }, paragraph, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+              lineNumber: 136,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+            lineNumber: 134,
+            columnNumber: 15
+          }, this)
+        ] }, section.title, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+          lineNumber: 132,
+          columnNumber: 11
+        }, this)
+      ) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+        lineNumber: 130,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+      lineNumber: 114,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx",
+    lineNumber: 101,
+    columnNumber: 5
+  }, this);
+}
+_c = TermsPage;
+var _c;
+$RefreshReg$(_c, "TermsPage");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/Terms/index.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QTtBQUFBO0FBQUE7QUFBQSxlQUFnRTtBQUFBLFFBQ2hFLHVCQUFDLE9BQUUsV0FBVSx1Q0FBc0MsbVJBQW5EO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFFQTtBQUFBLFdBSkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUtBO0FBQUEsTUFFQSx1QkFBQyxTQUFJLFdBQVUsa0JBQ1pDLG1CQUFTSTtBQUFBQSxRQUFJLENBQUNDLFlBQ2IsdUJBQUMsYUFBNEIsV0FBVSwwREFDckM7QUFBQSxpQ0FBQyxRQUFHLFdBQVUsZ0NBQWdDQSxrQkFBUUosU0FBdEQ7QUFBQTtBQUFBO0FBQUE7QUFBQSxpQkFBNEQ7QUFBQSxVQUM1RCx1QkFBQyxTQUFJLFdBQVUsa0JBQ1pJLGtCQUFRSCxLQUFLRTtBQUFBQSxZQUFJLENBQUNFLGNBQ2pCLHVCQUFDLE9BQWtCLFdBQVUsbUNBQzFCQSx1QkFES0EsV0FBUjtBQUFBO0FBQUE7QUFBQTtBQUFBLG1CQUVBO0FBQUEsVUFDRCxLQUxIO0FBQUE7QUFBQTtBQUFBO0FBQUEsaUJBTUE7QUFBQSxhQVJZRCxRQUFRSixPQUF0QjtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBU0E7QUFBQSxNQUNELEtBWkg7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQWFBO0FBQUEsU0E3QkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQThCQTtBQUFBLE9BM0NGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0E0Q0E7QUFFSjtBQUFDTSxLQWhEdUJKO0FBQVMsSUFBQUk7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsiTGluayIsIkJyYW5kTG9ja3VwIiwidXBkYXRlZERhdGUiLCJzZWN0aW9ucyIsInRpdGxlIiwiYm9keSIsIlRlcm1zUGFnZSIsIm1hcCIsInNlY3Rpb24iLCJwYXJhZ3JhcGgiLCJfYyJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJpbmRleC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgTGluayB9IGZyb20gJ3JlYWN0LXJvdXRlci1kb20nO1xyXG5pbXBvcnQgQnJhbmRMb2NrdXAgZnJvbSAnLi4vLi4vY29tcG9uZW50cy9CcmFuZExvY2t1cCc7XHJcblxyXG5jb25zdCB1cGRhdGVkRGF0ZSA9ICdNYXkgMTUsIDIwMjYnO1xyXG5cclxuY29uc3Qgc2VjdGlvbnMgPSBbXHJcbiAge1xyXG4gICAgdGl0bGU6ICcxLiBXaGF0IFRoZVBva2VyUGxhbm5lciBJcycsXHJcbiAgICBib2R5OiBbXHJcbiAgICAgICdUaGVQb2tlclBsYW5uZXIgaXMgYSBwbGFubmluZyBhbmQgdG91cm5hbWVudC1tYW5hZ2VtZW50IHRvb2wgZm9yIHBva2VyIGhvc3RzLiBJdCBwcm92aWRlcyBmZWF0dXJlcyBzdWNoIGFzIGJsaW5kIHRpbWVycywgdG91cm5hbWVudCBjbG9ja3MsIHNlYXRpbmcgdG9vbHMsIHBheW91dCBwbGFubmluZywgZ3JvdXAgb3JnYW5pemF0aW9uLCBwbGF5ZXIgY2hlY2staW4sIGFuZCByZWxhdGVkIGFkbWluaXN0cmF0aXZlIHRvb2xzLicsXHJcbiAgICAgICdUaGVQb2tlclBsYW5uZXIgaXMgbm90IGEgZ2FtYmxpbmcgb3BlcmF0b3IsIHNwb3J0c2Jvb2ssIGNhc2lubywgcGF5bWVudCBwcm9jZXNzb3IsIGVzY3JvdyBzZXJ2aWNlLCBtb25leSB0cmFuc21pdHRlciwgb3IgYmV0dGluZyBwbGF0Zm9ybS4gVGhlIHNlcnZpY2UgZG9lcyBub3QgdGFrZSB3YWdlcnMsIGhvbGQgcGxheWVyIGZ1bmRzLCBzZXR0bGUgYmV0cywgYXdhcmQgcHJpemVzLCBvciBwYXJ0aWNpcGF0ZSBpbiBhbnkgZ2FtYmxpbmcgYWN0aXZpdHkuJyxcclxuICAgIF0sXHJcbiAgfSxcclxuICB7XHJcbiAgICB0aXRsZTogJzIuIE5vIElsbGVnYWwgR2FtYmxpbmcgb3IgSWxsZWdhbCBBY3Rpdml0eScsXHJcbiAgICBib2R5OiBbXHJcbiAgICAgICdCeSB1c2luZyBUaGVQb2tlclBsYW5uZXIsIHlvdSBhZ3JlZSB0aGF0IHlvdSB3aWxsIG5vdCB1c2UgdGhlIHNlcnZpY2UgdG8gb3JnYW5pemUsIGZhY2lsaXRhdGUsIHByb21vdGUsIG1hbmFnZSwgYWR2ZXJ0aXNlLCBvciBwYXJ0aWNpcGF0ZSBpbiBpbGxlZ2FsIGdhbWJsaW5nIG9yIGFueSBvdGhlciBpbGxlZ2FsIGFjdGl2aXR5LicsXHJcbiAgICAgICdZb3UgYXJlIHNvbGVseSByZXNwb25zaWJsZSBmb3IgdW5kZXJzdGFuZGluZyBhbmQgY29tcGx5aW5nIHdpdGggYWxsIGxhd3MsIHJ1bGVzLCByZWd1bGF0aW9ucywgbGljZW5zaW5nIHJlcXVpcmVtZW50cywgdmVudWUgcnVsZXMsIHRheCBvYmxpZ2F0aW9ucywgYW5kIHByaXZhdGUtZXZlbnQgcmVzdHJpY3Rpb25zIHRoYXQgbWF5IGFwcGx5IHRvIHlvdXIgbG9jYXRpb24sIGV2ZW50LCBwbGF5ZXJzLCBwcml6ZXMsIHBheW1lbnRzLCBvciBjb25kdWN0LicsXHJcbiAgICAgICdZb3UgbWF5IG5vdCB1c2UgVGhlUG9rZXJQbGFubmVyIHRvIGNvbGxlY3QgdW5sYXdmdWwgd2FnZXJzLCBvcGVyYXRlIGFuIHVubGljZW5zZWQgZ2FtYmxpbmcgYnVzaW5lc3MsIGV2YWRlIGdhbWluZyByZWd1bGF0aW9ucywgbGF1bmRlciBtb25leSwgZGVmcmF1ZCBwYXJ0aWNpcGFudHMsIG9yIGNvb3JkaW5hdGUgYW55IGFjdGl2aXR5IHByb2hpYml0ZWQgYnkgYXBwbGljYWJsZSBsYXcuJyxcclxuICAgIF0sXHJcbiAgfSxcclxuICB7XHJcbiAgICB0aXRsZTogJzMuIFVzZXIgUmVzcG9uc2liaWxpdHknLFxyXG4gICAgYm9keTogW1xyXG4gICAgICAnVGhlUG9rZXJQbGFubmVyIHByb3ZpZGVzIG9yZ2FuaXphdGlvbmFsIHRvb2xzIG9ubHkuIEFueSBkZWNpc2lvbnMgYWJvdXQgd2hldGhlciB0byBob3N0IGFuIGV2ZW50LCBpbnZpdGUgcGxheWVycywgY2hhcmdlIGVudHJ5IGZlZXMsIG9mZmVyIHByaXplcywgYWxsb3cgcmVidXlzIG9yIGFkZC1vbnMsIG9yIHN0cnVjdHVyZSBwYXlvdXRzIGFyZSBtYWRlIGJ5IHlvdSBhbmQgYXJlIHlvdXIgcmVzcG9uc2liaWxpdHkuJyxcclxuICAgICAgJ0lmIHlvdSBhcmUgdW5zdXJlIHdoZXRoZXIgeW91ciBwbGFubmVkIGV2ZW50IGlzIGxlZ2FsLCB5b3Ugc2hvdWxkIGNvbnN1bHQgYSBxdWFsaWZpZWQgYXR0b3JuZXkgb3IgcmVsZXZhbnQgYXV0aG9yaXR5IGJlZm9yZSB1c2luZyB0aGUgc2VydmljZSBmb3IgdGhhdCBldmVudC4gTm90aGluZyBvbiBUaGVQb2tlclBsYW5uZXIgaXMgbGVnYWwgYWR2aWNlLicsXHJcbiAgICBdLFxyXG4gIH0sXHJcbiAge1xyXG4gICAgdGl0bGU6ICc0LiBBY2NvdW50IGFuZCBDb250ZW50IFJ1bGVzJyxcclxuICAgIGJvZHk6IFtcclxuICAgICAgJ1lvdSBhZ3JlZSB0byBwcm92aWRlIGFjY3VyYXRlIGFjY291bnQgaW5mb3JtYXRpb24gYW5kIHRvIGtlZXAgeW91ciBsb2dpbiBjcmVkZW50aWFscyBzZWN1cmUuIFlvdSBhcmUgcmVzcG9uc2libGUgZm9yIGFjdGl2aXR5IHRoYXQgb2NjdXJzIHVuZGVyIHlvdXIgYWNjb3VudC4nLFxyXG4gICAgICAnVGhlUG9rZXJQbGFubmVyIHByb3RlY3RzIGFjY291bnQgY3JlZGVudGlhbHMgYW5kIGVtYWlsIGFkZHJlc3NlcyB1c2luZyBzZWN1cmUgaGFzaGluZyBhbmQgZW5jcnlwdGlvbiBwcmFjdGljZXMuIFBhc3N3b3JkcyBhcmUgc3RvcmVkIGFzIHNhbHRlZCBwYXNzd29yZCBoYXNoZXMgYW5kIGFyZSBub3Qgc3RvcmVkIGluIHBsYWludGV4dC4gRW1haWwgYWRkcmVzc2VzIGFyZSBoYXNoZWQgZm9yIGxvb2t1cCBhbmQgZW5jcnlwdGVkIGF0IHJlc3QgZm9yIGFjY291bnQgZGlzcGxheSBhbmQgZW1haWwgZGVsaXZlcnksIHNvIGFjY291bnQgZW1haWxzIGFyZSBub3QgaW50ZW50aW9uYWxseSBzdG9yZWQgYXMgb3BlbiB0ZXh0IGluIHRoZSBwcmltYXJ5IGFjY291bnQgcmVjb3JkLicsXHJcbiAgICAgICdZb3UgbWF5IG5vdCB1cGxvYWQsIHNoYXJlLCBvciBjcmVhdGUgY29udGVudCB0aGF0IGlzIHVubGF3ZnVsLCBoYXJhc3NpbmcsIGFidXNpdmUsIGRlY2VwdGl2ZSwgaW5mcmluZ2luZywgb2JzY2VuZSwgb3Igb3RoZXJ3aXNlIGhhcm1mdWwuIFVwbG9hZGVkIGF2YXRhcnMsIGF1ZGlvIGNsaXBzLCBuYW1lcywgbm90ZXMsIGFuZCBncm91cCBjb250ZW50IG11c3QgYmUgeW91cnMgdG8gdXNlIGFuZCBhcHByb3ByaWF0ZSBmb3IgYSBwb2tlciBncm91cC4nLFxyXG4gICAgXSxcclxuICB9LFxyXG4gIHtcclxuICAgIHRpdGxlOiAnNS4gU3VzcGVuc2lvbiBvciBSZW1vdmFsJyxcclxuICAgIGJvZHk6IFtcclxuICAgICAgJ1dlIG1heSBzdXNwZW5kLCBsaW1pdCwgb3IgcmVtb3ZlIGFjY2VzcyB0byBUaGVQb2tlclBsYW5uZXIgaWYgd2UgYmVsaWV2ZSB0aGUgc2VydmljZSBpcyBiZWluZyBtaXN1c2VkLCBpZiBhY2NvdW50IGFjdGl2aXR5IGNyZWF0ZXMgcmlzayBmb3IgdGhlIHByb2R1Y3Qgb3Igb3RoZXIgdXNlcnMsIG9yIGlmIHVzZSBhcHBlYXJzIHRvIGludm9sdmUgaWxsZWdhbCBhY3Rpdml0eSwgZnJhdWQsIGFidXNlLCBzZWN1cml0eSB0aHJlYXRzLCBvciB2aW9sYXRpb25zIG9mIHRoZXNlIFRlcm1zLicsXHJcbiAgICAgICdXZSBtYXkgYWxzbyByZW1vdmUgY29udGVudCBvciBkaXNhYmxlIGZlYXR1cmVzIHdoZW4gbmVlZGVkIHRvIHByb3RlY3QgdXNlcnMsIGNvbXBseSB3aXRoIGxhdywgb3IgbWFpbnRhaW4gdGhlIHJlbGlhYmlsaXR5IG9mIHRoZSBzZXJ2aWNlLicsXHJcbiAgICBdLFxyXG4gIH0sXHJcbiAge1xyXG4gICAgdGl0bGU6ICc2LiBCZXRhIFNlcnZpY2UgYW5kIEF2YWlsYWJpbGl0eScsXHJcbiAgICBib2R5OiBbXHJcbiAgICAgICdUaGVQb2tlclBsYW5uZXIgaXMgY3VycmVudGx5IG9mZmVyZWQgYXMgYSBiZXRhIHByb2R1Y3QuIEZlYXR1cmVzIG1heSBjaGFuZ2UsIGJyZWFrLCBiZSBsaW1pdGVkLCBvciBiZSByZW1vdmVkLiBBbGwgZmVhdHVyZXMgYXJlIGZyZWUgZHVyaW5nIHRoZSBiZXRhLCBhbmQgYSBmcmVlIG1vZGVsIHdpbGwgYWx3YXlzIGJlIGF2YWlsYWJsZSwgYnV0IHBhaWQgcGxhbnMgb3IgbGltaXRzIG1heSBiZSBpbnRyb2R1Y2VkIGxhdGVyLicsXHJcbiAgICAgICdXZSBhaW0gdG8ga2VlcCB0aGUgc2VydmljZSB1c2VmdWwgYW5kIHJlbGlhYmxlLCBidXQgd2UgZG8gbm90IGd1YXJhbnRlZSB1bmludGVycnVwdGVkIGF2YWlsYWJpbGl0eSwgZXJyb3ItZnJlZSBvcGVyYXRpb24sIG9yIHRoYXQgdGhlIHNlcnZpY2Ugd2lsbCBtZWV0IGV2ZXJ5IHRvdXJuYW1lbnQgb3IgY29tcGxpYW5jZSBuZWVkLicsXHJcbiAgICBdLFxyXG4gIH0sXHJcbiAge1xyXG4gICAgdGl0bGU6ICc3LiBObyBXYXJyYW50aWVzJyxcclxuICAgIGJvZHk6IFtcclxuICAgICAgJ1RoZVBva2VyUGxhbm5lciBpcyBwcm92aWRlZCBvbiBhbiBcImFzIGlzXCIgYW5kIFwiYXMgYXZhaWxhYmxlXCIgYmFzaXMuIFRvIHRoZSBmdWxsZXN0IGV4dGVudCBwZXJtaXR0ZWQgYnkgbGF3LCB3ZSBkaXNjbGFpbSB3YXJyYW50aWVzIG9mIG1lcmNoYW50YWJpbGl0eSwgZml0bmVzcyBmb3IgYSBwYXJ0aWN1bGFyIHB1cnBvc2UsIG5vbi1pbmZyaW5nZW1lbnQsIGFuZCBhbnkgd2FycmFudGllcyBhcmlzaW5nIGZyb20gY291cnNlIG9mIGRlYWxpbmcgb3IgdXNhZ2Ugb2YgdHJhZGUuJyxcclxuICAgICAgJ1lvdSB1c2UgVGhlUG9rZXJQbGFubmVyIGF0IHlvdXIgb3duIHJpc2ssIGluY2x1ZGluZyBhbnkgcmVsaWFuY2Ugb24gdG91cm5hbWVudCBzZXR0aW5ncywgdGltZXJzLCBwYXlvdXQgY2FsY3VsYXRpb25zLCBwbGF5ZXIgcmVjb3JkcywgbWVzc2FnZXMsIG9yIG90aGVyIG91dHB1dHMuJyxcclxuICAgIF0sXHJcbiAgfSxcclxuICB7XHJcbiAgICB0aXRsZTogJzguIExpbWl0YXRpb24gb2YgTGlhYmlsaXR5JyxcclxuICAgIGJvZHk6IFtcclxuICAgICAgJ1RvIHRoZSBmdWxsZXN0IGV4dGVudCBwZXJtaXR0ZWQgYnkgbGF3LCBUaGVQb2tlclBsYW5uZXIgYW5kIGl0cyBvd25lcnMsIG9wZXJhdG9ycywgY29udHJpYnV0b3JzLCBhbmQgYWZmaWxpYXRlcyB3aWxsIG5vdCBiZSBsaWFibGUgZm9yIGluZGlyZWN0LCBpbmNpZGVudGFsLCBzcGVjaWFsLCBjb25zZXF1ZW50aWFsLCBleGVtcGxhcnksIG9yIHB1bml0aXZlIGRhbWFnZXMsIG9yIGZvciBsb3N0IHByb2ZpdHMsIGxvc3QgZGF0YSwgZXZlbnQgZGlzcHV0ZXMsIHByaXplIGRpc3B1dGVzLCByZWd1bGF0b3J5IGNvbnNlcXVlbmNlcywgb3IgY2xhaW1zIGFyaXNpbmcgZnJvbSB5b3VyIHVzZSBvZiB0aGUgc2VydmljZS4nLFxyXG4gICAgICAnT3VyIHRvdGFsIGxpYWJpbGl0eSBmb3IgYW55IGNsYWltIHJlbGF0ZWQgdG8gdGhlIHNlcnZpY2Ugd2lsbCBiZSBsaW1pdGVkIHRvIHRoZSBhbW91bnQgeW91IHBhaWQgdG8gdXNlIFRoZVBva2VyUGxhbm5lciBkdXJpbmcgdGhlIHRocmVlIG1vbnRocyBiZWZvcmUgdGhlIGNsYWltLCBvciAkMTAwIGlmIHlvdSBwYWlkIG5vdGhpbmcuJyxcclxuICAgIF0sXHJcbiAgfSxcclxuICB7XHJcbiAgICB0aXRsZTogJzkuIENoYW5nZXMgdG8gVGhlc2UgVGVybXMnLFxyXG4gICAgYm9keTogW1xyXG4gICAgICAnV2UgbWF5IHVwZGF0ZSB0aGVzZSBUZXJtcyBhcyBUaGVQb2tlclBsYW5uZXIgZXZvbHZlcy4gV2hlbiB3ZSBtYWtlIG1hdGVyaWFsIGNoYW5nZXMsIHdlIHdpbGwgdXBkYXRlIHRoZSBkYXRlIG9uIHRoaXMgcGFnZSBhbmQgbWF5IHByb3ZpZGUgYWRkaXRpb25hbCBub3RpY2UgaW5zaWRlIHRoZSBzZXJ2aWNlLicsXHJcbiAgICAgICdZb3VyIGNvbnRpbnVlZCB1c2Ugb2YgVGhlUG9rZXJQbGFubmVyIGFmdGVyIGNoYW5nZXMgYmVjb21lIGVmZmVjdGl2ZSBtZWFucyB5b3UgYWNjZXB0IHRoZSB1cGRhdGVkIFRlcm1zLicsXHJcbiAgICBdLFxyXG4gIH0sXHJcbiAge1xyXG4gICAgdGl0bGU6ICcxMC4gQ29udGFjdCcsXHJcbiAgICBib2R5OiBbXHJcbiAgICAgICdRdWVzdGlvbnMgYWJvdXQgdGhlc2UgVGVybXMgY2FuIGJlIHNlbnQgdG8gaGVsbG9AdGhlcG9rZXJwbGFubmVyLmNvbS4nLFxyXG4gICAgXSxcclxuICB9LFxyXG5dO1xyXG5cclxuZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gVGVybXNQYWdlKCkge1xyXG4gIHJldHVybiAoXHJcbiAgICA8bWFpbiBjbGFzc05hbWU9XCJtaW4taC1zY3JlZW4gYmctcGl0LWJnIHRleHQtd2hpdGVcIj5cclxuICAgICAgPGhlYWRlciBjbGFzc05hbWU9XCJib3JkZXItYiBib3JkZXItcGl0LWJvcmRlciBiZy1waXQtc3VyZmFjZS84MFwiPlxyXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibXgtYXV0byBmbGV4IG1heC13LTV4bCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIGdhcC00IHB4LTUgcHktNVwiPlxyXG4gICAgICAgICAgPExpbmsgdG89XCIvXCIgYXJpYS1sYWJlbD1cIlRoZVBva2VyUGxhbm5lciBob21lXCI+XHJcbiAgICAgICAgICAgIDxCcmFuZExvY2t1cCBjb21wYWN0IC8+XHJcbiAgICAgICAgICA8L0xpbms+XHJcbiAgICAgICAgICA8bmF2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGdhcC0yXCI+XHJcbiAgICAgICAgICAgIDxMaW5rIGNsYXNzTmFtZT1cImJ0bi1naG9zdCBweC0zIHB5LTIgdGV4dC14cyBzbTp0ZXh0LXNtXCIgdG89XCIvbG9naW5cIj5TaWduIGluPC9MaW5rPlxyXG4gICAgICAgICAgICA8TGluayBjbGFzc05hbWU9XCJidG4tcHJpbWFyeSBweC0zIHB5LTIgdGV4dC14cyBzbTp0ZXh0LXNtXCIgdG89XCIvbG9naW4/bW9kZT1yZWdpc3RlclwiPkNyZWF0ZSBhY2NvdW50PC9MaW5rPlxyXG4gICAgICAgICAgPC9uYXY+XHJcbiAgICAgICAgPC9kaXY+XHJcbiAgICAgIDwvaGVhZGVyPlxyXG5cclxuICAgICAgPGFydGljbGUgY2xhc3NOYW1lPVwibXgtYXV0byBtYXgtdy01eGwgcHgtNSBweS0xMCBzbTpweS0xNFwiPlxyXG4gICAgICAgIDxwIGNsYXNzTmFtZT1cIm1iLTMgaW5saW5lLWZsZXggcm91bmRlZC1mdWxsIGJvcmRlciBib3JkZXItcGl0LXRlYWwvMzAgYmctcGl0LXRlYWwvMTAgcHgtMyBweS0xIHRleHQteHMgZm9udC1zZW1pYm9sZCB1cHBlcmNhc2UgdGV4dC1waXQtdGVhbFwiPlxyXG4gICAgICAgICAgTGVnYWxcclxuICAgICAgICA8L3A+XHJcbiAgICAgICAgPGgxIGNsYXNzTmFtZT1cInRleHQtNHhsIGZvbnQtYmxhY2sgbGVhZGluZy10aWdodCBzbTp0ZXh0LTV4bFwiPlRlcm1zIG9mIFNlcnZpY2U8L2gxPlxyXG4gICAgICAgIDxwIGNsYXNzTmFtZT1cIm10LTMgbWF4LXctM3hsIHRleHQtc20gbGVhZGluZy02IHRleHQtcGl0LXRleHRcIj5cclxuICAgICAgICAgIExhc3QgdXBkYXRlZDoge3VwZGF0ZWREYXRlfS4gVGhlc2UgVGVybXMgZ292ZXJuIHlvdXIgYWNjZXNzIHRvIGFuZCB1c2Ugb2YgVGhlUG9rZXJQbGFubmVyLlxyXG4gICAgICAgIDwvcD5cclxuXHJcbiAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwibXQtOCByb3VuZGVkLXhsIGJvcmRlciBib3JkZXItcmVkLTQwMC8yNSBiZy1yZWQtNDAwLzEwIHAtNVwiPlxyXG4gICAgICAgICAgPGgyIGNsYXNzTmFtZT1cInRleHQteGwgZm9udC1ib2xkIHRleHQtd2hpdGVcIj5ObyBJbGxlZ2FsIEdhbWJsaW5nPC9oMj5cclxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cIm10LTIgdGV4dC1zbSBsZWFkaW5nLTYgdGV4dC1yZWQtMTAwXCI+XHJcbiAgICAgICAgICAgIFRoZVBva2VyUGxhbm5lciBkb2VzIG5vdCBmYWNpbGl0YXRlLCBwcm9jZXNzLCBwcm9tb3RlLCBvciBvcGVyYXRlIGdhbWJsaW5nLiBCeSB1c2luZyB0aGlzIHNlcnZpY2UsIHlvdSBhZ3JlZSBub3QgdG8gdXNlIGl0IHRvIGZhY2lsaXRhdGUgaWxsZWdhbCBnYW1ibGluZywgdW5sYXdmdWwgd2FnZXJpbmcsIHVubGljZW5zZWQgZ2FtaW5nIG9wZXJhdGlvbnMsIGZyYXVkLCBtb25leSBsYXVuZGVyaW5nLCBvciBhbnkgb3RoZXIgaWxsZWdhbCBhY3Rpdml0eS5cclxuICAgICAgICAgIDwvcD5cclxuICAgICAgICA8L3NlY3Rpb24+XHJcblxyXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibXQtNiBzcGFjZS15LTRcIj5cclxuICAgICAgICAgIHtzZWN0aW9ucy5tYXAoKHNlY3Rpb24pID0+IChcclxuICAgICAgICAgICAgPHNlY3Rpb24ga2V5PXtzZWN0aW9uLnRpdGxlfSBjbGFzc05hbWU9XCJyb3VuZGVkLXhsIGJvcmRlciBib3JkZXItcGl0LWJvcmRlciBiZy1waXQtc3VyZmFjZSBwLTVcIj5cclxuICAgICAgICAgICAgICA8aDIgY2xhc3NOYW1lPVwidGV4dC14bCBmb250LWJvbGQgdGV4dC13aGl0ZVwiPntzZWN0aW9uLnRpdGxlfTwvaDI+XHJcbiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtdC0zIHNwYWNlLXktM1wiPlxyXG4gICAgICAgICAgICAgICAge3NlY3Rpb24uYm9keS5tYXAoKHBhcmFncmFwaCkgPT4gKFxyXG4gICAgICAgICAgICAgICAgICA8cCBrZXk9e3BhcmFncmFwaH0gY2xhc3NOYW1lPVwidGV4dC1zbSBsZWFkaW5nLTYgdGV4dC1waXQtdGV4dFwiPlxyXG4gICAgICAgICAgICAgICAgICAgIHtwYXJhZ3JhcGh9XHJcbiAgICAgICAgICAgICAgICAgIDwvcD5cclxuICAgICAgICAgICAgICAgICkpfVxyXG4gICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICA8L3NlY3Rpb24+XHJcbiAgICAgICAgICApKX1cclxuICAgICAgICA8L2Rpdj5cclxuICAgICAgPC9hcnRpY2xlPlxyXG4gICAgPC9tYWluPlxyXG4gICk7XHJcbn1cclxuIl0sImZpbGUiOiJDOi9Vc2Vycy9FcmljQS9Qcm9qZWN0cy9Qb2tlclBsYW5uZXIvYXBwcy93ZWIvc3JjL3BhZ2VzL1Rlcm1zL2luZGV4LnRzeCJ9

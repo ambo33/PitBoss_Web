@@ -1,0 +1,266 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/PaymentTracker/index.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=c5b53804"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=c5b53804"; const useEffect = __vite__cjsImport3_react["useEffect"]; const useRef = __vite__cjsImport3_react["useRef"];
+import { useMutation, useQuery, useQueryClient } from "/node_modules/.vite/deps/@tanstack_react-query.js?v=c5b53804";
+import { io } from "/node_modules/.vite/deps/socket__io-client.js?v=c5b53804";
+import { useParams } from "/node_modules/.vite/deps/react-router-dom.js?v=c5b53804";
+import { api } from "/src/api/client.ts";
+import LoadingSpinner from "/src/components/LoadingSpinner.tsx";
+import { isEnabledFlag } from "/src/utils/flags.ts";
+import { playerNameWithMedals } from "/src/utils/playerAchievements.ts";
+export default function PaymentTrackerPage() {
+  _s();
+  const { id } = useParams();
+  const qc = useQueryClient();
+  const socketRef = useRef(null);
+  const { data: tournament, isLoading: loadingTournament, error: tournamentError } = useQuery({
+    queryKey: ["tournament", id],
+    queryFn: () => api.getTournament(id)
+  });
+  const { data: players = [], isLoading } = useQuery({
+    queryKey: ["players", id],
+    queryFn: () => api.getPlayers(id),
+    enabled: !!id && !!tournament
+  });
+  const toggleMutation = useMutation({
+    mutationFn: (uid) => api.togglePaid(id, uid),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["players", id] })
+  });
+  useEffect(() => {
+    if (!id) return;
+    const socket = io("/", { path: "/socket.io" });
+    socketRef.current = socket;
+    socket.emit("join-tournament", id);
+    socket.on("tournament-updated", () => {
+      qc.invalidateQueries({ queryKey: ["players", id] });
+      qc.invalidateQueries({ queryKey: ["tournament", id] });
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [id, qc]);
+  const unpaid = players.filter((player) => !player.paid);
+  const paid = players.filter((player) => player.paid);
+  if (loadingTournament || isLoading) return /* @__PURE__ */ jsxDEV(LoadingSpinner, { className: "mt-24" }, void 0, false, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+    lineNumber: 67,
+    columnNumber: 46
+  }, this);
+  if (tournamentError || !tournament || !isEnabledFlag(tournament.canmanage)) {
+    return /* @__PURE__ */ jsxDEV("div", { className: "min-h-screen bg-pit-bg p-4 text-white", children: /* @__PURE__ */ jsxDEV("div", { className: "card mx-auto mt-16 max-w-lg text-center", children: [
+      /* @__PURE__ */ jsxDEV("h1", { className: "text-lg font-semibold text-white", children: "Admins only" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 73,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "mt-2 text-sm text-pit-text", children: "The payment tracker is only available to tournament admins." }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 74,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+      lineNumber: 72,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+      lineNumber: 71,
+      columnNumber: 7
+    }, this);
+  }
+  return /* @__PURE__ */ jsxDEV("div", { className: "min-h-screen bg-pit-bg p-4 text-white", children: [
+    /* @__PURE__ */ jsxDEV("header", { className: "mb-6 text-center", children: [
+      /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-pit-text", children: "ThePokerPlanner - Payment Tracker" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 83,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-white", children: tournament.name }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 84,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "mt-1 text-sm text-pit-text", children: [
+        paid.length,
+        "/",
+        players.length,
+        " paid",
+        Number(tournament.buyin) > 0 && ` - $${Number(tournament.buyin).toFixed(2)} buy-in`
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 85,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+      lineNumber: 82,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "mx-auto max-w-lg space-y-6", children: [
+      unpaid.length > 0 && /* @__PURE__ */ jsxDEV("div", { className: "card", children: [
+        /* @__PURE__ */ jsxDEV("h2", { className: "mb-3 font-semibold text-yellow-400", children: [
+          "Awaiting Payment (",
+          unpaid.length,
+          ")"
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+          lineNumber: 94,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "space-y-2", children: unpaid.map(
+          (player) => /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between gap-3", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-white", children: playerNameWithMedals(player) }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+                lineNumber: 99,
+                columnNumber: 21
+              }, this),
+              (player.rebuys > 0 || player.addedon) && /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-pit-text", children: [
+                "+",
+                player.rebuys,
+                " rebuy - +",
+                player.addedon ? "1" : "0",
+                " add-on"
+              ] }, void 0, true, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+                lineNumber: 101,
+                columnNumber: 17
+              }, this)
+            ] }, void 0, true, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+              lineNumber: 98,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "button",
+              {
+                className: "btn-primary px-3 py-1.5 text-xs",
+                onClick: () => toggleMutation.mutate(player.userid),
+                disabled: toggleMutation.isPending,
+                children: "Mark Paid"
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+                lineNumber: 106,
+                columnNumber: 19
+              },
+              this
+            )
+          ] }, player.userid, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+            lineNumber: 97,
+            columnNumber: 13
+          }, this)
+        ) }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+          lineNumber: 95,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 93,
+        columnNumber: 9
+      }, this),
+      paid.length > 0 && /* @__PURE__ */ jsxDEV("div", { className: "card", children: [
+        /* @__PURE__ */ jsxDEV("h2", { className: "mb-3 font-semibold text-pit-teal", children: [
+          "Paid (",
+          paid.length,
+          ")"
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+          lineNumber: 121,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "space-y-1", children: paid.map(
+          (player) => /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between gap-3", children: [
+            /* @__PURE__ */ jsxDEV("p", { className: "line-through text-sm text-pit-text", children: playerNameWithMedals(player) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+              lineNumber: 125,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "button",
+              {
+                className: "text-xs text-pit-text hover:text-white",
+                onClick: () => toggleMutation.mutate(player.userid),
+                children: "Undo"
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+                lineNumber: 126,
+                columnNumber: 19
+              },
+              this
+            )
+          ] }, player.userid, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+            lineNumber: 124,
+            columnNumber: 13
+          }, this)
+        ) }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+          lineNumber: 122,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 120,
+        columnNumber: 9
+      }, this),
+      players.length === 0 && /* @__PURE__ */ jsxDEV("p", { className: "py-12 text-center text-pit-text", children: "No players registered yet." }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+        lineNumber: 139,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+      lineNumber: 91,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx",
+    lineNumber: 81,
+    columnNumber: 5
+  }, this);
+}
+_s(PaymentTrackerPage, "m/y7c1R2C5GSA5rSU6Ej0cXJQ/0=", false, function() {
+  return [useParams, useQueryClient, useQuery, useQuery, useMutation];
+});
+_c = PaymentTrackerPage;
+var _c;
+$RefreshReg$(_c, "PaymentTrackerPage");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PaymentTracker/index.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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LFFBQ0QsS0FYSDtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBWUE7QUFBQSxXQWRGO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFlQTtBQUFBLE1BR0Q3QixRQUFRcUIsV0FBVyxLQUNsQix1QkFBQyxPQUFFLFdBQVUsbUNBQWtDLDBDQUEvQztBQUFBO0FBQUE7QUFBQTtBQUFBLGFBQXlFO0FBQUEsU0FoRDdFO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FrREE7QUFBQSxPQTVERjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBNkRBO0FBRUo7QUFBQ2xDLEdBbkh1QkQsb0JBQWtCO0FBQUEsVUFDekJMLFdBQ0pGLGdCQUd3RUQsVUFLekNBLFVBTW5CRCxXQUFXO0FBQUE7QUFBQSxLQWhCWlM7QUFBa0IsSUFBQTZDO0FBQUEsYUFBQUEsSUFBQSIsIm5hbWVzIjpbInVzZUVmZmVjdCIsInVzZVJlZiIsInVzZU11dGF0aW9uIiwidXNlUXVlcnkiLCJ1c2VRdWVyeUNsaWVudCIsImlvIiwidXNlUGFyYW1zIiwiYXBpIiwiTG9hZGluZ1NwaW5uZXIiLCJpc0VuYWJsZWRGbGFnIiwicGxheWVyTmFtZVdpdGhNZWRhbHMiLCJQYXltZW50VHJhY2tlclBhZ2UiLCJfcyIsImlkIiwicWMiLCJzb2NrZXRSZWYiLCJkYXRhIiwidG91cm5hbWVudCIsImlzTG9hZGluZyIsImxvYWRpbmdUb3VybmFtZW50IiwiZXJyb3IiLCJ0b3VybmFtZW50RXJyb3IiLCJxdWVyeUtleSIsInF1ZXJ5Rm4iLCJnZXRUb3VybmFtZW50IiwicGxheWVycyIsImdldFBsYXllcnMiLCJlbmFibGVkIiwidG9nZ2xlTXV0YXRpb24iLCJtdXRhdGlvbkZuIiwidWlkIiwidG9nZ2xlUGFpZCIsIm9uU3VjY2VzcyIsImludmFsaWRhdGVRdWVyaWVzIiwic29ja2V0IiwicGF0aCIsImN1cnJlbnQiLCJlbWl0Iiwib24iLCJkaXNjb25uZWN0IiwidW5wYWlkIiwiZmlsdGVyIiwicGxheWVyIiwicGFpZCIsImNhbm1hbmFnZSIsIm5hbWUiLCJsZW5ndGgiLCJOdW1iZXIiLCJidXlpbiIsInRvRml4ZWQiLCJtYXAiLCJyZWJ1eXMiLCJhZGRlZG9uIiwibXV0YXRlIiwidXNlcmlkIiwiaXNQZW5kaW5nIiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiaW5kZXgudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHVzZUVmZmVjdCwgdXNlUmVmIH0gZnJvbSAncmVhY3QnO1xyXG5pbXBvcnQgeyB1c2VNdXRhdGlvbiwgdXNlUXVlcnksIHVzZVF1ZXJ5Q2xpZW50IH0gZnJvbSAnQHRhbnN0YWNrL3JlYWN0LXF1ZXJ5JztcclxuaW1wb3J0IHsgaW8sIFNvY2tldCB9IGZyb20gJ3NvY2tldC5pby1jbGllbnQnO1xyXG5pbXBvcnQgeyB1c2VQYXJhbXMgfSBmcm9tICdyZWFjdC1yb3V0ZXItZG9tJztcclxuaW1wb3J0IHsgYXBpIH0gZnJvbSAnLi4vLi4vYXBpL2NsaWVudCc7XG5pbXBvcnQgTG9hZGluZ1NwaW5uZXIgZnJvbSAnLi4vLi4vY29tcG9uZW50cy9Mb2FkaW5nU3Bpbm5lcic7XG5pbXBvcnQgeyBpc0VuYWJsZWRGbGFnIH0gZnJvbSAnLi4vLi4vdXRpbHMvZmxhZ3MnO1xuaW1wb3J0IHsgcGxheWVyTmFtZVdpdGhNZWRhbHMgfSBmcm9tICcuLi8uLi91dGlscy9wbGF5ZXJBY2hpZXZlbWVudHMnO1xuXHJcbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFBheW1lbnRUcmFja2VyUGFnZSgpIHtcclxuICBjb25zdCB7IGlkIH0gPSB1c2VQYXJhbXM8eyBpZDogc3RyaW5nIH0+KCk7XHJcbiAgY29uc3QgcWMgPSB1c2VRdWVyeUNsaWVudCgpO1xyXG4gIGNvbnN0IHNvY2tldFJlZiA9IHVzZVJlZjxTb2NrZXQgfCBudWxsPihudWxsKTtcclxuXHJcbiAgY29uc3QgeyBkYXRhOiB0b3VybmFtZW50LCBpc0xvYWRpbmc6IGxvYWRpbmdUb3VybmFtZW50LCBlcnJvcjogdG91cm5hbWVudEVycm9yIH0gPSB1c2VRdWVyeSh7XHJcbiAgICBxdWVyeUtleTogWyd0b3VybmFtZW50JywgaWRdLFxyXG4gICAgcXVlcnlGbjogKCkgPT4gYXBpLmdldFRvdXJuYW1lbnQoaWQhKSxcclxuICB9KTtcclxuXHJcbiAgY29uc3QgeyBkYXRhOiBwbGF5ZXJzID0gW10sIGlzTG9hZGluZyB9ID0gdXNlUXVlcnkoe1xyXG4gICAgcXVlcnlLZXk6IFsncGxheWVycycsIGlkXSxcclxuICAgIHF1ZXJ5Rm46ICgpID0+IGFwaS5nZXRQbGF5ZXJzKGlkISksXHJcbiAgICBlbmFibGVkOiAhIWlkICYmICEhdG91cm5hbWVudCxcclxuICB9KTtcclxuXHJcbiAgY29uc3QgdG9nZ2xlTXV0YXRpb24gPSB1c2VNdXRhdGlvbih7XHJcbiAgICBtdXRhdGlvbkZuOiAodWlkOiBzdHJpbmcpID0+IGFwaS50b2dnbGVQYWlkKGlkISwgdWlkKSxcclxuICAgIG9uU3VjY2VzczogKCkgPT4gcWMuaW52YWxpZGF0ZVF1ZXJpZXMoeyBxdWVyeUtleTogWydwbGF5ZXJzJywgaWRdIH0pLFxyXG4gIH0pO1xyXG5cclxuICB1c2VFZmZlY3QoKCkgPT4ge1xyXG4gICAgaWYgKCFpZCkgcmV0dXJuO1xyXG4gICAgY29uc3Qgc29ja2V0ID0gaW8oJy8nLCB7IHBhdGg6ICcvc29ja2V0LmlvJyB9KTtcclxuICAgIHNvY2tldFJlZi5jdXJyZW50ID0gc29ja2V0O1xyXG4gICAgc29ja2V0LmVtaXQoJ2pvaW4tdG91cm5hbWVudCcsIGlkKTtcclxuICAgIHNvY2tldC5vbigndG91cm5hbWVudC11cGRhdGVkJywgKCkgPT4ge1xyXG4gICAgICBxYy5pbnZhbGlkYXRlUXVlcmllcyh7IHF1ZXJ5S2V5OiBbJ3BsYXllcnMnLCBpZF0gfSk7XHJcbiAgICAgIHFjLmludmFsaWRhdGVRdWVyaWVzKHsgcXVlcnlLZXk6IFsndG91cm5hbWVudCcsIGlkXSB9KTtcclxuICAgIH0pO1xyXG4gICAgcmV0dXJuICgpID0+IHtcclxuICAgICAgc29ja2V0LmRpc2Nvbm5lY3QoKTtcclxuICAgIH07XHJcbiAgfSwgW2lkLCBxY10pO1xyXG5cclxuICBjb25zdCB1bnBhaWQgPSBwbGF5ZXJzLmZpbHRlcigocGxheWVyKSA9PiAhcGxheWVyLnBhaWQpO1xyXG4gIGNvbnN0IHBhaWQgPSBwbGF5ZXJzLmZpbHRlcigocGxheWVyKSA9PiBwbGF5ZXIucGFpZCk7XHJcblxyXG4gIGlmIChsb2FkaW5nVG91cm5hbWVudCB8fCBpc0xvYWRpbmcpIHJldHVybiA8TG9hZGluZ1NwaW5uZXIgY2xhc3NOYW1lPVwibXQtMjRcIiAvPjtcclxuXHJcbiAgaWYgKHRvdXJuYW1lbnRFcnJvciB8fCAhdG91cm5hbWVudCB8fCAhaXNFbmFibGVkRmxhZyh0b3VybmFtZW50LmNhbm1hbmFnZSkpIHtcbiAgICByZXR1cm4gKFxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cIm1pbi1oLXNjcmVlbiBiZy1waXQtYmcgcC00IHRleHQtd2hpdGVcIj5cclxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImNhcmQgbXgtYXV0byBtdC0xNiBtYXgtdy1sZyB0ZXh0LWNlbnRlclwiPlxyXG4gICAgICAgICAgPGgxIGNsYXNzTmFtZT1cInRleHQtbGcgZm9udC1zZW1pYm9sZCB0ZXh0LXdoaXRlXCI+QWRtaW5zIG9ubHk8L2gxPlxyXG4gICAgICAgICAgPHAgY2xhc3NOYW1lPVwibXQtMiB0ZXh0LXNtIHRleHQtcGl0LXRleHRcIj5UaGUgcGF5bWVudCB0cmFja2VyIGlzIG9ubHkgYXZhaWxhYmxlIHRvIHRvdXJuYW1lbnQgYWRtaW5zLjwvcD5cclxuICAgICAgICA8L2Rpdj5cclxuICAgICAgPC9kaXY+XHJcbiAgICApO1xyXG4gIH1cclxuXHJcbiAgcmV0dXJuIChcclxuICAgIDxkaXYgY2xhc3NOYW1lPVwibWluLWgtc2NyZWVuIGJnLXBpdC1iZyBwLTQgdGV4dC13aGl0ZVwiPlxyXG4gICAgICA8aGVhZGVyIGNsYXNzTmFtZT1cIm1iLTYgdGV4dC1jZW50ZXJcIj5cclxuICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LXNtIHRleHQtcGl0LXRleHRcIj5UaGVQb2tlclBsYW5uZXIgLSBQYXltZW50IFRyYWNrZXI8L3A+XHJcbiAgICAgICAgPGgxIGNsYXNzTmFtZT1cInRleHQteGwgZm9udC1ib2xkIHRleHQtd2hpdGVcIj57dG91cm5hbWVudC5uYW1lfTwvaDE+XHJcbiAgICAgICAgPHAgY2xhc3NOYW1lPVwibXQtMSB0ZXh0LXNtIHRleHQtcGl0LXRleHRcIj5cclxuICAgICAgICAgIHtwYWlkLmxlbmd0aH0ve3BsYXllcnMubGVuZ3RofSBwYWlkXHJcbiAgICAgICAgICB7TnVtYmVyKHRvdXJuYW1lbnQuYnV5aW4pID4gMCAmJiBgIC0gJCR7TnVtYmVyKHRvdXJuYW1lbnQuYnV5aW4pLnRvRml4ZWQoMil9IGJ1eS1pbmB9XHJcbiAgICAgICAgPC9wPlxyXG4gICAgICA8L2hlYWRlcj5cclxuXHJcbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwibXgtYXV0byBtYXgtdy1sZyBzcGFjZS15LTZcIj5cclxuICAgICAgICB7dW5wYWlkLmxlbmd0aCA+IDAgJiYgKFxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJjYXJkXCI+XHJcbiAgICAgICAgICAgIDxoMiBjbGFzc05hbWU9XCJtYi0zIGZvbnQtc2VtaWJvbGQgdGV4dC15ZWxsb3ctNDAwXCI+QXdhaXRpbmcgUGF5bWVudCAoe3VucGFpZC5sZW5ndGh9KTwvaDI+XHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3BhY2UteS0yXCI+XHJcbiAgICAgICAgICAgICAge3VucGFpZC5tYXAoKHBsYXllcikgPT4gKFxyXG4gICAgICAgICAgICAgICAgPGRpdiBrZXk9e3BsYXllci51c2VyaWR9IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlbiBnYXAtM1wiPlxyXG4gICAgICAgICAgICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cInRleHQtc20gdGV4dC13aGl0ZVwiPntwbGF5ZXJOYW1lV2l0aE1lZGFscyhwbGF5ZXIpfTwvcD5cclxuICAgICAgICAgICAgICAgICAgICB7KHBsYXllci5yZWJ1eXMgPiAwIHx8IHBsYXllci5hZGRlZG9uKSAmJiAoXHJcbiAgICAgICAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LXhzIHRleHQtcGl0LXRleHRcIj5cclxuICAgICAgICAgICAgICAgICAgICAgICAgK3twbGF5ZXIucmVidXlzfSByZWJ1eSAtICt7cGxheWVyLmFkZGVkb24gPyAnMScgOiAnMCd9IGFkZC1vblxyXG4gICAgICAgICAgICAgICAgICAgICAgPC9wPlxyXG4gICAgICAgICAgICAgICAgICAgICl9XHJcbiAgICAgICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwiYnRuLXByaW1hcnkgcHgtMyBweS0xLjUgdGV4dC14c1wiXHJcbiAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gdG9nZ2xlTXV0YXRpb24ubXV0YXRlKHBsYXllci51c2VyaWQpfVxyXG4gICAgICAgICAgICAgICAgICAgIGRpc2FibGVkPXt0b2dnbGVNdXRhdGlvbi5pc1BlbmRpbmd9XHJcbiAgICAgICAgICAgICAgICAgID5cclxuICAgICAgICAgICAgICAgICAgICBNYXJrIFBhaWRcclxuICAgICAgICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgICApKX1cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICApfVxyXG5cclxuICAgICAgICB7cGFpZC5sZW5ndGggPiAwICYmIChcclxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2FyZFwiPlxyXG4gICAgICAgICAgICA8aDIgY2xhc3NOYW1lPVwibWItMyBmb250LXNlbWlib2xkIHRleHQtcGl0LXRlYWxcIj5QYWlkICh7cGFpZC5sZW5ndGh9KTwvaDI+XHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3BhY2UteS0xXCI+XHJcbiAgICAgICAgICAgICAge3BhaWQubWFwKChwbGF5ZXIpID0+IChcclxuICAgICAgICAgICAgICAgIDxkaXYga2V5PXtwbGF5ZXIudXNlcmlkfSBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gZ2FwLTNcIj5cclxuICAgICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwibGluZS10aHJvdWdoIHRleHQtc20gdGV4dC1waXQtdGV4dFwiPntwbGF5ZXJOYW1lV2l0aE1lZGFscyhwbGF5ZXIpfTwvcD5cclxuICAgICAgICAgICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cInRleHQteHMgdGV4dC1waXQtdGV4dCBob3Zlcjp0ZXh0LXdoaXRlXCJcclxuICAgICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiB0b2dnbGVNdXRhdGlvbi5tdXRhdGUocGxheWVyLnVzZXJpZCl9XHJcbiAgICAgICAgICAgICAgICAgID5cclxuICAgICAgICAgICAgICAgICAgICBVbmRvXHJcbiAgICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgKSl9XHJcbiAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgKX1cclxuXHJcbiAgICAgICAge3BsYXllcnMubGVuZ3RoID09PSAwICYmIChcclxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cInB5LTEyIHRleHQtY2VudGVyIHRleHQtcGl0LXRleHRcIj5ObyBwbGF5ZXJzIHJlZ2lzdGVyZWQgeWV0LjwvcD5cclxuICAgICAgICApfVxyXG4gICAgICA8L2Rpdj5cclxuICAgIDwvZGl2PlxyXG4gICk7XHJcbn1cclxuIl0sImZpbGUiOiJDOi9Vc2Vycy9FcmljQS9Qcm9qZWN0cy9Qb2tlclBsYW5uZXIvYXBwcy93ZWIvc3JjL3BhZ2VzL1BheW1lbnRUcmFja2VyL2luZGV4LnRzeCJ9

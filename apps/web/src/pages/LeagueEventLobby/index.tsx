@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, Users, XCircle } from 'lucide-react';
+import { CalendarCheck, CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, Users, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api, type LeagueResult } from '../../api/client';
@@ -64,6 +64,9 @@ export default function LeagueEventLobbyPage() {
 
   const { event, league, myresult: myResult, myrsvp: myRsvp } = data;
   const error = logMutation.error ?? rsvpMutation.error;
+  const rsvpStatusLabel = myRsvp?.status === 'going' ? "You're going" : myRsvp?.status === 'not_going' ? "Can't go" : 'RSVP needed';
+  const goingCount = Number(data.rsvpcounts?.going ?? 0);
+  const notGoingCount = Number(data.rsvpcounts?.notgoing ?? 0);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10">
@@ -104,6 +107,18 @@ export default function LeagueEventLobbyPage() {
                 {event.hasstarted ? <Radio size={13} /> : <CalendarClock size={13} />}
                 {event.hasstarted ? 'Event live' : 'Scheduled'}
               </span>
+              {data.isparticipant && (
+                <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                  myRsvp?.status === 'going'
+                    ? 'border-emerald-300/35 bg-emerald-400/12 text-emerald-200'
+                    : myRsvp?.status === 'not_going'
+                      ? 'border-red-300/35 bg-red-400/12 text-red-100'
+                      : 'border-pit-gold/45 bg-pit-gold/15 text-pit-gold'
+                }`}>
+                  <CalendarCheck size={13} />
+                  {rsvpStatusLabel}
+                </span>
+              )}
             </div>
           </header>
 
@@ -157,12 +172,27 @@ export default function LeagueEventLobbyPage() {
               <Notice title="All finishes are recorded">The event field is complete.</Notice>
             )}
 
-            <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">RSVP</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+            {data.isparticipant && (
+            <div className={`rounded-2xl border p-4 ${
+              myRsvp?.status
+                ? 'border-pit-border bg-pit-bg/55'
+                : 'border-pit-gold/45 bg-pit-gold/[0.08] shadow-[0_18px_46px_rgba(244,178,74,0.12)]'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-gold/35 bg-pit-gold/15 text-pit-gold">
+                  <CalendarCheck size={20} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-gold">Are you coming?</p>
+                  <p className="mt-1 text-sm text-pit-text">
+                    {goingCount} going · {notGoingCount} can't go
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost'}`}
+                  className={`justify-center px-3 py-3 text-sm font-black ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost border-pit-teal/45 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'}`}
                   disabled={rsvpMutation.isPending}
                   onClick={() => rsvpMutation.mutate('going')}
                 >
@@ -171,7 +201,7 @@ export default function LeagueEventLobbyPage() {
                 </button>
                 <button
                   type="button"
-                  className={`justify-center px-3 py-2 text-sm ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
+                  className={`justify-center px-3 py-3 text-sm font-black ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
                   disabled={rsvpMutation.isPending}
                   onClick={() => rsvpMutation.mutate('not_going')}
                 >
@@ -180,6 +210,7 @@ export default function LeagueEventLobbyPage() {
                 </button>
               </div>
             </div>
+            )}
 
             <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
               <div className="flex items-center justify-between gap-3">

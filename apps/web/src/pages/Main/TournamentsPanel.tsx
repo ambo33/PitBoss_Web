@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Trophy, Users, X, XCircle } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -838,8 +838,18 @@ function ScheduleRow({
   const showLeagueLobby = view === 'upcoming' && isLeague && item.isParticipant && leagueEventStarted;
   const showCashRsvp = view === 'upcoming' && isCash && !item.canManage;
   const showTournamentLobby = showRsvp && isRegistered;
+  const showAnyRsvp = showRsvp || showLeagueRsvp || showCashRsvp;
+  const needsRsvp = showAnyRsvp && !isRegistered && !isDeclined;
   const typeLabel = isTournament ? 'Tournament' : isCash ? 'Cash Game' : 'League';
-  const statusLabel = item.canManage && (isTournament || isCash) ? 'Host' : null;
+  const statusLabel = needsRsvp
+    ? 'RSVP needed'
+    : isRegistered
+      ? "You're going"
+      : isDeclined
+        ? "Can't go"
+        : item.canManage && (isTournament || isCash)
+          ? 'Host'
+          : null;
   const fieldCount = isTournament
     ? formatFieldCount(item.tournament)
     : isCash
@@ -850,7 +860,11 @@ function ScheduleRow({
     : isLeague
       ? 'border-[#8B5CF6]/45 bg-[#8B5CF6]/12 text-[#A78BFA]'
       : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal';
-  const statusPillClass = 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
+  const statusPillClass = needsRsvp
+    ? 'border-pit-gold/45 bg-pit-gold/15 text-pit-gold'
+    : isDeclined
+      ? 'border-red-300/45 bg-red-400/15 text-red-100'
+      : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
 
   return (
     <div
@@ -903,6 +917,12 @@ function ScheduleRow({
             {fieldCount}
           </span>
         )}
+        {statusLabel && (
+          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-semibold md:hidden ${statusPillClass}`}>
+            {needsRsvp ? <CalendarCheck size={11} /> : isDeclined ? <XCircle size={11} /> : <CheckCircle2 size={11} />}
+            {statusLabel}
+          </span>
+        )}
       </div>
 
       <div className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold md:col-auto md:row-auto md:block md:justify-self-auto md:text-left">
@@ -914,7 +934,8 @@ function ScheduleRow({
 
       <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
         {statusLabel && (
-          <span className={`inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${statusPillClass}`}>
+          <span className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${statusPillClass}`}>
+            {needsRsvp ? <CalendarCheck size={12} /> : isDeclined ? <XCircle size={12} /> : <CheckCircle2 size={12} />}
             {statusLabel}
           </span>
         )}
@@ -926,7 +947,7 @@ function ScheduleRow({
         )}
       </div>
 
-      <div className="col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2">
+      <div className={`${showAnyRsvp ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 md:col-auto md:row-auto md:mt-0 md:flex md:grid-cols-none md:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2'}`}>
         {showLeagueLobby ? (
           <>
             {item.canManage && (
@@ -956,14 +977,14 @@ function ScheduleRow({
               <X size={16} />
             </button>
           </>
-        ) : showRsvp || showLeagueRsvp || showCashRsvp ? (
+        ) : showAnyRsvp ? (
           <>
             <button
               type="button"
-              className={`inline-flex h-8 w-10 items-center justify-center rounded-full border text-xs font-semibold transition md:h-9 md:min-w-14 md:px-3 ${
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition md:h-9 md:min-w-20 md:rounded-full md:text-xs ${
                 isRegistered
                   ? 'border-pit-teal/55 bg-pit-teal/20 text-pit-teal shadow-inner'
-                  : 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'
+                  : 'border-pit-teal/45 bg-pit-teal/12 text-pit-teal hover:bg-pit-teal/20'
               }`}
               disabled={loading || isRegistered}
               onClick={showLeagueRsvp ? () => onLeagueRsvp?.('going') : showCashRsvp ? () => onCashRsvp?.('going') : onRegister}
@@ -971,10 +992,11 @@ function ScheduleRow({
               title="Can attend"
             >
               <CheckCircle2 size={16} />
+              Going
             </button>
             <button
               type="button"
-              className={`inline-flex h-8 w-10 items-center justify-center rounded-full border text-xs font-semibold transition md:h-9 md:min-w-14 md:px-3 ${
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition md:h-9 md:min-w-20 md:rounded-full md:text-xs ${
                 isDeclined
                   ? 'border-red-300/55 bg-red-400/20 text-red-100 shadow-inner'
                   : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
@@ -985,9 +1007,10 @@ function ScheduleRow({
               title="Cannot attend"
             >
               <X size={16} />
+              Can't
             </button>
             {showLeagueRsvp && (
-              <button type="button" className="btn-ghost px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white" onClick={onOpen}>
+              <button type="button" className="col-span-2 btn-ghost justify-center px-3 py-2 text-xs !text-[#c9c9d4] hover:!text-white md:col-auto" onClick={onOpen}>
                 View
               </button>
             )}

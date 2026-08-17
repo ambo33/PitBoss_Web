@@ -185,6 +185,8 @@ export const api = {
     del<{ success: boolean }>(`/leagues/${id}`),
   createLeaguePayment: (id: string, data: { userid: string; eventid?: string | null; seasonid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
     post<{ payment: LeaguePayment | null; payments?: LeaguePayment[] }>(`/leagues/${id}/payments`, data),
+  updateLeaguePayment: (id: string, paymentId: string, data: { userid: string; eventid?: string | null; seasonid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
+    put<{ payment: LeaguePayment }>(`/leagues/${id}/payments/${paymentId}`, data),
   deleteLeaguePayment: (id: string, paymentId: string) =>
     del<{ success: boolean }>(`/leagues/${id}/payments/${paymentId}`),
   joinLeague: (invitecode: string, claimuserid?: string | null, skipclaim = false) =>
@@ -675,6 +677,10 @@ export interface LeagueEventLobby {
   nextplace: number | null;
   myresult: LeagueResult | null;
   myrsvp: LeagueEventRsvp | null;
+  rsvpcounts?: {
+    going: number;
+    notgoing: number;
+  };
   results: LeagueResult[];
 }
 export type LeaguePaymentType = 'league' | 'event' | 'other';
