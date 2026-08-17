@@ -64,6 +64,9 @@ export default function TournamentsPanel({
   const { data: mine = [], isLoading: loadingMine } = useQuery({
     queryKey: ['tournaments', 'mine'],
     queryFn: api.getTournaments,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const { data: groups = [], isLoading: loadingGroups } = useQuery<Group[]>({
@@ -78,12 +81,18 @@ export default function TournamentsPanel({
   const { data: games = [], isLoading: loadingGames } = useQuery<GameListItem[]>({
     queryKey: ['games'],
     queryFn: api.getGames,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
   const { data: leagueEvents = [], isLoading: loadingLeagueEvents, error: leagueScheduleError } = useQuery({
     queryKey: ['leagues', 'schedule'],
     queryFn: api.getLeagueSchedule,
     enabled: leagues.length > 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     retry: false,
+    staleTime: 0,
   });
 
   const createMutation = useMutation({

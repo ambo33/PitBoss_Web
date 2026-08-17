@@ -67,6 +67,7 @@ export default function LeagueEventLobbyPage() {
   const rsvpStatusLabel = myRsvp?.status === 'going' ? "You're going" : myRsvp?.status === 'not_going' ? "Can't go" : 'RSVP needed';
   const goingCount = Number(data.rsvpcounts?.going ?? 0);
   const notGoingCount = Number(data.rsvpcounts?.notgoing ?? 0);
+  const rsvpButtonBase = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black transition disabled:cursor-wait disabled:opacity-60';
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10">
@@ -192,7 +193,7 @@ export default function LeagueEventLobbyPage() {
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className={`justify-center px-3 py-3 text-sm font-black ${myRsvp?.status === 'going' ? 'btn-primary' : 'btn-ghost border-pit-teal/45 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'}`}
+                  className={`${rsvpButtonBase} ${myRsvp?.status === 'going' ? 'border-pit-teal bg-pit-teal text-pit-bg shadow-lg shadow-pit-teal/20' : 'border-pit-teal/45 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'}`}
                   disabled={rsvpMutation.isPending}
                   onClick={() => rsvpMutation.mutate('going')}
                 >
@@ -201,7 +202,7 @@ export default function LeagueEventLobbyPage() {
                 </button>
                 <button
                   type="button"
-                  className={`justify-center px-3 py-3 text-sm font-black ${myRsvp?.status === 'not_going' ? 'border-red-300/30 bg-red-400/15 text-red-100 hover:bg-red-400/20' : 'btn-ghost text-red-200'}`}
+                  className={`${rsvpButtonBase} ${myRsvp?.status === 'not_going' ? 'border-red-300/45 bg-red-400/20 text-red-100 shadow-inner' : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'}`}
                   disabled={rsvpMutation.isPending}
                   onClick={() => rsvpMutation.mutate('not_going')}
                 >
