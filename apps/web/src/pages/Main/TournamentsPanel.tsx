@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, Bell, Calendar, CalendarCheck, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CalendarCheck, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -869,12 +869,12 @@ function ScheduleRow({
         ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300'
         : 'border-pit-teal/35 bg-pit-teal/15 text-pit-teal';
   const statusIcon = needsRsvp
-    ? <CalendarCheck size={12} />
+    ? <CalendarCheck size={13} className="shrink-0" />
     : isDeclined
-      ? <XCircle size={12} />
+      ? <X size={13} strokeWidth={2.5} className="shrink-0" />
       : isRegistered
-        ? <BadgeCheck size={12} />
-        : <CheckCircle2 size={12} />;
+        ? <Check size={13} strokeWidth={2.5} className="shrink-0" />
+        : <Settings size={13} className="shrink-0" />;
   const showMobileNameStatus = Boolean(statusLabel && (isRegistered || isDeclined));
 
   return (
