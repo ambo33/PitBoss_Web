@@ -795,6 +795,7 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     tournamentid: string | null;
     isadmin: boolean;
     participating: boolean;
+    completed: boolean;
     rsvpstatus: string | null;
     goingcount: number | string;
     seasonplayercount: number | string;
@@ -810,6 +811,34 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
             e.tournamentid,
             lm.admin AS isadmin,
             COALESCE(self_lsp.participating, FALSE) AS participating,
+            CASE
+              WHEN e.tournamentid IS NOT NULL THEN EXISTS(
+                SELECT 1
+                FROM tournamentplayers completed_player
+                WHERE completed_player.tournamentid = e.tournamentid
+                  AND completed_player.placed = 1
+              )
+              WHEN (
+                SELECT count(*)
+                FROM leagueeventrsvps completed_rsvp
+                WHERE completed_rsvp.eventid = e.eventid
+                  AND completed_rsvp.status = 'going'
+              ) > 0 THEN (
+                SELECT count(*)
+                FROM leagueresults completed_result
+                JOIN leagueeventrsvps completed_rsvp
+                  ON completed_rsvp.eventid = completed_result.eventid
+                 AND completed_rsvp.userid = completed_result.userid
+                 AND completed_rsvp.status = 'going'
+                WHERE completed_result.eventid = e.eventid
+              ) >= (
+                SELECT count(*)
+                FROM leagueeventrsvps completed_rsvp
+                WHERE completed_rsvp.eventid = e.eventid
+                  AND completed_rsvp.status = 'going'
+              )
+              ELSE FALSE
+            END AS completed,
             rsvp.status AS rsvpstatus,
             (SELECT count(*)
              FROM leagueeventrsvps event_rsvp
@@ -864,6 +893,7 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     ...row,
     eventnumber: row.eventnumber == null ? null : Number(row.eventnumber),
     eventfee: Number(row.eventfee || 0),
+    completed: Boolean(row.completed),
     goingcount: Number(row.goingcount || 0),
     seasonplayercount: Number(row.seasonplayercount || 0),
   })));

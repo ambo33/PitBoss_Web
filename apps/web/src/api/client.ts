@@ -672,6 +672,7 @@ export interface LeagueScheduleEvent {
   tournamentid?: string | null;
   isadmin?: boolean;
   participating?: boolean;
+  completed?: boolean;
   rsvpstatus?: LeagueEventRsvpStatus | string | null;
   goingcount?: number;
   seasonplayercount?: number;

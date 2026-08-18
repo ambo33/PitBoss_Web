@@ -10,6 +10,8 @@ import { isEnabledFlag } from '../../utils/flags';
 
 export type CommandCenterSection = 'upcoming' | 'communities' | 'groups' | 'history' | 'leagues';
 
+const HISTORY_PAGE_SIZE = 10;
+
 interface TournamentsPanelProps {
   section?: CommandCenterSection;
   onSectionChange?: (section: CommandCenterSection) => void;
@@ -168,31 +170,25 @@ export default function TournamentsPanel({
   });
   const rsvpError = registerMutation.error?.message || declineMutation.error?.message || cashRsvpMutation.error?.message;
 
-  const upcoming = mine.filter((t) => {
-    return isUpcomingTournament(t);
-  });
-
-  const history = mine.filter((t) => !upcoming.some((future) => future.tournamentid === t.tournamentid));
   const leagueScheduleItems = useMemo(() => buildLeagueScheduleItems(leagueEvents), [leagueEvents]);
   const gameScheduleItems = useMemo(() => games.map(gameToScheduleItem), [games]);
+  const tournamentScheduleItems = useMemo(() => mine.map(tournamentToScheduleItem), [mine]);
+  const allScheduleItems = useMemo(
+    () => [...tournamentScheduleItems, ...leagueScheduleItems, ...gameScheduleItems],
+    [gameScheduleItems, leagueScheduleItems, tournamentScheduleItems]
+  );
   const upcomingScheduleItems = useMemo(
-    () => [
-      ...upcoming.map(tournamentToScheduleItem),
-      ...leagueScheduleItems.filter((item) => item.date && item.date >= todayInAppTimezone()),
-      ...gameScheduleItems.filter((item) => item.game.status !== 'completed' && item.game.status !== 'cancelled' && (!item.date || item.date >= todayInAppTimezone())),
-    ].sort(compareScheduleItems),
-    [gameScheduleItems, leagueScheduleItems, upcoming]
+    () => allScheduleItems.filter(isUpcomingScheduleItem).sort(compareScheduleItems),
+    [allScheduleItems]
   );
   const historyScheduleItems = useMemo(
-    () => [
-      ...history.map(tournamentToScheduleItem),
-      ...leagueScheduleItems.filter((item) => item.date && item.date < todayInAppTimezone()),
-      ...gameScheduleItems.filter((item) => item.game.status === 'completed' || item.game.status === 'cancelled' || (item.date && item.date < todayInAppTimezone())),
-    ].sort(compareScheduleItems).reverse(),
-    [gameScheduleItems, history, leagueScheduleItems]
+    () => allScheduleItems.filter((item) => !isUpcomingScheduleItem(item)).sort(compareScheduleItems).reverse(),
+    [allScheduleItems]
   );
   const scheduleList = scheduleView === 'history' ? historyScheduleItems : upcomingScheduleItems;
-  const firstHostedTournament = upcoming.find((tournament) => tournament.ownerid === me?.guid) ?? upcoming[0] ?? null;
+  const firstHostedTournament = mine.find((tournament) => isUpcomingScheduleItem(tournamentToScheduleItem(tournament)) && tournament.ownerid === me?.guid)
+    ?? mine.find((tournament) => isUpcomingScheduleItem(tournamentToScheduleItem(tournament)))
+    ?? null;
   const hostableGroups = useMemo(() => groups.filter((group) => group.isadmin && group.approved), [groups]);
   const loadingSchedule = loadingMine || loadingGames || (loadingLeagueEvents && scheduleList.length === 0);
   const externalSection = activeSection === 'groups' || activeSection === 'leagues'
@@ -291,11 +287,22 @@ export default function TournamentsPanel({
               League games could not load yet. Tournament rows are still shown.
             </p>
           )}
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b8b8c7]">
-                {scheduleView === 'history' ? 'Tournament history' : `${scheduleList.length} upcoming games`}
+                {scheduleView === 'history' ? `${scheduleList.length} game history` : `${scheduleList.length} upcoming games`}
               </p>
+              <button
+                type="button"
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  scheduleView === 'history'
+                    ? 'border-pit-teal/50 bg-pit-teal/15 text-pit-teal'
+                    : 'border-pit-border bg-pit-surface text-[#d0d0da] hover:border-pit-teal/45 hover:text-white'
+                }`}
+                onClick={() => changeSection(scheduleView === 'history' ? 'upcoming' : 'history')}
+              >
+                {scheduleView === 'history' ? 'Upcoming' : 'History'}
+              </button>
             </div>
             {scheduleView === 'upcoming' && (
               <button
@@ -321,6 +328,7 @@ export default function TournamentsPanel({
               items={scheduleList}
               focusItemId={focusScheduleItemId}
               view={scheduleView}
+              pageSize={scheduleView === 'history' ? HISTORY_PAGE_SIZE : undefined}
               loading={registerMutation.isPending || declineMutation.isPending || cashRsvpMutation.isPending}
               onOpen={(item) => {
                 if (item.kind === 'tournament') {
@@ -803,6 +811,7 @@ type ScheduleItem =
       eventId: string;
       tournamentId?: string | null;
       isParticipant: boolean;
+      completed: boolean;
       rsvpStatus?: string | null;
       goingCount: number;
       seasonPlayerCount: number;
@@ -825,6 +834,7 @@ function ScheduleList({
   items,
   focusItemId,
   view,
+  pageSize,
   loading,
   onOpen,
   onRegister,
@@ -836,6 +846,7 @@ function ScheduleList({
   items: ScheduleItem[];
   focusItemId?: string;
   view: 'upcoming' | 'history';
+  pageSize?: number;
   loading: boolean;
   onOpen: (item: ScheduleItem) => void;
   onRegister: (tournament: Tournament) => void;
@@ -844,13 +855,36 @@ function ScheduleList({
   onLeagueLobby: (item: Extract<ScheduleItem, { kind: 'league' }>) => void;
   onCashRsvp: (item: Extract<ScheduleItem, { kind: 'cash' }>, status: 'going' | 'not_going') => void;
 }) {
+  const [page, setPage] = useState(0);
+  const pageCount = pageSize ? Math.max(1, Math.ceil(items.length / pageSize)) : 1;
+  const safePage = Math.min(page, pageCount - 1);
+  const visibleItems = pageSize
+    ? items.slice(safePage * pageSize, safePage * pageSize + pageSize)
+    : items;
+
+  useEffect(() => {
+    setPage(0);
+  }, [view]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount - 1));
+  }, [pageCount]);
+
   useEffect(() => {
     if (!focusItemId || items.length === 0) return;
+    const itemIndex = items.findIndex((item) => item.id === focusItemId);
+    if (itemIndex >= 0 && pageSize) {
+      setPage(Math.floor(itemIndex / pageSize));
+    }
+  }, [focusItemId, items, pageSize]);
+
+  useEffect(() => {
+    if (!focusItemId || !visibleItems.some((item) => item.id === focusItemId)) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`schedule-item-${focusItemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusItemId, items]);
+  }, [focusItemId, visibleItems]);
 
   if (items.length === 0) return <EmptyState view={view} />;
 
@@ -865,7 +899,7 @@ function ScheduleList({
         <span className="text-right">Action</span>
       </div>
       <div className="divide-y divide-pit-border/60">
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <ScheduleRow
             key={item.id}
             item={item}
@@ -881,6 +915,36 @@ function ScheduleList({
           />
         ))}
       </div>
+      {pageSize && items.length > pageSize && (
+        <div className="flex items-center justify-between gap-3 border-t border-pit-border/70 px-4 py-3 sm:px-5">
+          <p className="text-xs text-[#c6c6d2]">
+            Showing {safePage * pageSize + 1}-{Math.min((safePage + 1) * pageSize, items.length)} of {items.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn-ghost inline-flex h-8 w-8 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={safePage === 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              aria-label="Previous history page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="min-w-14 text-center text-xs font-semibold text-[#d0d0da]">
+              {safePage + 1} / {pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost inline-flex h-8 w-8 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              aria-label="Next history page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -912,6 +976,7 @@ function ScheduleRow({
   const isTournament = item.kind === 'tournament';
   const isLeague = item.kind === 'league';
   const isCash = item.kind === 'cash';
+  const isLive = view === 'upcoming' && isLiveScheduleItem(item);
   const isRegistered = isTournament
     ? Boolean(item.tournament.isregistered)
     : isLeague
@@ -977,6 +1042,9 @@ function ScheduleRow({
         focused
           ? 'border-pit-teal bg-pit-teal/10 shadow-[inset_0_0_0_1px_rgba(20,184,166,0.35),0_0_24px_rgba(20,184,166,0.12)]'
           :
+        isLive
+          ? 'border-pit-teal bg-pit-teal/[0.11] shadow-[inset_0_0_0_1px_rgba(20,184,166,0.26),0_0_26px_rgba(20,184,166,0.13)]'
+          :
         isDeclined
           ? 'border-red-300/60 bg-red-500/[0.035] lg:bg-red-500/10'
           : isRegistered
@@ -994,6 +1062,15 @@ function ScheduleRow({
           >
             {item.name}
           </button>
+          {isLive && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-pit-teal/60 bg-pit-teal/18 px-2 py-1 text-[9px] font-black uppercase tracking-[0.13em] text-[#8ef4eb] shadow-[0_0_16px_rgba(20,184,166,0.26)]">
+              <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-400" />
+              </span>
+              Live
+            </span>
+          )}
         </div>
         {item.parentName && (
           <p className="mt-1 w-full min-w-0 truncate text-xs text-[#b3b3c2]" title={item.parentName}>{item.parentName}</p>
@@ -1802,6 +1879,7 @@ function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
     eventId: event.eventid,
     tournamentId: event.tournamentid ?? null,
     isParticipant: Boolean(event.participating),
+    completed: Boolean(event.completed),
     rsvpStatus: event.rsvpstatus ?? null,
     goingCount: Number(event.goingcount ?? 0),
     seasonPlayerCount: Number(event.seasonplayercount ?? 0),
@@ -1818,15 +1896,51 @@ function getScheduleSortValue(item: ScheduleItem) {
   return new Date(`${date}T${time}`).getTime();
 }
 
+function isScheduleItemFinalized(item: ScheduleItem) {
+  if (item.kind === 'tournament') return Boolean(item.tournament.completed);
+  if (item.kind === 'cash') return item.game.status === 'completed' || item.game.status === 'cancelled';
+  return item.completed;
+}
+
+function getScheduleTimestamp(date: string | null | undefined, time: string | null | undefined) {
+  if (!date) return null;
+  const match = `${String(date).slice(0, 10)}T${(time?.slice(0, 8) ?? '00:00:00').padEnd(8, ':00').slice(0, 8)}`
+    .match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  return Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6])
+  );
+}
+
+function isLiveScheduleItem(item: ScheduleItem) {
+  if (isScheduleItemFinalized(item)) return false;
+  const startsAt = getScheduleTimestamp(item.date, item.time);
+  const currentTime = nowInAppTimezone();
+  const now = getScheduleTimestamp(currentTime.slice(0, 10), currentTime.slice(11));
+  return startsAt != null && now != null && now >= startsAt && now < startsAt + (12 * 60 * 60 * 1000);
+}
+
+function isUpcomingScheduleItem(item: ScheduleItem) {
+  if (isScheduleItemFinalized(item)) return false;
+  if (!item.date) return true;
+  if (isLiveScheduleItem(item)) return true;
+
+  const startsAt = getScheduleTimestamp(item.date, item.time);
+  const currentTime = nowInAppTimezone();
+  const now = getScheduleTimestamp(currentTime.slice(0, 10), currentTime.slice(11));
+  if (startsAt != null && now != null) return startsAt > now;
+  return item.date >= todayInAppTimezone();
+}
+
 function formatCashGameCount(game: GameListItem): string {
   const seated = Number(game.playercount ?? 0);
   const seats = Number(game.seatsavailable ?? 0);
   return seats > 0 ? `${seated}/${seats}` : String(seated);
-}
-
-function isUpcomingTournament(tournament: Tournament): boolean {
-  if (!tournament.tourneydate) return false;
-  return String(tournament.tourneydate).slice(0, 10) >= todayInAppTimezone();
 }
 
 function todayInAppTimezone() {
