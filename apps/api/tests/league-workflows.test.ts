@@ -15,6 +15,7 @@ import {
 import { calculateLeagueFeeInstallment } from '../src/leagues/payments';
 import { getAvailableLeaguePlacements } from '../src/leagues/placements';
 import { shouldJoinCurrentSeason } from '../src/leagues/membership';
+import { getLeagueRsvpResultMutation } from '../src/leagues/rsvp-results';
 
 type TestCase = {
   name: string;
@@ -123,6 +124,18 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: '2a. Field-size recommendations preserve the current top-eight and top-three scoring shape',
+    run: () => {
+      const rules = numericRules(generatePointsLookup(27));
+      const total = rules.reduce((sum, rule) => sum + rule.points, 0);
+      const topEight = rules.filter((rule) => rule.place <= 8).reduce((sum, rule) => sum + rule.points, 0);
+      const topThree = rules.filter((rule) => rule.place <= 3).reduce((sum, rule) => sum + rule.points, 0);
+      assert.equal(total, 2700);
+      assert.ok(topEight > total / 2, 'Top eight should retain the established majority of event points.');
+      assert.ok(topThree > topEight / 2, 'Top three should retain the established premium within the final table.');
+    },
+  },
+  {
     name: '3. Spreadsheet-style 36-player chart preserves the known 4,311-point payout shape',
     run: () => {
       const rules = generatePointsLookup(36, 4311);
@@ -138,6 +151,28 @@ const tests: TestCase[] = [
       const rules = generatePointsLookup(12);
       assert.equal(pointsForPlace(rules, null, false), 0);
       assert.equal(pointsForPlace(rules, 1, true), 0);
+    },
+  },
+  {
+    name: '4a. RSVP changes keep DNF and placement state mutually consistent',
+    run: () => {
+      assert.equal(getLeagueRsvpResultMutation('not_going', null), 'mark_dnf');
+      assert.equal(getLeagueRsvpResultMutation('not_going', { placed: 5, dnf: false }), 'mark_dnf');
+      assert.equal(getLeagueRsvpResultMutation('not_going', { placed: null, dnf: true }), 'none');
+      assert.equal(getLeagueRsvpResultMutation('going', { placed: null, dnf: true }), 'clear');
+      assert.equal(getLeagueRsvpResultMutation('going', { placed: 3, dnf: false }), 'clear');
+      assert.equal(getLeagueRsvpResultMutation('going', null), 'none');
+    },
+  },
+  {
+    name: '4b. A runner-up knockout leaves first place available for the sole remaining player',
+    run: () => {
+      const state = getAvailableLeaguePlacements(3, [
+        { userid: 'third', placed: 3, dnf: false },
+        { userid: 'second', placed: 2, dnf: false },
+      ], 'automatic-winner');
+      assert.deepEqual(state.availablePlaces, [1]);
+      assert.equal(state.nextPlace, 1);
     },
   },
   {
@@ -345,6 +380,21 @@ const tests: TestCase[] = [
         claimablePlayerCount: 0,
         skipClaim: true,
       }), false);
+    },
+  },
+  {
+    name: '23. Updating one season chart leaves another season standings unchanged',
+    run: () => {
+      const earlierSeason = createQaLeague(12, { showupBonus: 100 });
+      const currentSeason = createQaLeague(20, { showupBonus: 300 });
+      addPlayers(earlierSeason, ['Ambo', 'Brian']);
+      addPlayers(currentSeason, ['Ambo', 'Brian']);
+      logFinish(earlierSeason, 'earlier-event', 'ambo', 1);
+      logFinish(currentSeason, 'current-event', 'ambo', 1);
+      const earlierBefore = findStanding(earlierSeason, 'ambo').totalpoints;
+      setPointChart(currentSeason, generatePointsLookup(24));
+      assert.equal(findStanding(earlierSeason, 'ambo').totalpoints, earlierBefore);
+      assert.notEqual(findStanding(currentSeason, 'ambo').totalpoints, earlierBefore);
     },
   },
 ];

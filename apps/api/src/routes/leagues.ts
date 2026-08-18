@@ -23,6 +23,7 @@ import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
 import { hasTournamentStarted } from '../schedule';
 import { getAvailableLeaguePlacements } from '../leagues/placements';
+import { getLeagueRsvpResultMutation } from '../leagues/rsvp-results';
 import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
 import { syncJoinCode } from '../joinCodes';
 
@@ -1522,9 +1523,24 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     res.status(403).json({ error: 'League admin required.' });
     return;
   }
-  const body = req.body as { name?: string; pereventfee?: number; eventsasgames?: boolean };
+  const body = req.body as {
+    name?: string;
+    pereventfee?: number;
+    eventsasgames?: boolean;
+    expectedplayercount?: number;
+    showupbonuspoints?: number;
+    bestfinishcount?: number;
+    pointslookup?: unknown;
+    finalscoresupdated?: boolean;
+  };
+  const league = await getLeagueForUser(req.params.id, req.userId!);
+  if (!league) {
+    res.status(404).json({ error: 'League not found.' });
+    return;
+  }
   const existing = await queryOne<LeagueSeasonRow>(
     `SELECT seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+            expectedplayercount, CAST(leaguefee AS DECIMAL) AS leaguefee, showupbonuspoints, bestfinishcount, pointslookup,
             COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat
      FROM leagueseasons
      WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE`,
@@ -1537,6 +1553,11 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
   const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
   const hasPerEventFee = Object.prototype.hasOwnProperty.call(body, 'pereventfee');
   const hasEventsAsGames = Object.prototype.hasOwnProperty.call(body, 'eventsasgames');
+  const hasExpectedPlayerCount = Object.prototype.hasOwnProperty.call(body, 'expectedplayercount');
+  const hasShowupBonus = Object.prototype.hasOwnProperty.call(body, 'showupbonuspoints');
+  const hasBestFinishCount = Object.prototype.hasOwnProperty.call(body, 'bestfinishcount');
+  const hasPointsLookup = Object.prototype.hasOwnProperty.call(body, 'pointslookup');
+  const hasFinalScoresUpdated = Boolean(body.finalscoresupdated);
   const name = hasName ? String(body.name ?? '').trim().slice(0, 160) : existing.name;
   if (!name) {
     res.status(400).json({ error: 'Season name required.' });
@@ -1544,6 +1565,29 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
   }
   const perEventFee = hasPerEventFee ? Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100) : Number(existing.pereventfee || 0);
   const eventsAsGames = hasEventsAsGames ? Boolean(body.eventsasgames) : Boolean(existing.eventsasgames);
+  const expectedPlayerCount = hasExpectedPlayerCount
+    ? Math.max(2, Math.min(500, Math.round(Number(body.expectedplayercount ?? 36))))
+    : Number(existing.expectedplayercount ?? league.expectedplayercount ?? 36);
+  const showupBonus = hasShowupBonus
+    ? Math.max(0, Math.round(Number(body.showupbonuspoints ?? 0)))
+    : Number(existing.showupbonuspoints ?? league.showupbonuspoints ?? 0);
+  const bestFinishCount = hasBestFinishCount
+    ? Math.max(1, Math.min(100, Math.round(Number(body.bestfinishcount ?? 7))))
+    : Number(existing.bestfinishcount ?? league.bestfinishcount ?? 7);
+  const pointsLookup = hasPointsLookup
+    ? normalizePointsLookup(body.pointslookup)
+    : hasExpectedPlayerCount
+      ? generatePointsLookup(expectedPlayerCount)
+      : normalizePointsLookup(existing.pointslookup ?? league.pointslookup);
+  if (
+    hasExpectedPlayerCount
+    && expectedPlayerCount !== Number(existing.expectedplayercount ?? league.expectedplayercount ?? 36)
+    && Boolean(league.finalenabled)
+    && !hasFinalScoresUpdated
+  ) {
+    res.status(409).json({ error: 'Review and save the final-game multipliers before changing the season player count.' });
+    return;
+  }
   if (Boolean(existing.eventsasgames) && !eventsAsGames) {
     res.status(409).json({ error: 'Tournament runners cannot be disabled after they are created for a season.' });
     return;
@@ -1556,13 +1600,41 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
       `UPDATE leagueseasons
        SET name = $3,
            pereventfee = $4,
-           eventsasgames = $5
+           eventsasgames = $5,
+           expectedplayercount = $6,
+           showupbonuspoints = $7,
+           bestfinishcount = $8,
+           pointslookup = $9
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE
        RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
+                 expectedplayercount, CAST(leaguefee AS DECIMAL) AS leaguefee, showupbonuspoints, bestfinishcount, pointslookup,
                  COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
-      [req.params.id, req.params.seasonId, name, perEventFee, eventsAsGames]
+      [req.params.id, req.params.seasonId, name, perEventFee, eventsAsGames, expectedPlayerCount, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
     );
     const row = updated.rows[0];
+    let recalculatedResults = 0;
+    if (hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus) {
+      const results = await client.query<{ resultid: string; placed: number | null; dnf: boolean }>(
+        `SELECT r.resultid, r.placed, r.dnf
+         FROM leagueresults r
+         JOIN leagueevents e ON e.eventid = r.eventid
+         WHERE r.leagueid = $1 AND e.seasonid = $2`,
+        [req.params.id, req.params.seasonId]
+      );
+      for (const result of results.rows) {
+        await client.query(
+          `UPDATE leagueresults
+           SET points = $2, showupbonuspoints = $3, updatedat = now()
+           WHERE resultid = $1`,
+          [
+            result.resultid,
+            pointsForPlace(pointsLookup, result.placed, Boolean(result.dnf)),
+            result.dnf ? 0 : showupBonus,
+          ]
+        );
+      }
+      recalculatedResults = results.rowCount ?? results.rows.length;
+    }
     if (hasPerEventFee) {
       await client.query(
         `UPDATE leagueevents SET eventfee = $3
@@ -1590,8 +1662,8 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
       leagueId: req.params.id,
       seasonId: req.params.seasonId,
       actorId: req.userId,
-      action: hasPerEventFee ? 'season_fee_updated' : 'season_updated',
-      summary: hasPerEventFee ? 'Season event fee was updated.' : 'Season settings were updated.',
+      action: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'season_scoring_updated' : hasPerEventFee ? 'season_fee_updated' : 'season_updated',
+      summary: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'Season scoring was updated.' : hasPerEventFee ? 'Season event fee was updated.' : 'Season settings were updated.',
       details: {
         previous: {
           name: existing.name,
@@ -1599,6 +1671,10 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
           enddate: existing.enddate,
           pereventfee: Number(existing.pereventfee || 0),
           eventsasgames: Boolean(existing.eventsasgames),
+          expectedplayercount: Number(existing.expectedplayercount ?? league.expectedplayercount ?? 36),
+          showupbonuspoints: Number(existing.showupbonuspoints ?? league.showupbonuspoints ?? 0),
+          bestfinishcount: Number(existing.bestfinishcount ?? league.bestfinishcount ?? 7),
+          pointslookup: normalizePointsLookup(existing.pointslookup ?? league.pointslookup),
         },
         current: {
           name: row.name,
@@ -1606,11 +1682,16 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
           enddate: row.enddate,
           pereventfee: Number(row.pereventfee || 0),
           eventsasgames: Boolean(row.eventsasgames),
+          expectedplayercount: Number(row.expectedplayercount ?? expectedPlayerCount),
+          showupbonuspoints: Number(row.showupbonuspoints ?? showupBonus),
+          bestfinishcount: Number(row.bestfinishcount ?? bestFinishCount),
+          pointslookup: pointsLookup,
+          recalculatedResults,
         },
       },
     });
     await client.query('COMMIT');
-    res.json({ season: serializeSeason(row) });
+    res.json({ season: serializeSeason(row), recalculatedResults });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -3667,7 +3748,7 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
   const status = body.status === 'not_going' ? 'not_going' : 'going';
   const targetUserId = body.userId ? String(body.userId) : req.userId!;
   const event = await queryOne<LeagueEventRow>(
-    `SELECT eventid, leagueid, seasonid FROM leagueevents WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
+    `SELECT eventid, leagueid, seasonid, tournamentid FROM leagueevents WHERE leagueid = $1 AND eventid = $2 AND active = TRUE`,
     [req.params.id, req.params.eventId]
   );
   if (!event?.seasonid) {
@@ -3683,6 +3764,7 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
     return;
   }
   const client = await pool.connect();
+  let resultChanged = false;
   try {
     await client.query('BEGIN');
     const result = await client.query<LeagueEventRsvpRow>(
@@ -3694,6 +3776,82 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
       [req.params.eventId, req.params.id, targetUserId, status]
     );
     const row = result.rows[0] ?? null;
+    const existingResultQuery = await client.query<LeagueResultRow>(
+      `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
+       FROM leagueresults
+       WHERE eventid = $1 AND leagueid = $2 AND userid = $3
+       FOR UPDATE`,
+      [req.params.eventId, req.params.id, targetUserId]
+    );
+    const existingResult = existingResultQuery.rows[0] ?? null;
+    const resultMutation = getLeagueRsvpResultMutation(status, existingResult);
+
+    if (resultMutation === 'mark_dnf') {
+      await client.query(
+        `INSERT INTO leagueresults (eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby)
+         VALUES ($1, $2, $3, NULL, TRUE, 0, 0, $4)
+         ON CONFLICT (eventid, userid) DO UPDATE
+         SET placed = NULL,
+             dnf = TRUE,
+             points = 0,
+             showupbonuspoints = 0,
+             loggedby = $4,
+             updatedat = now()`,
+        [req.params.eventId, req.params.id, targetUserId, req.userId]
+      );
+      const deletedPayments = await client.query(
+        `DELETE FROM leaguepayments
+         WHERE leagueid = $1
+           AND eventid = $2
+           AND userid = $3
+           AND paymenttype = 'event'`,
+        [req.params.id, req.params.eventId, targetUserId]
+      );
+      await recordLeagueAudit(client, {
+        leagueId: req.params.id,
+        seasonId: event.seasonid,
+        eventId: req.params.eventId,
+        actorId: req.userId,
+        targetUserId,
+        action: 'event_rsvp_marked_dnf',
+        summary: 'Player RSVP changed to not going and was marked DNF.',
+        details: {
+          previous: existingResult
+            ? {
+                placed: existingResult.placed == null ? null : Number(existingResult.placed),
+                dnf: Boolean(existingResult.dnf),
+                points: Number(existingResult.points || 0),
+                showupbonuspoints: Number(existingResult.showupbonuspoints || 0),
+              }
+            : null,
+          removedEventFeePayments: deletedPayments.rowCount ?? 0,
+        },
+      });
+      resultChanged = true;
+    } else if (resultMutation === 'clear' && existingResult) {
+      await client.query(
+        `DELETE FROM leagueresults WHERE eventid = $1 AND leagueid = $2 AND userid = $3`,
+        [req.params.eventId, req.params.id, targetUserId]
+      );
+      await recordLeagueAudit(client, {
+        leagueId: req.params.id,
+        seasonId: event.seasonid,
+        eventId: req.params.eventId,
+        actorId: req.userId,
+        targetUserId,
+        action: 'event_rsvp_cleared_result',
+        summary: 'Player RSVP changed to going and their DNF or placement was cleared.',
+        details: {
+          previous: {
+            placed: existingResult.placed == null ? null : Number(existingResult.placed),
+            dnf: Boolean(existingResult.dnf),
+            points: Number(existingResult.points || 0),
+            showupbonuspoints: Number(existingResult.showupbonuspoints || 0),
+          },
+        },
+      });
+      resultChanged = true;
+    }
     if (targetUserId !== req.userId) {
       await recordLeagueAudit(client, {
         leagueId: req.params.id,
@@ -3708,7 +3866,13 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
     }
     await client.query('COMMIT');
     broadcastLeagueEventUpdate(event.eventid, { rsvp: true, source: 'league-event-rsvp' });
-    res.json({ rsvp: row });
+    if (resultChanged) {
+      broadcastLeagueEventUpdate(event.eventid, { results: true, source: 'league-event-rsvp-result' });
+      if (event.tournamentid) {
+        broadcastTournamentUpdate(event.tournamentid, { players: true, source: 'league-event-rsvp-result' });
+      }
+    }
+    res.json({ rsvp: row, resultChanged });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -4005,6 +4169,92 @@ async function getPublicLeagueEventField(event: PublicLeagueKnockoutEvent) {
   return { participantCount: eventFieldCount, goingCount, results, remainingPlayers: remainingPlayers.filter((player) => !resultUserIds.has(player.userid)) };
 }
 
+async function autoRecordLeagueWinnerIfLastEligiblePlayer(
+  client: Pick<PoolClient, 'query'>,
+  input: {
+    event: Pick<LeagueEventRow, 'eventid' | 'leagueid' | 'seasonid'>;
+    participantCount: number;
+    goingCount: number;
+    pointsLookup: LeaguePointRule[];
+    showupBonus: number;
+    loggedBy: string | null;
+  }
+): Promise<LeagueResultRow | null> {
+  const { event } = input;
+  if (!event.seasonid || input.participantCount < 2) return null;
+
+  const recordedResults = await client.query<LeagueResultRow>(
+    `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
+     FROM leagueresults
+     WHERE eventid = $1
+       AND leagueid = $2
+       AND (
+         $3::integer = 0
+         OR EXISTS (
+           SELECT 1 FROM leagueeventrsvps going_rsvp
+           WHERE going_rsvp.eventid = leagueresults.eventid
+             AND going_rsvp.leagueid = leagueresults.leagueid
+             AND going_rsvp.userid = leagueresults.userid
+             AND going_rsvp.status = 'going'
+         )
+       )`,
+    [event.eventid, event.leagueid, input.goingCount]
+  );
+  const { nextPlace } = getAvailableLeaguePlacements(
+    input.participantCount,
+    recordedResults.rows,
+    'automatic-winner'
+  );
+  if (nextPlace !== 1) return null;
+
+  const remaining = await client.query<{ userid: string }>(
+    `SELECT lm.userid
+     FROM leaguemembers lm
+     JOIN leagueseasonparticipants lsp
+       ON lsp.leagueid = lm.leagueid
+      AND lsp.userid = lm.userid
+      AND lsp.seasonid = $3
+      AND lsp.participating = TRUE
+     WHERE lm.leagueid = $1
+       AND lm.approved = TRUE
+       AND (
+         $4::integer = 0
+         OR EXISTS (
+           SELECT 1 FROM leagueeventrsvps going_rsvp
+           WHERE going_rsvp.eventid = $2
+             AND going_rsvp.leagueid = lm.leagueid
+             AND going_rsvp.userid = lm.userid
+             AND going_rsvp.status = 'going'
+         )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM leagueresults existing
+         WHERE existing.eventid = $2
+           AND existing.leagueid = lm.leagueid
+           AND existing.userid = lm.userid
+       )`,
+    [event.leagueid, event.eventid, event.seasonid, input.goingCount]
+  );
+  if (remaining.rows.length !== 1) return null;
+
+  const winnerId = remaining.rows[0].userid;
+  const inserted = await client.query<LeagueResultRow>(
+    `INSERT INTO leagueresults (eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby)
+     VALUES ($1, $2, $3, 1, FALSE, $4, $5, $6)
+     ON CONFLICT (eventid, userid) DO NOTHING
+     RETURNING resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat`,
+    [
+      event.eventid,
+      event.leagueid,
+      winnerId,
+      pointsForPlace(input.pointsLookup, 1, false),
+      input.showupBonus,
+      input.loggedBy,
+    ]
+  );
+  return inserted.rows[0] ?? null;
+}
+
 publicLeaguesRouter.get('/knockout/:token', async (req: Request, res: Response) => {
   const event = await getPublicLeagueKnockoutEvent(req.params.token);
   if (!event?.seasonid) {
@@ -4059,6 +4309,7 @@ publicLeaguesRouter.post('/knockout/:token', async (req: Request, res: Response)
   const effectiveLeague = leagueWithSeasonSettings(serializeLeague(leagueRow), season);
   const client = await pool.connect();
   let row: LeagueResultRow | null = null;
+  let automaticWinner: LeagueResultRow | null = null;
   try {
     await client.query('BEGIN');
     const lockedEvent = await client.query<LeagueEventRow>(
@@ -4160,6 +4411,14 @@ publicLeaguesRouter.post('/knockout/:token', async (req: Request, res: Response)
       [event.eventid, event.leagueid, requestedUserId, nextPlace, points, showupBonus]
     );
     row = inserted.rows[0] ?? null;
+    automaticWinner = await autoRecordLeagueWinnerIfLastEligiblePlayer(client, {
+      event,
+      participantCount,
+      goingCount,
+      pointsLookup: normalizePointsLookup(effectiveLeague.pointslookup),
+      showupBonus,
+      loggedBy: null,
+    });
     await recordLeagueAudit(client, {
       leagueId: event.leagueid,
       seasonId: event.seasonid,
@@ -4170,6 +4429,18 @@ publicLeaguesRouter.post('/knockout/:token', async (req: Request, res: Response)
       summary: 'A player knockout was reported from the event QR code.',
       details: { placed: nextPlace, source: 'public_knockout_qr' },
     });
+    if (automaticWinner) {
+      await recordLeagueAudit(client, {
+        leagueId: event.leagueid,
+        seasonId: event.seasonid,
+        eventId: event.eventid,
+        actorId: null,
+        targetUserId: automaticWinner.userid,
+        action: 'winner_auto_recorded',
+        summary: 'The remaining eligible player was automatically recorded in first place.',
+        details: { placed: 1, source: 'league_public_knockout' },
+      });
+    }
     await client.query('COMMIT');
     broadcastLeagueEventUpdate(event.eventid, { results: true, source: 'league-public-knockout' });
     if (event.tournamentid) broadcastTournamentUpdate(event.tournamentid, { players: true, source: 'league-public-knockout' });
@@ -4177,7 +4448,11 @@ publicLeaguesRouter.post('/knockout/:token', async (req: Request, res: Response)
       void sendLeagueResultLoggedPush({ leagueId: event.leagueid, leagueName: publicEvent.leaguename, event, targetUserId: requestedUserId, result: row })
         .catch((error) => console.error('Public league knockout push failed', error instanceof Error ? error.message : error));
     }
-    res.json({ result: row });
+    if (automaticWinner) {
+      void sendLeagueResultLoggedPush({ leagueId: event.leagueid, leagueName: publicEvent.leaguename, event, targetUserId: automaticWinner.userid, result: automaticWinner })
+        .catch((error) => console.error('Automatic league winner push failed', error instanceof Error ? error.message : error));
+    }
+    res.json({ result: row, automaticwinner: automaticWinner });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -4226,6 +4501,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
 
   const client = await pool.connect();
   let row: LeagueResultRow | null = null;
+  let automaticWinner: LeagueResultRow | null = null;
   let resultChanged = false;
   try {
     await client.query('BEGIN');
@@ -4376,6 +4652,16 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       [event.eventid, req.params.id, targetUserId, placed, dnf, points, showupBonus, req.userId]
     );
     row = inserted.rows[0] ?? null;
+    if (!dnf && row) {
+      automaticWinner = await autoRecordLeagueWinnerIfLastEligiblePlayer(client, {
+        event,
+        participantCount,
+        goingCount,
+        pointsLookup,
+        showupBonus,
+        loggedBy: req.userId ?? null,
+      });
+    }
     if (event.tournamentid) {
       await client.query(
         `INSERT INTO tournamentplayers (tournamentid, userid, checkedin, placed)
@@ -4385,6 +4671,16 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
            placed = EXCLUDED.placed`,
         [event.tournamentid, targetUserId, !dnf, placed]
       );
+      if (automaticWinner) {
+        await client.query(
+          `INSERT INTO tournamentplayers (tournamentid, userid, checkedin, placed)
+           VALUES ($1, $2, TRUE, 1)
+           ON CONFLICT (tournamentid, userid) DO UPDATE SET
+             checkedin = TRUE,
+             placed = 1`,
+          [event.tournamentid, automaticWinner.userid]
+        );
+      }
     }
     let removedEventFeePayments = 0;
     if (dnf) {
@@ -4435,6 +4731,18 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
         },
       });
     }
+    if (automaticWinner) {
+      await recordLeagueAudit(client, {
+        leagueId: req.params.id,
+        seasonId: event.seasonid,
+        eventId: event.eventid,
+        actorId: req.userId,
+        targetUserId: automaticWinner.userid,
+        action: 'winner_auto_recorded',
+        summary: 'The remaining eligible player was automatically recorded in first place.',
+        details: { placed: 1, source: 'league_result_update' },
+      });
+    }
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -4456,8 +4764,19 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     }).catch((err) => {
       console.error('League result push failed', err instanceof Error ? err.message : err);
     });
+    if (automaticWinner) {
+      void sendLeagueResultLoggedPush({
+        leagueId: req.params.id,
+        leagueName: leagueRow.name,
+        event,
+        targetUserId: automaticWinner.userid,
+        result: automaticWinner,
+      }).catch((err) => {
+        console.error('Automatic league winner push failed', err instanceof Error ? err.message : err);
+      });
+    }
   }
-  res.json({ result: row });
+  res.json({ result: row, automaticwinner: automaticWinner });
 }
 
 leaguesRouter.put('/:id/events/:eventId/results/:userId', async (req: Request, res: Response) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/auth';
 import { DEFAULT_COIN_PRESETS } from '../../utils/defaultCoins';
 import { PLAYER_ACHIEVEMENT_LEGEND, playerNameWithMedals } from '../../utils/playerAchievements';
 import { isEnabledFlag } from '../../utils/flags';
+import { BlindStructureCalculator, BlindStructureDraftLevel } from '../PreTournament/BlindTimer';
 import {
   DEFAULT_FIVE_MINUTE_ANNOUNCEMENT,
   DEFAULT_LEVEL_UP_ANNOUNCEMENT,
@@ -23,10 +24,12 @@ type GroupOpenRequest = { groupId: string; tab?: 'posts'; postId?: string; token
 
 export default function GroupsPanel({
   onDetailStateChange,
+  onBackToCommunities,
   createRequestId = 0,
   openGroupRequest = null,
 }: {
   onDetailStateChange?: (open: boolean) => void;
+  onBackToCommunities?: () => void;
   createRequestId?: number;
   openGroupRequest?: GroupOpenRequest;
 }) {
@@ -88,7 +91,10 @@ export default function GroupsPanel({
         group={selected}
         initialTab={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.tab : undefined}
         focusPostId={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.postId : undefined}
-        onBack={() => setSelected(null)}
+        onBack={() => {
+          setSelected(null);
+          onBackToCommunities?.();
+        }}
       />
     );
   }
@@ -494,6 +500,9 @@ function GroupDetailView({
   const [awardNote, setAwardNote] = useState('');
   const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
   const [deletePostTarget, setDeletePostTarget] = useState<GroupPost | null>(null);
+  const [structureWizardOpen, setStructureWizardOpen] = useState(false);
+  const [newStructureName, setNewStructureName] = useState('');
+  const [structureNameError, setStructureNameError] = useState('');
 
   useEffect(() => {
     if (initialTab) setDetailTab(initialTab);
@@ -666,6 +675,18 @@ function GroupDetailView({
       api.moderateGroupPost(group.groupid, postId, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid, 'posts'] }),
   });
+  const createStructureMutation = useMutation({
+    mutationFn: (levels: BlindStructureDraftLevel[]) => api.createGroupBlindStructure(group.groupid, {
+      name: newStructureName.trim(),
+      levels,
+    }),
+    onSuccess: () => {
+      setNewStructureName('');
+      setStructureNameError('');
+      setStructureWizardOpen(false);
+      qc.invalidateQueries({ queryKey: ['group', group.groupid, 'blind-structures'] });
+    },
+  });
   const deletePostMutation = useMutation({
     mutationFn: (postId: string) => api.deleteGroupPost(group.groupid, postId),
     onSuccess: () => {
@@ -737,8 +758,8 @@ function GroupDetailView({
   const announcerControlsEnabled = canUseClubFeatures && aiAnnouncerEnabled && !demoMode;
   const postsEnabled = postsData?.enabled ?? canUseClubFeatures;
   const detailTabs: DetailTab[] = group.isadmin
-    ? ['info', 'members', 'posts', 'coins', 'voice', 'structures', 'history']
-    : ['info', 'members', 'posts', 'coins', 'structures', 'history'];
+    ? ['info', 'members', 'posts', 'structures', 'history', 'voice']
+    : ['info', 'members', 'posts', 'structures', 'history'];
 
   useEffect(() => {
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
@@ -824,59 +845,42 @@ function GroupDetailView({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white"
+          onClick={onBack}
+        >
+          <ArrowLeft size={15} />
+          Back
+        </button>
+        <h2 className="min-w-0 flex-1 truncate text-xl font-bold text-white sm:text-2xl">{effectiveGroup.name}</h2>
+        {group.isadmin && (
+          <span className="badge shrink-0 border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
+            <Crown size={9} className="mr-0.5" /> Admin
+          </span>
+        )}
+        {group.isadmin ? (
           <button
             type="button"
-            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white"
-            onClick={onBack}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200"
+            onClick={() => setDeleteGroupConfirmOpen(true)}
+            disabled={deleteGroupMutation.isPending}
+            aria-label="Delete group"
+            title="Delete group"
           >
-            <ArrowLeft size={15} />
-            Back to Groups
+            <Trash2 size={16} />
           </button>
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white sm:flex-none">{effectiveGroup.name}</h2>
-            {group.isadmin && (
-              <span className="badge shrink-0 bg-pit-gold/10 border border-pit-gold/20 text-pit-gold">
-                <Crown size={9} className="mr-0.5" /> Admin
-              </span>
-            )}
-            {group.isadmin && (
-              <button
-                type="button"
-                className="ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200 sm:hidden"
-                onClick={() => setDeleteGroupConfirmOpen(true)}
-                disabled={deleteGroupMutation.isPending}
-                aria-label="Delete group"
-                title="Delete group"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-        <div className={`flex flex-wrap gap-2 sm:justify-end ${group.isadmin ? 'hidden sm:flex' : ''}`}>
-          {group.isadmin && (
-            <button
-              className="btn-ghost justify-center gap-1.5 text-red-300 hover:border-red-400/40 hover:text-red-200 sm:shrink-0"
-              onClick={() => setDeleteGroupConfirmOpen(true)}
-              disabled={deleteGroupMutation.isPending}
-            >
-              <Trash2 size={14} />
-              Delete group
-            </button>
-          )}
-          {!group.isadmin && (
-            <button
-              className="btn-ghost justify-center gap-1.5 text-red-300 hover:text-red-200 sm:shrink-0"
-              onClick={() => leaveMutation.mutate()}
-              disabled={leaveMutation.isPending}
-            >
-              <LogOut size={14} />
-              {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}
-            </button>
-          )}
-        </div>
+        ) : (
+          <button
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 px-3 text-xs font-semibold text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200"
+            onClick={() => leaveMutation.mutate()}
+            disabled={leaveMutation.isPending}
+          >
+            <LogOut size={14} />
+            <span className="ml-1.5">{leaveMutation.isPending ? 'Leaving...' : 'Leave'}</span>
+          </button>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -980,7 +984,12 @@ function GroupDetailView({
                 )}
 
                 <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
-                  <p className="text-sm font-semibold text-white">Tournament defaults</p>
+                  <div>
+                    <p className="text-sm font-semibold text-white">New tournament player tracking</p>
+                    <p className="mt-1 text-xs leading-5 text-pit-muted">
+                      This sets the default for tournaments created in this group. You can still change it while creating any individual tournament.
+                    </p>
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <select
                       className="input"
@@ -1000,6 +1009,10 @@ function GroupDetailView({
                       Save
                     </button>
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-pit-muted">
+                    <span className="font-semibold text-pit-text">Standard tracking</span> keeps entries and results with the host.{' '}
+                    <span className="font-semibold text-pit-text">Player tracked stats</span> connects results to members so their finishes and trophies build over time.
+                  </p>
                   {!canUseClubFeatures && (
                     <p className="mt-2 text-xs leading-5 text-pit-muted">
                       Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.
@@ -1008,7 +1021,10 @@ function GroupDetailView({
                 </section>
 
                 <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
-                  <p className="text-sm font-semibold text-white">TV seating message</p>
+                  <div>
+                    <p className="text-sm font-semibold text-white">TV board check-in message</p>
+                    <p className="mt-1 text-xs leading-5 text-pit-muted">Shown on the TV board while players arrive and check in.</p>
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <input
                       className="input"
@@ -1719,8 +1735,58 @@ function GroupDetailView({
         )}
 
         {detailTab === 'structures' && (
-          <div>
-            {loadingStructures
+          <div className="space-y-3">
+            {structureWizardOpen ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">New blind structure</p>
+                    <p className="mt-1 text-xs text-pit-muted">Set up the structure, then save it for this group.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-2 text-xs"
+                    onClick={() => {
+                      setStructureWizardOpen(false);
+                      setStructureNameError('');
+                    }}
+                    disabled={createStructureMutation.isPending}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <label className="block rounded-xl border border-pit-border bg-pit-bg p-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">Structure name</span>
+                  <input
+                    className="input mt-2"
+                    value={newStructureName}
+                    onChange={(event) => {
+                      setNewStructureName(event.target.value);
+                      setStructureNameError('');
+                    }}
+                    placeholder="Friday turbo"
+                    maxLength={80}
+                    autoFocus
+                  />
+                </label>
+                <BlindStructureCalculator
+                  tournament={{ maxplayers: 0, rebuychips: 0, addonchips: 0, rebuyprice: 0, addonprice: 0 }}
+                  initiallyExpanded
+                  title="Blind structure wizard"
+                  saveLabel="Save structure"
+                  saveDisabled={!newStructureName.trim()}
+                  saving={createStructureMutation.isPending}
+                  error={structureNameError || createStructureMutation.error?.message}
+                  onSave={(levels) => {
+                    if (!newStructureName.trim()) {
+                      setStructureNameError('Give this blind structure a name before saving.');
+                      return;
+                    }
+                    createStructureMutation.mutate(levels);
+                  }}
+                />
+              </>
+            ) : loadingStructures
               ? <LoadingSpinner className="py-8" />
               : savedStructures.length === 0
                 ? (
@@ -1728,12 +1794,27 @@ function GroupDetailView({
                     <Trophy size={28} className="text-pit-muted" />
                     <div>
                       <p className="text-sm font-semibold text-white">No saved structures yet</p>
-                      <p className="mt-1 text-xs text-pit-muted">Save one from a tournament's Blind Structure tab.</p>
+                      <p className="mt-1 text-xs text-pit-muted">Build one with the blind structure wizard.</p>
                     </div>
+                    {group.isadmin && (
+                      <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => setStructureWizardOpen(true)}>
+                        <Plus size={14} />
+                        Add structure
+                      </button>
+                    )}
                   </div>
                 )
                 : (
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-white">Saved structures</p>
+                      {group.isadmin && (
+                        <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => setStructureWizardOpen(true)}>
+                          <Plus size={14} />
+                          Add structure
+                        </button>
+                      )}
+                    </div>
                     {savedStructures.map((structure) => (
                       <div key={structure.id} className="flex items-center justify-between gap-3 rounded-xl border border-pit-border bg-pit-bg p-3">
                         <div className="min-w-0">

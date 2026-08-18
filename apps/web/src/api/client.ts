@@ -212,8 +212,17 @@ export const api = {
   getLeague: (id: string, seasonid?: string | null) => get<LeagueDetail>(`/leagues/${id}${seasonid ? `?seasonId=${encodeURIComponent(seasonid)}` : ''}`),
   createLeagueSeason: (id: string, data: { name: string; eventcount?: number; pereventfee?: number; eventsasgames?: boolean }) =>
     post<{ season: LeagueSeason; events: LeagueEvent[] }>(`/leagues/${id}/seasons`, data),
-  updateLeagueSeason: (id: string, seasonId: string, data: { name?: string; pereventfee?: number; eventsasgames?: boolean }) =>
-    patch<{ season: LeagueSeason }>(`/leagues/${id}/seasons/${seasonId}`, data),
+  updateLeagueSeason: (id: string, seasonId: string, data: {
+    name?: string;
+    pereventfee?: number;
+    eventsasgames?: boolean;
+    expectedplayercount?: number;
+    showupbonuspoints?: number;
+    bestfinishcount?: number;
+    pointslookup?: LeaguePointRule[];
+    finalscoresupdated?: boolean;
+  }) =>
+    patch<{ season: LeagueSeason; recalculatedResults?: number }>(`/leagues/${id}/seasons/${seasonId}`, data),
   deleteLeagueSeason: (id: string, seasonId: string) =>
     del<{ success: boolean }>(`/leagues/${id}/seasons/${seasonId}`),
   notifyLeagueStandings: (id: string, seasonId: string) =>
@@ -616,6 +625,11 @@ export interface LeagueSeason {
   begindate: string;
   enddate: string;
   pereventfee: number;
+  expectedplayercount?: number | null;
+  leaguefee?: number | null;
+  showupbonuspoints?: number | null;
+  bestfinishcount?: number | null;
+  pointslookup?: LeaguePointRule[] | null;
   eventsasgames?: boolean;
   active: boolean;
   createdat: string;

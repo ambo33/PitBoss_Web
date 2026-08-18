@@ -8,6 +8,7 @@ import {
   DEFAULT_CHIP_DENOMINATIONS,
   DEFAULT_COLOR_UPS,
   generateBlindStructure as buildBlindStructure,
+  parseChipDenominations,
 } from '../../utils/blindCalculator';
 
 interface BlindTimerProps {
@@ -17,7 +18,11 @@ interface BlindTimerProps {
   tournament: Tournament;
 }
 
-type DraftLevel = Omit<BlindLevel, 'id'>;
+export type BlindStructureDraftLevel = Omit<BlindLevel, 'id'>;
+export type BlindStructureCalculatorContext = Pick<
+  Tournament,
+  'maxplayers' | 'rebuychips' | 'addonchips' | 'rebuyprice' | 'addonprice'
+>;
 
 interface EditableBlindLevel {
   level: number;
@@ -63,7 +68,7 @@ interface ParsedCalculatorSettings {
   addonChips: number;
 }
 
-function toDraftLevel(level: BlindLevel): DraftLevel {
+function toDraftLevel(level: BlindLevel): BlindStructureDraftLevel {
   return {
     level: Number(level.level),
     label: level.label ?? `Level ${level.level}`,
@@ -86,7 +91,7 @@ export default function BlindTimer({ tournamentId, isOwner, tournament }: BlindT
   });
 
   const saveMutation = useMutation({
-    mutationFn: (levels: DraftLevel[]) => api.saveBlinds(tournamentId, levels),
+    mutationFn: (levels: BlindStructureDraftLevel[]) => api.saveBlinds(tournamentId, levels),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['blinds', tournamentId] });
       setEditing(false);
@@ -94,7 +99,7 @@ export default function BlindTimer({ tournamentId, isOwner, tournament }: BlindT
   });
 
   const saveGroupStructureMutation = useMutation({
-    mutationFn: ({ name, levels }: { name: string; levels: DraftLevel[] }) =>
+    mutationFn: ({ name, levels }: { name: string; levels: BlindStructureDraftLevel[] }) =>
       api.createGroupBlindStructure(tournament.groupid!, { name, levels }),
     onSuccess: () => {
       setSaveStructureName('');
@@ -109,7 +114,7 @@ export default function BlindTimer({ tournamentId, isOwner, tournament }: BlindT
   return (
     <div className="space-y-6">
       {isOwner && (
-        <BlindCalculator
+        <BlindStructureCalculator
           tournament={tournament}
           saving={saveMutation.isPending}
           error={saveMutation.error?.message}
@@ -165,18 +170,26 @@ export default function BlindTimer({ tournamentId, isOwner, tournament }: BlindT
   );
 }
 
-function BlindCalculator({
+export function BlindStructureCalculator({
   tournament,
   saving,
   error,
   onSave,
+  initiallyExpanded = false,
+  title = 'Blind Structure Calculator',
+  saveLabel = 'Save Generated',
+  saveDisabled = false,
 }: {
-  tournament: Tournament;
+  tournament: BlindStructureCalculatorContext;
   saving: boolean;
   error?: string;
-  onSave: (levels: DraftLevel[]) => void;
+  onSave: (levels: BlindStructureDraftLevel[]) => void;
+  initiallyExpanded?: boolean;
+  title?: string;
+  saveLabel?: string;
+  saveDisabled?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const defaultCalculatorPlayers = getDefaultCalculatorPlayers(tournament);
   const [settings, setSettings] = useState<CalculatorSettings>({
     players: String(defaultCalculatorPlayers),
@@ -202,16 +215,43 @@ function BlindCalculator({
   const totalChips = calculateTotalChips(parsedSettings);
   const rebuysEnabled = toNumber(tournament.rebuyprice) > 0 && toNumber(tournament.rebuychips) > 0;
   const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
+  const chipDenominationOptions = useMemo(
+    () => parseChipDenominations(settings.chipDenominations),
+    [settings.chipDenominations]
+  );
+  const selectedChipUps = useMemo(
+    () => selectedChipUpDenominations(settings.colorUps, chipDenominationOptions),
+    [chipDenominationOptions, settings.colorUps]
+  );
 
   function update(field: keyof CalculatorSettings, value: string) {
     setSettings((current) => {
       if (field !== 'chipDenominations') return { ...current, [field]: value };
+      const currentChipOptions = parseChipDenominations(current.chipDenominations);
       const currentDefault = defaultChipUpDenominations(current.chipDenominations);
+      const currentSelected = selectedChipUpDenominations(current.colorUps, currentChipOptions);
+      const defaultSelected = selectedChipUpDenominations(currentDefault, currentChipOptions);
+      const shouldUseNextDefault = currentSelected.join(',') === defaultSelected.join(',');
+      const nextChipOptions = parseChipDenominations(value);
       return {
         ...current,
         chipDenominations: value,
-        colorUps: current.colorUps.trim() === currentDefault ? defaultChipUpDenominations(value) : current.colorUps,
+        colorUps: (shouldUseNextDefault
+          ? nextChipOptions.slice(0, 2)
+          : currentSelected.filter((denomination) => nextChipOptions.includes(denomination)))
+          .join(','),
       };
+    });
+  }
+
+  function toggleChipUpDenomination(denomination: number) {
+    setSettings((current) => {
+      const available = parseChipDenominations(current.chipDenominations);
+      const selected = selectedChipUpDenominations(current.colorUps, available);
+      const next = selected.includes(denomination)
+        ? selected.filter((value) => value !== denomination)
+        : [...selected, denomination].sort((a, b) => a - b);
+      return { ...current, colorUps: next.join(',') };
     });
   }
 
@@ -220,7 +260,7 @@ function BlindCalculator({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-white">
           <Calculator size={18} className="text-pit-teal" />
-          <h3 className="font-semibold">Blind Structure Calculator</h3>
+          <h3 className="font-semibold">{title}</h3>
         </div>
         <button type="button" className="btn-ghost text-sm" onClick={() => setExpanded((value) => !value)}>
           {expanded ? 'Collapse' : 'Expand'}
@@ -245,12 +285,30 @@ function BlindCalculator({
               placeholder="25,50,100,500,1000"
               onChange={(value) => update('chipDenominations', value)}
             />
-            <TextField
-              label="Chip up denominations"
-              value={settings.colorUps}
-              placeholder="25,50"
-              onChange={(value) => update('colorUps', value)}
-            />
+            <div className="space-y-1.5">
+              <span className="block text-xs font-medium uppercase tracking-wide text-pit-muted">Chip up denominations</span>
+              <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-lg border border-pit-border bg-pit-bg px-2 py-1.5">
+                {chipDenominationOptions.map((denomination) => {
+                  const selected = selectedChipUps.includes(denomination);
+                  return (
+                    <button
+                      key={denomination}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleChipUpDenomination(denomination)}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
+                          : 'border-pit-border bg-pit-surface text-pit-muted hover:border-pit-teal/40 hover:text-pit-text'
+                      }`}
+                    >
+                      {denomination.toLocaleString()}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] leading-4 text-pit-muted">Selected chips are chipped up at natural pause points in the structure.</p>
+            </div>
             <NumberField label="Ante starts at level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
             {rebuysEnabled && (
               <NumberField
@@ -276,9 +334,9 @@ function BlindCalculator({
                 <Wand2 size={15} className="text-pit-teal" />
                 Total chips: <span className="font-semibold text-white">{totalChips.toLocaleString()}</span>
               </div>
-              <button className="btn-primary gap-2" onClick={() => onSave(generatedLevels)} disabled={saving || generatedLevels.length === 0}>
+              <button className="btn-primary gap-2" onClick={() => onSave(generatedLevels)} disabled={saving || saveDisabled || generatedLevels.length === 0}>
                 <Save size={15} />
-                {saving ? 'Saving...' : 'Save Generated'}
+                {saving ? 'Saving...' : saveLabel}
               </button>
             </div>
             <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
@@ -392,7 +450,7 @@ function BlindEditor({
   error,
 }: {
   initial: BlindLevel[];
-  onSave: (levels: DraftLevel[]) => void;
+  onSave: (levels: BlindStructureDraftLevel[]) => void;
   loading: boolean;
   error?: string;
 }) {
@@ -546,7 +604,7 @@ function BlindEditor({
   );
 }
 
-function parseCalculatorSettings(settings: CalculatorSettings, tournament: Tournament): ParsedCalculatorSettings {
+function parseCalculatorSettings(settings: CalculatorSettings, tournament: BlindStructureCalculatorContext): ParsedCalculatorSettings {
   return {
     players: parseSetting(settings.players, 2),
     startingStack: parseSetting(settings.startingStack, 100),
@@ -572,7 +630,16 @@ function parseSetting(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function generateBlindStructure(settings: ParsedCalculatorSettings): DraftLevel[] {
+function selectedChipUpDenominations(value: string, allowedDenominations: number[]): number[] {
+  const allowed = new Set(allowedDenominations);
+  const selected = value
+    .split(/[,;\s]+/)
+    .map((piece) => Math.round(Number(piece.trim())))
+    .filter((denomination) => Number.isFinite(denomination) && allowed.has(denomination));
+  return Array.from(new Set(selected)).sort((a, b) => a - b);
+}
+
+function generateBlindStructure(settings: ParsedCalculatorSettings): BlindStructureDraftLevel[] {
   return buildBlindStructure(settings);
 }
 
@@ -581,7 +648,7 @@ function toNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getDefaultCalculatorPlayers(tournament: Tournament): number {
+function getDefaultCalculatorPlayers(tournament: BlindStructureCalculatorContext): number {
   const maxPlayers = Math.floor(toNumber(tournament.maxplayers));
   return maxPlayers > 0 ? maxPlayers : 10;
 }

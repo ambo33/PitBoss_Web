@@ -1,25 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, Calendar, CalendarCheck, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, ListOrdered, Medal, PlayCircle, Settings, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, CalendarCheck, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, PlayCircle, Settings, Trophy, Users, X } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import Modal from '../../components/Modal';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
 import { isEnabledFlag } from '../../utils/flags';
 
-const SETUP_CARD_DISMISSED_KEY = 'thepokerplanner.dashboard.setup.dismissed';
-
-export type CommandCenterSection = 'upcoming' | 'groups' | 'history' | 'leagues';
+export type CommandCenterSection = 'upcoming' | 'communities' | 'groups' | 'history' | 'leagues';
 
 interface TournamentsPanelProps {
   section?: CommandCenterSection;
   onSectionChange?: (section: CommandCenterSection) => void;
   renderSection?: (section: Extract<CommandCenterSection, 'groups' | 'leagues'>) => React.ReactNode;
+  onOpenCommunity?: (community: { type: 'group' | 'league'; id: string }) => void;
   hideDashboard?: boolean;
   onCreateFlowChange?: (open: boolean) => void;
   onboardingActive?: boolean;
   createGameRequestId?: number;
   onStartGroupCreate?: () => void;
+  onStartLeagueCreate?: () => void;
   onStartGroupInvite?: (groupId: string) => void;
   onStartFirstGame?: () => void;
   onCompleteOnboarding?: () => void;
@@ -30,11 +31,13 @@ export default function TournamentsPanel({
   section,
   onSectionChange,
   renderSection,
+  onOpenCommunity,
   hideDashboard = false,
   onCreateFlowChange,
   onboardingActive = false,
   createGameRequestId = 0,
   onStartGroupCreate,
+  onStartLeagueCreate,
   onStartGroupInvite,
   onStartFirstGame,
   onCompleteOnboarding,
@@ -43,17 +46,12 @@ export default function TournamentsPanel({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [showCommunityCreate, setShowCommunityCreate] = useState(false);
+  const [showCommunityJoin, setShowCommunityJoin] = useState(false);
   const [localSection, setLocalSection] = useState<CommandCenterSection>('upcoming');
   const lastCreateGameRequestRef = useRef(createGameRequestId);
   const activeSection = section ?? localSection;
   const scheduleView = activeSection === 'history' ? 'history' : 'upcoming';
-  const [setupCardDismissed, setSetupCardDismissed] = useState(() => {
-    try {
-      return localStorage.getItem(SETUP_CARD_DISMISSED_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
   const [inviteSkipped, setInviteSkipped] = useState(false);
 
   const { data: me } = useQuery({
@@ -69,12 +67,12 @@ export default function TournamentsPanel({
     staleTime: 0,
   });
 
-  const { data: groups = [], isLoading: loadingGroups } = useQuery<Group[]>({
+  const { data: groups = [] } = useQuery<Group[]>({
     queryKey: ['groups'],
     queryFn: api.getGroups,
   });
 
-  const { data: leagues = [], isLoading: loadingLeagues } = useQuery<League[]>({
+  const { data: leagues = [] } = useQuery<League[]>({
     queryKey: ['leagues'],
     queryFn: api.getLeagues,
   });
@@ -194,15 +192,9 @@ export default function TournamentsPanel({
     [gameScheduleItems, history, leagueScheduleItems]
   );
   const scheduleList = scheduleView === 'history' ? historyScheduleItems : upcomingScheduleItems;
-  const hostedUpcomingCount = upcoming.filter((tournament) => tournament.ownerid === me?.guid).length;
   const firstHostedTournament = upcoming.find((tournament) => tournament.ownerid === me?.guid) ?? upcoming[0] ?? null;
-  const hostedTournamentLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedUpcomingCount >= 1;
-  const registeredUpcomingCount = upcoming.filter((tournament) => tournament.isregistered).length;
-  const adminGroupCount = groups.filter((group) => group.isadmin).length;
   const hostableGroups = useMemo(() => groups.filter((group) => group.isadmin && group.approved), [groups]);
   const loadingSchedule = loadingMine || loadingGames || (loadingLeagueEvents && scheduleList.length === 0);
-  const dashboardDataReady = !loadingMine && !loadingGroups && !loadingLeagues && !loadingLeagueEvents && !loadingGames;
-  const showSetupCard = dashboardDataReady && !leagueScheduleError && upcomingScheduleItems.length === 0 && !setupCardDismissed;
   const externalSection = activeSection === 'groups' || activeSection === 'leagues'
     ? renderSection?.(activeSection)
     : null;
@@ -241,21 +233,17 @@ export default function TournamentsPanel({
   return (
     <>
       {!hideDashboard && (
+        <PrimaryNavigation
+          activeSection={activeSection}
+          onChange={changeSection}
+        />
+      )}
+      {!hideDashboard && (
         <DashboardOverview
           me={me}
           groups={groups}
-          leagueCount={leagues.length}
-          upcomingCount={upcomingScheduleItems.length}
-          historyCount={historyScheduleItems.length}
           firstHostedTournament={firstHostedTournament}
-          registeredUpcomingCount={registeredUpcomingCount}
-          adminGroupCount={adminGroupCount}
-          createDisabled={false}
-          showSetupCard={onboardingActive ? false : showSetupCard}
           onboardingActive={onboardingActive}
-          activeSection={activeSection}
-          onSectionChange={changeSection}
-          onCreate={() => setShowCreate(true)}
           onStartGroupCreate={onStartGroupCreate ?? (() => changeSection('groups'))}
           onStartGroupInvite={(groupId) => {
             if (onStartGroupInvite) {
@@ -272,25 +260,25 @@ export default function TournamentsPanel({
             onCompleteOnboarding?.();
             navigate(`/tournament/${tournamentId}`, { state: { tab: 'players' } });
           }}
-          onDismissSetup={() => {
-            setSetupCardDismissed(true);
-            try {
-              localStorage.setItem(SETUP_CARD_DISMISSED_KEY, 'true');
-            } catch {
-              // Best effort only. The visible state still dismisses for this session.
-            }
-          }}
         />
-      )}
-
-      {!hideDashboard && hostedTournamentLimitReached && (
-        <p className="mb-4 rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-200">
-          Host tier can host 1 upcoming tournament at a time. Move this event into history or upgrade to Club or Pro to host more.
-        </p>
       )}
 
       {externalSection ? (
         <div className="min-w-0">{externalSection}</div>
+      ) : activeSection === 'communities' ? (
+        <CommunitiesDirectory
+          groups={groups}
+          leagues={leagues}
+          onCreate={() => setShowCommunityCreate(true)}
+          onJoin={() => setShowCommunityJoin(true)}
+          onOpen={(community) => {
+            if (onOpenCommunity) {
+              onOpenCommunity(community);
+              return;
+            }
+            changeSection(community.type === 'group' ? 'groups' : 'leagues');
+          }}
+        />
       ) : (loadingSchedule || scheduleList.length > 0 || scheduleView === 'upcoming' || scheduleView === 'history') && (
         <>
           {rsvpError && (
@@ -306,13 +294,23 @@ export default function TournamentsPanel({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b8b8c7]">
-                {scheduleView === 'history' ? 'Tournament history' : 'Upcoming games'}
+                {scheduleView === 'history' ? 'Tournament history' : `${scheduleList.length} upcoming games`}
               </p>
             </div>
-            {scheduleList.length > 0 && (
-              <span className="rounded-full border border-white/15 bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da]">
-                {scheduleView === 'history' ? `${scheduleList.length} history` : `${scheduleList.length} upcoming`}
-              </span>
+            {scheduleView === 'upcoming' && (
+              <button
+                type="button"
+                className="btn-primary px-3 py-2 text-xs"
+                onClick={() => {
+                  if (hostableGroups.length > 0) {
+                    setShowCreate(true);
+                    return;
+                  }
+                  changeSection('communities');
+                }}
+              >
+                + Host Game
+              </button>
             )}
           </div>
 
@@ -359,25 +357,74 @@ export default function TournamentsPanel({
           )}
         </>
       )}
+
+      <CreateCommunityModal
+        open={showCommunityCreate}
+        onClose={() => setShowCommunityCreate(false)}
+        onCreateGroup={() => {
+          setShowCommunityCreate(false);
+          (onStartGroupCreate ?? (() => changeSection('groups')))();
+        }}
+        onCreateLeague={() => {
+          setShowCommunityCreate(false);
+          (onStartLeagueCreate ?? (() => changeSection('leagues')))();
+        }}
+      />
+      <JoinCommunityModal
+        open={showCommunityJoin}
+        onClose={() => setShowCommunityJoin(false)}
+        onSubmit={(code) => {
+          setShowCommunityJoin(false);
+          navigate(`/join/${encodeURIComponent(code.trim().toUpperCase())}`);
+        }}
+      />
     </>
+  );
+}
+
+function PrimaryNavigation({
+  activeSection,
+  onChange,
+}: {
+  activeSection: CommandCenterSection;
+  onChange: (section: CommandCenterSection) => void;
+}) {
+  const gamesActive = activeSection === 'upcoming' || activeSection === 'history';
+  const communitiesActive = activeSection === 'communities' || activeSection === 'groups' || activeSection === 'leagues';
+
+  return (
+    <nav className="mb-5 inline-flex rounded-xl border border-pit-border bg-pit-surface/80 p-1 shadow-[0_10px_28px_rgba(0,0,0,0.14)]" aria-label="Main navigation">
+      <button
+        type="button"
+        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+          gamesActive
+            ? 'bg-pit-teal text-pit-bg shadow-[0_0_16px_rgba(20,184,166,0.24)]'
+            : 'text-pit-text hover:bg-white/5 hover:text-white'
+        }`}
+        onClick={() => onChange('upcoming')}
+      >
+        Games
+      </button>
+      <button
+        type="button"
+        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+          communitiesActive
+            ? 'bg-pit-teal text-pit-bg shadow-[0_0_16px_rgba(20,184,166,0.24)]'
+            : 'text-pit-text hover:bg-white/5 hover:text-white'
+        }`}
+        onClick={() => onChange('communities')}
+      >
+        Groups & Leagues
+      </button>
+    </nav>
   );
 }
 
 function DashboardOverview({
   me,
   groups,
-  leagueCount,
-  upcomingCount,
-  historyCount,
   firstHostedTournament,
-  registeredUpcomingCount,
-  adminGroupCount,
-  createDisabled,
-  showSetupCard,
   onboardingActive,
-  activeSection,
-  onSectionChange,
-  onCreate,
   onStartGroupCreate,
   onStartGroupInvite,
   onStartFirstGame,
@@ -385,22 +432,11 @@ function DashboardOverview({
   inviteSkipped,
   onSkipInvite,
   onOpenFirstGame,
-  onDismissSetup,
 }: {
   me?: Awaited<ReturnType<typeof api.me>>;
   groups: Group[];
-  leagueCount: number;
-  upcomingCount: number;
-  historyCount: number;
   firstHostedTournament: Tournament | null;
-  registeredUpcomingCount: number;
-  adminGroupCount: number;
-  createDisabled: boolean;
-  showSetupCard: boolean;
   onboardingActive: boolean;
-  activeSection: CommandCenterSection;
-  onSectionChange: (section: CommandCenterSection) => void;
-  onCreate: () => void;
   onStartGroupCreate: () => void;
   onStartGroupInvite: (groupId: string) => void;
   onStartFirstGame: () => void;
@@ -408,116 +444,29 @@ function DashboardOverview({
   inviteSkipped: boolean;
   onSkipInvite: () => void;
   onOpenFirstGame: (tournamentId: string) => void;
-  onDismissSetup: () => void;
 }) {
-  const firstName = getFirstName(me?.displayname);
   const adminGroups = groups.filter((group) => group.isadmin && group.approved);
   const primaryAdminGroup = adminGroups[0] ?? null;
   const hasInvitedPlayer = adminGroups.some((group) => Number(group.membercount ?? 0) > 1);
   const showOnboardingCard = onboardingActive && Boolean(me);
-  const setupItems = [
-    { label: 'Create a host group', complete: adminGroupCount > 0 },
-    { label: 'Schedule a game', complete: upcomingCount > 0 },
-    { label: 'Get players registered', complete: registeredUpcomingCount > 0 },
-  ];
+
+  if (!showOnboardingCard) return null;
 
   return (
-    <section className={`mb-5 grid min-w-0 max-w-full gap-3 ${showSetupCard || showOnboardingCard ? 'md:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
-      <div className="min-w-0 overflow-hidden rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.16),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.96),rgba(24,24,30,0.96))] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-pit-teal">Command center</p>
-            <h1 className="mt-1.5 text-xl font-bold tracking-tight text-white sm:text-2xl">
-              {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            {typeof me?.aicreditsremaining === 'number' && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-pit-text">
-                {me.aicreditsremaining} voice credits
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 max-[380px]:grid-cols-1 sm:grid-cols-4">
-          <DashboardStat icon={Calendar} label="Upcoming" value={upcomingCount} active={activeSection === 'upcoming'} onClick={() => onSectionChange('upcoming')} />
-          <DashboardStat icon={Users} label="Groups" value={groups.length} active={activeSection === 'groups'} onClick={() => onSectionChange('groups')} />
-          <DashboardStat icon={Medal} label="History" value={historyCount} active={activeSection === 'history'} onClick={() => onSectionChange('history')} />
-          <DashboardStat icon={ListOrdered} label="Leagues" value={leagueCount} active={activeSection === 'leagues'} onClick={() => onSectionChange('leagues')} />
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {adminGroupCount > 0 ? (
-            <button
-              type="button"
-              className="btn-primary px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={onCreate}
-              disabled={createDisabled}
-              title={createDisabled ? 'Host tier can host 1 upcoming tournament at a time.' : undefined}
-            >
-              + Host Game
-            </button>
-          ) : (
-            <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => onSectionChange('groups')}>
-              Set up group
-            </button>
-          )}
-        </div>
-      </div>
-
-      {showOnboardingCard && (
-        <FirstRunSetupCard
-          primaryGroup={primaryAdminGroup}
-          hasInvitedPlayer={hasInvitedPlayer}
-          inviteSkipped={inviteSkipped}
-          hasFirstGame={Boolean(firstHostedTournament)}
-          firstGameName={firstHostedTournament?.name}
-          onCreateGroup={onStartGroupCreate}
-          onInvitePlayer={() => primaryAdminGroup && onStartGroupInvite(primaryAdminGroup.groupid)}
-          onSkipInvite={onSkipInvite}
-          onCreateGame={onStartFirstGame}
-          onOpenFirstGame={() => firstHostedTournament && onOpenFirstGame(firstHostedTournament.tournamentid)}
-          onFinish={() => onCompleteOnboarding?.()}
-        />
-      )}
-
-      {!showOnboardingCard && showSetupCard && (
-        <div className="rounded-xl border border-pit-border bg-pit-surface/80 p-3 sm:p-4">
-          <>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-muted">Ready when you are</p>
-                <h2 className="mt-1 text-lg font-bold text-white">Set up the next poker night.</h2>
-              </div>
-              <button
-                type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-pit-border text-pit-muted transition hover:border-pit-teal/50 hover:text-white"
-                onClick={onDismissSetup}
-                aria-label="Hide setup tutorial"
-                title="Hide setup tutorial"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-pit-muted">
-              Start with a group, then schedule the tournament and let ThePokerPlanner handle the boring parts.
-            </p>
-            <div className="mt-3 space-y-1.5">
-              {setupItems.map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-lg border border-pit-border/70 bg-pit-bg/40 px-2.5 py-2">
-                  <span className="text-xs text-pit-text">{item.label}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                    item.complete ? 'bg-pit-teal/15 text-pit-teal' : 'bg-white/5 text-pit-muted'
-                  }`}>
-                    {item.complete ? 'Done' : 'Next'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        </div>
-      )}
+    <section className="mb-5 max-w-[22rem]">
+      <FirstRunSetupCard
+        primaryGroup={primaryAdminGroup}
+        hasInvitedPlayer={hasInvitedPlayer}
+        inviteSkipped={inviteSkipped}
+        hasFirstGame={Boolean(firstHostedTournament)}
+        firstGameName={firstHostedTournament?.name}
+        onCreateGroup={onStartGroupCreate}
+        onInvitePlayer={() => primaryAdminGroup && onStartGroupInvite(primaryAdminGroup.groupid)}
+        onSkipInvite={onSkipInvite}
+        onCreateGame={onStartFirstGame}
+        onOpenFirstGame={() => firstHostedTournament && onOpenFirstGame(firstHostedTournament.tournamentid)}
+        onFinish={() => onCompleteOnboarding?.()}
+      />
     </section>
   );
 }
@@ -641,47 +590,191 @@ function FirstRunSetupCard({
   );
 }
 
-function DashboardStat({
-  icon: Icon,
-  label,
-  value,
-  active = false,
-  onClick,
+function CommunitiesDirectory({
+  groups,
+  leagues,
+  onCreate,
+  onJoin,
+  onOpen,
 }: {
-  icon: typeof Trophy;
-  label: string;
-  value: number | string;
-  active?: boolean;
-  onClick?: () => void;
+  groups: Group[];
+  leagues: League[];
+  onCreate: () => void;
+  onJoin: () => void;
+  onOpen: (community: { type: 'group' | 'league'; id: string }) => void;
 }) {
-  const content = (
-    <>
-      <div className="flex items-center gap-2 text-[#b8b8c7]">
-        <Icon size={12} />
-        <span className="text-[11px] font-medium">{label}</span>
-      </div>
-      <p className="mt-1.5 text-xl font-bold text-white">{value}</p>
-    </>
-  );
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={`min-w-0 rounded-lg border px-2.5 py-2 text-left transition ${
-          active
-            ? 'border-pit-teal/45 bg-pit-teal/10'
-            : 'border-white/10 bg-black/18 hover:border-pit-teal/40 hover:bg-pit-teal/5'
-        }`}
-      >
-        {content}
-      </button>
-    );
-  }
+  const communities = useMemo(() => [
+    ...groups.map((group) => ({
+      id: group.groupid,
+      type: 'group' as const,
+      name: group.name,
+      code: group.invitecode,
+      count: Number(group.membercount ?? 0),
+      isAdmin: Boolean(group.isadmin),
+      detail: group.nexttournamentname ? `Next: ${group.nexttournamentname}` : 'No game scheduled',
+    })),
+    ...leagues.map((league) => ({
+      id: league.leagueid,
+      type: 'league' as const,
+      name: league.name,
+      code: league.invitecode,
+      count: Number(league.membercount ?? 0),
+      isAdmin: Boolean(league.isadmin),
+      detail: `${Number(league.eventcount ?? 0)} event${Number(league.eventcount ?? 0) === 1 ? '' : 's'}`,
+    })),
+  ].sort((a, b) => a.name.localeCompare(b.name)), [groups, leagues]);
+
   return (
-    <div className="min-w-0 rounded-lg border border-white/10 bg-black/18 px-2.5 py-2">
-      {content}
-    </div>
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d0d0da]">Groups & Leagues</p>
+          <h2 className="mt-1 text-lg font-bold text-white">Your poker communities</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="hidden rounded-full border border-white/15 bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da] sm:inline">
+            {communities.length} total
+          </span>
+          <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={onJoin}>+ Join</button>
+          <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={onCreate}>+ Create</button>
+        </div>
+      </div>
+
+      {communities.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-pit-border bg-pit-surface/60 px-4 py-10 text-center">
+          <Users className="mx-auto mb-3 text-pit-muted" size={28} />
+          <p className="font-semibold text-white">No groups or leagues yet</p>
+          <p className="mt-1 text-sm text-pit-text">Create or join one to keep your games and seasons together.</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={onJoin}>+ Join</button>
+            <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={onCreate}>+ Create</button>
+          </div>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
+          <div className="hidden grid-cols-[minmax(0,1.5fr)_7.5rem_minmax(0,1fr)_6rem] gap-3 border-b border-pit-border/70 bg-black/18 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted md:grid">
+            <span>Name</span>
+            <span>Type</span>
+            <span>Activity</span>
+            <span className="text-right">Open</span>
+          </div>
+          <div className="divide-y divide-pit-border/60">
+            {communities.map((community) => (
+              <button
+                key={`${community.type}-${community.id}`}
+                type="button"
+                onClick={() => onOpen({ type: community.type, id: community.id })}
+                className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-3 text-left transition md:grid-cols-[minmax(0,1.5fr)_7.5rem_minmax(0,1fr)_6rem] md:items-center md:gap-3 md:border-l-0 md:px-4 ${
+                  community.isAdmin ? 'border-pit-gold/60 bg-pit-gold/[0.035]' : 'border-transparent hover:bg-white/[0.025]'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-white transition group-hover:text-pit-teal md:text-base">{community.name}</span>
+                    {community.isAdmin && <span className="shrink-0 rounded-full border border-pit-gold/35 bg-pit-gold/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-pit-gold">Admin</span>}
+                  </div>
+                  <p className="mt-1 text-xs text-pit-text md:hidden">{community.detail}</p>
+                </div>
+                <div className="col-start-2 row-start-1 md:col-auto md:row-auto">
+                  <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                    community.type === 'group'
+                      ? 'border-pit-teal/45 bg-pit-teal/10 text-pit-teal'
+                      : 'border-violet-400/45 bg-violet-500/10 text-violet-300'
+                  }`}>
+                    {community.type}
+                  </span>
+                </div>
+                <div className="col-start-1 row-start-2 flex items-center gap-2 text-xs text-pit-text md:col-auto md:row-auto">
+                  <Users size={13} className="text-pit-muted" />
+                  <span>{community.count}</span>
+                  <span className="hidden text-pit-muted md:inline">{community.detail}</span>
+                </div>
+                <span className="col-start-2 row-span-2 row-start-1 hidden items-center justify-end text-xs font-semibold text-pit-teal md:inline-flex md:col-auto md:row-auto">Open</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CreateCommunityModal({
+  open,
+  onClose,
+  onCreateGroup,
+  onCreateLeague,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreateGroup: () => void;
+  onCreateLeague: () => void;
+}) {
+  return (
+    <Modal title="Create Group or League" open={open} onClose={onClose} mobilePlacement="center">
+      <p className="text-sm text-pit-text">Choose the kind of poker community you want to set up.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onCreateGroup}
+          className="rounded-xl border border-pit-teal/35 bg-pit-teal/10 p-4 text-left transition hover:border-pit-teal hover:bg-pit-teal/15"
+        >
+          <Users size={20} className="text-pit-teal" />
+          <span className="mt-3 block font-semibold text-white">Group</span>
+          <span className="mt-1 block text-xs leading-5 text-pit-text">Bring players together to organize games, posts, and invites.</span>
+        </button>
+        <button
+          type="button"
+          onClick={onCreateLeague}
+          className="rounded-xl border border-violet-400/35 bg-violet-500/10 p-4 text-left transition hover:border-violet-300 hover:bg-violet-500/15"
+        >
+          <Trophy size={20} className="text-violet-300" />
+          <span className="mt-3 block font-semibold text-white">League</span>
+          <span className="mt-1 block text-xs leading-5 text-pit-text">Set up a multi-event season with standings, points, and fees.</span>
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function JoinCommunityModal({
+  open,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (code: string) => void;
+}) {
+  const [code, setCode] = useState('');
+
+  return (
+    <Modal
+      title="Join Group or League"
+      open={open}
+      onClose={onClose}
+      mobilePlacement="center"
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={!code.trim()} onClick={() => onSubmit(code)}>
+            Continue
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <input
+          className="input text-center font-mono text-lg uppercase tracking-[0.18em]"
+          value={code}
+          onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10))}
+          placeholder="Join code"
+          maxLength={10}
+          autoFocus
+        />
+        <p className="text-center text-xs text-pit-muted">Enter a group or league join code.</p>
+      </div>
+    </Modal>
   );
 }
 
@@ -763,7 +856,7 @@ function ScheduleList({
 
   return (
     <div className="overflow-visible rounded-xl border border-pit-border bg-pit-surface/70 shadow-[0_14px_38px_rgba(0,0,0,0.16)]">
-      <div className="hidden grid-cols-[minmax(12rem,1.35fr)_6.75rem_8.5rem_5.5rem_10.25rem_7rem] gap-4 border-b border-pit-border/70 bg-black/18 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] md:grid">
+      <div className="hidden grid-cols-[minmax(12rem,1.35fr)_6.75rem_8.5rem_5.5rem_10.25rem_7rem] gap-4 border-b border-pit-border/70 bg-black/18 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b8b8c7] lg:grid">
         <span>Name</span>
         <span>Type</span>
         <span>Date / time</span>
@@ -880,22 +973,22 @@ function ScheduleRow({
   return (
     <div
       id={`schedule-item-${item.id}`}
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition md:grid-cols-[minmax(12rem,1.35fr)_6.75rem_8.5rem_5.5rem_10.25rem_7rem] md:items-center md:gap-4 md:border-l-0 md:px-5 md:py-3 ${
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 border-l-2 px-3 py-2 transition lg:grid-cols-[minmax(12rem,1.35fr)_6.75rem_8.5rem_5.5rem_10.25rem_7rem] lg:items-center lg:gap-4 lg:border-l-0 lg:px-5 lg:py-3 ${
         focused
           ? 'border-pit-teal bg-pit-teal/10 shadow-[inset_0_0_0_1px_rgba(20,184,166,0.35),0_0_24px_rgba(20,184,166,0.12)]'
           :
         isDeclined
-          ? 'border-red-300/60 bg-red-500/[0.035] md:bg-red-500/10'
+          ? 'border-red-300/60 bg-red-500/[0.035] lg:bg-red-500/10'
           : isRegistered
-            ? 'border-pit-teal/60 bg-pit-teal/[0.035] md:bg-pit-teal/5'
+            ? 'border-pit-teal/60 bg-pit-teal/[0.035] lg:bg-pit-teal/5'
             : 'border-transparent hover:bg-white/[0.025]'
       }`}
     >
-      <div className="col-start-1 row-start-1 min-w-0 overflow-hidden md:col-auto md:row-auto">
+      <div className="col-start-1 row-start-1 min-w-0 overflow-hidden lg:col-auto lg:row-auto">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="block min-w-0 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
+            className="block min-w-0 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal lg:text-base"
             onClick={onOpen}
             title={item.name}
           >
@@ -907,45 +1000,45 @@ function ScheduleRow({
         )}
       </div>
 
-      <div className="hidden md:col-auto md:row-auto md:flex">
+      <div className="hidden lg:col-auto lg:row-auto lg:flex">
         <span className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${typePillClass}`}>
           {typeLabel}
         </span>
       </div>
 
-      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-[#c6c6d2] md:col-auto md:row-auto md:block md:space-y-1 md:text-xs">
-        <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
+      <div className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-[#c6c6d2] lg:col-auto lg:row-auto lg:block lg:space-y-1 lg:text-xs">
+        <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 lg:bg-transparent lg:px-0 lg:py-0">
           <Calendar size={13} className="shrink-0" />
           {item.date ?? 'Date TBD'}
         </span>
         {item.time && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:bg-transparent md:px-0 md:py-0">
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 lg:bg-transparent lg:px-0 lg:py-0">
             <Clock size={13} className="shrink-0" />
             {formatTime12Hour(item.time)}
           </span>
         )}
         {fieldCount && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 md:hidden">
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 lg:hidden">
             <Users size={13} className="shrink-0" />
             {fieldCount}
           </span>
         )}
       </div>
 
-      <div className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold md:col-auto md:row-auto md:block md:justify-self-auto md:text-left">
+      <div className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold lg:col-auto lg:row-auto lg:block lg:justify-self-auto lg:text-left">
         {showMobileStatus && (
-          <span className={`inline-flex h-6 w-[6.75rem] shrink-0 items-center justify-center gap-1 rounded-full border px-2 text-[10px] font-black leading-none md:hidden ${statusPillClass}`}>
+          <span className={`inline-flex h-6 w-[6.75rem] shrink-0 items-center justify-center gap-1 rounded-full border px-2 text-[10px] font-black leading-none lg:hidden ${statusPillClass}`}>
             {statusIcon}
             {statusLabel}
           </span>
         )}
-        <span className={`inline-flex h-6 items-center rounded-full border px-2 text-[9px] font-semibold uppercase tracking-[0.1em] md:hidden ${typePillClass}`}>
+        <span className={`inline-flex h-6 items-center rounded-full border px-2 text-[9px] font-semibold uppercase tracking-[0.1em] lg:hidden ${typePillClass}`}>
           {typeLabel}
         </span>
         <span>{formatCostLabel(item.cost)}</span>
       </div>
 
-      <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 md:col-auto md:row-auto md:flex md:justify-start">
+      <div className="col-start-2 row-start-2 hidden items-center justify-end gap-2 lg:col-auto lg:row-auto lg:flex lg:justify-start">
         {statusLabel && (
           <span className={`inline-flex h-7 min-w-[6.75rem] items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-semibold ${statusPillClass}`}>
             {statusIcon}
@@ -960,7 +1053,7 @@ function ScheduleRow({
         )}
       </div>
 
-      <div className={`${showRsvpChoices ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 md:col-auto md:row-auto md:mt-0 md:flex md:grid-cols-none md:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 md:col-auto md:row-auto md:gap-2'}`}>
+      <div className={`${showRsvpChoices ? 'col-span-2 row-start-3 mt-2 grid grid-cols-2 gap-2 lg:col-auto lg:row-auto lg:mt-0 lg:flex lg:grid-cols-none lg:justify-end' : 'col-start-2 row-start-2 flex items-center justify-end gap-1.5 lg:col-auto lg:row-auto lg:gap-2'}`}>
         {showLeagueAdminPlayerMenu ? (
           <div className="relative">
             <button
@@ -1017,7 +1110,7 @@ function ScheduleRow({
             </button>
             <button
               type="button"
-              className="inline-flex h-8 w-10 items-center justify-center rounded-full border border-red-300/30 bg-red-400/8 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 md:h-9 md:min-w-14 md:px-3"
+              className="inline-flex h-8 w-10 items-center justify-center rounded-full border border-red-300/30 bg-red-400/8 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 lg:h-9 lg:min-w-14 lg:px-3"
               disabled={loading}
               onClick={onDecline}
               aria-label={`Cannot attend ${item.name}`}
@@ -1040,7 +1133,7 @@ function ScheduleRow({
           <>
             <button
               type="button"
-              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition md:h-9 md:min-w-20 md:rounded-full md:text-xs ${
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition lg:h-9 lg:min-w-20 lg:rounded-full lg:text-xs ${
                 isRegistered
                   ? 'border-pit-teal/55 bg-pit-teal/20 text-pit-teal shadow-inner'
                   : 'border-pit-teal/45 bg-pit-teal/12 text-pit-teal hover:bg-pit-teal/20'
@@ -1055,7 +1148,7 @@ function ScheduleRow({
             </button>
             <button
               type="button"
-              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition md:h-9 md:min-w-20 md:rounded-full md:text-xs ${
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition lg:h-9 lg:min-w-20 lg:rounded-full lg:text-xs ${
                 isDeclined
                   ? 'border-red-300/55 bg-red-400/20 text-red-100 shadow-inner'
                   : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'
@@ -1729,10 +1822,6 @@ function formatCashGameCount(game: GameListItem): string {
   const seated = Number(game.playercount ?? 0);
   const seats = Number(game.seatsavailable ?? 0);
   return seats > 0 ? `${seated}/${seats}` : String(seated);
-}
-
-function getFirstName(value: string | null | undefined) {
-  return value?.trim().split(/\s+/)[0] ?? '';
 }
 
 function isUpcomingTournament(tournament: Tournament): boolean {

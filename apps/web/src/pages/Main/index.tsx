@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User } from 'lucide-react';
+import { Bot, Calendar, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User, Users } from 'lucide-react';
 import Layout, { NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
@@ -33,6 +33,7 @@ export default function MainPage() {
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [createGameRequestId, setCreateGameRequestId] = useState(0);
   const [groupCreateRequestId, setGroupCreateRequestId] = useState(0);
+  const [leagueCreateRequestId, setLeagueCreateRequestId] = useState(0);
   const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; tab?: 'posts'; postId?: string; token: number } | null>(() => (
     deepLink.groupId ? { groupId: deepLink.groupId, tab: deepLink.groupTab, postId: deepLink.postId, token: 1 } : null
   ));
@@ -144,7 +145,16 @@ export default function MainPage() {
     setView('command');
     setCommandSection('groups');
     setCommandDetailOpen(false);
-    setGroupCreateRequestId((value) => value + 1);
+    setGroupCreateRequestId(0);
+    window.setTimeout(() => setGroupCreateRequestId((value) => value + 1), 0);
+  };
+
+  const startLeagueCreate = () => {
+    setView('command');
+    setCommandSection('leagues');
+    setCommandDetailOpen(false);
+    setLeagueCreateRequestId(0);
+    window.setTimeout(() => setLeagueCreateRequestId((value) => value + 1), 0);
   };
 
   const startGroupInvite = (groupId: string) => {
@@ -178,24 +188,39 @@ export default function MainPage() {
         hideFeedback={createTournamentOpen}
         headerRight={
           <CommandCenterMenu
-            onHome={() => setView('command')}
+            onUpcoming={() => handleCommandSectionChange('upcoming')}
+            onCommunities={() => handleCommandSectionChange('communities')}
             onProfile={() => setView('profile')}
             onAdmin={() => setView('admin')}
           />
         }
-        mainWidthClassName={view === 'admin' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-5xl'}
+        mainWidthClassName={view === 'admin' || commandSection === 'communities' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-5xl'}
       >
         <PwaPushPrompt />
         {view === 'command' && (
           <TournamentsPanel
             section={commandSection}
             onSectionChange={handleCommandSectionChange}
+            onOpenCommunity={({ type, id }) => {
+              setView('command');
+              setCommandDetailOpen(false);
+              if (type === 'group') {
+                setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
+                setCommandSection('groups');
+                setGroupOpenRequest({ groupId: id, token: Date.now() });
+                return;
+              }
+              setGroupOpenRequest(null);
+              setCommandSection('leagues');
+              setLeagueDeepLink({ leagueId: id, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
+            }}
             hideDashboard={commandDetailOpen}
             onCreateFlowChange={setCreateTournamentOpen}
             onboardingActive={showTour}
             createGameRequestId={createGameRequestId}
             focusScheduleItemId={deepLink.scheduleItemId}
             onStartGroupCreate={startGroupCreate}
+            onStartLeagueCreate={startLeagueCreate}
             onStartGroupInvite={startGroupInvite}
             onStartFirstGame={startGameCreate}
             onCompleteOnboarding={() => completeTourMutation.mutate()}
@@ -204,6 +229,7 @@ export default function MainPage() {
                 ? (
                   <GroupsPanel
                     onDetailStateChange={setCommandDetailOpen}
+                    onBackToCommunities={() => handleCommandSectionChange('communities')}
                     createRequestId={groupCreateRequestId}
                     openGroupRequest={groupOpenRequest}
                   />
@@ -216,6 +242,8 @@ export default function MainPage() {
                     initialPostId={leagueDeepLink.postId}
                     initialEventId={leagueDeepLink.eventId}
                     onDetailStateChange={setCommandDetailOpen}
+                    onBackToCommunities={() => handleCommandSectionChange('communities')}
+                    createRequestId={leagueCreateRequestId}
                   />
                 )
             )}
@@ -241,7 +269,7 @@ function parseCommandCenterDeepLink(search: string): {
 } {
   const params = new URLSearchParams(search);
   const rawSection = params.get('section');
-  const section = rawSection === 'groups' || rawSection === 'leagues' || rawSection === 'history' || rawSection === 'upcoming'
+  const section = rawSection === 'groups' || rawSection === 'leagues' || rawSection === 'communities' || rawSection === 'history' || rawSection === 'upcoming'
     ? rawSection
     : undefined;
   return {
@@ -260,17 +288,18 @@ function parseCommandCenterDeepLink(search: string): {
 }
 
 function sectionFromTab(tab?: NavTab): CommandCenterSection {
-  if (tab === 'groups') return 'groups';
-  if (tab === 'leagues') return 'leagues';
+  if (tab === 'groups' || tab === 'leagues') return 'communities';
   return 'upcoming';
 }
 
 function CommandCenterMenu({
-  onHome,
+  onUpcoming,
+  onCommunities,
   onProfile,
   onAdmin,
 }: {
-  onHome: () => void;
+  onUpcoming: () => void;
+  onCommunities: () => void;
   onProfile: () => void;
   onAdmin: () => void;
 }) {
@@ -307,16 +336,19 @@ function CommandCenterMenu({
   }
 
   return (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef} className="relative flex items-center gap-2">
+      <span className="max-w-32 truncate text-sm font-semibold text-white sm:max-w-48" title={user?.tablename || user?.displayname || 'Account'}>
+        {user?.tablename || user?.displayname || 'Account'}
+      </span>
       <button
-        type="button"
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
-        onClick={() => setOpen((value) => !value)}
-        aria-label="Open account menu"
-        aria-expanded={open}
-      >
-        <Menu size={20} />
-      </button>
+          type="button"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+          onClick={() => setOpen((value) => !value)}
+          aria-label="Open account menu"
+          aria-expanded={open}
+        >
+          <Menu size={20} />
+        </button>
       {open && (
         <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-pit-border bg-pit-card py-1 shadow-2xl">
           <button
@@ -324,11 +356,22 @@ function CommandCenterMenu({
             className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
             onClick={() => {
               setOpen(false);
-              onHome();
+              onUpcoming();
             }}
           >
-            <Home size={15} />
-            Command Center
+            <Calendar size={15} />
+            Upcoming Games
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onCommunities();
+            }}
+          >
+            <Users size={15} />
+            Groups & Leagues
           </button>
           <button
             type="button"

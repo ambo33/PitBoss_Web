@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { io } from 'socket.io-client';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, Menu, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule, LeagueSeason } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -27,7 +28,7 @@ const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
 ];
 const BASE_POINT_TOTAL = BASE_POINTS_LOOKUP.filter((rule) => rule.place !== 'DNF').reduce((sum, rule) => sum + rule.points, 0);
 const FULL_FIELD_FIRST_PLACE_SHARE = Number(BASE_POINTS_LOOKUP.find((rule) => rule.place === 1)?.points ?? 0) / BASE_POINT_TOTAL;
-type LeagueDetailTab = 'overview' | 'events' | 'board' | 'fees' | 'audit' | 'players';
+type LeagueDetailTab = 'overview' | 'events' | 'board' | 'fees' | 'audit' | 'players' | 'scoring';
 
 export default function LeaguesPanel({
   initialLeagueId,
@@ -36,6 +37,8 @@ export default function LeaguesPanel({
   initialPostId,
   initialEventId,
   onDetailStateChange,
+  onBackToCommunities,
+  createRequestId = 0,
 }: {
   initialLeagueId?: string;
   initialSeasonId?: string;
@@ -43,10 +46,13 @@ export default function LeaguesPanel({
   initialPostId?: string;
   initialEventId?: string;
   onDetailStateChange?: (open: boolean) => void;
+  onBackToCommunities?: () => void;
+  createRequestId?: number;
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const lastCreateRequestRef = useRef(createRequestId);
   const [showJoin, setShowJoin] = useState(false);
   const [selected, setSelected] = useState<Pick<League, 'leagueid'> | null>(initialLeagueId ? { leagueid: initialLeagueId } : null);
   const { data: leagues = [], isLoading } = useQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
@@ -69,6 +75,13 @@ export default function LeaguesPanel({
     if (initialLeagueId) setSelected({ leagueid: initialLeagueId });
   }, [initialLeagueId]);
 
+  useEffect(() => {
+    if (!createRequestId || createRequestId === lastCreateRequestRef.current) return;
+    lastCreateRequestRef.current = createRequestId;
+    setSelected(null);
+    setShowCreate(true);
+  }, [createRequestId]);
+
   if (isLoading) return <LoadingSpinner className="mt-16" />;
 
   if (selected) {
@@ -79,7 +92,10 @@ export default function LeaguesPanel({
         initialTab={initialTab}
         initialPostId={initialPostId}
         initialEventId={initialEventId}
-        onBack={() => setSelected(null)}
+        onBack={() => {
+          setSelected(null);
+          onBackToCommunities?.();
+        }}
       />
     );
   }
@@ -249,10 +265,9 @@ function LeagueDetailView({
   const currentUserId = useAuthStore((state) => state.user?.guid ?? null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [seasonModalOpen, setSeasonModalOpen] = useState(false);
-  const [pointsModalOpen, setPointsModalOpen] = useState(false);
-  const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentTargetUserId, setPaymentTargetUserId] = useState<string | null>(null);
   const [paymentSaveState, setPaymentSaveState] = useState<{ count: number; paymenttype: LeaguePaymentType }>({ count: 0, paymenttype: 'league' });
   const [shareInviteOpen, setShareInviteOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -264,6 +279,7 @@ function LeagueDetailView({
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(initialSeasonId ?? null);
   const [selectedRankUserId, setSelectedRankUserId] = useState<string | null>(null);
   const [mobileRankUserId, setMobileRankUserId] = useState<string | null>(null);
+  const [pendingScoringPlayerCount, setPendingScoringPlayerCount] = useState<number | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>(initialTab ?? 'overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
@@ -400,24 +416,53 @@ function LeagueDetailView({
       await qc.refetchQueries({ queryKey: ['league', league.leagueid, selectedSeasonId], type: 'active' });
     },
   });
-  const updateLeagueMutation = useMutation({
-    mutationFn: (payload: Partial<Pick<League, 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible'>>) =>
-      api.updateLeague(league.leagueid, payload),
+  const updateSeasonScoringMutation = useMutation({
+    mutationFn: (payload: {
+      showupbonuspoints: number;
+      bestfinishcount: number;
+      pointslookup: LeaguePointRule[];
+      finalenabled: boolean;
+      finalmultiplierlookup: LeagueFinalMultiplier[];
+      finalchiprounding: number;
+      finalstartingbigblind: number;
+      expectedplayercount?: number;
+    }) => {
+      const seasonId = data?.selectedseasonid ?? selectedSeasonId;
+      if (!seasonId) throw new Error('Choose a season before updating scoring.');
+      return Promise.all([
+        api.updateLeagueSeason(league.leagueid, seasonId, {
+          showupbonuspoints: payload.showupbonuspoints,
+          bestfinishcount: payload.bestfinishcount,
+          pointslookup: payload.pointslookup,
+          expectedplayercount: payload.expectedplayercount,
+          finalscoresupdated: payload.expectedplayercount != null,
+        }),
+        api.updateLeague(league.leagueid, {
+          finalenabled: payload.finalenabled,
+          finalmultiplierlookup: payload.finalmultiplierlookup,
+          finalchiprounding: payload.finalchiprounding,
+          finalstartingbigblind: payload.finalstartingbigblind,
+        }),
+      ]);
+    },
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
         qc.invalidateQueries({ queryKey: ['leagues'] }),
       ]);
       await qc.refetchQueries({ queryKey: ['league', league.leagueid], type: 'active' });
-      setPointsModalOpen(false);
-      setFinalModalOpen(false);
+      setPendingScoringPlayerCount(null);
     },
   });
   const updateNamesMutation = useMutation({
-    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean; eventsasgames?: boolean }) => {
+    mutationFn: async (payload: { leagueName: string; seasonId?: string | null; seasonName?: string; expectedplayercount?: number; memberledgervisible: boolean; eventsasgames?: boolean }) => {
       await api.updateLeague(league.leagueid, { name: payload.leagueName, memberledgervisible: payload.memberledgervisible });
       if (payload.seasonId && payload.seasonName) {
-        await api.updateLeagueSeason(league.leagueid, payload.seasonId, { name: payload.seasonName, eventsasgames: payload.eventsasgames });
+        await api.updateLeagueSeason(league.leagueid, payload.seasonId, {
+          name: payload.seasonName,
+          expectedplayercount: payload.expectedplayercount,
+          eventsasgames: payload.eventsasgames,
+        });
       }
     },
     onSuccess: async () => {
@@ -547,6 +592,26 @@ function LeagueDetailView({
   }, [manageMenuOpen]);
   const selectedEventFromDetail = selectedEvent && detail?.events.find((event) => event.eventid === selectedEvent.eventid) || null;
   const currentEvent = selectedEventFromDetail || detail?.events[0] || null;
+  useEffect(() => {
+    if (!detail?.league.isadmin || !currentEvent?.eventid) return;
+    const socket = io('/', { path: '/socket.io' });
+    const refreshEvent = () => {
+      void qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+      void qc.invalidateQueries({ queryKey: ['leagues'] });
+    };
+    const joinRooms = () => {
+      socket.emit('join-league-event', currentEvent.eventid);
+      if (currentEvent.tournamentid) socket.emit('join-tournament', currentEvent.tournamentid);
+    };
+
+    socket.on('connect', joinRooms);
+    if (socket.connected) joinRooms();
+    socket.on('league-event-updated', refreshEvent);
+    socket.on('tournament-updated', refreshEvent);
+    return () => {
+      socket.disconnect();
+    };
+  }, [currentEvent?.eventid, currentEvent?.tournamentid, detail?.league.isadmin, league.leagueid, qc]);
   const eventResults = useMemo(() => {
     if (!detail || !currentEvent) return [];
     return detail.results.filter((result) => result.eventid === currentEvent.eventid);
@@ -564,7 +629,7 @@ function LeagueDetailView({
       <div className="mx-auto mt-10 max-w-lg rounded-xl border border-red-400/20 bg-red-400/10 p-5 text-center">
         <p className="font-semibold text-white">League unavailable</p>
         <p className="mt-2 text-sm text-red-200">{detailError instanceof Error ? detailError.message : 'This league could not be loaded.'}</p>
-        <button type="button" className="btn-ghost mt-4" onClick={onBack}>Back to Leagues</button>
+        <button type="button" className="btn-ghost mt-4" onClick={onBack}>Back</button>
       </div>
     );
   }
@@ -591,71 +656,38 @@ function LeagueDetailView({
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
-      <div className="space-y-3 md:flex md:items-start md:justify-between md:gap-3 md:space-y-0">
-        <button className="inline-flex h-10 w-full items-center justify-start gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white md:w-auto md:shrink-0" onClick={onBack} type="button">
+      <div className="flex min-w-0 items-center gap-2">
+        <button className="inline-flex h-10 w-fit items-center justify-start gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white md:shrink-0" onClick={onBack} type="button">
           <ArrowLeft size={15} />
-          Back to Leagues
+          Back
         </button>
-        <div className="grid min-w-0 grid-cols-2 gap-2 md:ml-auto md:flex md:flex-wrap md:items-center md:justify-end">
+        <p className="min-w-0 flex-1 truncate px-1 text-sm font-bold text-white sm:text-base">{detail.league.name}</p>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            className="chip h-10 justify-center font-mono transition hover:border-pit-teal/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-pit-teal/50"
+            className="chip h-10 w-10 justify-center p-0 transition hover:border-pit-teal/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-pit-teal/50 md:w-auto md:gap-1.5 md:px-3"
             onClick={() => setShareInviteOpen(true)}
             title="Share league invite"
+            aria-label="Share league invite"
           >
-            <Share size={14} aria-hidden="true" />
-            {detail.league.invitecode}
+            <Share size={15} aria-hidden="true" />
+            <span className="hidden font-mono md:inline">{detail.league.invitecode}</span>
           </button>
-          <select
-            className="input h-10 min-w-0 py-2 text-xs md:w-44"
-            value={detail.selectedseasonid}
-            onChange={(event) => {
-              setSelectedSeasonId(event.target.value);
-              setSelectedEvent(null);
-            }}
-          >
-            {detail.seasons.map((season) => (
-              <option key={season.seasonid} value={season.seasonid}>
-                {season.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="btn-ghost h-10 justify-center gap-2 px-3 py-2 text-xs"
-            onClick={() => setSettingsModalOpen(true)}
-            title="Rename selected season"
-          >
-            <Pencil size={14} />
-            Rename
-          </button>
-          <button className="btn-ghost h-10 justify-center gap-2 px-3 py-2 text-xs" onClick={() => setSeasonModalOpen(true)}>
-            <CalendarDays size={14} />
-            +Season
-          </button>
-          <button
-            className="btn-primary h-10 justify-center gap-2 px-3 py-2 text-xs"
-            onClick={() => {
-              setActiveDetailTab('events');
-              setEventModalOpen(true);
-            }}
-          >
-            <Plus size={14} />
-            Event
-          </button>
-          <div ref={manageMenuRef} className="relative col-span-2 md:col-span-1">
+          <div ref={manageMenuRef} className="relative">
             <button
               type="button"
-              className="btn-ghost h-10 w-full cursor-pointer justify-center gap-2 px-3 py-2 text-xs md:w-auto"
+              className="btn-ghost h-10 w-10 cursor-pointer justify-center p-0 md:w-auto md:gap-2 md:px-3 md:py-2"
               aria-expanded={manageMenuOpen}
               aria-haspopup="menu"
               onClick={() => setManageMenuOpen((open) => !open)}
+              aria-label="Manage league"
+              title="Manage league"
             >
-              <MoreVertical size={14} />
-              Manage
+              <Menu size={17} />
+              <span className="hidden md:inline">Manage</span>
             </button>
             {manageMenuOpen && (
-              <div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl md:left-auto md:w-48" role="menu">
+              <div className="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1 shadow-2xl" role="menu">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
@@ -672,45 +704,22 @@ function LeagueDetailView({
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
                   onClick={() => {
                     setManageMenuOpen(false);
+                    setSeasonModalOpen(true);
+                  }}
+                >
+                  <CalendarDays size={14} />
+                  New season
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
+                  onClick={() => {
+                    setManageMenuOpen(false);
                     setActiveDetailTab('players');
                   }}
                 >
                   <Users size={14} />
                   Players
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    setPointsModalOpen(true);
-                  }}
-                >
-                  <Settings size={14} />
-                  Points
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    setFinalModalOpen(true);
-                  }}
-                >
-                  <Trophy size={14} />
-                  Final
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-pit-text hover:bg-pit-card hover:text-white"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    setActiveDetailTab('fees');
-                    setPaymentModalOpen(true);
-                  }}
-                >
-                  <DollarSign size={14} />
-                  Payment
                 </button>
                 <div className="my-1 h-px bg-pit-border" />
                 <button
@@ -745,16 +754,49 @@ function LeagueDetailView({
 
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
         <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-4 sm:p-5">
-          <p className="eyebrow">League standings</p>
-          <h2 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl">{detail.league.name}</h2>
           {selectedSeason && (
-            <p className="mt-2 text-sm text-pit-text">
-              <strong className="font-semibold text-white">{selectedSeason.name}</strong> runs{' '}
+            <>
+              <label className="flex h-12 max-w-xl items-center gap-2 rounded-lg border border-pit-teal/40 bg-pit-bg/80 px-3 shadow-[0_0_18px_rgba(20,184,166,0.08)]">
+                <CalendarDays size={16} className="shrink-0 text-pit-teal" aria-hidden="true" />
+                <span className="shrink-0 text-sm font-normal text-pit-text">Season</span>
+                <select
+                  className="min-w-0 flex-1 appearance-none bg-transparent py-2 text-base font-bold text-white outline-none [color-scheme:dark]"
+                  aria-label="Select season"
+                  value={detail.selectedseasonid}
+                  onChange={(event) => {
+                    setSelectedSeasonId(event.target.value);
+                    setSelectedEvent(null);
+                  }}
+                >
+                  {detail.seasons.map((season) => (
+                    <option key={season.seasonid} value={season.seasonid} className="bg-pit-bg text-white">
+                      Season {season.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={17} className="pointer-events-none shrink-0 text-pit-teal" aria-hidden="true" />
+              </label>
+              <p className="mt-2 text-sm text-pit-text">
+                <span>Season </span><strong className="font-semibold text-white">{selectedSeason.name}</strong> runs{' '}
               <strong className="font-semibold text-white">{String(selectedSeason.begindate).slice(0, 10)}</strong> through{' '}
               <strong className="font-semibold text-white">{String(selectedSeason.enddate).slice(0, 10)}</strong>.
-            </p>
+              </p>
+            </>
           )}
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <details className="group mt-4 rounded-xl border border-pit-border bg-pit-bg/45 p-3 md:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+              <span>Season details</span>
+              <span className="text-xs font-medium text-pit-muted group-open:hidden">Show</span>
+              <span className="hidden text-xs font-medium text-pit-muted group-open:inline">Hide</span>
+            </summary>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
+              <LeagueHeroStat label="Events" value={detail.events.length} />
+              <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
+              <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
+            </div>
+          </details>
+          <div className="mt-4 hidden grid-cols-4 gap-3 md:grid">
             <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
             <LeagueHeroStat label="Events" value={detail.events.length} />
             <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
@@ -765,9 +807,10 @@ function LeagueDetailView({
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
-            { id: 'board', label: 'Board' },
-            { id: 'fees', label: 'Fee Tracker' },
+            { id: 'scoring', label: 'Scoring' },
+            { id: 'fees', label: 'Payments' },
             { id: 'audit', label: 'Audit Trail' },
+            { id: 'board', label: 'Message Board' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -777,7 +820,10 @@ function LeagueDetailView({
                   ? 'border-pit-teal bg-pit-teal/15 text-white'
                   : 'border-pit-border bg-pit-card/60 text-pit-text hover:border-pit-teal/50 hover:text-white'
               }`}
-              onClick={() => setActiveDetailTab(tab.id as LeagueDetailTab)}
+              onClick={() => {
+                if (tab.id === 'events') setSelectedEvent(null);
+                setActiveDetailTab(tab.id as LeagueDetailTab);
+              }}
             >
               {tab.label}
             </button>
@@ -802,6 +848,10 @@ function LeagueDetailView({
           <PaymentTracker
             detail={detail}
             onSettings={(payload) => updatePaymentSettingsMutation.mutate(payload)}
+            onAddPayment={(userId) => {
+              setPaymentTargetUserId(userId);
+              setPaymentModalOpen(true);
+            }}
             onEditPayment={(payment) => setEditingPayment(payment)}
             onDeletePayment={(paymentId) => deletePaymentMutation.mutate(paymentId)}
             settingsLoading={updatePaymentSettingsMutation.isPending}
@@ -814,6 +864,18 @@ function LeagueDetailView({
 
       {activeDetailTab === 'board' && (
         <LeagueBoard leagueId={detail.league.leagueid} seasonId={detail.selectedseasonid} isAdmin focusPostId={initialPostId} />
+      )}
+
+      {activeDetailTab === 'scoring' && (
+        <ScoringFinalGamePanel
+          league={detail.league}
+          season={selectedSeason}
+          eventCount={detail.events.length}
+          playerCountOverride={pendingScoringPlayerCount}
+          loading={updateSeasonScoringMutation.isPending}
+          error={updateSeasonScoringMutation.error?.message}
+          onSubmit={(payload) => updateSeasonScoringMutation.mutate(payload)}
+        />
       )}
 
       {activeDetailTab === 'players' && (
@@ -844,7 +906,6 @@ function LeagueDetailView({
                 event={selectedEventFromDetail}
                 leagueId={league.leagueid}
                 resultsCount={detail.results.filter((result) => result.eventid === selectedEventFromDetail.eventid).length}
-                onBack={() => setSelectedEvent(null)}
                 onLog={(userId, placed, dnf) => resultMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, placed, dnf })}
                 onMarkAllPaid={() => markEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, all: true })}
                 onTogglePaid={(userId, paid) => toggleEventPaidMutation.mutate({ eventId: selectedEventFromDetail.eventid, userId, paid })}
@@ -862,6 +923,7 @@ function LeagueDetailView({
                 currentEventId={currentEvent?.eventid ?? null}
                 onSelect={setSelectedEvent}
                 onEdit={setEditingEvent}
+                onAdd={() => setEventModalOpen(true)}
                 showRunLinks={Boolean(selectedSeason?.eventsasgames)}
               />
             )}
@@ -872,6 +934,7 @@ function LeagueDetailView({
               currentEventId={currentEvent?.eventid ?? null}
               onSelect={setSelectedEvent}
               onEdit={setEditingEvent}
+              onAdd={() => setEventModalOpen(true)}
               showRunLinks={Boolean(selectedSeason?.eventsasgames)}
             />
             <EventTrackerCard
@@ -929,34 +992,34 @@ function LeagueDetailView({
         open={settingsModalOpen}
         league={detail.league}
         season={selectedSeason}
+        finalGameEnabled={Boolean(detail.league.finalenabled)}
         loading={updateNamesMutation.isPending}
         error={updateNamesMutation.error?.message}
         onClose={() => setSettingsModalOpen(false)}
-        onSubmit={(payload) => updateNamesMutation.mutate(payload)}
-      />
-      <PointsEditorModal
-        open={pointsModalOpen}
-        league={detail.league}
-        loading={updateLeagueMutation.isPending}
-        error={updateLeagueMutation.error?.message}
-        onClose={() => setPointsModalOpen(false)}
-        onSubmit={(payload) => updateLeagueMutation.mutate(payload)}
-      />
-      <FinalSettingsModal
-        open={finalModalOpen}
-        league={detail.league}
-        loading={updateLeagueMutation.isPending}
-        error={updateLeagueMutation.error?.message}
-        onClose={() => setFinalModalOpen(false)}
-        onSubmit={(payload) => updateLeagueMutation.mutate(payload)}
+        onSubmit={(payload) => {
+          const playerCountChanged = selectedSeason
+            && payload.expectedplayercount != null
+            && payload.expectedplayercount !== Number(selectedSeason.expectedplayercount ?? detail.league.expectedplayercount);
+          if (playerCountChanged && detail.league.finalenabled) {
+            setPendingScoringPlayerCount(payload.expectedplayercount!);
+            setSettingsModalOpen(false);
+            setActiveDetailTab('scoring');
+            return;
+          }
+          updateNamesMutation.mutate(payload);
+        }}
       />
       <RecordPaymentModal
         open={paymentModalOpen}
         detail={detail}
+        targetUserId={paymentTargetUserId}
         loading={createPaymentMutation.isPending}
         error={createPaymentMutation.error?.message}
         saveState={paymentSaveState}
-        onClose={() => setPaymentModalOpen(false)}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          setPaymentTargetUserId(null);
+        }}
         onSubmit={(payload) => createPaymentMutation.mutate(payload)}
       />
 
@@ -1029,19 +1092,24 @@ function LeagueEventListCard({
   currentEventId,
   onSelect,
   onEdit,
+  onAdd,
   showRunLinks,
 }: {
   events: LeagueEvent[];
   currentEventId: string | null;
   onSelect: (event: LeagueEvent) => void;
   onEdit: (event: LeagueEvent) => void;
+  onAdd: () => void;
   showRunLinks: boolean;
 }) {
   return (
     <section className="card space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-white">Events</h3>
-        <CalendarDays size={16} className="text-pit-teal" />
+        <button type="button" className="btn-primary h-8 gap-1.5 px-2.5 py-1.5 text-xs" onClick={onAdd}>
+          <Plus size={13} />
+          Event
+        </button>
       </div>
       {events.length === 0 ? (
         <p className="rounded-lg border border-pit-border bg-pit-bg/60 p-3 text-sm text-pit-text">
@@ -1093,7 +1161,6 @@ function EventTrackerCard({
   event,
   leagueId,
   resultsCount,
-  onBack,
   onLog,
   onMarkAllPaid,
   onTogglePaid,
@@ -1109,7 +1176,6 @@ function EventTrackerCard({
   event: LeagueEvent | null;
   leagueId: string;
   resultsCount: number;
-  onBack?: () => void;
   onLog: (userId: string, placed: number | null, dnf: boolean) => void;
   onMarkAllPaid: () => void;
   onTogglePaid: (userId: string, paid: boolean) => void;
@@ -1122,6 +1188,7 @@ function EventTrackerCard({
   error?: string;
 }) {
   const [showKnockoutQr, setShowKnockoutQr] = useState(false);
+  const [showKnockoutQrFullscreen, setShowKnockoutQrFullscreen] = useState(false);
   const [knockoutToken, setKnockoutToken] = useState<string | null>(null);
   const knockoutLinkMutation = useMutation({
     mutationFn: () => api.createLeagueEventKnockoutLink(leagueId, event!.eventid),
@@ -1136,19 +1203,14 @@ function EventTrackerCard({
 
   useEffect(() => {
     setShowKnockoutQr(false);
+    setShowKnockoutQrFullscreen(false);
     setKnockoutToken(null);
   }, [event?.eventid]);
 
   return (
     <section className="card space-y-4">
-      {onBack && (
-        <button className="btn-ghost w-fit px-3 py-2 text-xs" type="button" onClick={onBack}>
-          Back to events
-        </button>
-      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="eyebrow">Finish logger</p>
           <h3 className="text-xl font-bold text-white">{event ? event.name : 'No event selected'}</h3>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1194,21 +1256,21 @@ function EventTrackerCard({
       {event ? (
         <>
           {showKnockoutQr && knockoutLobbyUrl && (
-            <div className="grid gap-4 rounded-xl border border-pit-teal/30 bg-pit-teal/5 p-4 sm:grid-cols-[auto_1fr] sm:items-center">
+            <div className="flex flex-wrap items-center gap-4 rounded-xl border border-pit-teal/30 bg-pit-teal/5 p-4">
               <div className="w-fit rounded-lg bg-white p-2">
                 <QRCodeSVG value={knockoutLobbyUrl} size={132} />
               </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-white">Knockout station</p>
-                <p className="mt-1 text-sm leading-6 text-pit-text">
-                  Signed-in players open their own lobby. Other scans can quickly report the next knockout.
+              <div className="min-w-0 flex-1">
+                <p className="text-sm leading-6 text-pit-text">
+                  Scan to quickly record an event knockout.
                 </p>
-                <a
-                  className="mt-3 block truncate text-xs text-pit-teal hover:text-white"
-                  href={knockoutLobbyUrl}
+                <button
+                  type="button"
+                  className="btn-ghost mt-3 px-3 py-2 text-xs"
+                  onClick={() => setShowKnockoutQrFullscreen(true)}
                 >
-                  {knockoutLobbyUrl}
-                </a>
+                  View full screen
+                </button>
               </div>
             </div>
           )}
@@ -1238,6 +1300,19 @@ function EventTrackerCard({
           Add an event to start logging finishes.
         </p>
       )}
+      <Modal
+        title="Knockout QR"
+        open={showKnockoutQrFullscreen && Boolean(knockoutLobbyUrl)}
+        onClose={() => setShowKnockoutQrFullscreen(false)}
+        mobilePlacement="center"
+      >
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div className="max-w-full rounded-xl bg-white p-3">
+            <QRCodeSVG value={knockoutLobbyUrl} size={360} className="h-auto max-w-full" />
+          </div>
+          <p className="text-sm text-pit-text">Scan to quickly record an event knockout.</p>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -1366,7 +1441,6 @@ function StandingsTable({
   const projectedFinalStacks = buildProjectedFinalStacks(detail, rankedStandings);
   const finalStackByUser = new Map(projectedFinalStacks.map((stack) => [stack.userid, stack]));
   const totalStartingStack = projectedFinalStacks.reduce((sum, stack) => sum + Number(stack.startingstack || 0), 0);
-  const totalShowupBonus = projectedFinalStacks.reduce((sum, stack) => sum + Number(stack.showupbonus || 0), 0);
   const projectedPlayers = projectedFinalStacks.length;
   const averageStack = projectedPlayers ? Math.round(totalStartingStack / projectedPlayers) : 0;
   const finalBigBlind = Math.max(1, Math.round(Number(detail.league.finalstartingbigblind || 100)));
@@ -1384,19 +1458,7 @@ function StandingsTable({
             </div>
             <Trophy size={16} className="shrink-0 text-pit-gold" />
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
-              <p className="text-pit-muted">Final chips</p>
-              <p className="mt-1 font-bold text-white">{formatNumber(totalStartingStack)}</p>
-            </div>
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
-              <p className="text-pit-muted">Show-up bonus</p>
-              <p className="mt-1 font-bold text-pit-teal">{formatNumber(totalShowupBonus)}</p>
-            </div>
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
-              <p className="text-pit-muted">Players</p>
-              <p className="mt-1 font-bold text-white">{formatNumber(projectedPlayers)}</p>
-            </div>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:max-w-md">
             <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
               <p className="text-pit-muted">Avg stack</p>
               <p className="mt-1 font-bold text-white">{formatNumber(averageStack)}</p>
@@ -1434,7 +1496,10 @@ function StandingsTable({
               <span className="shrink-0 font-mono text-pit-teal">#{index + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="break-words font-semibold text-white md:truncate">{standing.displayname ?? 'Player'}</p>
-                <p className="mt-1 text-xs text-pit-muted">Best: {bestPlacementSummary(detail, standing.userid)}</p>
+                <p className="mt-1 text-xs text-pit-muted">
+                  Scored finishes: {bestPlacementSummary(detail, standing.userid)}
+                  <span className="md:hidden"> (Avg: {standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'})</span>
+                </p>
                 {finalEnabled && finalStack && (
                   <p className="mt-1 text-xs text-pit-teal md:hidden">
                     Final {formatNumber(Number(finalStack.startingstack || 0))} - {formatBbs(Number(finalStack.bbstostart || 0))} BBs ({formatPercentOfField(Number(finalStack.startingstack || 0), totalStartingStack)})
@@ -1455,12 +1520,12 @@ function StandingsTable({
                 {finalStack ? formatBbs(Number(finalStack.bbstostart || 0)) : '-'}
               </span>
             )}
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:contents md:text-sm">
+            <div className="hidden md:contents">
               <span className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-1.5 text-pit-text md:border-0 md:bg-transparent md:p-0 md:text-right">
-                <span className="text-pit-muted md:hidden">Played </span>{standing.eventsplayed}
+                {standing.eventsplayed}
               </span>
               <span className="rounded-lg border border-pit-border/60 bg-pit-card/50 px-2 py-1.5 text-pit-text md:border-0 md:bg-transparent md:p-0 md:text-right">
-                <span className="text-pit-muted md:hidden">Avg </span>{standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'}
+                {standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'}
               </span>
             </div>
           </button>
@@ -1607,7 +1672,7 @@ function MemberLeagueView({
       <div className="flex items-center justify-between gap-3">
         <button className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white" onClick={onBack} type="button">
           <ArrowLeft size={15} />
-          Back to Leagues
+          Back
         </button>
         <select
           className="input h-10 w-40 shrink-0 py-2 text-xs sm:w-52"
@@ -2283,6 +2348,7 @@ function LeagueMembersCard({
 function PaymentTracker({
   detail,
   onSettings,
+  onAddPayment,
   onEditPayment,
   onDeletePayment,
   settingsLoading,
@@ -2291,6 +2357,7 @@ function PaymentTracker({
 }: {
   detail: LeagueDetail;
   onSettings: (payload: { leaguefee: number; seasonEventFee: number }) => void;
+  onAddPayment: (userId: string) => void;
   onEditPayment: (payment: LeaguePayment) => void;
   onDeletePayment: (paymentId: string) => void;
   settingsLoading: boolean;
@@ -2315,8 +2382,8 @@ function PaymentTracker({
       <section className="card space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="eyebrow">Payment audit</p>
-            <h3 className="text-xl font-bold text-white">League Fees</h3>
+            <p className="eyebrow">Payments</p>
+            <h3 className="text-xl font-bold text-white">Payment Settings</h3>
             {selectedSeason && (
               <p className="mt-1 text-sm text-pit-muted">{selectedSeason.name} event fee applies to every event in this season.</p>
             )}
@@ -2356,12 +2423,13 @@ function PaymentTracker({
         </div>
         {settingsError && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{settingsError}</p>}
         <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
-          <div className="hidden gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px]">
+          <div className="hidden gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px_104px]">
             <span>Player</span>
             <span className="text-right">Due</span>
             <span className="text-right">Paid</span>
             <span className="text-right">Open</span>
             <span className="text-right">Events</span>
+            <span className="text-right">Payment</span>
           </div>
           {approvedMembers.map((member) => {
             const paid = detail.payments.filter((payment) => payment.userid === member.userid).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -2371,7 +2439,7 @@ function PaymentTracker({
             const eventsOwed = eventStatuses.filter((status) => status.due > 0).length;
             const eventsPaid = eventStatuses.filter((status) => status.due > 0 && status.paid).length;
             return (
-              <div key={member.userid} className="border-b border-pit-border/50 p-3 text-sm last:border-0 md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px] md:items-center md:gap-2 md:px-3 md:py-3">
+              <div key={member.userid} className="border-b border-pit-border/50 p-3 text-sm last:border-0 md:grid md:grid-cols-[minmax(160px,1fr)_90px_90px_90px_100px_104px] md:items-center md:gap-2 md:px-3 md:py-3">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
                   <p className="mt-1 text-xs text-pit-muted md:hidden">{eventsPaid}/{eventsOwed} events paid</p>
@@ -2391,6 +2459,14 @@ function PaymentTracker({
                   </div>
                 </div>
                 <span className="hidden text-right text-pit-text md:block">{eventsPaid}/{eventsOwed}</span>
+                <button
+                  type="button"
+                  className="btn-ghost mt-3 w-full justify-center gap-1.5 px-3 py-2 text-xs text-pit-teal hover:border-pit-teal/60 hover:text-white md:mt-0 md:w-auto md:justify-self-end"
+                  onClick={() => onAddPayment(member.userid)}
+                >
+                  <Plus size={13} />
+                  Payment
+                </button>
               </div>
             );
           })}
@@ -2400,8 +2476,8 @@ function PaymentTracker({
       <section className="card space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="eyebrow">Payment records</p>
-            <h3 className="text-xl font-bold text-white">Payment Audit Records</h3>
+            <p className="eyebrow">Payment history</p>
+            <h3 className="text-xl font-bold text-white">Recorded Payments</h3>
             <p className="mt-1 text-sm text-pit-muted">Recorded league, event, and adjustment entries for this season.</p>
           </div>
           <span className="chip">
@@ -2584,18 +2660,18 @@ function EventRosterLogger({
             availablePlaces.sort((a, b) => a - b);
           }
           return (
-            <div key={member.userid} className="space-y-3 rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+            <div
+              key={member.userid}
+              className={`space-y-3 rounded-xl border p-3 ${
+                rsvpGoing
+                  ? 'border-emerald-300/25 bg-emerald-400/[0.045]'
+                  : rsvpNotGoing
+                    ? 'border-red-300/20 bg-red-400/[0.045]'
+                    : 'border-pit-gold/25 bg-pit-gold/[0.04]'
+              }`}
+            >
               <div className="min-w-0">
                 <p className="truncate font-semibold text-white">{member.displayname ?? 'Player'}</p>
-                <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
-                  rsvpGoing
-                    ? 'border-pit-teal/35 bg-pit-teal/10 text-pit-teal'
-                    : rsvpNotGoing
-                      ? 'border-red-300/25 bg-red-400/10 text-red-200'
-                      : 'border-pit-border bg-pit-card/70 text-pit-muted'
-                }`}>
-                  {rsvpGoing ? 'RSVP: Going' : rsvpNotGoing ? "RSVP: Can't go" : 'RSVP: No response'}
-                </p>
                 {existing?.dnf ? (
                   <p className="mt-1 inline-flex rounded-full border border-red-300/25 bg-red-400/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-200">
                     DNF
@@ -2721,31 +2797,77 @@ function EventRosterLogger({
   );
 }
 
-function PointsEditorModal({
-  open,
+function ScoringFinalGamePanel({
   league,
+  season,
+  eventCount,
+  playerCountOverride,
   loading,
   error,
-  onClose,
   onSubmit,
 }: {
-  open: boolean;
   league: League;
+  season?: LeagueSeason;
+  eventCount: number;
+  playerCountOverride?: number | null;
   loading: boolean;
   error?: string;
-  onClose: () => void;
-  onSubmit: (data: Pick<League, 'showupbonuspoints' | 'pointslookup'>) => void;
+  onSubmit: (data: {
+    showupbonuspoints: number;
+    bestfinishcount: number;
+    pointslookup: LeaguePointRule[];
+    finalenabled: boolean;
+    finalmultiplierlookup: LeagueFinalMultiplier[];
+    finalchiprounding: number;
+    finalstartingbigblind: number;
+    expectedplayercount?: number;
+  }) => void;
 }) {
-  const [draft, setDraft] = useState<LeaguePointRule[]>(league.pointslookup);
+  const normalizedPlayerCount = Math.max(2, Math.min(500, Math.round(Number(playerCountOverride ?? season?.expectedplayercount ?? league.expectedplayercount ?? 36))));
+  const isPendingPlayerCountChange = playerCountOverride != null;
+  const normalizePointRows = (source: LeaguePointRule[]) => {
+    const current = new Map(source.map((rule) => [rule.place, Number(rule.points || 0)]));
+    const fallback = new Map(generateLeaguePoints(normalizedPlayerCount).map((rule) => [rule.place, Number(rule.points || 0)]));
+    return [
+      { place: 'DNF' as const, points: current.get('DNF') ?? 0 },
+      ...Array.from({ length: normalizedPlayerCount }, (_, index) => {
+        const place = index + 1;
+        return { place, points: current.get(place) ?? fallback.get(place) ?? 0 };
+      }),
+    ];
+  };
+  const normalizeMultiplierRows = (source: LeagueFinalMultiplier[]) => {
+    const current = new Map(source.map((rule) => [Number(rule.place), Number(rule.multiplier || 0)]));
+    const fallback = new Map(defaultFinalMultipliers(normalizedPlayerCount).map((rule) => [rule.place, rule.multiplier]));
+    return Array.from({ length: normalizedPlayerCount }, (_, index) => {
+      const place = index + 1;
+      return { place, multiplier: current.get(place) ?? fallback.get(place) ?? 0 };
+    });
+  };
+  const [draft, setDraft] = useState<LeaguePointRule[]>(() => normalizePointRows(league.pointslookup));
   const [showupBonus, setShowupBonus] = useState(String(league.showupbonuspoints ?? 0));
+  const [bestFinishCount, setBestFinishCount] = useState(String(season?.bestfinishcount ?? league.bestfinishcount ?? 7));
+  const [finalEnabled, setFinalEnabled] = useState(Boolean(league.finalenabled));
+  const [rounding, setRounding] = useState(String(league.finalchiprounding || 100));
+  const [bigBlind, setBigBlind] = useState(String(league.finalstartingbigblind || 100));
+  const [multipliers, setMultipliers] = useState<LeagueFinalMultiplier[]>(() => normalizeMultiplierRows(league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers(normalizedPlayerCount)));
+  const [simulation, setSimulation] = useState<SeasonSimulation | null>(null);
   useEffect(() => {
-    if (open) {
-      setDraft(league.pointslookup);
-      setShowupBonus(String(league.showupbonuspoints ?? 0));
-    }
-  }, [league.pointslookup, league.showupbonuspoints, open]);
+    setDraft(isPendingPlayerCountChange ? generateLeaguePoints(normalizedPlayerCount) : normalizePointRows(league.pointslookup));
+    setShowupBonus(String(league.showupbonuspoints ?? 0));
+    setBestFinishCount(String(season?.bestfinishcount ?? league.bestfinishcount ?? 7));
+    setFinalEnabled(Boolean(league.finalenabled));
+    setRounding(String(league.finalchiprounding || 100));
+    setBigBlind(String(league.finalstartingbigblind || 100));
+    setMultipliers(normalizeMultiplierRows(isPendingPlayerCountChange ? defaultFinalMultipliers(normalizedPlayerCount) : (league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers(normalizedPlayerCount))));
+    setSimulation(null);
+  }, [isPendingPlayerCountChange, league.bestfinishcount, league.finalchiprounding, league.finalenabled, league.finalmultiplierlookup, league.finalstartingbigblind, league.pointslookup, league.showupbonuspoints, normalizedPlayerCount, playerCountOverride, season]);
   const rows = draft.filter((rule) => rule.place !== 'DNF').sort((a, b) => Number(a.place) - Number(b.place));
   const dnf = draft.find((rule) => rule.place === 'DNF') ?? { place: 'DNF' as const, points: 0 };
+  const recommendedRows = generateLeaguePoints(normalizedPlayerCount).filter((rule) => rule.place !== 'DNF');
+  const recommendedTotalPoints = recommendedRows.reduce((sum, rule) => sum + Number(rule.points || 0), 0);
+  const recommendedTopEightPoints = recommendedRows.filter((rule) => Number(rule.place) <= 8).reduce((sum, rule) => sum + Number(rule.points || 0), 0);
+  const recommendedTopThreePoints = recommendedRows.filter((rule) => Number(rule.place) <= 3).reduce((sum, rule) => sum + Number(rule.points || 0), 0);
   const updateRule = (place: number | 'DNF', pointsValue: string) => {
     const nextPoints = Math.max(0, Math.round(Number(pointsValue) || 0));
     setDraft((current) => current.map((rule) => {
@@ -2755,174 +2877,182 @@ function PointsEditorModal({
       return matches ? { ...rule, place, points: nextPoints } : rule;
     }));
   };
-  const addPlace = () => {
-    const maxPlace = rows.reduce((max, rule) => Math.max(max, Number(rule.place)), 0);
-    setDraft((current) => [...current, { place: maxPlace + 1, points: 0 }]);
+  const applyRecommendation = () => {
+    setDraft(generateLeaguePoints(normalizedPlayerCount));
+    setSimulation(null);
   };
-  const removePlace = (place: number) => setDraft((current) => current.filter((rule) => rule.place !== place));
-
-  return (
-    <Modal
-      title="Placement Points"
-      open={open}
-      onClose={onClose}
-      footer={(
-        <>
-          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={loading}
-            onClick={() => onSubmit({
-              showupbonuspoints: Math.max(0, Math.round(Number(showupBonus) || 0)),
-              pointslookup: [
-                { place: 'DNF', points: Number(dnf.points || 0) },
-                ...rows.map((rule) => ({ place: Number(rule.place), points: Number(rule.points || 0) })),
-              ],
-            })}
-          >
-            {loading ? 'Saving...' : 'Save Scoring'}
-          </button>
-        </>
-      )}
-    >
-      <div className="space-y-4">
-        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <p className="text-sm leading-6 text-pit-text">
-          Updating placement point values recalculates logged league finishes. Final game multipliers are handled separately.
-        </p>
-        <label className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
-          <span>
-            <span className="block font-semibold text-white">Show-up bonus</span>
-            <span className="mt-1 block text-xs text-pit-muted">Awarded for each non-DNF event result.</span>
-          </span>
-          <input
-            className="input py-2 text-right"
-            inputMode="numeric"
-            value={showupBonus}
-            onChange={(event) => setShowupBonus(event.target.value.replace(/\D/g, ''))}
-          />
-        </label>
-        <button type="button" className="btn-ghost w-full justify-center" onClick={() => setDraft(generateLeaguePoints(league.expectedplayercount || 36))}>
-          Help me decide from {league.expectedplayercount || 36} players
-        </button>
-        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-          <div className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
-            <span className="font-semibold text-white">DNF</span>
-            <input className="input py-2 text-right" inputMode="numeric" value={dnf.points} onChange={(event) => updateRule('DNF', event.target.value)} />
-          </div>
-          {rows.map((rule) => (
-            <div key={rule.place} className="grid grid-cols-[1fr_120px_36px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
-              <span className="font-semibold text-white">{rule.place}{ordinal(Number(rule.place))}</span>
-              <input className="input py-2 text-right" inputMode="numeric" value={rule.points} onChange={(event) => updateRule(Number(rule.place), event.target.value)} />
-              <button className="btn-ghost h-9 w-9 p-0 text-red-300" type="button" onClick={() => removePlace(Number(rule.place))}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-        <button type="button" className="btn-ghost w-full justify-center" onClick={addPlace}>
-          <Plus size={14} />
-          Add placement
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function FinalSettingsModal({
-  open,
-  league,
-  loading,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean;
-  league: League;
-  loading: boolean;
-  error?: string;
-  onClose: () => void;
-  onSubmit: (data: Partial<Pick<League, 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind'>>) => void;
-}) {
-  const [enabled, setEnabled] = useState(Boolean(league.finalenabled));
-  const [rounding, setRounding] = useState(String(league.finalchiprounding || 100));
-  const [bigBlind, setBigBlind] = useState(String(league.finalstartingbigblind || 100));
-  const [multipliers, setMultipliers] = useState<LeagueFinalMultiplier[]>(league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers());
-  useEffect(() => {
-    if (!open) return;
-    setEnabled(Boolean(league.finalenabled));
-    setRounding(String(league.finalchiprounding || 100));
-    setBigBlind(String(league.finalstartingbigblind || 100));
-    setMultipliers(league.finalmultiplierlookup?.length ? league.finalmultiplierlookup : defaultFinalMultipliers());
-  }, [league, open]);
-
+  const runSimulation = () => {
+    setSimulation(simulateSeasonFinale({
+      playerCount: normalizedPlayerCount,
+      eventCount,
+      pointRules: draft,
+      showupBonus: Math.max(0, Math.round(Number(showupBonus) || 0)),
+      bestFinishCount: Math.max(1, Math.round(Number(bestFinishCount) || 1)),
+      league: {
+        ...league,
+        finalenabled: finalEnabled,
+        finalmultiplierlookup: multipliers,
+        finalchiprounding: Math.max(1, Number(rounding) || 100),
+        finalstartingbigblind: Math.max(1, Number(bigBlind) || 100),
+      },
+    }));
+  };
   const updateMultiplier = (place: number, value: string) => {
     const multiplier = Math.max(0, Math.round(Number(value) || 0));
-    setMultipliers((current) => current.map((rule) => rule.place === place ? { ...rule, multiplier } : rule));
+    setMultipliers((current) => current.some((rule) => rule.place === place)
+      ? current.map((rule) => rule.place === place ? { ...rule, multiplier } : rule)
+      : [...current, { place, multiplier }]);
+    setSimulation(null);
   };
-  const addPlace = () => {
-    const maxPlace = multipliers.reduce((max, rule) => Math.max(max, rule.place), 0);
-    setMultipliers((current) => [...current, { place: maxPlace + 1, multiplier: Math.max(2, 20 - maxPlace) }]);
-  };
+  const multiplierByPlace = new Map(multipliers.map((rule) => [rule.place, rule.multiplier]));
+  const scoringGridColumns = finalEnabled
+    ? 'grid-cols-[minmax(0,1fr)_5rem_5.5rem] sm:grid-cols-[minmax(0,1fr)_8rem_9rem]'
+    : 'grid-cols-[minmax(0,1fr)_6rem] sm:grid-cols-[minmax(0,1fr)_10rem]';
+  const submit = () => onSubmit({
+    showupbonuspoints: Math.max(0, Math.round(Number(showupBonus) || 0)),
+    bestfinishcount: Math.max(1, Math.round(Number(bestFinishCount) || 1)),
+    pointslookup: [
+      { place: 'DNF', points: Number(dnf.points || 0) },
+      ...rows.map((rule) => ({ place: Number(rule.place), points: Number(rule.points || 0) })),
+    ],
+    finalenabled: finalEnabled,
+    finalmultiplierlookup: multipliers,
+    finalchiprounding: Math.max(1, Math.round(Number(rounding) || 100)),
+    finalstartingbigblind: Math.max(1, Math.round(Number(bigBlind) || 100)),
+    expectedplayercount: isPendingPlayerCountChange ? normalizedPlayerCount : undefined,
+  });
 
   return (
-    <Modal
-      title="Final Game Setup"
-      open={open}
-      onClose={onClose}
-      footer={(
-        <>
-          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={loading}
-            onClick={() => onSubmit({
-              finalenabled: enabled,
-              finalmultiplierlookup: multipliers,
-              finalchiprounding: Number(rounding) || 100,
-              finalstartingbigblind: Number(bigBlind) || 100,
-            })}
-          >
-            {loading ? 'Saving...' : 'Save Final'}
-          </button>
-        </>
+    <section className="card space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="eyebrow">Season setup</p>
+          <h3 className="mt-1 text-lg font-bold text-white">Scoring &amp; Final Game</h3>
+        </div>
+        <button type="button" className="btn-primary" disabled={loading} onClick={submit}>
+          <Save size={15} />
+          {loading ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
+      {isPendingPlayerCountChange && (
+        <p className="rounded-lg border border-pit-gold/30 bg-pit-gold/10 px-3 py-2 text-sm text-pit-gold">
+          Review the {normalizedPlayerCount}-player scoring and final multipliers, then save this plan to update the season capacity.
+        </p>
       )}
-    >
-      <div className="space-y-4">
-        {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-          <span className="text-sm text-pit-text">Use a final game after the regular-season standings</span>
+      {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+          <label className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-pit-muted">Top events scored</span>
+            <input
+              className="input mt-2 py-2"
+              inputMode="numeric"
+              value={bestFinishCount}
+              onChange={(event) => { setBestFinishCount(event.target.value.replace(/\D/g, '')); setSimulation(null); }}
+            />
+          </label>
+          <label className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-pit-muted">Show-up bonus</span>
+            <input
+              className="input mt-2 py-2 text-right"
+              inputMode="numeric"
+              value={showupBonus}
+              onChange={(event) => { setShowupBonus(event.target.value.replace(/\D/g, '')); setSimulation(null); }}
+            />
+          </label>
+      </div>
+      <section className="rounded-lg border border-pit-gold/25 bg-pit-gold/5 p-3">
+        <label className="flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={finalEnabled}
+            onChange={(event) => { setFinalEnabled(event.target.checked); setSimulation(null); }}
+          />
+          <span>
+            <span className="block font-semibold text-white">Run a final game</span>
+            <span className="mt-0.5 block text-xs text-pit-text">Use regular-season points to create final-game starting stacks.</span>
+          </span>
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
+        {finalEnabled && (
+          <div className="mt-3 grid gap-3 border-t border-pit-gold/20 pt-3 sm:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Round chips to</span>
-            <input className="input" inputMode="numeric" value={rounding} onChange={(event) => setRounding(event.target.value.replace(/\D/g, ''))} />
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Round chips to nearest</span>
+            <input className="input" inputMode="numeric" value={rounding} onChange={(event) => { setRounding(event.target.value.replace(/\D/g, '')); setSimulation(null); }} />
           </label>
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Starting big blind</span>
-            <input className="input" inputMode="numeric" value={bigBlind} onChange={(event) => setBigBlind(event.target.value.replace(/\D/g, ''))} />
+            <input className="input" inputMode="numeric" value={bigBlind} onChange={(event) => { setBigBlind(event.target.value.replace(/\D/g, '')); setSimulation(null); }} />
           </label>
-        </div>
-        <p className="text-sm leading-6 text-pit-text">
-          Final stacks use scored season points times the rank multiplier, rounded to your chip denomination, then add each player's total show-up bonus. Changing this does not rewrite logged event points.
-        </p>
-        <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
-          {[...multipliers].sort((a, b) => a.place - b.place).map((rule) => (
-            <div key={rule.place} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-lg border border-pit-border bg-pit-bg/60 p-3">
-              <span className="font-semibold text-white">{rule.place}{ordinal(rule.place)} place multiplier</span>
-              <input className="input py-2 text-right" inputMode="numeric" value={rule.multiplier} onChange={(event) => updateMultiplier(rule.place, event.target.value)} />
+          </div>
+        )}
+      </section>
+        <div className="rounded-lg border border-teal-400/25 bg-teal-400/5 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-white">Recommended for {normalizedPlayerCount} players</p>
+              <p className="mt-1 text-xs text-pit-text">
+                {formatNumber(normalizedPlayerCount * 100)} points per event. Top 8: {formatNumber(recommendedTopEightPoints)} ({recommendedTotalPoints ? Math.round((recommendedTopEightPoints / recommendedTotalPoints) * 100) : 0}%). Top 3: {formatNumber(recommendedTopThreePoints)} ({recommendedTotalPoints ? Math.round((recommendedTopThreePoints / recommendedTotalPoints) * 100) : 0}%).
+              </p>
             </div>
-          ))}
+            <button type="button" className="btn-ghost" onClick={applyRecommendation}>Apply recommendation</button>
+          </div>
         </div>
-        <button type="button" className="btn-ghost w-full justify-center" onClick={addPlace}>
-          <Plus size={14} />
-          Add final placement
-        </button>
-      </div>
-    </Modal>
+        <section className="overflow-hidden rounded-lg border border-pit-border bg-pit-bg/60">
+          <div className={`grid ${scoringGridColumns} items-center gap-2 border-b border-pit-border bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-pit-muted`}>
+            <span>Placement</span>
+            <span className="text-right">Event points</span>
+            {finalEnabled && <span className="text-right">Final multiplier</span>}
+          </div>
+          <div className="divide-y divide-pit-border">
+            {rows.map((rule) => {
+              const place = Number(rule.place);
+              return (
+                <div key={rule.place} className={`grid ${scoringGridColumns} items-center gap-2 px-3 py-2`}>
+                  <span className="font-semibold text-white">{place}{ordinal(place)}</span>
+                  <input className="input py-2 text-right" inputMode="numeric" value={rule.points} onChange={(event) => updateRule(place, event.target.value)} />
+                  {finalEnabled ? (
+                    <label className="relative block">
+                      <input className="input w-full py-2 pr-6 text-right" inputMode="numeric" value={multiplierByPlace.get(place) ?? 0} onChange={(event) => updateMultiplier(place, event.target.value)} />
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-pit-muted">x</span>
+                    </label>
+                  ) : null}
+                </div>
+              );
+            })}
+            <div className={`grid ${scoringGridColumns} items-center gap-2 px-3 py-2`}>
+              <span className="font-semibold text-white">DNF</span>
+              <input className="input py-2 text-right" inputMode="numeric" value={dnf.points} onChange={(event) => updateRule('DNF', event.target.value)} />
+              {finalEnabled && <span className="text-right text-sm text-pit-muted">-</span>}
+            </div>
+          </div>
+        </section>
+        {finalEnabled && <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-white">Simulate season</p>
+              <p className="mt-1 text-xs text-pit-text">Randomized results preview how the final game could look. Nothing is saved.</p>
+            </div>
+            <button type="button" className="btn-ghost" onClick={runSimulation}>Run simulation</button>
+          </div>
+          {simulation && (
+            <div className="mt-3 overflow-hidden rounded-md border border-pit-border">
+              <div className="grid grid-cols-[42px_1fr_auto_auto] gap-2 border-b border-pit-border bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-pit-muted">
+                <span>Rank</span><span>Player</span><span>Points</span><span>Final</span>
+              </div>
+              {simulation.players.map((player) => (
+                <div key={player.rank} className="grid grid-cols-[42px_1fr_auto_auto] items-center gap-2 border-b border-pit-border/70 px-3 py-2 text-sm last:border-b-0">
+                  <span className="text-teal-300">#{player.rank}</span>
+                  <span className="font-semibold text-white">{player.name}</span>
+                  <span>{formatNumber(player.totalPoints)}</span>
+                  <span className="font-semibold text-teal-300">{formatNumber(player.startingStack)}</span>
+                </div>
+              ))}
+              <p className="border-t border-pit-border bg-black/20 px-3 py-2 text-xs text-pit-text">
+                Final stack uses the current multiplier and chip-rounding settings.
+              </p>
+            </div>
+          )}
+        </div>}
+    </section>
   );
 }
 
@@ -3246,6 +3376,7 @@ function AdjustPaymentModal({
 function RecordPaymentModal({
   open,
   detail,
+  targetUserId,
   loading,
   error,
   saveState,
@@ -3254,6 +3385,7 @@ function RecordPaymentModal({
 }: {
   open: boolean;
   detail: LeagueDetail;
+  targetUserId: string | null;
   loading: boolean;
   error?: string;
   saveState: { count: number; paymenttype: LeaguePaymentType };
@@ -3272,6 +3404,9 @@ function RecordPaymentModal({
   const [note, setNote] = useState('');
   const wasOpenRef = useRef(false);
   const lastHandledSaveRef = useRef(saveState.count);
+  const initialUserId = targetUserId && members.some((member) => member.userid === targetUserId)
+    ? targetUserId
+    : members[0]?.userid ?? '';
   useEffect(() => {
     if (!open) {
       wasOpenRef.current = false;
@@ -3279,13 +3414,13 @@ function RecordPaymentModal({
     }
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
-    setUserid(members[0]?.userid ?? '');
+    setUserid(initialUserId);
     setPaymenttype('league');
     setEventid('');
     setAmount(String(detail.league.leaguefee || ''));
     setPaidat(new Date().toISOString().slice(0, 10));
     setNote('');
-  }, [detail.league.leaguefee, members, open]);
+  }, [detail.league.leaguefee, initialUserId, open]);
 
   useEffect(() => {
     if (!open || saveState.count === lastHandledSaveRef.current) return;
@@ -3323,9 +3458,15 @@ function RecordPaymentModal({
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <label className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Player</span>
-          <select className="input" value={userid} onChange={(event) => setUserid(event.target.value)}>
-            {members.map((member: LeagueMember) => <option key={member.userid} value={member.userid}>{member.displayname ?? 'Player'}</option>)}
-          </select>
+          {targetUserId ? (
+            <div className="input flex items-center bg-pit-bg/60 text-sm font-semibold text-white">
+              {selectedMember?.displayname ?? 'Player'}
+            </div>
+          ) : (
+            <select className="input" value={userid} onChange={(event) => setUserid(event.target.value)}>
+              {members.map((member: LeagueMember) => <option key={member.userid} value={member.userid}>{member.displayname ?? 'Player'}</option>)}
+            </select>
+          )}
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
@@ -3461,6 +3602,7 @@ function LeagueSettingsModal({
   open,
   league,
   season,
+  finalGameEnabled,
   loading,
   error,
   onClose,
@@ -3469,13 +3611,15 @@ function LeagueSettingsModal({
   open: boolean;
   league: League;
   season?: LeagueDetail['seasons'][number];
+  finalGameEnabled: boolean;
   loading: boolean;
   error?: string;
   onClose: () => void;
-  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string; memberledgervisible: boolean; eventsasgames?: boolean }) => void;
+  onSubmit: (data: { leagueName: string; seasonId?: string | null; seasonName?: string; expectedplayercount?: number; memberledgervisible: boolean; eventsasgames?: boolean }) => void;
 }) {
   const [leagueName, setLeagueName] = useState(league.name);
   const [seasonName, setSeasonName] = useState(season?.name ?? '');
+  const [playerCount, setPlayerCount] = useState(String(season?.expectedplayercount ?? league.expectedplayercount ?? 36));
   const [memberLedgerVisible, setMemberLedgerVisible] = useState(Boolean(league.memberledgervisible));
   const [eventsasgames, setEventsasgames] = useState(Boolean(season?.eventsasgames));
 
@@ -3483,11 +3627,15 @@ function LeagueSettingsModal({
     if (!open) return;
     setLeagueName(league.name);
     setSeasonName(season?.name ?? '');
+    setPlayerCount(String(season?.expectedplayercount ?? league.expectedplayercount ?? 36));
     setMemberLedgerVisible(Boolean(league.memberledgervisible));
     setEventsasgames(Boolean(season?.eventsasgames));
-  }, [league.memberledgervisible, league.name, open, season?.eventsasgames, season?.name]);
+  }, [league.expectedplayercount, league.memberledgervisible, league.name, open, season?.eventsasgames, season?.expectedplayercount, season?.name]);
 
   const canSave = leagueName.trim().length > 0 && (!season || seasonName.trim().length > 0);
+  const requestedPlayerCount = season ? Math.max(2, Math.min(500, Math.round(Number(playerCount) || 2))) : null;
+  const playerCountChanging = Boolean(season && requestedPlayerCount !== Number(season.expectedplayercount ?? league.expectedplayercount ?? 36));
+  const needsFinalScoringReview = Boolean(finalGameEnabled && playerCountChanging);
 
   return (
     <Modal
@@ -3505,11 +3653,12 @@ function LeagueSettingsModal({
               leagueName: leagueName.trim(),
               seasonId: season?.seasonid ?? null,
               seasonName: season ? seasonName.trim() : undefined,
+              expectedplayercount: requestedPlayerCount ?? undefined,
               memberledgervisible: memberLedgerVisible,
               eventsasgames,
             })}
           >
-            {loading ? 'Saving...' : 'Save Settings'}
+            {loading ? 'Saving...' : needsFinalScoringReview ? 'Review Scoring' : 'Save Settings'}
           </button>
         </>
       )}
@@ -3530,6 +3679,21 @@ function LeagueSettingsModal({
             placeholder={season ? 'Season name' : 'No season selected'}
           />
         </label>
+        {season && (
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Player capacity</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={playerCount}
+              onChange={(event) => setPlayerCount(event.target.value.replace(/\D/g, ''))}
+            />
+            <span className="block text-xs text-pit-muted">Used for this season's roster, scoring recommendation, and final-game simulation.</span>
+            {needsFinalScoringReview && (
+              <span className="block text-xs font-medium text-pit-gold">Review the scoring and final multipliers before saving this capacity change.</span>
+            )}
+          </label>
+        )}
         <label className="flex items-start gap-3 rounded-xl border border-pit-border bg-pit-bg/55 p-3">
           <input
             type="checkbox"
@@ -3755,8 +3919,9 @@ function ordinal(value?: number | null) {
   return 'th';
 }
 
-function defaultFinalMultipliers(): LeagueFinalMultiplier[] {
-  return Array.from({ length: 36 }, (_, index) => ({
+function defaultFinalMultipliers(playerCount = 36): LeagueFinalMultiplier[] {
+  const length = Math.max(2, Math.min(500, Math.round(Number(playerCount) || 36)));
+  return Array.from({ length }, (_, index) => ({
     place: index + 1,
     multiplier: Math.max(2, 20 - index),
   }));
@@ -3791,12 +3956,79 @@ function generateLeaguePoints(playerCount: number, totalPoints = playerCount * 1
   return [{ place: 'DNF', points: 0 }, ...rounded.sort((a, b) => a.place - b.place).map(({ place, points }) => ({ place, points }))];
 }
 
+type SeasonSimulation = {
+  players: Array<{
+    rank: number;
+    name: string;
+    totalPoints: number;
+    startingStack: number;
+  }>;
+};
+
+function simulateSeasonFinale({
+  playerCount,
+  eventCount,
+  pointRules,
+  showupBonus,
+  bestFinishCount,
+  league,
+}: {
+  playerCount: number;
+  eventCount: number;
+  pointRules: LeaguePointRule[];
+  showupBonus: number;
+  bestFinishCount: number;
+  league: League;
+}): SeasonSimulation {
+  const players = Array.from({ length: playerCount }, (_, index) => ({
+    name: `Player ${index + 1}`,
+    finishes: [] as number[],
+  }));
+  const pointsByPlace = new Map(pointRules
+    .filter((rule): rule is LeaguePointRule & { place: number } => typeof rule.place === 'number')
+    .map((rule) => [rule.place, Math.max(0, Number(rule.points || 0))]));
+  const playedEvents = Math.max(1, eventCount);
+
+  for (let eventIndex = 0; eventIndex < playedEvents; eventIndex += 1) {
+    const shuffled = [...players];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const next = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[next]] = [shuffled[next], shuffled[index]];
+    }
+    shuffled.forEach((player, index) => player.finishes.push(pointsByPlace.get(index + 1) ?? 0));
+  }
+
+  const multiplierByPlace = new Map((league.finalmultiplierlookup?.length
+    ? league.finalmultiplierlookup
+    : defaultFinalMultipliers()).map((rule) => [rule.place, rule.multiplier]));
+  const rounding = Math.max(1, Number(league.finalchiprounding || 100));
+  const standings = players.map((player) => {
+    const scoredPoints = [...player.finishes].sort((a, b) => b - a).slice(0, Math.max(1, bestFinishCount)).reduce((sum, points) => sum + points, 0);
+    const totalPoints = scoredPoints + (playedEvents * showupBonus);
+    return { ...player, scoredPoints, totalPoints };
+  }).sort((a, b) => b.scoredPoints - a.scoredPoints || a.name.localeCompare(b.name));
+
+  return {
+    players: standings.slice(0, Math.min(8, standings.length)).map((player, index) => {
+      const multiplier = Number(multiplierByPlace.get(index + 1) ?? 0);
+      const rawStartingStack = (player.scoredPoints * multiplier) + (playedEvents * showupBonus);
+      return {
+        rank: index + 1,
+        name: player.name,
+        totalPoints: player.totalPoints,
+        startingStack: Math.ceil(rawStartingStack / rounding) * rounding,
+      };
+    }),
+  };
+}
+
 function formatAuditAction(action: string) {
   const labels: Record<string, string> = {
     league_created: 'League created',
     season_created: 'Season created',
     season_deleted: 'Season deleted',
     season_fee_updated: 'Season fee updated',
+    season_scoring_updated: 'Season scoring updated',
     season_updated: 'Season updated',
     event_created: 'Event created',
     events_created: 'Events created',
