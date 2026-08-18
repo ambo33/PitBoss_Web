@@ -875,7 +875,7 @@ function ScheduleRow({
       : isRegistered
         ? <Check size={13} strokeWidth={2.5} className="shrink-0" />
         : <Settings size={13} className="shrink-0" />;
-  const showMobileNameStatus = Boolean(statusLabel && (isRegistered || isDeclined));
+  const showMobileStatus = Boolean(statusLabel && (isRegistered || isDeclined));
 
   return (
     <div
@@ -895,18 +895,12 @@ function ScheduleRow({
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="block min-w-0 flex-1 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
+            className="block min-w-0 truncate text-left text-sm font-semibold text-white transition hover:text-pit-teal md:text-base"
             onClick={onOpen}
             title={item.name}
           >
             {item.name}
           </button>
-          {showMobileNameStatus && (
-            <span className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-black leading-none md:hidden ${statusPillClass}`}>
-              {statusIcon}
-              {statusLabel}
-            </span>
-          )}
         </div>
         {item.parentName && (
           <p className="mt-1 w-full min-w-0 truncate text-xs text-[#b3b3c2]" title={item.parentName}>{item.parentName}</p>
@@ -936,15 +930,15 @@ function ScheduleRow({
             {fieldCount}
           </span>
         )}
-        {statusLabel && !showMobileNameStatus && (
-          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-semibold md:hidden ${statusPillClass}`}>
+      </div>
+
+      <div className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold md:col-auto md:row-auto md:block md:justify-self-auto md:text-left">
+        {showMobileStatus && (
+          <span className={`inline-flex h-6 w-[6.75rem] shrink-0 items-center justify-center gap-1 rounded-full border px-2 text-[10px] font-black leading-none md:hidden ${statusPillClass}`}>
             {statusIcon}
             {statusLabel}
           </span>
         )}
-      </div>
-
-      <div className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 justify-self-end whitespace-nowrap text-right text-sm font-bold text-pit-gold md:col-auto md:row-auto md:block md:justify-self-auto md:text-left">
         <span className={`inline-flex h-6 items-center rounded-full border px-2 text-[9px] font-semibold uppercase tracking-[0.1em] md:hidden ${typePillClass}`}>
           {typeLabel}
         </span>

@@ -1,6 +1,7 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { io } from 'socket.io-client';
 import { CalendarCheck, CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, Users, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -9,7 +10,7 @@ import { api, type LeagueResult } from '../../api/client';
 export default function LeagueEventLobbyPage() {
   const { leagueId, eventId } = useParams();
   const qc = useQueryClient();
-  const queryKey = ['league-event-lobby', leagueId, eventId];
+  const queryKey = useMemo(() => ['league-event-lobby', leagueId, eventId], [leagueId, eventId]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey,
@@ -43,6 +44,29 @@ export default function LeagueEventLobbyPage() {
     mutationFn: (status: 'going' | 'not_going') => api.rsvpLeagueEvent(leagueId!, eventId!, status),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
+
+  useEffect(() => {
+    if (!eventId) return;
+    const socket = io('/', { path: '/socket.io' });
+    const refreshLobby = () => {
+      void qc.invalidateQueries({ queryKey });
+    };
+    const joinRooms = () => {
+      socket.emit('join-league-event', eventId);
+      if (data?.event.tournamentid) {
+        socket.emit('join-tournament', data.event.tournamentid);
+      }
+    };
+
+    socket.on('connect', joinRooms);
+    if (socket.connected) joinRooms();
+    socket.on('league-event-updated', refreshLobby);
+    socket.on('tournament-updated', refreshLobby);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [data?.event.tournamentid, eventId, qc, queryKey]);
 
   if (isLoading) return <LoadingSpinner className="mt-16" />;
   if (!data) {
@@ -124,7 +148,7 @@ export default function LeagueEventLobbyPage() {
           </header>
 
           <div className="grid grid-cols-3 border-b border-pit-border bg-pit-bg/45">
-            <EventStat label="Season field" value={data.participantcount} />
+            <EventStat label="Event field" value={data.participantcount} />
             <EventStat label="Players left" value={playersRemaining} />
             <EventStat label="Finishes" value={placedResults.length} />
           </div>

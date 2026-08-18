@@ -23,6 +23,7 @@ import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
 import { hasTournamentStarted } from '../schedule';
 import { getAvailableLeaguePlacements } from '../leagues/placements';
+import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -807,10 +808,23 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
             rsvp.status AS rsvpstatus,
             (SELECT count(*)
              FROM leagueeventrsvps event_rsvp
+             JOIN leagueseasonparticipants event_player
+               ON event_player.leagueid = event_rsvp.leagueid
+              AND event_player.userid = event_rsvp.userid
+              AND event_player.seasonid = e.seasonid
+              AND event_player.participating = TRUE
+             JOIN leaguemembers event_member
+               ON event_member.leagueid = event_rsvp.leagueid
+              AND event_member.userid = event_rsvp.userid
+              AND event_member.approved = TRUE
              WHERE event_rsvp.eventid = e.eventid
                AND event_rsvp.status = 'going') AS goingcount,
             (SELECT count(*)
              FROM leagueseasonparticipants season_player
+             JOIN leaguemembers season_member
+               ON season_member.leagueid = season_player.leagueid
+              AND season_member.userid = season_player.userid
+              AND season_member.approved = TRUE
              WHERE season_player.leagueid = l.leagueid
                AND season_player.seasonid = s.seasonid
                AND season_player.participating = TRUE) AS seasonplayercount
@@ -3685,6 +3699,7 @@ leaguesRouter.put('/:id/events/:eventId/rsvp', async (req: Request, res: Respons
       });
     }
     await client.query('COMMIT');
+    broadcastLeagueEventUpdate(event.eventid, { rsvp: true, source: 'league-event-rsvp' });
     res.json({ rsvp: row });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -3712,7 +3727,7 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     return;
   }
 
-  const [participantCount, isParticipant, results, myRsvp, rsvpCounts] = await Promise.all([
+  const [seasonParticipantCount, isParticipant, results, myRsvp, rsvpCounts] = await Promise.all([
     getLeagueSeasonParticipantCount(req.params.id, event.seasonid),
     requireLeagueSeasonParticipant(req.params.id, event.seasonid, req.userId!),
     query<LeagueResultRow>(
@@ -3721,10 +3736,54 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
               r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
        FROM leagueresults r
        JOIN users u ON u.guid = r.userid
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = r.leagueid
+        AND lsp.userid = r.userid
+        AND lsp.seasonid = $3
+        AND lsp.participating = TRUE
+       JOIN leaguemembers lm
+         ON lm.leagueid = r.leagueid
+        AND lm.userid = r.userid
+        AND lm.approved = TRUE
        LEFT JOIN usermetadata m ON m.userid = u.guid
        WHERE r.leagueid = $1 AND r.eventid = $2
+         AND (
+           NOT EXISTS (
+             SELECT 1
+             FROM leagueeventrsvps going
+             JOIN leagueseasonparticipants going_lsp
+               ON going_lsp.leagueid = going.leagueid
+              AND going_lsp.userid = going.userid
+              AND going_lsp.seasonid = $3
+              AND going_lsp.participating = TRUE
+             JOIN leaguemembers going_lm
+               ON going_lm.leagueid = going.leagueid
+              AND going_lm.userid = going.userid
+              AND going_lm.approved = TRUE
+             WHERE going.eventid = r.eventid
+               AND going.leagueid = r.leagueid
+               AND going.status = 'going'
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM leagueeventrsvps going
+             JOIN leagueseasonparticipants going_lsp
+               ON going_lsp.leagueid = going.leagueid
+              AND going_lsp.userid = going.userid
+              AND going_lsp.seasonid = $3
+              AND going_lsp.participating = TRUE
+             JOIN leaguemembers going_lm
+               ON going_lm.leagueid = going.leagueid
+              AND going_lm.userid = going.userid
+              AND going_lm.approved = TRUE
+             WHERE going.eventid = r.eventid
+               AND going.leagueid = r.leagueid
+               AND going.userid = r.userid
+               AND going.status = 'going'
+           )
+         )
        ORDER BY r.updatedat DESC`,
-      [req.params.id, event.eventid]
+      [req.params.id, event.eventid, event.seasonid]
     ),
     queryOne<LeagueEventRsvpRow>(
       `SELECT rsvpid, eventid, leagueid, userid, status, createdat, updatedat
@@ -3733,11 +3792,20 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
       [event.eventid, req.params.id, req.userId]
     ),
     query<{ status: string; count: string | number }>(
-      `SELECT status, count(*) AS count
-       FROM leagueeventrsvps
-       WHERE eventid = $1 AND leagueid = $2
-       GROUP BY status`,
-      [event.eventid, req.params.id]
+      `SELECT r.status, count(*) AS count
+       FROM leagueeventrsvps r
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = r.leagueid
+        AND lsp.userid = r.userid
+        AND lsp.seasonid = $3
+        AND lsp.participating = TRUE
+       JOIN leaguemembers lm
+         ON lm.leagueid = r.leagueid
+        AND lm.userid = r.userid
+        AND lm.approved = TRUE
+       WHERE r.eventid = $1 AND r.leagueid = $2
+       GROUP BY r.status`,
+      [event.eventid, req.params.id, event.seasonid]
     ),
   ]);
 
@@ -3748,11 +3816,14 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     points: Number(result.points || 0),
     showupbonuspoints: Number(result.showupbonuspoints || 0),
   }));
-  const myResult = normalizedResults.find((result) => result.userid === req.userId) ?? null;
-  const { nextPlace } = getAvailableLeaguePlacements(participantCount, normalizedResults, req.userId!);
   const hasStarted = hasTournamentStarted(event.eventdate, event.eventtime);
   const goingCount = Number(rsvpCounts.find((row) => row.status === 'going')?.count ?? 0);
   const notGoingCount = Number(rsvpCounts.find((row) => row.status === 'not_going')?.count ?? 0);
+  // Once RSVPs exist, only confirmed players are in this event's field. Before then,
+  // retain the season roster so hosts can still prepare the event.
+  const eventFieldCount = goingCount > 0 ? goingCount : seasonParticipantCount;
+  const myResult = normalizedResults.find((result) => result.userid === req.userId) ?? null;
+  const { nextPlace } = getAvailableLeaguePlacements(eventFieldCount, normalizedResults, req.userId!);
 
   res.json({
     league: {
@@ -3765,9 +3836,13 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
       eventfee: event.eventfee == null ? null : Number(event.eventfee),
       hasstarted: hasStarted,
     },
-    participantcount: participantCount,
+    participantcount: eventFieldCount,
     isparticipant: isParticipant,
-    canselflog: hasStarted && isParticipant && !myResult && nextPlace != null,
+    canselflog: hasStarted
+      && isParticipant
+      && !myResult
+      && nextPlace != null
+      && (goingCount === 0 || myRsvp?.status === 'going'),
     nextplace: nextPlace,
     myresult: myResult,
     myrsvp: myRsvp,
@@ -3834,23 +3909,89 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       [event.eventid, req.params.id, targetUserId]
     );
     const previousResult = previousQuery.rows[0] ?? null;
-    const participantQuery = await client.query<{ count: string | number }>(
-      `SELECT count(*) AS count
-       FROM leaguemembers lm
-       JOIN leagueseasonparticipants lsp
-         ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
-       WHERE lm.leagueid = $1
-         AND lsp.seasonid = $2
-         AND lm.approved = TRUE
-         AND lsp.participating = TRUE`,
-      [req.params.id, event.seasonid]
-    );
-    const participantCount = Number(participantQuery.rows[0]?.count || 0);
+    const [participantQuery, goingQuery] = await Promise.all([
+      client.query<{ count: string | number }>(
+        `SELECT count(*) AS count
+         FROM leaguemembers lm
+         JOIN leagueseasonparticipants lsp
+           ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
+         WHERE lm.leagueid = $1
+           AND lsp.seasonid = $2
+           AND lm.approved = TRUE
+           AND lsp.participating = TRUE`,
+        [req.params.id, event.seasonid]
+      ),
+      client.query<{ count: string | number }>(
+        `SELECT count(*) AS count
+         FROM leagueeventrsvps r
+         JOIN leagueseasonparticipants lsp
+           ON lsp.leagueid = r.leagueid
+          AND lsp.userid = r.userid
+          AND lsp.seasonid = $3
+          AND lsp.participating = TRUE
+         JOIN leaguemembers lm
+           ON lm.leagueid = r.leagueid
+          AND lm.userid = r.userid
+          AND lm.approved = TRUE
+         WHERE r.leagueid = $1 AND r.eventid = $2 AND r.status = 'going'`,
+        [req.params.id, event.eventid, event.seasonid]
+      ),
+    ]);
+    const goingCount = Number(goingQuery.rows[0]?.count || 0);
+    const participantCount = goingCount > 0
+      ? goingCount
+      : Number(participantQuery.rows[0]?.count || 0);
+    if (!dnf && goingCount > 0) {
+      const targetGoing = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM leagueeventrsvps r
+           JOIN leagueseasonparticipants lsp
+             ON lsp.leagueid = r.leagueid
+            AND lsp.userid = r.userid
+            AND lsp.seasonid = $4
+            AND lsp.participating = TRUE
+           JOIN leaguemembers lm
+             ON lm.leagueid = r.leagueid
+            AND lm.userid = r.userid
+            AND lm.approved = TRUE
+           WHERE r.leagueid = $1 AND r.eventid = $2 AND r.userid = $3 AND r.status = 'going'
+         ) AS exists`,
+        [req.params.id, event.eventid, targetUserId, event.seasonid]
+      );
+      if (!targetGoing.rows[0]?.exists) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'Only players marked Going can receive an event placement.' });
+        return;
+      }
+    }
     const eventResultsQuery = await client.query<{ userid: string; placed: number | null; dnf: boolean }>(
       `SELECT userid, placed, COALESCE(dnf, FALSE) AS dnf
        FROM leagueresults
-       WHERE eventid = $1 AND leagueid = $2 AND userid <> $3`,
-      [event.eventid, req.params.id, targetUserId]
+       WHERE eventid = $1
+         AND leagueid = $2
+         AND userid <> $3
+         AND (
+           $4::integer = 0
+           OR EXISTS (
+           SELECT 1
+             FROM leagueeventrsvps going
+             JOIN leagueseasonparticipants lsp
+               ON lsp.leagueid = going.leagueid
+              AND lsp.userid = going.userid
+              AND lsp.seasonid = $5
+              AND lsp.participating = TRUE
+             JOIN leaguemembers lm
+               ON lm.leagueid = going.leagueid
+              AND lm.userid = going.userid
+              AND lm.approved = TRUE
+             WHERE going.eventid = leagueresults.eventid
+               AND going.leagueid = leagueresults.leagueid
+               AND going.userid = leagueresults.userid
+               AND going.status = 'going'
+           )
+         )`,
+      [event.eventid, req.params.id, targetUserId, goingCount, event.seasonid]
     );
     const placementState = getAvailableLeaguePlacements(
       participantCount,
@@ -3970,6 +4111,10 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     client.release();
   }
   if (row && resultChanged) {
+    broadcastLeagueEventUpdate(event.eventid, { results: true, source: 'league-event-result' });
+    if (event.tournamentid) {
+      broadcastTournamentUpdate(event.tournamentid, { players: true, source: 'league-event-result' });
+    }
     void sendLeagueResultLoggedPush({
       leagueId: req.params.id,
       leagueName: leagueRow.name,
@@ -4038,6 +4183,10 @@ leaguesRouter.delete('/:id/events/:eventId/results/:userId', async (req: Request
       },
     });
     await client.query('COMMIT');
+    broadcastLeagueEventUpdate(event.eventid, { results: true, source: 'league-event-result-removed' });
+    if (event.tournamentid) {
+      broadcastTournamentUpdate(event.tournamentid, { players: true, source: 'league-event-result-removed' });
+    }
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');

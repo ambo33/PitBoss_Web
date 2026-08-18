@@ -294,7 +294,17 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: '18. Approved league joins enter the current season when no guest spots need review',
+    name: '18. Confirmed event fields use RSVP player count instead of the larger season roster',
+    run: () => {
+      const confirmedField = 3;
+      const state = getAvailableLeaguePlacements(confirmedField, [], 'target');
+      assert.equal(state.placementLimit, 3);
+      assert.equal(state.nextPlace, 3);
+      assert.deepEqual(state.availablePlaces, [1, 2, 3]);
+    },
+  },
+  {
+    name: '19. Approved league joins enter the current season when no guest spots need review',
     run: () => {
       assert.equal(shouldJoinCurrentSeason({
         membershipApproved: true,
@@ -305,7 +315,7 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: '19. Guest takeover choices pause season enrollment until the player decides',
+    name: '20. Guest takeover choices pause season enrollment until the player decides',
     run: () => {
       assert.equal(shouldJoinCurrentSeason({
         membershipApproved: true,
@@ -316,7 +326,7 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: '20. Skipping guest takeover joins the approved member to the current season',
+    name: '21. Skipping guest takeover joins the approved member to the current season',
     run: () => {
       assert.equal(shouldJoinCurrentSeason({
         membershipApproved: true,
@@ -327,7 +337,7 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: '21. Pending league members cannot enter a season before approval',
+    name: '22. Pending league members cannot enter a season before approval',
     run: () => {
       assert.equal(shouldJoinCurrentSeason({
         membershipApproved: false,

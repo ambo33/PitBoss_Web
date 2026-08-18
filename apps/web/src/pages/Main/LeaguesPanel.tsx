@@ -1492,11 +1492,7 @@ function PlayerLeagueProfile({ detail, userId, floating = false }: { detail: Lea
     );
   }
 
-  const seasonEventFees = detail.events.reduce((sum, event) => sum + getPlayerEventFeeDue(detail, event, userId), 0);
-  const totalDue = Number(detail.league.leaguefee || 0) + seasonEventFees;
-  const totalPaid = detail.payments
-    .filter((payment) => payment.userid === userId)
-    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const feeSummary = getPlayerFeeSummary(detail, userId);
 
   return (
     <div className={shellClass}>
@@ -1507,18 +1503,22 @@ function PlayerLeagueProfile({ detail, userId, floating = false }: { detail: Lea
         </div>
         <span className="chip shrink-0">{formatNumber(Number(standing.totalpoints || 0))} pts</span>
       </div>
-      <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
+      <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
         <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
           <p className="text-pit-muted">Played</p>
           <p className="mt-1 font-bold text-white">{standing.eventsplayed}</p>
         </div>
         <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
           <p className="text-pit-muted">Paid</p>
-          <p className="mt-1 font-bold text-pit-teal">{formatCurrency(totalPaid)}</p>
+          <p className="mt-1 font-bold text-pit-teal">{formatCurrency(feeSummary.totalPaid)}</p>
         </div>
         <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
-          <p className="text-pit-muted">Open</p>
-          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(Math.max(0, totalDue - totalPaid))}</p>
+          <p className="text-pit-muted">League fees left</p>
+          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(feeSummary.leagueFeeRemaining)}</p>
+        </div>
+        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
+          <p className="text-pit-muted">Est. event fees left</p>
+          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(feeSummary.eventFeeRemaining)}</p>
         </div>
       </div>
       <div className={`${floating ? 'max-h-[calc(100vh-15rem)]' : 'max-h-[34rem]'} space-y-2 overflow-y-auto pr-1`}>
@@ -1578,10 +1578,6 @@ function MemberLeagueView({
   const userResults = viewedUserId ? detail.results.filter((result) => result.userid === viewedUserId) : [];
   const resultByEvent = new Map(userResults.map((result) => [result.eventid, result]));
   const today = todayDateString();
-  const dueEvents = detail.events.filter((event) => {
-    const result = resultByEvent.get(event.eventid);
-    return result ? !result.dnf : isEventDueToDate(event, today);
-  });
   const remainingEvents = detail.events.filter((event) => !resultByEvent.has(event.eventid) && isEventRemaining(event, today));
   const nextEvent = detail.events.filter((event) => isEventRemaining(event, today)).sort(compareLeagueEvents)[0] ?? null;
   const resultEventIds = new Set(detail.results.map((result) => result.eventid));
@@ -1594,12 +1590,7 @@ function MemberLeagueView({
   const eventsPlayedLabel = completedEventIds.size === 0 ? '0' : `${playedCompletedEventCount} of ${completedEventIds.size}`;
   const placementPoints = Number(standing?.scoredpoints || 0);
   const bestFinish = viewedUserId ? bestPlacementValues(detail, viewedUserId)[0] ?? null : null;
-  const dueEventFees = viewedUserId ? dueEvents.reduce((sum, event) => sum + getPlayerEventFeeDue(detail, event, viewedUserId), 0) : 0;
-  const totalDueToDate = Number(detail.league.leaguefee || 0) + dueEventFees;
-  const totalPaid = viewedUserId
-    ? detail.payments.filter((payment) => payment.userid === viewedUserId).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-    : 0;
-  const openBalance = Math.max(0, totalDueToDate - totalPaid);
+  const feeSummary = viewedUserId ? getPlayerFeeSummary(detail, viewedUserId) : null;
   const canViewLeagueLedger = Boolean(detail.league.memberledgervisible);
   const selectProfileUser = (userId: string) => {
     onSelectUser(userId);
@@ -1656,9 +1647,9 @@ function MemberLeagueView({
               <MemberStoryStat label="Avg finish" value={standing?.averagefinish ? standing.averagefinish.toFixed(1) : '-'} />
               <MemberStoryStat label="Remaining" value={remainingEvents.length} />
               <MemberStoryStat
-                label={isViewingSelf ? 'Balance due' : 'Placement points'}
-                value={isViewingSelf ? formatCurrency(openBalance) : formatNumber(placementPoints)}
-                accent={isViewingSelf ? (openBalance > 0 ? 'gold' : 'teal') : 'teal'}
+                label={isViewingSelf ? 'Estimated open' : 'Placement points'}
+                value={isViewingSelf ? formatCurrency(feeSummary?.totalRemaining ?? 0) : formatNumber(placementPoints)}
+                accent={isViewingSelf ? ((feeSummary?.totalRemaining ?? 0) > 0 ? 'gold' : 'teal') : 'teal'}
               />
             </div>
           </div>
@@ -1679,8 +1670,8 @@ function MemberLeagueView({
                 <MemberMoneyStat label="Events played" value={eventsPlayedLabel} />
                 {isViewingSelf ? (
                   <>
-                    <MemberMoneyStat label="Paid" value={formatCurrency(totalPaid)} accent="teal" />
-                    <MemberMoneyStat label="Balance due" value={formatCurrency(openBalance)} accent={openBalance > 0 ? 'gold' : 'teal'} />
+                    <MemberMoneyStat label="League fees left" value={formatCurrency(feeSummary?.leagueFeeRemaining ?? 0)} accent={(feeSummary?.leagueFeeRemaining ?? 0) > 0 ? 'gold' : 'teal'} />
+                    <MemberMoneyStat label="Estimated event fees left" value={formatCurrency(feeSummary?.eventFeeRemaining ?? 0)} accent={(feeSummary?.eventFeeRemaining ?? 0) > 0 ? 'gold' : 'teal'} />
                   </>
                 ) : (
                   <>
@@ -4016,7 +4007,33 @@ function getLeagueEventResult(detail: LeagueDetail, event: LeagueEvent, userId: 
 function getPlayerEventFeeDue(detail: LeagueDetail, event: LeagueEvent, userId: string) {
   const result = getLeagueEventResult(detail, event, userId);
   if (result?.dnf) return 0;
+  const rsvp = getLeagueEventRsvp(detail, event, userId);
+  if (rsvp?.status !== 'going') return 0;
   return getLeagueEventFee(detail, event);
+}
+
+function getPlayerFeeSummary(detail: LeagueDetail, userId: string) {
+  const playerPayments = detail.payments.filter((payment) => payment.userid === userId);
+  const leagueFeeDue = Math.max(0, Number(detail.league.leaguefee || 0));
+  const estimatedEventFeesDue = detail.events.reduce(
+    (sum, event) => sum + getPlayerEventFeeDue(detail, event, userId),
+    0,
+  );
+  const leagueFeePaid = playerPayments
+    .filter((payment) => payment.paymenttype === 'league')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const eventFeesPaid = playerPayments
+    .filter((payment) => payment.paymenttype === 'event')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return {
+    leagueFeePaid,
+    eventFeesPaid,
+    totalPaid: leagueFeePaid + eventFeesPaid,
+    leagueFeeRemaining: Math.max(0, leagueFeeDue - leagueFeePaid),
+    eventFeeRemaining: Math.max(0, estimatedEventFeesDue - eventFeesPaid),
+    totalRemaining: Math.max(0, leagueFeeDue - leagueFeePaid) + Math.max(0, estimatedEventFeesDue - eventFeesPaid),
+  };
 }
 
 function feeInputValue(value: unknown) {

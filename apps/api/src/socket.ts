@@ -25,6 +25,12 @@ export function initSocket(httpServer: HttpServer): void {
       socket.emit('timer-state', state);
     });
 
+    socket.on('join-league-event', (eventId: string) => {
+      if (typeof eventId === 'string' && eventId.length > 0) {
+        socket.join(`le:${eventId}`);
+      }
+    });
+
     socket.on('timer-start', async ({ tournamentId }: { tournamentId: string }) => {
       if (!await canControlTournamentTimer(socket, tournamentId)) return;
       const bountyBudgetError = await validateCurrentBountyBudget(tournamentId, { requireLivePot: true });
@@ -445,4 +451,9 @@ export async function pauseTournamentTimer(
 export function broadcastTournamentUpdate(tournamentId: string, payload: Record<string, unknown> = { players: true }): void {
   if (!io) return;
   io.to(`t:${tournamentId}`).emit('tournament-updated', payload);
+}
+
+export function broadcastLeagueEventUpdate(eventId: string, payload: Record<string, unknown> = { results: true }): void {
+  if (!io) return;
+  io.to(`le:${eventId}`).emit('league-event-updated', payload);
 }
