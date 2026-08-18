@@ -8,6 +8,7 @@ import { sendGroupInviteEmail, sendGroupPostApprovalEmail } from '../services/em
 import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
 import { sendGroupNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
 import { generateGroupInviteCode, isValidGroupInviteCode, normalizeGroupInviteCode } from '../groupInviteCode';
+import { JoinCodeConflictError, syncJoinCode } from '../joinCodes';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -251,6 +252,8 @@ groupsRouter.post('/', async (req: Request, res: Response) => {
         return;
       }
 
+      await syncJoinCode(client, 'group', group.groupid, invitecode);
+
       await client.query(
         `INSERT INTO groupmembers (groupid, userid, admin, approved) VALUES ($1, $2, TRUE, TRUE)`,
         [group.groupid, req.userId]
@@ -448,8 +451,10 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
     }
   }
 
+  const client = await pool.connect();
   try {
-    const updated = await queryOne<{
+    await client.query('BEGIN');
+    const updatedResult = await client.query<{
       groupid: string;
       invitecode: string;
       defaulttrackingmode: 'standard' | 'player';
@@ -507,18 +512,31 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
         req.params.id,
       ]
     );
+    const updated = updatedResult.rows[0];
     if (!updated) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'Group not found' });
       return;
     }
+    if (normalizedInviteCode != null) {
+      await syncJoinCode(client, 'group', updated.groupid, normalizedInviteCode);
+    }
+    await client.query('COMMIT');
     res.json({ success: true, ...updated });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    if (err instanceof JoinCodeConflictError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
     const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
     if (code === '23505') {
       res.status(409).json({ error: 'That invite code is already in use.' });
       return;
     }
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -1043,7 +1061,10 @@ groupsRouter.post('/join', async (req: Request, res: Response) => {
   const { invitecode } = req.body as { invitecode: string };
   const normalizedInviteCode = normalizeGroupInviteCode(invitecode);
   const group = await queryOne<{ groupid: string; approvalneeded: boolean }>(
-    `SELECT groupid, approvalneeded FROM groups WHERE invitecode = $1 AND active = TRUE`,
+    `SELECT g.groupid, g.approvalneeded
+     FROM joincodes jc
+     JOIN groups g ON g.groupid = jc.entityid
+     WHERE jc.code = $1 AND jc.entitytype = 'group' AND g.active = TRUE`,
     [normalizedInviteCode]
   );
   if (!group) { res.status(404).json({ error: 'Invalid invite code' }); return; }

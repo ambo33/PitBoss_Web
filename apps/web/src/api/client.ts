@@ -103,6 +103,8 @@ export const api = {
     put<{ success: boolean; preferences: NotificationPreference[] }>(`/push/preferences/${category}`, data),
 
   // Groups
+  resolveJoinCode: (code: string) =>
+    get<{ code: string; type: 'group' | 'league'; id: string; name: string }>(`/join-codes/${encodeURIComponent(code)}`),
   getGroups: () => get<Group[]>('/groups'),
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
@@ -234,6 +236,12 @@ export const api = {
     patch<{ event: LeagueEvent }>(`/leagues/${id}/events/${eventId}`, data),
   getLeagueEventLobby: (id: string, eventId: string) =>
     get<LeagueEventLobby>(`/leagues/${id}/events/${eventId}/lobby`),
+  createLeagueEventKnockoutLink: (id: string, eventId: string) =>
+    post<{ token: string }>(`/leagues/${id}/events/${eventId}/knockout-link`, {}),
+  getPublicLeagueKnockout: (token: string) =>
+    get<PublicLeagueKnockout>(`/league-public/knockout/${encodeURIComponent(token)}`),
+  recordPublicLeagueKnockout: (token: string, userId: string) =>
+    post<{ result: LeagueResult }>(`/league-public/knockout/${encodeURIComponent(token)}`, { userId }),
   rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus, userId?: string) =>
     put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status, userId }),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
@@ -681,6 +689,15 @@ export interface LeagueEventLobby {
     going: number;
     notgoing: number;
   };
+  results: LeagueResult[];
+}
+export interface PublicLeagueKnockout {
+  league: Pick<League, 'leagueid' | 'name'>;
+  event: LeagueEvent;
+  participantcount: number;
+  nextplace: number | null;
+  signedin: boolean;
+  remainingplayers: Array<{ userid: string; displayname: string | null }>;
   results: LeagueResult[];
 }
 export type LeaguePaymentType = 'league' | 'event' | 'other';

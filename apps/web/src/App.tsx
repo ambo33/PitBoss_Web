@@ -15,6 +15,7 @@ import KnockoutLobbyPage from './pages/KnockoutLobby';
 import AddonLobbyPage from './pages/AddonLobby';
 import LeagueEventLobbyPage from './pages/LeagueEventLobby';
 import LeagueGuestClaimPage from './pages/LeagueGuestClaim';
+import LeagueGuestKnockoutPage from './pages/LeagueGuestKnockout';
 import TvBoardPage from './pages/TvBoard';
 import TvBoardEntryPage from './pages/TvBoard/Entry';
 import PaymentTrackerPage from './pages/PaymentTracker';
@@ -22,6 +23,7 @@ import PocketAdminPage from './pages/PocketAdmin';
 import CashGameAdminPage from './pages/CashGameAdmin';
 import JoinGroupPage from './pages/JoinGroup';
 import JoinLeaguePage from './pages/JoinLeague';
+import JoinCodePage from './pages/JoinCode';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -91,12 +93,13 @@ export default function App() {
         <Route path="/tournament/:id" element={<RequireAuth><RouteErrorBoundary title="Tournament page error"><PreTournamentPage /></RouteErrorBoundary></RequireAuth>} />
         <Route path="/join/group/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/join/league/:inviteCode" element={<JoinLeaguePage />} />
-        <Route path="/join/:inviteCode" element={<JoinGroupPage />} />
+        <Route path="/join/:inviteCode" element={<JoinCodePage />} />
         <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
         <Route path="/checkin/:id" element={<PlayerLobbyPage mode="checkin" />} />
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
         <Route path="/addon/:id" element={<AddonLobbyPage />} />
         <Route path="/league/:leagueId/event/:eventId" element={<RequireAuth><LeagueEventLobbyPage /></RequireAuth>} />
+        <Route path="/league-knockout/:token" element={<LeagueGuestKnockoutPage />} />
         <Route path="/league-guest-claim" element={<RequireAuth><LeagueGuestClaimPage /></RequireAuth>} />
         <Route path="/tv" element={<TvBoardEntryPage />} />
         <Route path="/tv/:code" element={<TvBoardPage />} />

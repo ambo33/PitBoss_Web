@@ -16,7 +16,7 @@ function normalizeInternalPath(value: string | null): string | null {
 
 function invitationKindFromPath(path: string | null): InvitationKind {
   if (path?.startsWith('/join/league/')) return 'league';
-  if (path?.startsWith('/join/group/') || path?.startsWith('/join/')) return 'group';
+  if (path?.startsWith('/join/group/')) return 'group';
   return null;
 }
 
@@ -35,7 +35,7 @@ export default function LoginPage() {
   const verifyCode = searchParams.get('code');
   const inviteCode = searchParams.get('invite') ?? getPendingGroupInvite() ?? '';
   const requestedNextPath = normalizeInternalPath(searchParams.get('next'));
-  const legacyInvitePath = inviteCode ? `/join/group/${encodeURIComponent(inviteCode)}` : null;
+  const legacyInvitePath = inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : null;
   const storedJoinPath = requestedMode === 'verify' || Boolean(verifyEmail) ? getPendingJoinPath() : null;
   const nextPath = requestedNextPath ?? legacyInvitePath ?? storedJoinPath;
   const invitationKind = invitationKindFromPath(nextPath);

@@ -9,7 +9,7 @@ import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'http';
 import { authRouter } from './routes/auth';
 import { groupsRouter } from './routes/groups';
-import { leaguesRouter } from './routes/leagues';
+import { leaguesRouter, publicLeaguesRouter } from './routes/leagues';
 import { tournamentsRouter } from './routes/tournaments';
 import { playersRouter } from './routes/players';
 import { blindsRouter } from './routes/blinds';
@@ -23,6 +23,7 @@ import { aiRouter } from './routes/ai';
 import { pushRouter } from './routes/push';
 import { gamesRouter } from './routes/games';
 import { demoRouter } from './routes/demo';
+import { joinCodesRouter } from './routes/joinCodes';
 import { getAllowedClientUrls } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
@@ -97,8 +98,10 @@ app.use('/api/ai', aiRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/games', gamesRouter);
 app.use('/api/demo', demoRouter);
+app.use('/api/join-codes', joinCodesRouter);
 app.use('/api/groups', groupsRouter);
 app.use('/api/leagues', leaguesRouter);
+app.use('/api/league-public', publicLeaguesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/tournaments', playersRouter);
@@ -132,6 +135,7 @@ if (existsSync(webDistPath)) {
     '/reset-password',
     '/tournament',
     '/league',
+    '/league-knockout',
     '/league-guest-claim',
     '/tv',
     '/pay',

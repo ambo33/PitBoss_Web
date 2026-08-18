@@ -15,11 +15,16 @@ function wrapHandler(handler: ExpressHandler): ExpressHandler {
   };
 }
 
+// Express routers inherit their verb methods from the prototype of a router
+// instance, not from `express.Router.prototype`. Patching the latter leaves
+// async route rejections unhandled in Express 4.
+const routerPrototype = Object.getPrototypeOf(express.Router()) as Record<string, (...args: unknown[]) => unknown>;
+
 function patchRouterMethod(method: 'get' | 'post' | 'put' | 'delete' | 'patch' | 'use') {
-  const original = express.Router.prototype[method];
-  express.Router.prototype[method] = function patchedMethod(...args: unknown[]) {
+  const original = routerPrototype[method];
+  routerPrototype[method] = function patchedMethod(...args: unknown[]) {
     const wrappedArgs = args.map((arg) => typeof arg === 'function' ? wrapHandler(arg as ExpressHandler) : arg);
-    return original.apply(this, wrappedArgs as Parameters<typeof original>);
+    return original.apply(this, wrappedArgs);
   };
 }
 

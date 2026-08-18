@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, MoreVertical, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, League, LeagueAuditLog, LeagueClaimablePlayer, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
+import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule } from '../../api/client';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -43,11 +44,10 @@ export default function LeaguesPanel({
   initialEventId?: string;
   onDetailStateChange?: (open: boolean) => void;
 }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
-  const [joinLeagueCode, setJoinLeagueCode] = useState('');
-  const [joinClaimOptions, setJoinClaimOptions] = useState<LeagueClaimablePlayer[]>([]);
   const [selected, setSelected] = useState<Pick<League, 'leagueid'> | null>(initialLeagueId ? { leagueid: initialLeagueId } : null);
   const { data: leagues = [], isLoading } = useQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
 
@@ -57,23 +57,6 @@ export default function LeaguesPanel({
       qc.invalidateQueries({ queryKey: ['leagues'] });
       setSelected({ leagueid: created.leagueid });
       setShowCreate(false);
-    },
-  });
-  const joinMutation = useMutation({
-    mutationFn: (data: { code: string; claimuserid?: string | null; skipclaim?: boolean }) => api.joinLeague(data.code, data.claimuserid, Boolean(data.skipclaim)),
-    onSuccess: (result, variables) => {
-      qc.invalidateQueries({ queryKey: ['leagues'] });
-      if (!variables.claimuserid && !variables.skipclaim && result.claimablePlayers?.length) {
-        setJoinLeagueCode(variables.code);
-        setJoinClaimOptions(result.claimablePlayers);
-        return;
-      }
-      setJoinLeagueCode('');
-      setJoinClaimOptions([]);
-      if (!result.pending && result.seasonJoined) {
-        setSelected({ leagueid: result.leagueid });
-      }
-      setShowJoin(false);
     },
   });
 
@@ -133,19 +116,12 @@ export default function LeaguesPanel({
       />
       <JoinLeagueModal
         open={showJoin}
-        onClose={() => {
+        onClose={() => setShowJoin(false)}
+        onSubmit={(code) => {
           setShowJoin(false);
-          setJoinLeagueCode('');
-          setJoinClaimOptions([]);
+          navigate(`/join/${encodeURIComponent(code.trim().toUpperCase())}`);
         }}
-        onSubmit={(code) => joinMutation.mutate({ code })}
-        claimOptions={joinClaimOptions}
-        onClaim={(userId) => joinMutation.mutate({ code: joinLeagueCode, claimuserid: userId })}
-        onSkip={() => {
-          joinMutation.mutate({ code: joinLeagueCode, skipclaim: true });
-        }}
-        loading={joinMutation.isPending}
-        error={joinMutation.error?.message}
+        loading={false}
       />
     </>
   );
@@ -999,7 +975,7 @@ function LeagueDetailView({
         kind="league"
         name={detail.league.name}
         inviteCode={detail.league.invitecode}
-        joinPath={`/join/league/${encodeURIComponent(detail.league.invitecode)}`}
+        joinPath={`/join/${encodeURIComponent(detail.league.invitecode)}`}
       />
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -1146,12 +1122,21 @@ function EventTrackerCard({
   error?: string;
 }) {
   const [showKnockoutQr, setShowKnockoutQr] = useState(false);
-  const knockoutLobbyUrl = event
-    ? `${window.location.origin}/league/${leagueId}/event/${event.eventid}`
+  const [knockoutToken, setKnockoutToken] = useState<string | null>(null);
+  const knockoutLinkMutation = useMutation({
+    mutationFn: () => api.createLeagueEventKnockoutLink(leagueId, event!.eventid),
+    onSuccess: (response) => {
+      setKnockoutToken(response.token);
+      setShowKnockoutQr(true);
+    },
+  });
+  const knockoutLobbyUrl = event && knockoutToken
+    ? `${window.location.origin}/league-knockout/${knockoutToken}`
     : '';
 
   useEffect(() => {
     setShowKnockoutQr(false);
+    setKnockoutToken(null);
   }, [event?.eventid]);
 
   return (
@@ -1187,11 +1172,20 @@ function EventTrackerCard({
             <button
               type="button"
               className="chip hover:border-pit-teal/50 hover:text-white"
-              onClick={() => setShowKnockoutQr((current) => !current)}
+              onClick={() => {
+                if (showKnockoutQr) {
+                  setShowKnockoutQr(false);
+                } else if (knockoutToken) {
+                  setShowKnockoutQr(true);
+                } else {
+                  knockoutLinkMutation.mutate();
+                }
+              }}
+              disabled={knockoutLinkMutation.isPending}
               aria-expanded={showKnockoutQr}
             >
               <QrCode size={13} />
-              Knockout QR
+              {knockoutLinkMutation.isPending ? 'Preparing QR...' : 'Knockout QR'}
             </button>
           )}
           <span className="chip">{resultsCount} finishes</span>
@@ -1199,15 +1193,15 @@ function EventTrackerCard({
       </div>
       {event ? (
         <>
-          {showKnockoutQr && (
+          {showKnockoutQr && knockoutLobbyUrl && (
             <div className="grid gap-4 rounded-xl border border-pit-teal/30 bg-pit-teal/5 p-4 sm:grid-cols-[auto_1fr] sm:items-center">
               <div className="w-fit rounded-lg bg-white p-2">
                 <QRCodeSVG value={knockoutLobbyUrl} size={132} />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-white">Player knockout page</p>
+                <p className="font-semibold text-white">Knockout station</p>
                 <p className="mt-1 text-sm leading-6 text-pit-text">
-                  Players scan this at event time, then report their own finish with one tap.
+                  Signed-in players open their own lobby. Other scans can quickly report the next knockout.
                 </p>
                 <a
                   className="mt-3 block truncate text-xs text-pit-teal hover:text-white"
@@ -1221,8 +1215,8 @@ function EventTrackerCard({
           <LeagueEventRsvpPanel detail={detail} event={event} />
           {event.tournamentid ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-pit-teal/25 bg-pit-teal/5 p-3">
-              <p className="text-sm text-pit-text">Check-ins, payments, seating, and finishes are tracked in the tournament runner.</p>
-              <a className="btn-primary px-3 py-2 text-xs" href={`/tournament/${event.tournamentid}`}>Open runner</a>
+              <p className="text-sm text-pit-text">Check-ins, payments, seating, and finishes are tracked in the tournament runner. Restore a player there to clear a placement.</p>
+              <a className="btn-primary px-3 py-2 text-xs" href={`/tournament/${event.tournamentid}`}>Manage placements</a>
             </div>
           ) : (
             <EventRosterLogger
@@ -1592,6 +1586,15 @@ function MemberLeagueView({
   const bestFinish = viewedUserId ? bestPlacementValues(detail, viewedUserId)[0] ?? null : null;
   const feeSummary = viewedUserId ? getPlayerFeeSummary(detail, viewedUserId) : null;
   const canViewLeagueLedger = Boolean(detail.league.memberledgervisible);
+  const qc = useQueryClient();
+  const rsvpMutation = useMutation({
+    mutationFn: ({ eventId, status }: { eventId: string; status: LeagueEventRsvpStatus }) =>
+      api.rsvpLeagueEvent(detail.league.leagueid, eventId, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', detail.league.leagueid] });
+      qc.invalidateQueries({ queryKey: ['leagues'] });
+    },
+  });
   const selectProfileUser = (userId: string) => {
     onSelectUser(userId);
     if (window.matchMedia('(max-width: 1023px)').matches) {
@@ -1684,7 +1687,7 @@ function MemberLeagueView({
 
             <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h4 className="font-semibold text-white">{isViewingSelf ? 'My event finishes' : `${member?.displayname ?? 'Player'} finishes`}</h4>
+                <h4 className="font-semibold text-white">{isViewingSelf ? 'Events' : `${member?.displayname ?? 'Player'} events`}</h4>
                 <Trophy size={15} className="text-pit-gold" />
               </div>
               <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -1701,6 +1704,28 @@ function MemberLeagueView({
                         <p className="font-semibold text-pit-teal">{formatNumber(points)} pts</p>
                         <p className="mt-1 text-xs text-pit-text">{result ? (result.dnf ? 'DNF' : `${result.placed}${ordinal(result.placed)} place`) : 'No finish'}</p>
                       </div>
+                      {isViewingSelf && (
+                        <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-pit-border/70 pt-2">
+                          <button
+                            type="button"
+                            className={`justify-center px-2 py-1.5 text-xs ${getLeagueEventRsvp(detail, event, currentUserId!)?.status === 'going' ? 'btn-primary' : 'btn-ghost'}`}
+                            disabled={rsvpMutation.isPending}
+                            onClick={() => rsvpMutation.mutate({ eventId: event.eventid, status: 'going' })}
+                          >
+                            <CheckCircle2 size={13} />
+                            Going
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn-ghost justify-center px-2 py-1.5 text-xs ${getLeagueEventRsvp(detail, event, currentUserId!)?.status === 'not_going' ? 'border-red-300/35 bg-red-400/10 text-red-100' : ''}`}
+                            disabled={rsvpMutation.isPending}
+                            onClick={() => rsvpMutation.mutate({ eventId: event.eventid, status: 'not_going' })}
+                          >
+                            <UserMinus size={13} />
+                            Can't go
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2648,33 +2673,41 @@ function EventRosterLogger({
                   {existing?.dnf ? 'Undo DNF' : 'DNF'}
                 </button>
               </div>
-              <select
-                className="input py-2"
-                value={value}
-                disabled={loading}
-                onChange={(eventValue) => {
-                  const nextValue = eventValue.target.value;
-                  if (nextValue === 'clear') {
-                    setDrafts((current) => {
-                      const next = { ...current };
-                      delete next[member.userid];
-                      return next;
-                    });
-                    onClearResult(member.userid);
-                    return;
-                  }
-                  const nextPlace = Number(nextValue);
-                  if (!nextPlace) return;
-                  setDrafts((current) => ({ ...current, [member.userid]: String(nextPlace) }));
-                  onLog(member.userid, nextPlace, false);
-                }}
-              >
-                <option value="" disabled>Place</option>
-                {availablePlaces.map((place) => (
-                  <option key={place} value={place}>{place}{ordinal(place)}</option>
-                ))}
-                {existing?.placed != null && <option value="clear">Clear placement</option>}
-              </select>
+              <div className={`grid gap-2 ${existing?.placed != null ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'}`}>
+                <select
+                  className="input py-2"
+                  value={value}
+                  disabled={loading}
+                  onChange={(eventValue) => {
+                    const nextPlace = Number(eventValue.target.value);
+                    if (!nextPlace) return;
+                    setDrafts((current) => ({ ...current, [member.userid]: String(nextPlace) }));
+                    onLog(member.userid, nextPlace, false);
+                  }}
+                >
+                  <option value="" disabled>Place</option>
+                  {availablePlaces.map((place) => (
+                    <option key={place} value={place}>{place}{ordinal(place)}</option>
+                  ))}
+                </select>
+                {existing?.placed != null && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-2 text-xs text-red-200 hover:border-red-300/45 hover:text-red-100"
+                    disabled={loading}
+                    onClick={() => {
+                      setDrafts((current) => {
+                        const next = { ...current };
+                        delete next[member.userid];
+                        return next;
+                      });
+                      onClearResult(member.userid);
+                    }}
+                  >
+                    Clear placement
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -3069,69 +3102,37 @@ function CreateLeagueModal({
   );
 }
 
-function JoinLeagueModal({ open, onClose, onSubmit, claimOptions = [], onClaim, onSkip, loading, error }: {
+function JoinLeagueModal({ open, onClose, onSubmit, loading, error }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (code: string) => void;
-  claimOptions?: LeagueClaimablePlayer[];
-  onClaim: (userId: string) => void;
-  onSkip: () => void;
   loading: boolean;
   error?: string;
 }) {
   const [code, setCode] = useState('');
-  const hasClaimOptions = claimOptions.length > 0;
   useEffect(() => {
     if (!open) setCode('');
   }, [open]);
   return (
     <Modal
-      title="Join League"
+      title="Join with code"
       open={open}
       onClose={onClose}
       footer={(
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          {hasClaimOptions ? (
-            <button type="button" className="btn-primary" disabled={loading} onClick={onSkip}>
-              Skip, just join
-            </button>
-          ) : (
-            <button type="button" className="btn-primary" disabled={loading || !code.trim()} onClick={() => onSubmit(code)}>
-              {loading ? 'Joining...' : 'Join'}
-            </button>
-          )}
+          <button type="button" className="btn-primary" disabled={loading || !code.trim()} onClick={() => onSubmit(code)}>
+            {loading ? 'Joining...' : 'Continue'}
+          </button>
         </>
       )}
     >
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-        {hasClaimOptions ? (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-pit-teal/25 bg-pit-teal/10 p-3">
-              <p className="text-sm font-semibold text-white">Is one of these players you?</p>
-              <p className="mt-1 text-xs leading-relaxed text-pit-muted">
-                Claiming your name brings over that league player's results, payments, RSVPs, and season history. Skip this if none of these are your spot.
-              </p>
-            </div>
-            <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
-              {claimOptions.map((player) => (
-                <button
-                  key={player.userid}
-                  type="button"
-                  className="w-full rounded-xl border border-pit-border bg-black/20 px-3 py-3 text-left transition hover:border-pit-teal/50 hover:bg-pit-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={loading}
-                  onClick={() => onClaim(player.userid)}
-                >
-                  <span className="block text-sm font-semibold text-white">{player.displayname ?? 'League player'}</span>
-                  {player.seasonname && <span className="mt-1 block text-xs text-pit-muted">Seasons: {player.seasonname}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <input className="input font-mono uppercase tracking-widest" placeholder="League code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
-        )}
+        <>
+          <input className="input font-mono uppercase tracking-widest" placeholder="Join code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10))} />
+          <p className="text-center text-xs text-pit-muted">Enter a group or league join code</p>
+        </>
       </div>
     </Modal>
   );

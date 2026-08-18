@@ -30,6 +30,7 @@ export default function GroupsPanel({
   createRequestId?: number;
   openGroupRequest?: GroupOpenRequest;
 }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const lastCreateRequestRef = useRef(createRequestId);
   const lastOpenRequestRef = useRef(0);
@@ -53,10 +54,6 @@ export default function GroupsPanel({
         setSelected(createdGroup);
       }
     },
-  });
-  const joinMutation = useMutation({
-    mutationFn: (code: string) => api.joinGroup(code),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); setShowJoin(false); },
   });
   const hostedGroupCount = groups.filter((group) => group.isadmin).length;
   const hostedGroupLimitReached = !me?.issuperadmin && !me?.canuseclubfeatures && hostedGroupCount >= 1;
@@ -133,8 +130,11 @@ export default function GroupsPanel({
         loading={createMutation.isPending} error={createMutation.error?.message} />
 
       <JoinGroupModal open={showJoin} onClose={() => setShowJoin(false)}
-        onSubmit={(code) => joinMutation.mutate(code)}
-        loading={joinMutation.isPending} error={joinMutation.error?.message} />
+        onSubmit={(code) => {
+          setShowJoin(false);
+          navigate(`/join/${encodeURIComponent(normalizeGroupInviteCode(code))}`);
+        }}
+        loading={false} />
 
     </>
   );
@@ -320,23 +320,23 @@ function JoinGroupModal({ open, onClose, onSubmit, loading, error }: {
   const [code, setCode] = useState('');
 
   return (
-    <Modal title="Join Group" open={open} onClose={onClose}
+    <Modal title="Join with code" open={open} onClose={onClose}
       footer={<>
         <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn-primary" onClick={() => onSubmit(code)} disabled={loading || !code}>
-          {loading ? 'Joining…' : 'Join group'}
+          {loading ? 'Joining…' : 'Continue'}
         </button>
       </>}
     >
       <div className="space-y-3">
         {error && <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">{error}</p>}
         <input className="input text-center font-mono text-lg uppercase tracking-[0.18em] py-3"
-          placeholder="XXXXXX" value={code}
+          placeholder="Join code" value={code}
           onChange={e => setCode(formatGroupInviteCodeInput(e.target.value))}
           onBlur={() => setCode(normalizeGroupInviteCode(code))}
           maxLength={10}
-          aria-label="Group join code" />
-        <p className="text-pit-muted text-xs text-center">Enter the invite code shared by your group admin</p>
+          aria-label="Join code" />
+        <p className="text-pit-muted text-xs text-center">Enter a group or league join code</p>
       </div>
     </Modal>
   );
@@ -730,7 +730,7 @@ function GroupDetailView({
     [members]
   );
   const currentMember = members.find((member) => member.userid === user?.guid);
-  const joinPath = `/join/group/${encodeURIComponent(effectiveGroup.invitecode)}`;
+  const joinPath = `/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
   const demoMode = Boolean(user?.isdemo);
   const canUseClubFeatures = Boolean(account?.issuperadmin || account?.canuseclubfeatures || account?.tierid === 2 || account?.tierid === 3);

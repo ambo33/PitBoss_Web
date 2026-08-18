@@ -1,5 +1,6 @@
 import { pool } from './db';
 import { encryptEmail, hashEmail, isGuestEmail, privateEmailPlaceholder } from './privacy';
+import { generateJoinCode, normalizeJoinCode } from './joinCodes';
 
 function generateTvCode(existing: Set<string>): string {
   let code = '';
@@ -634,6 +635,74 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`UPDATE leagues SET finalstartingbigblind = 100 WHERE finalstartingbigblind IS NULL`);
     await client.query(`UPDATE leagues SET memberledgervisible = FALSE WHERE memberledgervisible IS NULL`);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS joincodes (
+        code STRING(10) PRIMARY KEY,
+        entitytype STRING(12) NOT NULL CHECK (entitytype IN ('group', 'league')),
+        entityid UUID NOT NULL,
+        createdat TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updatedat TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (entitytype, entityid)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_joincodes_entity
+      ON joincodes (entitytype, entityid)
+    `);
+
+    // Keep the legacy per-entity code columns in sync while moving ownership into
+    // one global namespace. A rare old collision gets a fresh code for the latter
+    // record instead of leaving either invite ambiguous.
+    const existingJoinCodes = await client.query<{
+      entitytype: 'group' | 'league';
+      entityid: string;
+      code: string;
+    }>(`
+      SELECT 'group' AS entitytype, groupid AS entityid, invitecode AS code
+      FROM groups
+      WHERE active = TRUE AND invitecode IS NOT NULL
+      UNION ALL
+      SELECT 'league' AS entitytype, leagueid AS entityid, invitecode AS code
+      FROM leagues
+      WHERE COALESCE(active, TRUE) = TRUE AND invitecode IS NOT NULL
+      ORDER BY entitytype, entityid
+    `);
+    for (const row of existingJoinCodes.rows) {
+      let code = normalizeJoinCode(row.code);
+      if (!code) continue;
+      const entityMapping = await client.query<{ code: string }>(
+        `SELECT code FROM joincodes WHERE entitytype = $1 AND entityid = $2`,
+        [row.entitytype, row.entityid]
+      );
+      if (entityMapping.rows[0] && entityMapping.rows[0].code !== code) {
+        await client.query(
+          `DELETE FROM joincodes WHERE entitytype = $1 AND entityid = $2`,
+          [row.entitytype, row.entityid]
+        );
+      }
+      const owner = await client.query<{ entitytype: string; entityid: string }>(
+        `SELECT entitytype, entityid FROM joincodes WHERE code = $1`,
+        [code]
+      );
+      const existingOwner = owner.rows[0];
+      if (existingOwner && (existingOwner.entitytype !== row.entitytype || existingOwner.entityid !== row.entityid)) {
+        do {
+          code = generateJoinCode();
+        } while (await client.query(`SELECT 1 FROM joincodes WHERE code = $1`, [code]).then((result) => result.rows.length > 0));
+        const table = row.entitytype === 'group' ? 'groups' : 'leagues';
+        const idColumn = row.entitytype === 'group' ? 'groupid' : 'leagueid';
+        await client.query(`UPDATE ${table} SET invitecode = $1 WHERE ${idColumn} = $2`, [code, row.entityid]);
+      }
+      await client.query(
+        `INSERT INTO joincodes (code, entitytype, entityid)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (code) DO UPDATE
+         SET entitytype = EXCLUDED.entitytype,
+             entityid = EXCLUDED.entityid,
+             updatedat = now()`,
+        [code, row.entitytype, row.entityid]
+      );
+    }
+    await client.query(`
       CREATE TABLE IF NOT EXISTS leagueseasons (
         seasonid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
@@ -739,6 +808,7 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         eventnumber INT,
         eventfee DECIMAL(10,2),
         tournamentid UUID REFERENCES tournaments(tournamentid) ON DELETE SET NULL,
+        knockouttoken STRING(64),
         active BOOL DEFAULT TRUE,
         createdat TIMESTAMPTZ DEFAULT now()
       )
@@ -747,6 +817,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventtime STRING(5)`);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS eventfee DECIMAL(10,2)`);
     await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS tournamentid UUID REFERENCES tournaments(tournamentid) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE leagueevents ADD COLUMN IF NOT EXISTS knockouttoken STRING(64)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS leagueevents_knockouttoken_unique ON leagueevents (knockouttoken) WHERE knockouttoken IS NOT NULL`);
     await client.query(`
       UPDATE leagueevents e
       SET seasonid = (

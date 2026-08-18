@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import { query, queryOne, pool } from '../db';
-import { requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAuth } from '../middleware/auth';
 import {
   buildFinalStacks,
   buildStandings,
@@ -24,9 +24,12 @@ import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services
 import { hasTournamentStarted } from '../schedule';
 import { getAvailableLeaguePlacements } from '../leagues/placements';
 import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
+import { syncJoinCode } from '../joinCodes';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
+export const publicLeaguesRouter = Router();
+publicLeaguesRouter.use(optionalAuth);
 
 type LeagueRow = {
   leagueid: string;
@@ -88,6 +91,7 @@ type LeagueEventRow = {
   eventnumber: number | null;
   eventfee: number | null;
   tournamentid?: string | null;
+  knockouttoken?: string | null;
   resultcount?: number;
   active: boolean;
   createdat: string;
@@ -1104,6 +1108,7 @@ leaguesRouter.post('/', async (req: Request, res: Response) => {
         [req.userId, name, invitecode, Boolean(body.approvalneeded), expectedPlayerCount, leagueFee, perEventFee, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
       );
       const league = leagueResult.rows[0];
+      await syncJoinCode(client, 'league', league.leagueid, invitecode);
       await client.query(
         `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
          VALUES ($1, $2, TRUE, TRUE)`,
@@ -1163,7 +1168,10 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
   const invitecode = normalizeInviteCode(body.invitecode);
   const claimUserId = String(body.claimuserid ?? '').trim();
   const league = await queryOne<LeagueRow>(
-    `SELECT leagueid, approvalneeded FROM leagues WHERE invitecode = $1 AND COALESCE(active, TRUE) = TRUE`,
+    `SELECT l.leagueid, l.approvalneeded
+     FROM joincodes jc
+     JOIN leagues l ON l.leagueid = jc.entityid
+     WHERE jc.code = $1 AND jc.entitytype = 'league' AND COALESCE(l.active, TRUE) = TRUE`,
     [invitecode]
   );
   if (!league) {
@@ -3852,6 +3860,330 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     },
     results: normalizedResults,
   });
+});
+
+leaguesRouter.post('/:id/events/:eventId/knockout-link', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+  const event = await queryOne<LeagueEventRow>(
+    `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+            CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, knockouttoken, active, createdat
+     FROM leagueevents
+     WHERE eventid = $1 AND leagueid = $2 AND active = TRUE`,
+    [req.params.eventId, req.params.id]
+  );
+  if (!event) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  if (event.knockouttoken) {
+    res.json({ token: event.knockouttoken });
+    return;
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = crypto.randomBytes(24).toString('hex');
+    try {
+      const saved = await queryOne<{ knockouttoken: string }>(
+        `UPDATE leagueevents
+         SET knockouttoken = $1
+         WHERE eventid = $2 AND leagueid = $3 AND knockouttoken IS NULL
+         RETURNING knockouttoken`,
+        [token, event.eventid, req.params.id]
+      );
+      if (saved?.knockouttoken) {
+        res.json({ token: saved.knockouttoken });
+        return;
+      }
+      const existing = await queryOne<{ knockouttoken: string }>(
+        `SELECT knockouttoken FROM leagueevents WHERE eventid = $1 AND leagueid = $2`,
+        [event.eventid, req.params.id]
+      );
+      if (existing?.knockouttoken) {
+        res.json({ token: existing.knockouttoken });
+        return;
+      }
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt === 2) throw error;
+    }
+  }
+  res.status(503).json({ error: 'Could not prepare the knockout link. Please try again.' });
+});
+
+type PublicLeagueKnockoutEvent = LeagueEventRow & { leaguename: string };
+
+async function getPublicLeagueKnockoutEvent(token: string) {
+  return queryOne<PublicLeagueKnockoutEvent>(
+    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber,
+            CAST(e.eventfee AS DECIMAL) AS eventfee, e.tournamentid, e.knockouttoken, e.active, e.createdat,
+            l.name AS leaguename
+     FROM leagueevents e
+     JOIN leagues l ON l.leagueid = e.leagueid AND COALESCE(l.active, TRUE) = TRUE
+     WHERE e.knockouttoken = $1 AND e.active = TRUE`,
+    [token]
+  );
+}
+
+async function getLeagueByIdForPublicEvent(leagueId: string) {
+  return queryOne<LeagueRow>(
+    `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
+            l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
+            l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
+            l.memberledgervisible, l.active, l.createdat
+     FROM leagues l
+     WHERE l.leagueid = $1 AND COALESCE(l.active, TRUE) = TRUE`,
+    [leagueId]
+  );
+}
+
+async function getPublicLeagueEventField(event: PublicLeagueKnockoutEvent) {
+  if (!event.seasonid) return { participantCount: 0, goingCount: 0, results: [] as LeagueResultRow[], remainingPlayers: [] as Array<{ userid: string; displayname: string | null }> };
+  const [participantCount, rsvpCounts, results] = await Promise.all([
+    getLeagueSeasonParticipantCount(event.leagueid, event.seasonid),
+    query<{ status: string; count: string | number }>(
+      `SELECT r.status, count(*) AS count
+       FROM leagueeventrsvps r
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = r.leagueid AND lsp.userid = r.userid AND lsp.seasonid = $3 AND lsp.participating = TRUE
+       JOIN leaguemembers lm ON lm.leagueid = r.leagueid AND lm.userid = r.userid AND lm.approved = TRUE
+       WHERE r.eventid = $1 AND r.leagueid = $2
+       GROUP BY r.status`,
+      [event.eventid, event.leagueid, event.seasonid]
+    ),
+    query<LeagueResultRow>(
+      `SELECT r.resultid, r.eventid, r.leagueid, r.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
+       FROM leagueresults r
+       JOIN users u ON u.guid = r.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       WHERE r.eventid = $1 AND r.leagueid = $2
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM leagueeventrsvps any_rsvp
+             WHERE any_rsvp.eventid = r.eventid
+               AND any_rsvp.leagueid = r.leagueid
+               AND any_rsvp.status = 'going'
+           )
+           OR EXISTS (
+             SELECT 1 FROM leagueeventrsvps going_rsvp
+             WHERE going_rsvp.eventid = r.eventid
+               AND going_rsvp.leagueid = r.leagueid
+               AND going_rsvp.userid = r.userid
+               AND going_rsvp.status = 'going'
+           )
+         )
+       ORDER BY r.updatedat DESC`,
+      [event.eventid, event.leagueid]
+    ),
+  ]);
+  const goingCount = Number(rsvpCounts.find((row) => row.status === 'going')?.count ?? 0);
+  const eventFieldCount = goingCount > 0 ? goingCount : participantCount;
+  const resultUserIds = new Set(results.map((result) => result.userid));
+  const remainingPlayers = await query<{ userid: string; displayname: string | null }>(
+    `SELECT lm.userid, ${leagueDisplayNameSql('m', 'u')} AS displayname
+     FROM leaguemembers lm
+     JOIN leagueseasonparticipants lsp
+       ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid AND lsp.seasonid = $3 AND lsp.participating = TRUE
+     JOIN users u ON u.guid = lm.userid
+     LEFT JOIN usermetadata m ON m.userid = u.guid
+     WHERE lm.leagueid = $1
+       AND lm.approved = TRUE
+       AND ($4::integer = 0 OR EXISTS (
+         SELECT 1 FROM leagueeventrsvps r
+         WHERE r.eventid = $2 AND r.leagueid = lm.leagueid AND r.userid = lm.userid AND r.status = 'going'
+       ))
+       AND NOT EXISTS (
+         SELECT 1 FROM leagueresults existing
+         WHERE existing.eventid = $2 AND existing.leagueid = lm.leagueid AND existing.userid = lm.userid
+       )
+     ORDER BY lower(${leagueDisplayNameSql('m', 'u')})`,
+    [event.leagueid, event.eventid, event.seasonid, goingCount]
+  );
+  return { participantCount: eventFieldCount, goingCount, results, remainingPlayers: remainingPlayers.filter((player) => !resultUserIds.has(player.userid)) };
+}
+
+publicLeaguesRouter.get('/knockout/:token', async (req: Request, res: Response) => {
+  const event = await getPublicLeagueKnockoutEvent(req.params.token);
+  if (!event?.seasonid) {
+    res.status(404).json({ error: 'Knockout link not found.' });
+    return;
+  }
+  const field = await getPublicLeagueEventField(event);
+  const normalizedResults = field.results.map((result) => ({
+    ...result,
+    placed: result.placed == null ? null : Number(result.placed),
+    dnf: Boolean(result.dnf),
+    points: Number(result.points || 0),
+    showupbonuspoints: Number(result.showupbonuspoints || 0),
+  }));
+  const { nextPlace } = getAvailableLeaguePlacements(field.participantCount, normalizedResults, 'public-knockout');
+  res.json({
+    league: { leagueid: event.leagueid, name: event.leaguename },
+    event: {
+      ...event,
+      eventfee: event.eventfee == null ? null : Number(event.eventfee),
+      hasstarted: hasTournamentStarted(event.eventdate, event.eventtime),
+    },
+    participantcount: field.participantCount,
+    nextplace: nextPlace,
+    signedin: Boolean(req.userId),
+    remainingplayers: field.remainingPlayers,
+    results: normalizedResults,
+  });
+});
+
+publicLeaguesRouter.post('/knockout/:token', async (req: Request, res: Response) => {
+  const requestedUserId = String((req.body as { userId?: string }).userId ?? '').trim();
+  if (!requestedUserId) {
+    res.status(400).json({ error: 'Choose a player to record their knockout.' });
+    return;
+  }
+  const publicEvent = await getPublicLeagueKnockoutEvent(req.params.token);
+  if (!publicEvent?.seasonid) {
+    res.status(404).json({ error: 'Knockout link not found.' });
+    return;
+  }
+  if (!hasTournamentStarted(publicEvent.eventdate, publicEvent.eventtime)) {
+    res.status(403).json({ error: 'Knockout reporting opens when the event starts.' });
+    return;
+  }
+  const leagueRow = await getLeagueByIdForPublicEvent(publicEvent.leagueid);
+  const season = await getSelectedSeason(publicEvent.leagueid, publicEvent.seasonid);
+  if (!leagueRow || !season) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  const effectiveLeague = leagueWithSeasonSettings(serializeLeague(leagueRow), season);
+  const client = await pool.connect();
+  let row: LeagueResultRow | null = null;
+  try {
+    await client.query('BEGIN');
+    const lockedEvent = await client.query<LeagueEventRow>(
+      `SELECT eventid, leagueid, seasonid, name, eventdate, eventtime, eventnumber,
+              CAST(eventfee AS DECIMAL) AS eventfee, tournamentid, knockouttoken, active, createdat
+       FROM leagueevents
+       WHERE eventid = $1 AND leagueid = $2 AND knockouttoken = $3 AND active = TRUE
+       FOR UPDATE`,
+      [publicEvent.eventid, publicEvent.leagueid, req.params.token]
+    );
+    const event = lockedEvent.rows[0];
+    if (!event?.seasonid) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Knockout link not found.' });
+      return;
+    }
+    const [participantQuery, goingQuery, targetQuery] = await Promise.all([
+      client.query<{ count: string | number }>(
+        `SELECT count(*) AS count
+         FROM leaguemembers lm
+         JOIN leagueseasonparticipants lsp ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
+         WHERE lm.leagueid = $1 AND lsp.seasonid = $2 AND lm.approved = TRUE AND lsp.participating = TRUE`,
+        [event.leagueid, event.seasonid]
+      ),
+      client.query<{ count: string | number }>(
+        `SELECT count(*) AS count
+         FROM leagueeventrsvps r
+         JOIN leagueseasonparticipants lsp ON lsp.leagueid = r.leagueid AND lsp.userid = r.userid AND lsp.seasonid = $3 AND lsp.participating = TRUE
+         JOIN leaguemembers lm ON lm.leagueid = r.leagueid AND lm.userid = r.userid AND lm.approved = TRUE
+         WHERE r.leagueid = $1 AND r.eventid = $2 AND r.status = 'going'`,
+        [event.leagueid, event.eventid, event.seasonid]
+      ),
+      client.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM leaguemembers lm
+           JOIN leagueseasonparticipants lsp ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid AND lsp.seasonid = $3 AND lsp.participating = TRUE
+           WHERE lm.leagueid = $1 AND lm.userid = $2 AND lm.approved = TRUE
+         ) AS exists`,
+        [event.leagueid, requestedUserId, event.seasonid]
+      ),
+    ]);
+    if (!targetQuery.rows[0]?.exists) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'That player is not part of this event.' });
+      return;
+    }
+    const goingCount = Number(goingQuery.rows[0]?.count || 0);
+    if (goingCount > 0) {
+      const targetGoing = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM leagueeventrsvps
+           WHERE eventid = $1 AND leagueid = $2 AND userid = $3 AND status = 'going'
+         ) AS exists`,
+        [event.eventid, event.leagueid, requestedUserId]
+      );
+      if (!targetGoing.rows[0]?.exists) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'Only players marked Going can receive an event placement.' });
+        return;
+      }
+    }
+    const participantCount = goingCount > 0 ? goingCount : Number(participantQuery.rows[0]?.count || 0);
+    const eventResultsQuery = await client.query<LeagueResultRow>(
+      `SELECT resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat
+       FROM leagueresults
+       WHERE eventid = $1
+         AND leagueid = $2
+         AND (
+           $3::integer = 0
+           OR EXISTS (
+             SELECT 1 FROM leagueeventrsvps going_rsvp
+             WHERE going_rsvp.eventid = leagueresults.eventid
+               AND going_rsvp.leagueid = leagueresults.leagueid
+               AND going_rsvp.userid = leagueresults.userid
+               AND going_rsvp.status = 'going'
+           )
+         )`,
+      [event.eventid, event.leagueid, goingCount]
+    );
+    const targetAlreadyRecorded = eventResultsQuery.rows.some((result) => result.userid === requestedUserId);
+    if (targetAlreadyRecorded) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'That player already has a recorded finish.' });
+      return;
+    }
+    const { nextPlace } = getAvailableLeaguePlacements(participantCount, eventResultsQuery.rows, requestedUserId);
+    if (!nextPlace) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'All finish places are already recorded.' });
+      return;
+    }
+    const points = pointsForPlace(normalizePointsLookup(effectiveLeague.pointslookup), nextPlace, false);
+    const showupBonus = Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
+    const inserted = await client.query<LeagueResultRow>(
+      `INSERT INTO leagueresults (eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby)
+       VALUES ($1, $2, $3, $4, FALSE, $5, $6, NULL)
+       RETURNING resultid, eventid, leagueid, userid, placed, dnf, points, showupbonuspoints, loggedby, createdat, updatedat`,
+      [event.eventid, event.leagueid, requestedUserId, nextPlace, points, showupBonus]
+    );
+    row = inserted.rows[0] ?? null;
+    await recordLeagueAudit(client, {
+      leagueId: event.leagueid,
+      seasonId: event.seasonid,
+      eventId: event.eventid,
+      actorId: null,
+      targetUserId: requestedUserId,
+      action: 'public_knockout_logged',
+      summary: 'A player knockout was reported from the event QR code.',
+      details: { placed: nextPlace, source: 'public_knockout_qr' },
+    });
+    await client.query('COMMIT');
+    broadcastLeagueEventUpdate(event.eventid, { results: true, source: 'league-public-knockout' });
+    if (event.tournamentid) broadcastTournamentUpdate(event.tournamentid, { players: true, source: 'league-public-knockout' });
+    if (row) {
+      void sendLeagueResultLoggedPush({ leagueId: event.leagueid, leagueName: publicEvent.leaguename, event, targetUserId: requestedUserId, result: row })
+        .catch((error) => console.error('Public league knockout push failed', error instanceof Error ? error.message : error));
+    }
+    res.json({ result: row });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 async function upsertResult(req: Request, res: Response, targetUserId: string, allowSelfLog = false) {

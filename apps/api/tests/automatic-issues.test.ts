@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import express from 'express';
+import '../src/express-async';
 import { buildIssueFingerprint, normalizeIssuePath, sanitizeIssuePath, sanitizeIssueText } from '../src/services/issueReporter';
 
 assert.equal(
@@ -27,4 +29,31 @@ const secondFingerprint = buildIssueFingerprint({
 });
 assert.equal(firstFingerprint, secondFingerprint, 'Equivalent route failures should share one admin issue');
 
-console.log('Automatic issue reporting tests passed.');
+async function verifyAsyncRouterWrapping(): Promise<void> {
+  const router = express.Router();
+  const expectedRouteError = new Error('database unavailable');
+  router.get('/async-failure', async () => {
+    throw expectedRouteError;
+  });
+  const wrappedHandler = router.stack[0]?.route?.stack[0]?.handle as
+    | ((req: unknown, res: unknown, next: (error?: unknown) => void) => void)
+    | undefined;
+  assert.ok(wrappedHandler, 'Async router handlers should be wrapped before Express registers them');
+  await new Promise<void>((resolve, reject) => {
+    wrappedHandler({}, {}, (error) => {
+      try {
+        assert.equal(error, expectedRouteError, 'Async rejections should reach Express error middleware');
+        resolve();
+      } catch (assertionError) {
+        reject(assertionError);
+      }
+    });
+  });
+}
+
+void verifyAsyncRouterWrapping()
+  .then(() => console.log('Automatic issue reporting tests passed.'))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
