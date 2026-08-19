@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { LeagueResult } from '../api/client';
 
 type FinishOption = {
@@ -22,6 +23,7 @@ export default function LeagueLiveResultsTable({
   results: LeagueResult[];
   nextPlace: number | null;
 }) {
+  const nextRowRef = useRef<HTMLDivElement | null>(null);
   const completed = results
     .filter((result) => !result.dnf && result.placed != null)
     .sort((a, b) => new Date(b.updatedat).getTime() - new Date(a.updatedat).getTime());
@@ -29,14 +31,13 @@ export default function LeagueLiveResultsTable({
   const openRows = finishOptions
     .filter((finish) => !usedPlaces.has(finish.place))
     .sort((a, b) => b.place - a.place)
-    .slice(0, 5)
     .map<LiveFinishRow>((finish) => ({
       ...finish,
       displayname: null,
       isNext: finish.place === nextPlace,
       isRecorded: false,
     }));
-  const recordedRows = completed.slice(0, 3).map<LiveFinishRow>((result) => ({
+  const recordedRows = completed.map<LiveFinishRow>((result) => ({
     place: Number(result.placed),
     points: Number(result.points || 0),
     displayname: result.displayname ?? 'Player',
@@ -45,6 +46,10 @@ export default function LeagueLiveResultsTable({
   }));
   const rows = [...new Map([...openRows, ...recordedRows].map((row) => [row.place, row])).values()]
     .sort((a, b) => a.place - b.place);
+
+  useEffect(() => {
+    nextRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [nextPlace]);
 
   if (rows.length === 0) return null;
 
@@ -57,9 +62,11 @@ export default function LeagueLiveResultsTable({
           <span>Name</span>
           <span className="text-right">Points</span>
         </div>
+        <div className="max-h-[23rem] touch-pan-y overflow-y-auto overscroll-contain">
         {rows.map((row) => (
           <div
             key={row.place}
+            ref={row.isNext ? nextRowRef : undefined}
             className={`grid grid-cols-[4rem_minmax(0,1fr)_4.5rem] items-center gap-2 border-b border-pit-border px-3 py-2.5 text-sm last:border-b-0 ${row.isRecorded
               ? 'bg-pit-teal/[0.08]'
               : row.isNext
@@ -74,6 +81,7 @@ export default function LeagueLiveResultsTable({
             <span className="text-right font-mono text-xs font-black text-pit-gold">{row.points.toLocaleString()}</span>
           </div>
         ))}
+        </div>
       </div>
     </section>
   );

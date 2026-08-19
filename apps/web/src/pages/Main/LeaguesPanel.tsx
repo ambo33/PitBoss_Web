@@ -2569,10 +2569,16 @@ function EventRosterLogger({
     .filter((member) => member.approved && member.participating)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const eventResults = detail.results.filter((result) => result.eventid === event.eventid);
-  const liveFieldSize = approvedMembers.filter((member) => getLeagueEventRsvp(detail, event, member.userid)?.status === 'going').length;
-  const liveDnfCount = eventResults.filter((result) => result.dnf).length;
+  const goingMemberIds = new Set(
+    approvedMembers
+      .filter((member) => getLeagueEventRsvp(detail, event, member.userid)?.status === 'going')
+      .map((member) => member.userid)
+  );
+  const liveFieldSize = goingMemberIds.size;
+  const eventPlacementResults = eventResults.filter((result) => goingMemberIds.has(result.userid));
+  const liveDnfCount = eventPlacementResults.filter((result) => result.dnf).length;
   const liveAvailablePlaces = Array.from({ length: Math.max(0, liveFieldSize - liveDnfCount) }, (_, index) => index + 1)
-    .filter((place) => !eventResults.some((result) => !result.dnf && Number(result.placed) === place));
+    .filter((place) => !eventPlacementResults.some((result) => !result.dnf && Number(result.placed) === place));
   const liveNextPlace = liveAvailablePlaces.length ? liveAvailablePlaces[liveAvailablePlaces.length - 1] : null;
   const pointLookup = new Map(
     detail.league.pointslookup
@@ -2627,10 +2633,10 @@ function EventRosterLogger({
           const rsvpNotGoing = rsvp?.status === 'not_going';
           const value = drafts[member.userid] ?? (existing?.placed ? String(existing.placed) : '');
           const totalPoints = existing ? Number(existing.points || 0) + Number(existing.showupbonuspoints || 0) : 0;
-          const otherDnfCount = eventResults.filter((result) => result.userid !== member.userid && result.dnf).length;
-          const maxPlace = Math.max(1, approvedMembers.length - otherDnfCount);
+          const otherDnfCount = eventPlacementResults.filter((result) => result.userid !== member.userid && result.dnf).length;
+          const maxPlace = Math.max(0, liveFieldSize - otherDnfCount);
           const usedPlaces = new Set(
-            eventResults
+            eventPlacementResults
               .filter((result) => result.userid !== member.userid && !result.dnf && result.placed != null)
               .map((result) => Number(result.placed))
           );
@@ -2739,7 +2745,8 @@ function EventRosterLogger({
                 <select
                   className="input py-2"
                   value={value}
-                  disabled={loading}
+                  disabled={loading || !rsvpGoing}
+                  title={rsvpGoing ? 'Record placement' : 'Only players marked Going can receive a placement'}
                   onChange={(eventValue) => {
                     const nextPlace = Number(eventValue.target.value);
                     if (!nextPlace) return;

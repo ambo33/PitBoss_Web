@@ -148,11 +148,11 @@
       <h1>League Workflow Regression Report</h1>
       <p>Saved workflow checks for league creation math, player finishes, point chart changes, standings, show-up bonuses, DNF handling, and final table multipliers.</p>
       <div class="summary">
-        <div class="metric"><span>Total scenarios</span><strong>22</strong></div>
-        <div class="metric"><span>Passed</span><strong style="color: var(--green)">22</strong></div>
+        <div class="metric"><span>Total scenarios</span><strong>27</strong></div>
+        <div class="metric"><span>Passed</span><strong style="color: var(--green)">27</strong></div>
         <div class="metric"><span>Failed</span><strong style="color: var(--green)">0</strong></div>
       </div>
-      <div class="stamp">Generated 8/18/2026, 7:37:02 AM</div>
+      <div class="stamp">Generated 8/18/2026, 8:41:50 PM</div>
     </section>
     <section class="grid">
       
@@ -169,6 +169,12 @@
         </article>
       
         <article class="case ">
+          <h2>2a. Field-size recommendations preserve the current top-eight and top-three scoring shape</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
           <h2>3. Spreadsheet-style 36-player chart preserves the known 4,311-point payout shape</h2>
           <div class="status"><span class="dot"></span>Passed</div>
           
@@ -176,6 +182,18 @@
       
         <article class="case ">
           <h2>4. DNF and missing placements never award placement points</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>4a. RSVP changes keep DNF and placement state mutually consistent</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>4b. A runner-up knockout leaves first place available for the sole remaining player</h2>
           <div class="status"><span class="dot"></span>Passed</div>
           
         </article>
@@ -284,6 +302,18 @@
       
         <article class="case ">
           <h2>22. Pending league members cannot enter a season before approval</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>23. Updating one season chart leaves another season standings unchanged</h2>
+          <div class="status"><span class="dot"></span>Passed</div>
+          
+        </article>
+      
+        <article class="case ">
+          <h2>24. Live knockout outlook shows the next finish and remaining finish totals</h2>
           <div class="status"><span class="dot"></span>Passed</div>
           
         </article>

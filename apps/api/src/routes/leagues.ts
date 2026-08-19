@@ -4574,39 +4574,24 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
       [event.eventid, req.params.id, targetUserId]
     );
     const previousResult = previousQuery.rows[0] ?? null;
-    const [participantQuery, goingQuery] = await Promise.all([
-      client.query<{ count: string | number }>(
-        `SELECT count(*) AS count
-         FROM leaguemembers lm
-         JOIN leagueseasonparticipants lsp
-           ON lsp.leagueid = lm.leagueid AND lsp.userid = lm.userid
-         WHERE lm.leagueid = $1
-           AND lsp.seasonid = $2
-           AND lm.approved = TRUE
-           AND lsp.participating = TRUE`,
-        [req.params.id, event.seasonid]
-      ),
-      client.query<{ count: string | number }>(
-        `SELECT count(*) AS count
-         FROM leagueeventrsvps r
-         JOIN leagueseasonparticipants lsp
-           ON lsp.leagueid = r.leagueid
-          AND lsp.userid = r.userid
-          AND lsp.seasonid = $3
-          AND lsp.participating = TRUE
-         JOIN leaguemembers lm
-           ON lm.leagueid = r.leagueid
-          AND lm.userid = r.userid
-          AND lm.approved = TRUE
-         WHERE r.leagueid = $1 AND r.eventid = $2 AND r.status = 'going'`,
-        [req.params.id, event.eventid, event.seasonid]
-      ),
-    ]);
+    const goingQuery = await client.query<{ count: string | number }>(
+      `SELECT count(*) AS count
+       FROM leagueeventrsvps r
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = r.leagueid
+        AND lsp.userid = r.userid
+        AND lsp.seasonid = $3
+        AND lsp.participating = TRUE
+       JOIN leaguemembers lm
+         ON lm.leagueid = r.leagueid
+        AND lm.userid = r.userid
+        AND lm.approved = TRUE
+       WHERE r.leagueid = $1 AND r.eventid = $2 AND r.status = 'going'`,
+      [req.params.id, event.eventid, event.seasonid]
+    );
     const goingCount = Number(goingQuery.rows[0]?.count || 0);
-    const participantCount = goingCount > 0
-      ? goingCount
-      : Number(participantQuery.rows[0]?.count || 0);
-    if (!dnf && goingCount > 0) {
+    const participantCount = goingCount;
+    if (!dnf) {
       const targetGoing = await client.query<{ exists: boolean }>(
         `SELECT EXISTS (
            SELECT 1

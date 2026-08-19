@@ -180,17 +180,15 @@ export default function LeagueEventLobbyPage() {
                 Come back when play begins. This page will refresh automatically.
               </Notice>
             ) : data.nextplace ? (
-              <div className="rounded-2xl border border-red-300/25 bg-red-400/[0.07] p-5 text-center sm:p-6">
-                <button
-                  className="w-full justify-center rounded-xl bg-red-500 px-4 py-3.5 font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-60"
-                  type="button"
-                  disabled={logMutation.isPending || !data.canselflog}
-                  onClick={() => logMutation.mutate()}
-                >
-                  <UserMinus size={18} />
-                  {logMutation.isPending ? 'Recording finish...' : `Knock me out in ${data.nextplace}${ordinal(data.nextplace)}`}
-                </button>
-              </div>
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3.5 font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-60"
+                type="button"
+                disabled={logMutation.isPending || !data.canselflog}
+                onClick={() => logMutation.mutate()}
+              >
+                <UserMinus size={18} />
+                {logMutation.isPending ? 'Recording finish...' : `Knock me out in ${data.nextplace}${ordinal(data.nextplace)}`}
+              </button>
             ) : (
               <Notice title="All finishes are recorded">The event field is complete.</Notice>
             )}
