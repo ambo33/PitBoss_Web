@@ -691,6 +691,12 @@ export interface LeagueResult {
   createdat: string;
   updatedat: string;
 }
+export interface LeagueFinishOutlook {
+  place: number;
+  placementpoints: number;
+  showupbonuspoints: number;
+  totalpoints: number;
+}
 export interface LeagueEventLobby {
   league: Pick<League, 'leagueid' | 'name' | 'isadmin'>;
   event: LeagueEvent;
@@ -698,6 +704,8 @@ export interface LeagueEventLobby {
   isparticipant: boolean;
   canselflog: boolean;
   nextplace: number | null;
+  nextfinish?: LeagueFinishOutlook | null;
+  remainingfinishes?: LeagueFinishOutlook[];
   myresult: LeagueResult | null;
   myrsvp: LeagueEventRsvp | null;
   rsvpcounts?: {
@@ -711,6 +719,8 @@ export interface PublicLeagueKnockout {
   event: LeagueEvent;
   participantcount: number;
   nextplace: number | null;
+  nextfinish?: LeagueFinishOutlook | null;
+  remainingfinishes?: LeagueFinishOutlook[];
   signedin: boolean;
   remainingplayers: Array<{ userid: string; displayname: string | null }>;
   results: LeagueResult[];

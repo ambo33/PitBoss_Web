@@ -9,6 +9,7 @@ import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import JoinShareDialog from '../../components/JoinShareDialog';
+import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import { useAuthStore } from '../../store/auth';
 
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
@@ -55,12 +56,14 @@ export default function LeaguesPanel({
   const lastCreateRequestRef = useRef(createRequestId);
   const [showJoin, setShowJoin] = useState(false);
   const [selected, setSelected] = useState<Pick<League, 'leagueid'> | null>(initialLeagueId ? { leagueid: initialLeagueId } : null);
+  const [openedFromList, setOpenedFromList] = useState(false);
   const { data: leagues = [], isLoading } = useQuery({ queryKey: ['leagues'], queryFn: api.getLeagues });
 
   const createMutation = useMutation({
     mutationFn: api.createLeague,
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ['leagues'] });
+      setOpenedFromList(true);
       setSelected({ leagueid: created.leagueid });
       setShowCreate(false);
     },
@@ -72,7 +75,9 @@ export default function LeaguesPanel({
   }, [onDetailStateChange, selected]);
 
   useEffect(() => {
-    if (initialLeagueId) setSelected({ leagueid: initialLeagueId });
+    if (!initialLeagueId) return;
+    setOpenedFromList(false);
+    setSelected({ leagueid: initialLeagueId });
   }, [initialLeagueId]);
 
   useEffect(() => {
@@ -89,9 +94,9 @@ export default function LeaguesPanel({
       <LeagueDetailView
         league={selected}
         initialSeasonId={initialSeasonId}
-        initialTab={initialTab}
+        initialTab={openedFromList ? undefined : initialTab}
         initialPostId={initialPostId}
-        initialEventId={initialEventId}
+        initialEventId={openedFromList ? undefined : initialEventId}
         onBack={() => {
           setSelected(null);
           onBackToCommunities?.();
@@ -118,7 +123,10 @@ export default function LeaguesPanel({
       </div>
 
       {leagues.length > 0 ? (
-        <LeagueList leagues={leagues} onSelect={setSelected} />
+        <LeagueList leagues={leagues} onSelect={(league) => {
+          setOpenedFromList(true);
+          setSelected(league);
+        }} />
       ) : (
         <LeagueEmptyState onJoin={() => setShowJoin(true)} onCreate={() => setShowCreate(true)} />
       )}
@@ -618,7 +626,7 @@ function LeagueDetailView({
   }, [currentEvent, detail]);
   const selectRankedUser = (userId: string) => {
     setSelectedRankUserId(userId);
-    if (window.matchMedia('(max-width: 1023px)').matches) {
+    if (window.matchMedia('(max-width: 1279px)').matches) {
       setMobileRankUserId(userId);
     }
   };
@@ -830,9 +838,9 @@ function LeagueDetailView({
           ))}
         </div>
         {activeDetailTab === 'overview' && (
-          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={selectRankedUser} />
-            <div className="hidden lg:sticky lg:top-4 lg:block lg:self-start">
+            <div className="hidden xl:sticky xl:top-4 xl:block xl:self-start">
               <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} floating />
             </div>
           </div>
@@ -1441,41 +1449,18 @@ function StandingsTable({
   const projectedFinalStacks = buildProjectedFinalStacks(detail, rankedStandings);
   const finalStackByUser = new Map(projectedFinalStacks.map((stack) => [stack.userid, stack]));
   const totalStartingStack = projectedFinalStacks.reduce((sum, stack) => sum + Number(stack.startingstack || 0), 0);
-  const projectedPlayers = projectedFinalStacks.length;
-  const averageStack = projectedPlayers ? Math.round(totalStartingStack / projectedPlayers) : 0;
-  const finalBigBlind = Math.max(1, Math.round(Number(detail.league.finalstartingbigblind || 100)));
-  const averageBbs = averageStack / finalBigBlind;
   const rowClassName = finalEnabled
-    ? 'block w-full border-b border-pit-border/50 px-3 py-3 text-left text-sm transition-colors last:border-0 md:grid md:grid-cols-[56px_minmax(0,1fr)_80px_112px_64px_70px_70px] md:gap-2'
-    : 'block w-full border-b border-pit-border/50 px-3 py-3 text-left text-sm transition-colors last:border-0 md:grid md:grid-cols-[56px_minmax(0,1fr)_80px_80px_80px] md:gap-2';
+    ? 'block w-full border-b border-pit-border/50 px-3 py-3 text-left text-sm transition-colors last:border-0 md:grid md:grid-cols-[56px_minmax(180px,1fr)_90px_90px_112px_64px_70px_70px] md:gap-2'
+    : 'block w-full border-b border-pit-border/50 px-3 py-3 text-left text-sm transition-colors last:border-0 md:grid md:grid-cols-[56px_minmax(180px,1fr)_90px_90px_70px_70px] md:gap-2';
   return (
     <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
-      {finalEnabled && (
-        <div className="border-b border-pit-border bg-pit-card/45 p-3">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow">Final game outlook</p>
-            </div>
-            <Trophy size={16} className="shrink-0 text-pit-gold" />
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:max-w-md">
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
-              <p className="text-pit-muted">Avg stack</p>
-              <p className="mt-1 font-bold text-white">{formatNumber(averageStack)}</p>
-            </div>
-            <div className="rounded-lg border border-pit-border bg-pit-bg/60 p-2">
-              <p className="text-pit-muted">Avg BBs</p>
-              <p className="mt-1 font-bold text-white">{formatBbs(averageBbs)}</p>
-            </div>
-          </div>
-        </div>
-      )}
       <div className={`hidden gap-2 border-b border-pit-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-pit-muted md:grid ${
-        finalEnabled ? 'grid-cols-[56px_minmax(0,1fr)_80px_112px_64px_70px_70px]' : 'grid-cols-[56px_minmax(0,1fr)_80px_80px_80px]'
+        finalEnabled ? 'grid-cols-[56px_minmax(180px,1fr)_90px_90px_112px_64px_70px_70px]' : 'grid-cols-[56px_minmax(180px,1fr)_90px_90px_70px_70px]'
       }`}>
         <span>Rank</span>
         <span>Player</span>
-        <span className="text-right">Points</span>
+        <span className="text-right">Placement</span>
+        <span className="text-right">Show-up</span>
         {finalEnabled && <span className="text-right">Final</span>}
         {finalEnabled && <span className="text-right">BBs</span>}
         <span className="text-right">Played</span>
@@ -1506,9 +1491,15 @@ function StandingsTable({
                   </p>
                 )}
               </div>
-              <span className="shrink-0 text-right font-bold text-white md:hidden">{formatNumber(Number(standing.scoredpoints || 0))}</span>
+              <div className="shrink-0 text-right md:hidden">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Placement</span>
+                <span className="block font-bold text-white">{formatNumber(Number(standing.scoredpoints || 0))}</span>
+                <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Show-up</span>
+                <span className="block font-bold text-pit-teal">{formatNumber(Number(standing.showupbonus || 0))}</span>
+              </div>
             </div>
             <span className="hidden text-right font-bold text-white md:block">{formatNumber(Number(standing.scoredpoints || 0))}</span>
+            <span className="hidden text-right font-bold text-pit-teal md:block">{formatNumber(Number(standing.showupbonus || 0))}</span>
             {finalEnabled && (
               <span className="hidden text-right md:block">
                 <span className="block font-mono text-white">{finalStack ? formatNumber(Number(finalStack.startingstack || 0)) : '-'}</span>
@@ -1551,8 +1542,6 @@ function PlayerLeagueProfile({ detail, userId, floating = false }: { detail: Lea
     );
   }
 
-  const feeSummary = getPlayerFeeSummary(detail, userId);
-
   return (
     <div className={shellClass}>
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -1560,44 +1549,20 @@ function PlayerLeagueProfile({ detail, userId, floating = false }: { detail: Lea
           <p className="eyebrow">Player ledger</p>
           <h3 className="truncate text-lg font-bold text-white">{member.displayname ?? 'Player'}</h3>
         </div>
-        <span className="chip shrink-0">{formatNumber(Number(standing.totalpoints || 0))} pts</span>
-      </div>
-      <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
-          <p className="text-pit-muted">Played</p>
-          <p className="mt-1 font-bold text-white">{standing.eventsplayed}</p>
-        </div>
-        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
-          <p className="text-pit-muted">Paid</p>
-          <p className="mt-1 font-bold text-pit-teal">{formatCurrency(feeSummary.totalPaid)}</p>
-        </div>
-        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
-          <p className="text-pit-muted">League fees left</p>
-          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(feeSummary.leagueFeeRemaining)}</p>
-        </div>
-        <div className="rounded-lg border border-pit-border bg-pit-card/60 p-2">
-          <p className="text-pit-muted">Est. event fees left</p>
-          <p className="mt-1 font-bold text-pit-gold">{formatCurrency(feeSummary.eventFeeRemaining)}</p>
+        <div className="shrink-0 text-right text-xs">
+          <p className="text-pit-muted">Placement <span className="font-semibold text-white">{formatNumber(Number(standing.scoredpoints || 0))}</span></p>
+          <p className="mt-1 text-pit-muted">Show-up <span className="font-semibold text-pit-teal">{formatNumber(Number(standing.showupbonus || 0))}</span></p>
         </div>
       </div>
       <div className={`${floating ? 'max-h-[calc(100vh-15rem)]' : 'max-h-[34rem]'} space-y-2 overflow-y-auto pr-1`}>
         {detail.events.map((event) => {
           const result = detail.results.find((item) => item.eventid === event.eventid && item.userid === userId);
-          const points = result ? Number(result.points || 0) + Number(result.showupbonuspoints || 0) : 0;
-          const paid = detail.payments
-            .filter((payment) => payment.userid === userId && payment.eventid === event.eventid)
-            .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-          const eventFee = getPlayerEventFeeDue(detail, event, userId);
+          const placementPoints = result ? Number(result.points || 0) : 0;
           return (
-            <div key={event.eventid} className="rounded-lg border border-pit-border bg-pit-card/60 p-3 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate font-semibold text-white">{event.name}</p>
-                <span className="font-mono text-pit-teal">{formatNumber(points)} pts</span>
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-pit-text">
-                <span>{result ? (result.dnf ? 'DNF' : `${result.placed}${ordinal(result.placed)} place`) : 'No finish'}</span>
-                <span className="text-right">{formatCurrency(paid)} / {formatCurrency(eventFee)}</span>
-              </div>
+            <div key={event.eventid} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-card/60 px-3 py-2 text-xs">
+                <p className="min-w-0 flex-1 truncate font-semibold text-white">{event.name}</p>
+              <span className="shrink-0 text-pit-text">{result ? (result.dnf ? 'DNF' : `${result.placed}${ordinal(result.placed)}`) : '-'}</span>
+              <span className="shrink-0 font-mono text-pit-teal">{formatNumber(placementPoints)} pts</span>
             </div>
           );
         })}
@@ -1662,7 +1627,7 @@ function MemberLeagueView({
   });
   const selectProfileUser = (userId: string) => {
     onSelectUser(userId);
-    if (window.matchMedia('(max-width: 1023px)').matches) {
+    if (window.matchMedia('(max-width: 1279px)').matches) {
       setMobileProfileUserId(userId);
     }
   };
@@ -2604,6 +2569,20 @@ function EventRosterLogger({
     .filter((member) => member.approved && member.participating)
     .sort((a, b) => String(a.displayname ?? '').localeCompare(String(b.displayname ?? '')));
   const eventResults = detail.results.filter((result) => result.eventid === event.eventid);
+  const liveFieldSize = approvedMembers.filter((member) => getLeagueEventRsvp(detail, event, member.userid)?.status === 'going').length;
+  const liveDnfCount = eventResults.filter((result) => result.dnf).length;
+  const liveAvailablePlaces = Array.from({ length: Math.max(0, liveFieldSize - liveDnfCount) }, (_, index) => index + 1)
+    .filter((place) => !eventResults.some((result) => !result.dnf && Number(result.placed) === place));
+  const liveNextPlace = liveAvailablePlaces.length ? liveAvailablePlaces[liveAvailablePlaces.length - 1] : null;
+  const pointLookup = new Map(
+    detail.league.pointslookup
+      .filter((rule) => typeof rule.place === 'number')
+      .map((rule) => [Number(rule.place), Number(rule.points || 0)])
+  );
+  const liveFinishOptions = Array.from({ length: Math.max(0, liveFieldSize - liveDnfCount) }, (_, index) => ({
+    place: index + 1,
+    points: pointLookup.get(index + 1) ?? 0,
+  }));
   const fee = getSeasonEventFee(detail);
   const eventPaymentStatuses = approvedMembers.map((member) => getEventPaymentStatus(detail, event, member.userid));
   const eligibleCount = eventPaymentStatuses.filter((status) => status.due > 0).length;
@@ -2630,6 +2609,13 @@ function EventRosterLogger({
           Mark all event fees paid
         </button>
       </div>
+      {event.hasstarted && liveFinishOptions.length > 0 && (
+        <LeagueLiveResultsTable
+          finishOptions={liveFinishOptions}
+          results={eventResults}
+          nextPlace={liveNextPlace}
+        />
+      )}
       {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {approvedMembers.map((member) => {

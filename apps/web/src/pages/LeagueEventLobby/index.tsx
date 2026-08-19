@@ -2,8 +2,9 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { CalendarCheck, CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, Users, XCircle } from 'lucide-react';
+import { CalendarCheck, CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
+import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api, type LeagueResult } from '../../api/client';
 
@@ -132,7 +133,7 @@ export default function LeagueEventLobbyPage() {
                 {event.hasstarted ? <Radio size={13} /> : <CalendarClock size={13} />}
                 {event.hasstarted ? 'Event live' : 'Scheduled'}
               </span>
-              {data.isparticipant && (
+              {data.isparticipant && !event.hasstarted && (
                 <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
                   myRsvp?.status === 'going'
                     ? 'border-emerald-300/35 bg-emerald-400/12 text-emerald-200'
@@ -180,11 +181,8 @@ export default function LeagueEventLobbyPage() {
               </Notice>
             ) : data.nextplace ? (
               <div className="rounded-2xl border border-red-300/25 bg-red-400/[0.07] p-5 text-center sm:p-6">
-                <UserMinus className="mx-auto text-red-300" size={34} />
-                <p className="mt-3 text-sm text-pit-text">Just got knocked out?</p>
-                <p className="mt-1 text-3xl font-black text-white">Next finish: {data.nextplace}{ordinal(data.nextplace)}</p>
                 <button
-                  className="mt-5 w-full justify-center rounded-xl bg-red-500 px-4 py-3.5 font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-60"
+                  className="w-full justify-center rounded-xl bg-red-500 px-4 py-3.5 font-black text-white shadow-lg shadow-red-500/20 transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-60"
                   type="button"
                   disabled={logMutation.isPending || !data.canselflog}
                   onClick={() => logMutation.mutate()}
@@ -197,7 +195,7 @@ export default function LeagueEventLobbyPage() {
               <Notice title="All finishes are recorded">The event field is complete.</Notice>
             )}
 
-            {data.isparticipant && (
+            {data.isparticipant && !event.hasstarted && (
             <div className={`rounded-2xl border p-4 ${
               myRsvp?.status
                 ? 'border-pit-border bg-pit-bg/55'
@@ -237,30 +235,13 @@ export default function LeagueEventLobbyPage() {
             </div>
             )}
 
-            <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">Recent knockouts</p>
-                  <p className="mt-1 text-sm text-pit-text">Latest finishes update automatically.</p>
-                </div>
-                <span className="chip"><Users size={13} />{placedResults.length}</span>
-              </div>
-              {placedResults.length === 0 ? (
-                <p className="mt-4 rounded-lg border border-dashed border-pit-border px-3 py-5 text-center text-sm text-pit-muted">
-                  No knockouts logged yet.
-                </p>
-              ) : (
-                <div className="mt-4 divide-y divide-pit-border overflow-hidden rounded-lg border border-pit-border">
-                  {placedResults.slice(0, 12).map((result) => (
-                    <div key={result.resultid} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 bg-pit-card/65 px-3 py-3">
-                      <span className="font-black text-pit-teal">{result.placed}{ordinal(result.placed)}</span>
-                      <span className="min-w-0 truncate text-sm font-semibold text-white">{result.displayname ?? 'Player'}</span>
-                      <span className="font-mono text-xs font-bold text-pit-text">{resultPoints(result).toLocaleString()} pts</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {event.hasstarted && (
+              <LeagueLiveResultsTable
+                finishOptions={(data.remainingfinishes ?? []).map((finish) => ({ place: finish.place, points: finish.placementpoints }))}
+                results={data.results}
+                nextPlace={data.nextplace}
+              />
+            )}
           </div>
         </div>
       </section>
@@ -290,6 +271,7 @@ function Notice({ title, children }: { title: string; children: ReactNode }) {
 function resultPoints(result: LeagueResult) {
   return Number(result.points || 0) + Number(result.showupbonuspoints || 0);
 }
+
 
 function formatEventSchedule(dateValue?: string | null, timeValue?: string | null) {
   if (!dateValue) return 'Date and time not set';

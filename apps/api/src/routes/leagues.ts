@@ -22,7 +22,7 @@ import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publi
 import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers } from '../lib/server/notifications/notificationService';
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
 import { hasTournamentStarted } from '../schedule';
-import { getAvailableLeaguePlacements } from '../leagues/placements';
+import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../leagues/placements';
 import { getLeagueRsvpResultMutation } from '../leagues/rsvp-results';
 import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
 import { syncJoinCode } from '../joinCodes';
@@ -3929,7 +3929,7 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
     return;
   }
 
-  const [seasonParticipantCount, isParticipant, results, myRsvp, rsvpCounts] = await Promise.all([
+  const [seasonParticipantCount, isParticipant, results, myRsvp, rsvpCounts, season] = await Promise.all([
     getLeagueSeasonParticipantCount(req.params.id, event.seasonid),
     requireLeagueSeasonParticipant(req.params.id, event.seasonid, req.userId!),
     query<LeagueResultRow>(
@@ -4009,6 +4009,7 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
        GROUP BY r.status`,
       [event.eventid, req.params.id, event.seasonid]
     ),
+    getSelectedSeason(req.params.id, event.seasonid),
   ]);
 
   const normalizedResults = results.map((result) => ({
@@ -4026,6 +4027,13 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
   const eventFieldCount = goingCount > 0 ? goingCount : seasonParticipantCount;
   const myResult = normalizedResults.find((result) => result.userid === req.userId) ?? null;
   const { nextPlace } = getAvailableLeaguePlacements(eventFieldCount, normalizedResults, req.userId!);
+  const effectiveLeague = leagueWithSeasonSettings(serializeLeague(league), season);
+  const finishOutlook = getLeagueFinishOutlook(
+    eventFieldCount,
+    normalizedResults,
+    normalizePointsLookup(effectiveLeague.pointslookup),
+    effectiveLeague.showupbonuspoints
+  );
 
   res.json({
     league: {
@@ -4046,6 +4054,8 @@ leaguesRouter.get('/:id/events/:eventId/lobby', async (req: Request, res: Respon
       && nextPlace != null
       && (goingCount === 0 || myRsvp?.status === 'going'),
     nextplace: nextPlace,
+    nextfinish: finishOutlook.nextFinish,
+    remainingfinishes: finishOutlook.remainingFinishes,
     myresult: myResult,
     myrsvp: myRsvp,
     rsvpcounts: {
@@ -4300,6 +4310,21 @@ publicLeaguesRouter.get('/knockout/:token', async (req: Request, res: Response) 
     showupbonuspoints: Number(result.showupbonuspoints || 0),
   }));
   const { nextPlace } = getAvailableLeaguePlacements(field.participantCount, normalizedResults, 'public-knockout');
+  const [leagueRow, season] = await Promise.all([
+    getLeagueByIdForPublicEvent(event.leagueid),
+    getSelectedSeason(event.leagueid, event.seasonid),
+  ]);
+  if (!leagueRow || !season) {
+    res.status(404).json({ error: 'League event not found.' });
+    return;
+  }
+  const effectiveLeague = leagueWithSeasonSettings(serializeLeague(leagueRow), season);
+  const finishOutlook = getLeagueFinishOutlook(
+    field.participantCount,
+    normalizedResults,
+    normalizePointsLookup(effectiveLeague.pointslookup),
+    effectiveLeague.showupbonuspoints
+  );
   res.json({
     league: { leagueid: event.leagueid, name: event.leaguename },
     event: {
@@ -4309,6 +4334,8 @@ publicLeaguesRouter.get('/knockout/:token', async (req: Request, res: Response) 
     },
     participantcount: field.participantCount,
     nextplace: nextPlace,
+    nextfinish: finishOutlook.nextFinish,
+    remainingfinishes: finishOutlook.remainingFinishes,
     signedin: Boolean(req.userId),
     remainingplayers: field.remainingPlayers,
     results: normalizedResults,

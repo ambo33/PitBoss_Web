@@ -13,7 +13,7 @@ import {
   type LeagueResultRow,
 } from '../src/leagues/scoring';
 import { calculateLeagueFeeInstallment } from '../src/leagues/payments';
-import { getAvailableLeaguePlacements } from '../src/leagues/placements';
+import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../src/leagues/placements';
 import { shouldJoinCurrentSeason } from '../src/leagues/membership';
 import { getLeagueRsvpResultMutation } from '../src/leagues/rsvp-results';
 
@@ -395,6 +395,25 @@ const tests: TestCase[] = [
       setPointChart(currentSeason, generatePointsLookup(24));
       assert.equal(findStanding(earlierSeason, 'ambo').totalpoints, earlierBefore);
       assert.notEqual(findStanding(currentSeason, 'ambo').totalpoints, earlierBefore);
+    },
+  },
+  {
+    name: '24. Live knockout outlook shows the next finish and remaining finish totals',
+    run: () => {
+      const outlook = getLeagueFinishOutlook(
+        4,
+        [{ userid: 'out', placed: 4, dnf: false }],
+        [
+          { place: 1, points: 400 },
+          { place: 2, points: 250 },
+          { place: 3, points: 125 },
+          { place: 4, points: 50 },
+        ],
+        30
+      );
+      assert.deepEqual(outlook.nextFinish, { place: 3, placementpoints: 125, showupbonuspoints: 30, totalpoints: 155 });
+      assert.deepEqual(outlook.remainingFinishes.map((finish) => finish.place), [1, 2, 3]);
+      assert.equal(outlook.remainingFinishes[0]?.totalpoints, 430);
     },
   },
 ];

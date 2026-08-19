@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { CalendarClock, CheckCircle2, RefreshCw, Trophy, UserMinus, Users } from 'lucide-react';
+import { CalendarClock, RefreshCw, Trophy, UserMinus, Users } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BrandLockup from '../../components/BrandLockup';
+import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api } from '../../api/client';
 
@@ -62,9 +63,6 @@ export default function LeagueGuestKnockoutPage() {
     );
   }
 
-  const sortedResults = [...data.results]
-    .filter((result) => !result.dnf && result.placed != null)
-    .sort((a, b) => Number(b.placed) - Number(a.placed));
   const selectedPlayer = data.remainingplayers.find((player) => player.userid === selectedUserId) ?? null;
   const error = knockoutMutation.error instanceof Error ? knockoutMutation.error.message : null;
 
@@ -103,12 +101,7 @@ export default function LeagueGuestKnockoutPage() {
             </div>
           ) : data.nextplace && data.remainingplayers.length > 1 ? (
             <div className="rounded-2xl border border-red-300/25 bg-red-400/[0.07] p-5">
-              <div className="text-center">
-                <UserMinus className="mx-auto text-red-300" size={34} />
-                <p className="mt-3 text-sm text-pit-text">Who was just knocked out?</p>
-                <p className="mt-1 text-3xl font-black">Next finish: {ordinal(data.nextplace)}</p>
-              </div>
-              <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">
                 Remaining player
                 <select
                   className="input mt-2 w-full py-3 text-base"
@@ -139,28 +132,13 @@ export default function LeagueGuestKnockoutPage() {
             </div>
           )}
 
-          <section className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">Recent knockouts</p>
-                <p className="mt-1 text-sm text-pit-text">Refreshes automatically as finishes are recorded.</p>
-              </div>
-              <span className="chip"><CheckCircle2 size={13} />{sortedResults.length}</span>
-            </div>
-            {sortedResults.length === 0 ? (
-              <p className="mt-4 rounded-lg border border-dashed border-pit-border px-3 py-5 text-center text-sm text-pit-muted">No knockouts recorded yet.</p>
-            ) : (
-              <div className="mt-4 divide-y divide-pit-border overflow-hidden rounded-lg border border-pit-border">
-                {sortedResults.slice(0, 10).map((result) => (
-                  <div key={result.resultid} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 bg-pit-card/65 px-3 py-3">
-                    <span className="font-black text-pit-teal">{ordinal(Number(result.placed))}</span>
-                    <span className="min-w-0 truncate text-sm font-semibold text-white">{result.displayname ?? 'Player'}</span>
-                    <span className="font-mono text-xs font-bold text-pit-text">{formatPoints(result.points, result.showupbonuspoints)} pts</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          {data.event.hasstarted && (
+            <LeagueLiveResultsTable
+              finishOptions={(data.remainingfinishes ?? []).map((finish) => ({ place: finish.place, points: finish.placementpoints }))}
+              results={data.results}
+              nextPlace={data.nextplace}
+            />
+          )}
         </div>
       </section>
     </main>
@@ -171,8 +149,4 @@ function ordinal(value: number) {
   const mod100 = value % 100;
   if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
   return `${value}${value % 10 === 1 ? 'st' : value % 10 === 2 ? 'nd' : value % 10 === 3 ? 'rd' : 'th'}`;
-}
-
-function formatPoints(points: number, showUpBonus: number) {
-  return (Number(points || 0) + Number(showUpBonus || 0)).toLocaleString();
 }
