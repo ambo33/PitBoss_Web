@@ -91,7 +91,11 @@ export default function MainPage() {
   }, [location.pathname, navigate, requestedLeagueId, requestedTab]);
 
   useEffect(() => {
-    if (!location.search || handledSearchRef.current === location.search) return;
+    if (!location.search) {
+      handledSearchRef.current = '';
+      return;
+    }
+    if (handledSearchRef.current === location.search) return;
     handledSearchRef.current = location.search;
     const next = parseCommandCenterDeepLink(location.search);
     if (!next.section) return;
@@ -146,6 +150,7 @@ export default function MainPage() {
   };
 
   const returnToGames = () => {
+    handledSearchRef.current = '';
     setGroupOpenRequest(null);
     setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
     setCommandDetailOpen(false);

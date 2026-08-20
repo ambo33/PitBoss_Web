@@ -2,7 +2,7 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { CalendarCheck, CalendarClock, CheckCircle2, Radio, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
+import { CalendarCheck, CalendarClock, CheckCircle2, Home, Radio, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -106,16 +106,28 @@ export default function LeagueEventLobbyPage() {
             >
               <BrandLockup compact showSlogan={false} />
             </Link>
-            <button
-              type="button"
-              className="btn-ghost shrink-0 px-3 py-2 text-xs"
-              disabled={isFetching}
-              onClick={() => void refetch()}
-              title="Refresh knockouts and placements"
-            >
-              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-              Refresh
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                className="btn-ghost h-10 w-10 justify-center px-0 text-xs sm:w-auto sm:px-3"
+                to="/"
+                aria-label="Home"
+                title="Home"
+              >
+                <Home size={14} />
+                <span className="hidden sm:inline">Home</span>
+              </Link>
+              <button
+                type="button"
+                className="btn-ghost h-10 w-10 justify-center px-0 text-xs sm:w-auto sm:px-3"
+                disabled={isFetching}
+                onClick={() => void refetch()}
+                title="Refresh knockouts and placements"
+                aria-label="Refresh"
+              >
+                <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
           </div>
 
           <header className="border-b border-pit-border bg-pit-teal/10 px-5 py-5 sm:px-6">
