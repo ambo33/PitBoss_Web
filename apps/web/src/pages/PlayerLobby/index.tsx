@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Share, Skull, Volume2 } from 'lucide-react';
+import { Download, Home, Share, Skull, Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import { useAuthStore } from '../../store/auth';
@@ -363,7 +363,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   const checkInStatus = entry?.checkedin ? 'Checked in' : entry ? 'Not checked in' : 'Check-in required';
   const personalKnockouts = Number(entry?.knockoutcount ?? 0);
   const personalPrize = entry?.placed != null && entry.placed <= payoutPlaces ? payoutAmounts[entry.placed - 1] ?? 0 : 0;
-  const personalRecapSvg = useMemo(() => {
+  const personalRecapSvg = (() => {
     if (!entry || (entry.placed == null && personalKnockouts <= 0)) return null;
     const playerName = entry.displayname ?? entry.emailaddress ?? 'Player';
     return buildTournamentRecapSvg({
@@ -392,7 +392,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
         },
       ],
     });
-  }, [entry, field.registeredcount, personalKnockouts, personalPrize, tournament.name]);
+  })();
 
   async function handleSharePersonalRecap(downloadOnly = false) {
     if (!entry || !personalRecapSvg) return;
@@ -413,7 +413,17 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
 
   return (
     <div className="min-h-screen bg-pit-bg p-3 text-white">
-      <header className="mb-4 text-center">
+      <header className="mx-auto mb-4 max-w-md text-center">
+        <div className="mb-3 flex justify-start">
+          <button
+            type="button"
+            className="btn-ghost min-h-10 gap-2 px-3 py-2 text-sm"
+            onClick={() => navigate('/')}
+          >
+            <Home size={16} />
+            Home
+          </button>
+        </div>
         <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
         {displayIdentity && <p className="mt-1 text-sm text-pit-text">ThePokerPlanner - {displayIdentity}</p>}
         <CoinBadgeStrip coins={entry?.awardedcoins} size="lg" limit={8} className="mt-3 justify-center" />
