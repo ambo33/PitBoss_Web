@@ -62,8 +62,8 @@ export async function sendPushNotification(subscription: PushSubscriptionRow, pa
     await webpush.sendNotification(
       toWebPushSubscription(subscription),
       JSON.stringify({
-        icon: '/icons/icon-192.png',
-        badge: '/icons/icon-192.png',
+        icon: '/icons/spade-chip-v2-192.png',
+        badge: '/icons/spade-chip-v2-192.png',
         url: '/',
         ...payload,
       })

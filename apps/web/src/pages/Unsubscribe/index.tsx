@@ -14,12 +14,18 @@ export default function UnsubscribePage() {
     setStatus('saving');
     setMessage('');
     try {
-      await api.unsubscribePublicBlindTimer(token);
+      await api.unsubscribeEmailAlerts(token);
       setStatus('done');
-      setMessage('You have been unsubscribed from ThePokerPlanner promotional emails for this timer.');
+      setMessage('Email alerts are now turned off for this account.');
     } catch (err) {
-      setStatus('error');
-      setMessage(err instanceof Error ? err.message : 'Unable to unsubscribe from that link.');
+      try {
+        await api.unsubscribePublicBlindTimer(token);
+        setStatus('done');
+        setMessage('You have been unsubscribed from ThePokerPlanner promotional emails for this timer.');
+      } catch {
+        setStatus('error');
+        setMessage(err instanceof Error ? err.message : 'Unable to unsubscribe from that link.');
+      }
     }
   }
 
@@ -35,7 +41,7 @@ export default function UnsubscribePage() {
             <p className="eyebrow">Email Preferences</p>
             <h1 className="mt-1 text-2xl font-bold">Unsubscribe from updates</h1>
             <p className="mt-2 text-sm leading-6 text-pit-text">
-              This stops promotional ThePokerPlanner emails tied to your public blind timer code. Your timer itself stays available.
+              This turns off optional email alerts for your account. Password resets, verification, and other account-critical messages can still be sent.
             </p>
           </div>
         </div>

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, Menu, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Send, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, Menu, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Search, Send, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule, LeagueSeason } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -290,6 +290,8 @@ function LeagueDetailView({
   const [pendingScoringPlayerCount, setPendingScoringPlayerCount] = useState<number | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<LeagueDetailTab>(initialTab ?? 'overview');
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [fullStandingsOpen, setFullStandingsOpen] = useState(false);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -664,13 +666,13 @@ function LeagueDetailView({
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)_88px] items-center gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <button className="inline-flex h-10 w-fit items-center justify-start gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white md:shrink-0" onClick={onBack} type="button">
           <ArrowLeft size={15} />
           Back
         </button>
-        <p className="min-w-0 flex-1 truncate px-1 text-sm font-bold text-white sm:text-base">{detail.league.name}</p>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <p className="line-clamp-2 min-w-0 px-1 text-center text-sm font-bold leading-4 text-white md:line-clamp-1 md:text-left md:text-base">{detail.league.name}</p>
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             className="chip h-10 w-10 justify-center p-0 transition hover:border-pit-teal/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-pit-teal/50 md:w-auto md:gap-1.5 md:px-3"
@@ -761,7 +763,44 @@ function LeagueDetailView({
       </div>
 
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-pit-border bg-pit-card">
-        <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-4 sm:p-5">
+        <div className="border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-3 min-[1100px]:hidden">
+          {selectedSeason ? (
+            <>
+              <label className="flex h-12 w-full items-center gap-2 rounded-lg border border-pit-teal/45 bg-pit-bg/85 px-3 shadow-[0_0_18px_rgba(20,184,166,0.08)]">
+                <CalendarDays size={16} className="shrink-0 text-pit-teal" aria-hidden="true" />
+                <select
+                  className="min-w-0 flex-1 appearance-none bg-transparent py-2 text-sm font-semibold text-white outline-none [color-scheme:dark]"
+                  aria-label="Select season"
+                  value={detail.selectedseasonid}
+                  onChange={(event) => {
+                    setSelectedSeasonId(event.target.value);
+                    setSelectedEvent(null);
+                  }}
+                >
+                  {detail.seasons.map((season) => (
+                    <option key={season.seasonid} value={season.seasonid} className="bg-pit-bg text-white">
+                      {normalizeSeasonLabel(season.name)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={17} className="pointer-events-none shrink-0 text-pit-teal" aria-hidden="true" />
+              </label>
+              <p className="mt-2 px-1 text-xs text-pit-text">{formatSeasonDateRange(selectedSeason.begindate, selectedSeason.enddate)}</p>
+              <div className="mt-3 grid grid-cols-4 gap-1.5">
+                <MobileSeasonMetric icon={<Users size={14} />} label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
+                <MobileSeasonMetric icon={<CalendarDays size={14} />} label="Events" value={detail.events.length} />
+                <MobileSeasonMetric icon={<ListOrdered size={14} />} label="Best finishes" value={detail.league.bestfinishcount} />
+                <MobileSeasonMetric icon={<Trophy size={14} />} label="Show-up bonus" value={detail.league.showupbonuspoints} />
+              </div>
+            </>
+          ) : (
+            <div className="rounded-xl border border-pit-border bg-pit-bg/55 p-4">
+              <p className="font-semibold text-white">No active season</p>
+              <p className="mt-1 text-sm text-pit-text">Choose or create a season to view league standings.</p>
+            </div>
+          )}
+        </div>
+        <div className="hidden border-b border-pit-border bg-[radial-gradient(circle_at_20%_0%,rgba(19,173,173,0.22),transparent_28%),linear-gradient(135deg,#17181f,#101116)] p-5 min-[1100px]:block">
           {selectedSeason && (
             <>
               <label className="flex h-12 max-w-xl items-center gap-2 rounded-lg border border-pit-teal/40 bg-pit-bg/80 px-3 shadow-[0_0_18px_rgba(20,184,166,0.08)]">
@@ -785,33 +824,94 @@ function LeagueDetailView({
                 <ChevronDown size={17} className="pointer-events-none shrink-0 text-pit-teal" aria-hidden="true" />
               </label>
               <p className="mt-2 text-sm text-pit-text">
-                <span>Season </span><strong className="font-semibold text-white">{selectedSeason.name}</strong> runs{' '}
-              <strong className="font-semibold text-white">{String(selectedSeason.begindate).slice(0, 10)}</strong> through{' '}
-              <strong className="font-semibold text-white">{String(selectedSeason.enddate).slice(0, 10)}</strong>.
+                <strong className="font-semibold text-white">{normalizeSeasonLabel(selectedSeason.name)}</strong> runs{' '}
+                <strong className="font-semibold text-white">{String(selectedSeason.begindate).slice(0, 10)}</strong> through{' '}
+                <strong className="font-semibold text-white">{String(selectedSeason.enddate).slice(0, 10)}</strong>.
               </p>
             </>
           )}
-          <details className="group mt-4 rounded-xl border border-pit-border bg-pit-bg/45 p-3 md:hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
-              <span>Season details</span>
-              <span className="text-xs font-medium text-pit-muted group-open:hidden">Show</span>
-              <span className="hidden text-xs font-medium text-pit-muted group-open:inline">Hide</span>
-            </summary>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
-              <LeagueHeroStat label="Events" value={detail.events.length} />
-              <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
-              <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
-            </div>
-          </details>
-          <div className="mt-4 hidden grid-cols-4 gap-3 md:grid">
+          <div className="mt-4 grid grid-cols-4 gap-3">
             <LeagueHeroStat label="Players" value={`${activeMembers.length}/${detail.league.expectedplayercount}`} />
             <LeagueHeroStat label="Events" value={detail.events.length} />
             <LeagueHeroStat label="Best finishes" value={detail.league.bestfinishcount} />
             <LeagueHeroStat label="Show-up bonus" value={detail.league.showupbonuspoints} />
           </div>
         </div>
-        <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3">
+        <div className="grid grid-cols-5 gap-1.5 border-b border-pit-border bg-pit-bg/45 p-2 min-[1100px]:hidden" role="tablist" aria-label="League sections">
+          {[
+            { id: 'overview', label: 'Overview' },
+            { id: 'events', label: 'Events' },
+            { id: 'scoring', label: 'Scoring' },
+            { id: 'fees', label: 'Payments' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeDetailTab === tab.id}
+              className={`min-w-0 rounded-lg border px-1 py-2 text-[11px] font-semibold transition-colors sm:text-xs ${
+                activeDetailTab === tab.id
+                  ? 'border-pit-teal bg-pit-teal/15 text-white'
+                  : 'border-pit-border bg-pit-card/60 text-pit-text hover:border-pit-teal/50 hover:text-white'
+              }`}
+              onClick={() => {
+                setMobileMoreOpen(false);
+                if (tab.id === 'events') setSelectedEvent(null);
+                setActiveDetailTab(tab.id as LeagueDetailTab);
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={['audit', 'board', 'players'].includes(activeDetailTab)}
+            aria-expanded={mobileMoreOpen}
+            className={`min-w-0 rounded-lg border px-1 py-2 text-[11px] font-semibold transition-colors sm:text-xs ${
+              mobileMoreOpen || ['audit', 'board', 'players'].includes(activeDetailTab)
+                ? 'border-pit-teal bg-pit-teal/15 text-white'
+                : 'border-pit-border bg-pit-card/60 text-pit-text hover:border-pit-teal/50 hover:text-white'
+            }`}
+            onClick={() => setMobileMoreOpen((open) => !open)}
+          >
+            More
+          </button>
+        </div>
+        {mobileMoreOpen && (
+          <div className="grid grid-cols-2 gap-2 border-b border-pit-border bg-pit-bg/75 p-3 min-[1100px]:hidden">
+            {[
+              { id: 'board', label: 'Message Board', icon: <MessageSquare size={14} /> },
+              { id: 'audit', label: 'Audit Trail', icon: <ScrollText size={14} /> },
+              { id: 'players', label: 'Players', icon: <Users size={14} /> },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="btn-ghost justify-start gap-2 px-3 py-2 text-xs"
+                onClick={() => {
+                  setActiveDetailTab(item.id as LeagueDetailTab);
+                  setMobileMoreOpen(false);
+                }}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn-ghost justify-start gap-2 px-3 py-2 text-xs"
+              onClick={() => {
+                setMobileMoreOpen(false);
+                setSettingsModalOpen(true);
+              }}
+            >
+              <Pencil size={14} />
+              Season details
+            </button>
+          </div>
+        )}
+        <div className="hidden min-w-0 max-w-full gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3 min-[1100px]:flex">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
@@ -838,17 +938,35 @@ function LeagueDetailView({
           ))}
         </div>
         {activeDetailTab === 'overview' && (
-          <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={selectRankedUser} />
-            <div className="hidden xl:sticky xl:top-4 xl:block xl:self-start">
-              <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} floating />
+          <>
+            <div className="min-[1100px]:hidden">
+              <MobileLeagueOverview
+                detail={detail}
+                onSelectUser={selectRankedUser}
+                onViewAll={() => setFullStandingsOpen(true)}
+              />
             </div>
-          </div>
+            <div className="hidden gap-4 p-4 min-[1100px]:grid xl:grid-cols-[minmax(0,1fr)_360px]">
+              <StandingsTable detail={detail} selectedUserId={selectedRankUserId} onSelectUser={selectRankedUser} />
+              <div className="hidden xl:sticky xl:top-4 xl:block xl:self-start">
+                <PlayerLeagueProfile detail={detail} userId={selectedRankUserId} floating />
+              </div>
+            </div>
+          </>
         )}
       </section>
 
       <Modal title="Player Journey" open={Boolean(mobileRankUserId)} onClose={() => setMobileRankUserId(null)} mobilePlacement="center">
         <PlayerLeagueProfile detail={detail} userId={mobileRankUserId} />
+      </Modal>
+      <Modal title="Full Standings" open={fullStandingsOpen} onClose={() => setFullStandingsOpen(false)} mobilePlacement="center">
+        <MobileFullStandings
+          detail={detail}
+          onSelectUser={(userId) => {
+            setFullStandingsOpen(false);
+            selectRankedUser(userId);
+          }}
+        />
       </Modal>
 
       {activeDetailTab === 'fees' && (
@@ -1408,6 +1526,214 @@ function getRankedStandings(detail: LeagueDetail) {
     if (averageA !== averageB) return averageA - averageB;
     return String(a.displayname ?? '').localeCompare(String(b.displayname ?? ''));
   });
+}
+
+function MobileLeagueOverview({
+  detail,
+  onSelectUser,
+  onViewAll,
+}: {
+  detail: LeagueDetail;
+  onSelectUser: (userId: string) => void;
+  onViewAll: () => void;
+}) {
+  const rankedStandings = getRankedStandings(detail);
+  const leaders = rankedStandings.slice(0, 3);
+  const preview = rankedStandings.slice(3, 7);
+  const leaderGridClass = leaders.length === 1 ? 'grid-cols-1' : leaders.length === 2 ? 'grid-cols-2' : 'grid-cols-3';
+  const hasLoggedResults = detail.results.length > 0;
+
+  if (rankedStandings.length === 0 || !hasLoggedResults) {
+    return (
+      <div className="p-4">
+        <div className="rounded-xl border border-pit-border bg-pit-bg/55 px-4 py-8 text-center">
+          <Trophy size={24} className="mx-auto text-pit-muted" aria-hidden="true" />
+          <h3 className="mt-3 font-semibold text-white">No results yet</h3>
+          <p className="mt-1 text-sm text-pit-text">Standings will appear after the first scored event.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 p-3 pb-20 sm:p-4 sm:pb-20">
+      <section aria-labelledby="top-leaders-heading">
+        <h3 id="top-leaders-heading" className="mb-3 text-base font-bold text-white">Top 3 Leaders</h3>
+        <div className={`grid gap-2 ${leaderGridClass}`}>
+          {leaders.map((standing, index) => {
+            const rank = index + 1;
+            const wins = detail.results.filter((result) => result.userid === standing.userid && !result.dnf && Number(result.placed) === 1).length;
+            return (
+              <MobileLeaderCard
+                key={standing.userid}
+                rank={rank}
+                name={standing.displayname ?? 'Player'}
+                points={Number(standing.scoredpoints || 0)}
+                average={standing.averagefinish ?? null}
+                wins={wins}
+                onClick={() => onSelectUser(standing.userid)}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      {preview.length > 0 && (
+        <section aria-labelledby="standings-preview-heading">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h3 id="standings-preview-heading" className="text-base font-bold text-white">Standings</h3>
+            <button type="button" className="text-xs font-semibold text-pit-teal hover:text-white" onClick={onViewAll}>
+              View all
+            </button>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
+            {preview.map((standing, index) => (
+              <MobileStandingRow
+                key={standing.userid}
+                rank={index + 4}
+                name={standing.displayname ?? 'Player'}
+                points={Number(standing.scoredpoints || 0)}
+                average={standing.averagefinish ?? null}
+                onClick={() => onSelectUser(standing.userid)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <button
+        type="button"
+        className="flex h-12 w-full items-center justify-between rounded-xl border border-pit-border bg-pit-bg/55 px-4 text-sm font-semibold text-pit-text transition hover:border-pit-teal/45 hover:text-white"
+        onClick={onViewAll}
+      >
+        View Full Standings
+        <ChevronRight size={17} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function MobileLeaderCard({
+  rank,
+  name,
+  points,
+  average,
+  wins,
+  onClick,
+}: {
+  rank: number;
+  name: string;
+  points: number;
+  average: number | null;
+  wins: number;
+  onClick: () => void;
+}) {
+  const rankStyles = rank === 1
+    ? 'border-[#d8bf55]/35 bg-[#d8bf55]/[0.07]'
+    : rank === 2
+      ? 'border-slate-300/25 bg-slate-300/[0.055]'
+      : 'border-[#c78654]/30 bg-[#c78654]/[0.06]';
+  const badgeStyles = rank === 1
+    ? 'bg-[#e2c84e] text-[#17130a]'
+    : rank === 2
+      ? 'bg-[#c8ced5] text-[#15181b]'
+      : 'bg-[#c98657] text-[#1c120c]';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-[10.25rem] min-w-0 flex-col items-center rounded-xl border px-2 py-3 text-center transition hover:border-pit-teal/55 hover:bg-pit-teal/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal/60 ${rankStyles}`}
+      aria-label={`Rank ${rank}, ${name}, ${formatNumber(points)} points`}
+    >
+      <span className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-black shadow-sm ${badgeStyles}`}>{rank}</span>
+      <span className="mt-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-pit-teal/40 bg-gradient-to-br from-pit-teal/35 to-[#063638] text-sm font-black text-white">
+        {playerInitial(name)}
+      </span>
+      <span className="mt-2 flex min-h-8 w-full items-center justify-center break-words text-[11px] font-semibold leading-4 text-white sm:text-xs">
+        {name}
+      </span>
+      <span className="mt-1 whitespace-nowrap text-lg font-black text-white sm:text-xl">
+        {formatNumber(points)} <span className="text-[10px] font-semibold text-pit-teal">pts</span>
+      </span>
+      <span className="mt-auto flex w-full items-center justify-center gap-2 border-t border-pit-border/60 pt-2 text-[10px] text-pit-text">
+        <span>Avg {average ? average.toFixed(1) : '-'}</span>
+        {wins > 0 && <span className="inline-flex items-center gap-0.5"><Trophy size={10} className="text-pit-gold" /> {wins}</span>}
+      </span>
+    </button>
+  );
+}
+
+function MobileStandingRow({
+  rank,
+  name,
+  points,
+  average,
+  onClick,
+}: {
+  rank: number;
+  name: string;
+  points: number;
+  average: number | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid min-h-14 w-full grid-cols-[28px_30px_minmax(0,1fr)_64px_48px_16px] items-center gap-1.5 border-b border-pit-border/60 px-2.5 py-2 text-left text-xs transition last:border-b-0 hover:bg-pit-teal/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pit-teal/60 sm:grid-cols-[32px_34px_minmax(0,1fr)_74px_56px_18px] sm:gap-2 sm:px-3"
+      aria-label={`Rank ${rank}, ${name}, ${formatNumber(points)} points, average finish ${average ? average.toFixed(1) : 'not available'}`}
+    >
+      <span className="font-mono text-pit-teal">{rank}</span>
+      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/15 font-bold text-white sm:h-8 sm:w-8">
+        {playerInitial(name)}
+      </span>
+      <span className="min-w-0 truncate font-semibold text-white">{name}</span>
+      <span className="whitespace-nowrap text-right font-mono font-semibold text-white">{formatNumber(points)} <span className="text-[9px] text-pit-teal">pts</span></span>
+      <span className="whitespace-nowrap text-right text-pit-text">Avg {average ? average.toFixed(1) : '-'}</span>
+      <ChevronRight size={15} className="text-pit-muted" aria-hidden="true" />
+    </button>
+  );
+}
+
+function MobileFullStandings({ detail, onSelectUser }: { detail: LeagueDetail; onSelectUser: (userId: string) => void }) {
+  const [search, setSearch] = useState('');
+  const rankedStandings = getRankedStandings(detail);
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleStandings = normalizedSearch
+    ? rankedStandings.filter((standing) => String(standing.displayname ?? '').toLowerCase().includes(normalizedSearch))
+    : rankedStandings;
+
+  return (
+    <div className="space-y-3">
+      <label className="flex h-11 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/70 px-3 focus-within:border-pit-teal/60">
+        <Search size={15} className="text-pit-muted" aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-pit-muted"
+          placeholder="Search players"
+        />
+      </label>
+      <div className="max-h-[62dvh] overflow-y-auto rounded-xl border border-pit-border bg-pit-bg/55">
+        {visibleStandings.map((standing) => {
+          const rank = rankedStandings.findIndex((item) => item.userid === standing.userid) + 1;
+          return (
+            <MobileStandingRow
+              key={standing.userid}
+              rank={rank}
+              name={standing.displayname ?? 'Player'}
+              points={Number(standing.scoredpoints || 0)}
+              average={standing.averagefinish ?? null}
+              onClick={() => onSelectUser(standing.userid)}
+            />
+          );
+        })}
+        {visibleStandings.length === 0 && <p className="p-4 text-center text-sm text-pit-text">No players match that search.</p>}
+      </div>
+    </div>
+  );
 }
 
 function buildProjectedFinalStacks(detail: LeagueDetail, standings = getRankedStandings(detail)): LeagueFinalStack[] {
@@ -3903,6 +4229,16 @@ function LeagueHeroStat({ label, value }: { label: string; value: string | numbe
   );
 }
 
+function MobileSeasonMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
+  return (
+    <div className="flex min-h-[4.6rem] min-w-0 flex-col items-center justify-center rounded-lg border border-pit-border/80 bg-pit-bg/65 px-1 py-2 text-center">
+      <span className="text-pit-teal" aria-hidden="true">{icon}</span>
+      <span className="mt-1 min-h-6 text-[8px] font-semibold uppercase leading-3 tracking-[0.08em] text-pit-muted sm:text-[9px]">{label}</span>
+      <span className="mt-0.5 truncate text-base font-black text-white sm:text-lg">{value}</span>
+    </div>
+  );
+}
+
 function ordinal(value?: number | null) {
   if (!value) return '';
   if ([11, 12, 13].includes(value % 100)) return 'th';
@@ -4369,6 +4705,30 @@ function compareLeagueEvents(a: LeagueEvent, b: LeagueEvent) {
   const bTime = b.eventtime ? String(b.eventtime).slice(0, 5) : '23:59';
   if (aTime !== bTime) return aTime.localeCompare(bTime);
   return Number(a.eventnumber ?? 9999) - Number(b.eventnumber ?? 9999);
+}
+
+function normalizeSeasonLabel(name?: string | null) {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) return 'Current season';
+  return /^season\b/i.test(trimmed) ? trimmed : `Season ${trimmed}`;
+}
+
+function formatSeasonDateRange(beginDate?: string | null, endDate?: string | null) {
+  const formatDate = (value?: string | null) => {
+    const raw = String(value ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
+    const [year, month, day] = raw.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(year, month - 1, day));
+  };
+  const begin = formatDate(beginDate);
+  const end = formatDate(endDate);
+  if (begin && end) return `${begin} - ${end}`;
+  return begin || end || 'Season dates not set';
+}
+
+function playerInitial(name: string) {
+  const normalized = name.trim();
+  return (normalized.match(/[A-Za-z0-9]/)?.[0] ?? '?').toUpperCase();
 }
 
 function formatCurrency(value: number) {

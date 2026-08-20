@@ -26,8 +26,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'ThePokerPlanner';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/icons/icon-192.png',
-    badge: data.badge || '/icons/icon-192.png',
+    icon: data.icon || '/icons/spade-chip-v2-192.png',
+    badge: data.badge || '/icons/spade-chip-v2-192.png',
     tag: data.tag || undefined,
     data: {
       url: data.url || '/',

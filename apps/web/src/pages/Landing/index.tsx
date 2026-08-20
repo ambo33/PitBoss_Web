@@ -232,7 +232,7 @@ export default function LandingPage() {
             <div className="flex h-12 items-center justify-between gap-3 sm:h-auto">
             <Link to="/landing" className="flex min-w-0 items-center gap-2" aria-label="ThePokerPlanner home">
               <img
-                src="/branding/the-poker-planner-logo-192.png"
+                src="/branding/thepokerplanner-spade-logo-192.png"
                 alt=""
                 className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-white/15 sm:h-10 sm:w-10"
               />

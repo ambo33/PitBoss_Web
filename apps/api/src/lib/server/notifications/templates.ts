@@ -287,7 +287,7 @@ export function buildNotificationPayload(
     body: (customBody ?? fillTemplate(template.body, data)).replace(/\s+/g, ' ').trim(),
     url: entityUrl(type, data),
     tag: entityTag(type, data),
-    icon: '/icons/icon-192.png',
+    icon: '/icons/spade-chip-v2-192.png',
     badge: '/icons/badge-72.png',
     data: { ...data, type },
   };

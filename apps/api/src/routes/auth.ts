@@ -157,6 +157,26 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
   res.json(row);
 });
 
+authRouter.post('/unsubscribe/:token', async (req: Request, res: Response) => {
+  const token = String(req.params.token ?? '').trim();
+  if (!token || token.length > 96) {
+    res.status(400).json({ error: 'Invalid email preference link.' });
+    return;
+  }
+  const updated = await queryOne<{ userid: string }>(
+    `UPDATE usermetadata
+     SET emailalertsenabled = FALSE
+     WHERE emailunsubscribetoken = $1
+     RETURNING userid`,
+    [token]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'This email preference link is no longer valid.' });
+    return;
+  }
+  res.json({ success: true, scope: 'account' });
+});
+
 authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
   const demoProfile = await queryOne<{ isdemo: boolean | null }>(
     `SELECT COALESCE(isdemo, FALSE) AS isdemo FROM usermetadata WHERE userid = $1`,
@@ -167,7 +187,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const { name, displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin } = req.body as {
+  const { name, displayname, checkinaudiodata, checkinaudiofilename, clearcheckinaudio, avatarimagedata, avatarfilename, clearavatarimage, completeonboarding, phonenumber, smsoptedin, emailalertsenabled } = req.body as {
     name?: string;
     displayname?: string;
     checkinaudiodata?: string | null;
@@ -179,6 +199,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
     completeonboarding?: boolean;
     phonenumber?: string | null;
     smsoptedin?: boolean;
+    emailalertsenabled?: boolean;
   };
 
   const normalizedName = typeof name === 'string' ? name.trim().slice(0, 160) : undefined;
@@ -275,7 +296,8 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
            WHEN $11::BOOL = TRUE THEN FALSE
            WHEN $12::BOOL IS NOT NULL THEN $12::BOOL
            ELSE smsoptedin
-         END
+         END,
+         emailalertsenabled = COALESCE($14::BOOL, emailalertsenabled)
      WHERE userid = $1`,
     [
       req.userId,
@@ -291,6 +313,7 @@ authRouter.put('/me', requireAuth, async (req: Request, res: Response) => {
       phonenumber === null || String(phonenumber ?? '').trim() === '',
       smsoptedin === undefined ? null : smsoptedin === true,
       normalizedName ?? null,
+      emailalertsenabled === undefined ? null : emailalertsenabled === true,
     ]
   );
 
@@ -332,6 +355,7 @@ async function selectAuthProfile(userId: string) {
     onboardingcomplete?: boolean;
     phonenumber?: string | null;
     smsoptedin?: boolean;
+    emailalertsenabled?: boolean;
     isdemo?: boolean;
   }>(
     `SELECT u.guid, u.emailaddress, u.emailencrypted, u.emailverified,
@@ -360,6 +384,7 @@ async function selectAuthProfile(userId: string) {
             CASE WHEN m.onboardingtourcompletedat IS NOT NULL THEN TRUE ELSE FALSE END AS onboardingcomplete,
             m.phonenumber,
             COALESCE(m.smsoptedin, FALSE) AS smsoptedin,
+            COALESCE(m.emailalertsenabled, TRUE) AS emailalertsenabled,
             COALESCE(m.isdemo, FALSE) AS isdemo
      FROM users u
      LEFT JOIN usermetadata m ON m.userid = u.guid

@@ -9,6 +9,7 @@ import { hashEmail, normalizeEmail, publicEmail } from '../privacy';
 import { sendGroupNotification, sendNotificationToUser } from '../lib/server/notifications/notificationService';
 import { generateGroupInviteCode, isValidGroupInviteCode, normalizeGroupInviteCode } from '../groupInviteCode';
 import { JoinCodeConflictError, syncJoinCode } from '../joinCodes';
+import { normalizeCommunityImage } from '../communityImage';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAuth);
@@ -192,6 +193,7 @@ async function getGroupConversationAccess(groupId: string): Promise<{ exists: bo
 groupsRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
+            g.communityimagedata, g.communityimagefilename,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'Five minutes remaining in this level.') AS speechfiveminutemessage,
@@ -282,6 +284,7 @@ groupsRouter.post('/', async (req: Request, res: Response) => {
 groupsRouter.get('/:id', async (req: Request, res: Response) => {
   const group = await queryOne<Group>(
     `SELECT g.groupid, g.userid AS ownerid, g.name, g.invitecode, g.approvalneeded, g.active, g.createdate AS createdat,
+            g.communityimagedata, g.communityimagefilename,
             COALESCE(g.defaulttrackingmode, 'standard') AS defaulttrackingmode,
             COALESCE(g.tvseatingwelcomemessage, 'Welcome! Please see host to check-in!') AS tvseatingwelcomemessage,
             COALESCE(g.speechfiveminutemessage, 'Five minutes remaining in this level.') AS speechfiveminutemessage,
@@ -377,7 +380,7 @@ groupsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt, aiannouncerclassicmode, postapprovalrequired } = req.body as {
+  const { name, approvalneeded, invitecode, defaulttrackingmode, tvseatingwelcomemessage, speechfiveminutemessage, speechoneminutemessage, speechlevelupmessage, aiannouncerenabled, aiannouncerpreset, aiannouncercustomprompt, aiannouncerclassicmode, postapprovalrequired, communityimagedata, communityimagefilename } = req.body as {
     name?: string;
     approvalneeded?: boolean;
     invitecode?: string;
@@ -391,6 +394,8 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
     aiannouncercustomprompt?: string;
     aiannouncerclassicmode?: boolean;
     postapprovalrequired?: boolean;
+    communityimagedata?: string | null;
+    communityimagefilename?: string | null;
   };
   const admin = await queryOne(
     `SELECT 1 FROM groupmembers WHERE groupid = $1 AND userid = $2 AND admin = TRUE`,
@@ -442,6 +447,14 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
   );
   const normalizedAiPreset = normalizeAnnouncerPreset(aiannouncerpreset);
   const normalizedAiPrompt = aiannouncercustomprompt == null ? null : aiannouncercustomprompt.trim().slice(0, 500);
+  const imageProvided = Object.prototype.hasOwnProperty.call(req.body, 'communityimagedata');
+  const normalizedImage = imageProvided
+    ? normalizeCommunityImage(communityimagedata, communityimagefilename)
+    : { data: null, filename: null };
+  if (normalizedImage.error) {
+    res.status(400).json({ error: normalizedImage.error });
+    return;
+  }
 
   const normalizedInviteCode = invitecode == null ? null : normalizeGroupInviteCode(invitecode);
   if (normalizedInviteCode != null) {
@@ -467,6 +480,8 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
       aiannouncercustomprompt: string | null;
       aiannouncerclassicmode: boolean;
       postapprovalrequired: boolean;
+      communityimagedata: string | null;
+      communityimagefilename: string | null;
     }>(
       `UPDATE groups
        SET name = COALESCE($1, name),
@@ -481,8 +496,10 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
            aiannouncerpreset = COALESCE($10, aiannouncerpreset),
            aiannouncercustomprompt = COALESCE($11, aiannouncercustomprompt),
            aiannouncerclassicmode = CASE WHEN $12::BOOL IS NULL THEN aiannouncerclassicmode ELSE $12::BOOL END,
-           postapprovalrequired = COALESCE($13, postapprovalrequired)
-       WHERE groupid = $14
+           postapprovalrequired = COALESCE($13, postapprovalrequired),
+           communityimagedata = CASE WHEN $14::BOOL THEN $15 ELSE communityimagedata END,
+           communityimagefilename = CASE WHEN $14::BOOL THEN $16 ELSE communityimagefilename END
+       WHERE groupid = $17
        RETURNING groupid,
                  invitecode,
                  defaulttrackingmode,
@@ -494,7 +511,9 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
                  COALESCE(aiannouncerpreset, 'all_in_alex') AS aiannouncerpreset,
                  aiannouncercustomprompt,
                  COALESCE(aiannouncerclassicmode, FALSE) AS aiannouncerclassicmode,
-                 COALESCE(postapprovalrequired, TRUE) AS postapprovalrequired`,
+                 COALESCE(postapprovalrequired, TRUE) AS postapprovalrequired,
+                 communityimagedata,
+                 communityimagefilename`,
       [
         name ?? null,
         approvalneeded ?? null,
@@ -509,6 +528,9 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
         normalizedAiPrompt,
         aiannouncerclassicmode ?? null,
         postapprovalrequired ?? null,
+        imageProvided,
+        normalizedImage.data,
+        normalizedImage.filename,
         req.params.id,
       ]
     );
@@ -538,6 +560,45 @@ groupsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction)
   } finally {
     client.release();
   }
+});
+
+groupsRouter.put('/:id/community-image', async (req: Request, res: Response) => {
+  if (!await requireGroupAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'Not a group admin' });
+    return;
+  }
+
+  const normalizedImage = normalizeCommunityImage(
+    req.body?.communityimagedata,
+    req.body?.communityimagefilename
+  );
+  if (normalizedImage.error) {
+    res.status(400).json({ error: normalizedImage.error });
+    return;
+  }
+  if (!normalizedImage.data) {
+    res.status(400).json({ error: 'Choose an image to upload.' });
+    return;
+  }
+
+  const updated = await queryOne<{
+    groupid: string;
+    communityimagedata: string | null;
+    communityimagefilename: string | null;
+  }>(
+    `UPDATE groups
+     SET communityimagedata = $2,
+         communityimagefilename = $3
+     WHERE groupid = $1
+     RETURNING groupid, communityimagedata, communityimagefilename`,
+    [req.params.id, normalizedImage.data, normalizedImage.filename]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+
+  res.json({ success: true, ...updated });
 });
 
 groupsRouter.delete('/:id', async (req: Request, res: Response) => {

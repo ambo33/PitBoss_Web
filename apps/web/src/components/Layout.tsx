@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send, ListOrdered } from 'lucide-react';
+import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send, ListOrdered, Home, Calendar, Gamepad2, Settings } from 'lucide-react';
 import { useAuthStore } from '../store/auth';
 import BrandLockup from './BrandLockup';
 import Modal from './Modal';
@@ -10,6 +10,19 @@ import { api } from '../api/client';
 import { cleanupDemoSessionIfNeeded } from '../utils/demoSession';
 
 export type NavTab = 'tournaments' | 'groups' | 'leagues' | 'profile' | 'admin';
+export type HomeShellDestination = 'home' | 'games' | 'communities' | 'history' | 'profile' | 'admin';
+
+export interface ResponsiveHomeShellProps {
+  active: HomeShellDestination;
+  canHost: boolean;
+  onHome: () => void;
+  onGames: () => void;
+  onCommunities: () => void;
+  onHistory: () => void;
+  onHostGame: () => void;
+  onProfile: () => void;
+  onAdmin: () => void;
+}
 
 interface Props {
   children: React.ReactNode;
@@ -22,8 +35,9 @@ interface Props {
   hideSidebar?: boolean;
   hideMobileNav?: boolean;
   hideFeedback?: boolean;
-  headerRight?: React.ReactNode;
+  headerRight?: React.ReactNode | ((actions: { openFeedback: () => void }) => React.ReactNode);
   mainWidthClassName?: string;
+  responsiveHomeShell?: ResponsiveHomeShellProps;
 }
 
 const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
@@ -47,6 +61,7 @@ export default function Layout({
   hideFeedback = false,
   headerRight,
   mainWidthClassName = 'max-w-5xl',
+  responsiveHomeShell,
 }: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -56,9 +71,13 @@ export default function Layout({
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackSent, setFeedbackSent] = useState(false);
   const sidebarWidthClass = compactSidebar ? 'w-20' : 'w-56';
-  const contentMarginClass = hideSidebar ? '' : compactSidebar ? 'md:ml-20' : 'md:ml-56';
+  const contentMarginClass = responsiveHomeShell
+    ? 'min-[1100px]:ml-60'
+    : hideSidebar ? '' : compactSidebar ? 'md:ml-20' : 'md:ml-56';
   const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
-  const mainPaddingClass = compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
+  const mainPaddingClass = responsiveHomeShell
+    ? 'px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5 min-[768px]:px-6 min-[768px]:pb-8 min-[768px]:pt-6 min-[1100px]:px-8'
+    : compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
 
   const { data: feedbackSummary } = useQuery({
     queryKey: ['admin', 'feedback', 'summary'],
@@ -111,11 +130,79 @@ export default function Layout({
     .toUpperCase() ?? '?';
 
   const navItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || user?.issuperadmin);
+  const homeShellNavItems = responsiveHomeShell ? [
+    { id: 'home' as const, label: 'Home', Icon: Home, onClick: responsiveHomeShell.onHome },
+    { id: 'games' as const, label: 'Games', Icon: Gamepad2, onClick: responsiveHomeShell.onGames },
+    { id: 'communities' as const, label: 'Groups & Leagues', Icon: Users, onClick: responsiveHomeShell.onCommunities },
+    { id: 'history' as const, label: 'History', Icon: Calendar, onClick: responsiveHomeShell.onHistory },
+  ] : [];
+  const resolvedHeaderRight = typeof headerRight === 'function' ? headerRight({ openFeedback }) : headerRight;
 
   return (
     <div className="min-h-screen max-w-full overflow-x-hidden bg-pit-bg">
       <div className="flex min-h-screen min-w-0 max-w-full overflow-x-hidden">
-        {!hideSidebar && (
+        {responsiveHomeShell && (
+          <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-pit-border/80 bg-[#15171c] shadow-[18px_0_50px_rgba(0,0,0,0.16)] min-[1100px]:flex">
+            <div className="border-b border-pit-border/60 px-4 py-5">
+              <BrandLockup compact showSlogan={false} className="items-center gap-2.5" />
+            </div>
+            <nav className="flex-1 px-3 py-4" aria-label="Primary navigation">
+              <div className="space-y-1">
+                {homeShellNavItems.map(({ id, label, Icon, onClick }) => {
+                  const active = responsiveHomeShell.active === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-current={active ? 'page' : undefined}
+                      onClick={onClick}
+                      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal ${active ? 'border-pit-teal/25 bg-pit-teal/15 text-white shadow-[0_8px_24px_rgba(14,165,165,0.08)]' : 'border-transparent text-pit-text hover:bg-pit-teal/10 hover:text-white'}`}
+                    >
+                      <Icon size={17} className={active ? 'text-pit-teal' : 'text-pit-muted'} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {responsiveHomeShell.canHost && (
+                <button type="button" className="btn-primary mt-5 flex h-11 w-full items-center justify-center text-sm" onClick={responsiveHomeShell.onHostGame}>
+                  + Host a Game
+                </button>
+              )}
+              <div className="my-5 border-t border-pit-border" />
+              <div className="space-y-1">
+                <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-white/5 hover:text-white" onClick={responsiveHomeShell.onProfile}>
+                  <Settings size={17} /> Settings
+                </button>
+                <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-white/5 hover:text-white" onClick={openFeedback}>
+                  <MessageSquare size={17} /> Help & Feedback
+                </button>
+                {user?.issuperadmin && (
+                  <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-red-300/85 transition hover:bg-red-500/10 hover:text-red-200" onClick={responsiveHomeShell.onAdmin}>
+                    <Shield size={17} /> Admin
+                  </button>
+                )}
+              </div>
+            </nav>
+            {user && (
+              <div className="mx-3 mb-4 rounded-xl border border-pit-border bg-pit-bg p-3">
+                <button type="button" onClick={responsiveHomeShell.onProfile} className="flex w-full items-center gap-3 rounded-lg text-left transition hover:text-white" title="Open profile">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
+                    {user.avatarimagedata ? <img src={user.avatarimagedata} alt="" className="h-9 w-9 rounded-full object-cover" /> : initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{user.tablename || user.displayname}</p>
+                    <p className="text-[10px] text-pit-muted">View profile</p>
+                  </div>
+                </button>
+                <button type="button" onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition hover:text-red-300">
+                  <LogOut size={12} /> Sign out
+                </button>
+              </div>
+            )}
+          </aside>
+        )}
+        {!responsiveHomeShell && !hideSidebar && (
           <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
           <div className={`border-b border-pit-border/60 py-5 ${compactSidebar ? 'px-3' : 'px-5'}`}>
             <BrandLockup
@@ -200,7 +287,7 @@ export default function Layout({
         )}
 
         <div className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden ${contentMarginClass}`}>
-          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-teal/20 bg-[#122E30] shadow-[0_10px_28px_rgba(0,0,0,0.22)] md:border-pit-border/60 md:bg-pit-bg md:shadow-none ${headerPaddingClass}`}>
+          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/80 bg-[#111318]/95 shadow-[0_10px_28px_rgba(0,0,0,0.26)] backdrop-blur md:bg-[#111318]/95 ${responsiveHomeShell ? 'min-[1100px]:hidden' : ''} ${headerPaddingClass}`}>
             <div className="flex min-w-0 items-center gap-3">
               {back ? (
                 <Link
@@ -213,13 +300,24 @@ export default function Layout({
                   <span className={backLabel ? '' : 'hidden sm:inline'}>{backLabel ?? 'Back'}</span>
                 </Link>
               ) : (
-                <div className={hideSidebar ? 'block' : 'md:hidden'}>
+                <div className={hideSidebar || responsiveHomeShell ? 'block' : 'md:hidden'}>
                   <BrandLockup compact showSlogan={false} className="items-center gap-2" />
                 </div>
               )}
               {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
             </div>
-            {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
+            <div className="flex shrink-0 items-center gap-2">
+              {responsiveHomeShell?.canHost && (
+                <button
+                  type="button"
+                  className="btn-primary hidden h-11 items-center justify-center px-5 text-sm min-[768px]:inline-flex min-[1100px]:hidden"
+                  onClick={responsiveHomeShell.onHostGame}
+                >
+                  + Host a Game
+                </button>
+              )}
+              {resolvedHeaderRight}
+            </div>
           </header>
 
           <main className={`mx-auto w-full min-w-0 max-w-full flex-1 overflow-x-hidden ${mainPaddingClass} ${mainWidthClassName}`}>
@@ -254,7 +352,21 @@ export default function Layout({
         </nav>
       )}
 
-      {user && !hideFeedback && (
+      {user && responsiveHomeShell?.canHost && !hideFeedback && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-pit-teal/25 bg-pit-bg/95 px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 shadow-[0_-16px_36px_rgba(0,0,0,0.48)] backdrop-blur min-[768px]:hidden">
+          <div className="mx-auto flex max-w-[32rem] gap-2">
+            <button type="button" className="btn-primary flex h-12 min-w-0 flex-[7] items-center justify-center text-sm" onClick={responsiveHomeShell.onHostGame}>
+              + Host a Game
+            </button>
+            <button type="button" className="flex h-12 min-w-0 flex-[3] items-center justify-center gap-1.5 rounded-lg border border-pit-border bg-pit-card px-2 text-xs font-semibold text-pit-text transition hover:border-pit-teal/50 hover:text-white" onClick={openFeedback}>
+              <MessageSquare size={14} />
+              <span className="max-[374px]:sr-only">Feedback</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {user && !responsiveHomeShell && !hideFeedback && (
         <button
           type="button"
           onClick={openFeedback}

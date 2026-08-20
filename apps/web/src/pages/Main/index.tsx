@@ -1,8 +1,8 @@
 import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Calendar, Home, ImageIcon, LogOut, Menu, Music4, Phone, Shield, Trash2, Upload, User, Users } from 'lucide-react';
-import Layout, { NavTab } from '../../components/Layout';
+import { Bot, Calendar, Gamepad2, Home, ImageIcon, LogOut, Mail, Menu, MessageSquare, Music4, Phone, Settings, Shield, Trash2, Upload, User, Users } from 'lucide-react';
+import Layout, { HomeShellDestination, NavTab } from '../../components/Layout';
 import { api } from '../../api/client';
 import AdminPanel from './AdminPanel';
 import GroupsPanel from './GroupsPanel';
@@ -32,6 +32,10 @@ export default function MainPage() {
   const [commandDetailOpen, setCommandDetailOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [createGameRequestId, setCreateGameRequestId] = useState(0);
+  const [homeRequestId, setHomeRequestId] = useState(0);
+  const [gamesRequestId, setGamesRequestId] = useState(0);
+  const [homeScheduleMode, setHomeScheduleMode] = useState<'home' | 'games'>('home');
+  const [canHostGames, setCanHostGames] = useState(false);
   const [groupCreateRequestId, setGroupCreateRequestId] = useState(0);
   const [leagueCreateRequestId, setLeagueCreateRequestId] = useState(0);
   const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; tab?: 'posts'; postId?: string; token: number } | null>(() => (
@@ -141,6 +145,17 @@ export default function MainPage() {
     setCommandSection(nextSection);
   };
 
+  const returnToGames = () => {
+    setGroupOpenRequest(null);
+    setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
+    setCommandDetailOpen(false);
+    setView('command');
+    setCommandSection('upcoming');
+    if (location.search) {
+      navigate(location.pathname, { replace: true });
+    }
+  };
+
   const startGroupCreate = () => {
     setView('command');
     setCommandSection('groups');
@@ -171,6 +186,18 @@ export default function MainPage() {
     setCreateGameRequestId((value) => value + 1);
   };
 
+  const showHomeDashboard = () => {
+    handleCommandSectionChange('upcoming');
+    setHomeScheduleMode('home');
+    setHomeRequestId((value) => value + 1);
+  };
+
+  const showAllGames = () => {
+    handleCommandSectionChange('upcoming');
+    setHomeScheduleMode('games');
+    setGamesRequestId((value) => value + 1);
+  };
+
   const currentTab: NavTab = view === 'command'
     ? commandSection === 'groups'
       ? 'groups'
@@ -178,6 +205,26 @@ export default function MainPage() {
         ? 'leagues'
         : 'tournaments'
     : view;
+  const homeShellActive: HomeShellDestination = view === 'profile'
+    ? 'profile'
+    : view === 'admin'
+      ? 'admin'
+      : commandSection === 'history'
+        ? 'history'
+        : commandSection === 'communities' || commandSection === 'groups' || commandSection === 'leagues'
+          ? 'communities'
+          : homeScheduleMode;
+  const responsiveHomeShell = view === 'command' && !commandDetailOpen ? {
+    active: homeShellActive,
+    canHost: canHostGames,
+    onHome: showHomeDashboard,
+    onGames: showAllGames,
+    onCommunities: () => handleCommandSectionChange('communities'),
+    onHistory: () => handleCommandSectionChange('history'),
+    onHostGame: startGameCreate,
+    onProfile: () => setView('profile'),
+    onAdmin: () => setView('admin'),
+  } : undefined;
 
   return (
     <>
@@ -186,15 +233,20 @@ export default function MainPage() {
         hideSidebar
         hideMobileNav
         hideFeedback={createTournamentOpen}
-        headerRight={
+        responsiveHomeShell={responsiveHomeShell}
+        headerRight={({ openFeedback }) => (
           <CommandCenterMenu
-            onUpcoming={() => handleCommandSectionChange('upcoming')}
+            onHome={showHomeDashboard}
+            onGames={showAllGames}
+            onHistory={() => handleCommandSectionChange('history')}
             onCommunities={() => handleCommandSectionChange('communities')}
+            onHostGame={startGameCreate}
+            onFeedback={openFeedback}
             onProfile={() => setView('profile')}
             onAdmin={() => setView('admin')}
           />
-        }
-        mainWidthClassName={view === 'admin' || commandSection === 'communities' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-5xl'}
+        )}
+        mainWidthClassName={view === 'admin' || commandSection === 'communities' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-[64rem]'}
       >
         <PwaPushPrompt />
         {view === 'command' && (
@@ -218,6 +270,10 @@ export default function MainPage() {
             onCreateFlowChange={setCreateTournamentOpen}
             onboardingActive={showTour}
             createGameRequestId={createGameRequestId}
+            homeRequestId={homeRequestId}
+            gamesRequestId={gamesRequestId}
+            onScheduleModeChange={setHomeScheduleMode}
+            onHostCapabilityChange={setCanHostGames}
             focusScheduleItemId={deepLink.scheduleItemId}
             onStartGroupCreate={startGroupCreate}
             onStartLeagueCreate={startLeagueCreate}
@@ -229,7 +285,7 @@ export default function MainPage() {
                 ? (
                   <GroupsPanel
                     onDetailStateChange={setCommandDetailOpen}
-                    onBackToCommunities={() => handleCommandSectionChange('communities')}
+                    onBackToCommunities={returnToGames}
                     createRequestId={groupCreateRequestId}
                     openGroupRequest={groupOpenRequest}
                   />
@@ -242,7 +298,7 @@ export default function MainPage() {
                     initialPostId={leagueDeepLink.postId}
                     initialEventId={leagueDeepLink.eventId}
                     onDetailStateChange={setCommandDetailOpen}
-                    onBackToCommunities={() => handleCommandSectionChange('communities')}
+                    onBackToCommunities={returnToGames}
                     createRequestId={leagueCreateRequestId}
                   />
                 )
@@ -293,13 +349,21 @@ function sectionFromTab(tab?: NavTab): CommandCenterSection {
 }
 
 function CommandCenterMenu({
-  onUpcoming,
+  onHome,
+  onGames,
+  onHistory,
   onCommunities,
+  onHostGame,
+  onFeedback,
   onProfile,
   onAdmin,
 }: {
-  onUpcoming: () => void;
+  onHome: () => void;
+  onGames: () => void;
+  onHistory: () => void;
   onCommunities: () => void;
+  onHostGame: () => void;
+  onFeedback: () => void;
   onProfile: () => void;
   onAdmin: () => void;
 }) {
@@ -356,11 +420,22 @@ function CommandCenterMenu({
             className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
             onClick={() => {
               setOpen(false);
-              onUpcoming();
+              onHome();
             }}
           >
-            <Calendar size={15} />
-            Upcoming Games
+            <Home size={15} />
+            Home
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onGames();
+            }}
+          >
+            <Gamepad2 size={15} />
+            Games
           </button>
           <button
             type="button"
@@ -372,6 +447,51 @@ function CommandCenterMenu({
           >
             <Users size={15} />
             Groups & Leagues
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onHistory();
+            }}
+          >
+            <Calendar size={15} />
+            History
+          </button>
+          <div className="my-1 border-t border-pit-border" />
+          <button
+            type="button"
+            className="mx-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-lg bg-pit-teal px-3 py-2.5 text-sm font-black text-pit-bg shadow-[0_0_18px_rgba(20,184,166,0.2)] transition hover:brightness-110"
+            onClick={() => {
+              setOpen(false);
+              onHostGame();
+            }}
+          >
+            + Host a Game
+          </button>
+          <div className="my-1 border-t border-pit-border" />
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onProfile();
+            }}
+          >
+            <Settings size={15} />
+            Settings
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
+            onClick={() => {
+              setOpen(false);
+              onFeedback();
+            }}
+          >
+            <MessageSquare size={15} />
+            Help & Feedback
           </button>
           <button
             type="button"
@@ -422,6 +542,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsOptIn, setSmsOptIn] = useState(false);
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true);
   const [profileName, setProfileName] = useState('');
   const [tableNickname, setTableNickname] = useState('');
 
@@ -448,6 +569,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
     });
     setPhoneNumber(profile.phonenumber ?? '');
     setSmsOptIn(Boolean(profile.smsoptedin));
+    setEmailAlertsEnabled(profile.emailalertsenabled !== false);
     setProfileName(profile.fullname ?? '');
     setTableNickname(profile.tablename ?? (profile.displayname === profile.emailaddress ? '' : profile.displayname ?? ''));
   }, [profile, updateUser]);
@@ -470,6 +592,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
       });
       setPhoneNumber(updated.phonenumber ?? '');
       setSmsOptIn(Boolean(updated.smsoptedin));
+      setEmailAlertsEnabled(updated.emailalertsenabled !== false);
       setProfileName(updated.fullname ?? '');
       setTableNickname(updated.tablename ?? (updated.displayname === updated.emailaddress ? '' : updated.displayname ?? ''));
       if ('checkinaudiodata' in variables || variables.clearcheckinaudio) {
@@ -743,14 +866,33 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
             SMS opt-in
           </label>
         </div>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-sm text-pit-text">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-pit-border bg-pit-bg accent-pit-teal"
+            checked={emailAlertsEnabled}
+            onChange={(event) => setEmailAlertsEnabled(event.target.checked)}
+          />
+          <span className="flex items-start gap-2">
+            <Mail size={16} className="mt-0.5 shrink-0 text-pit-teal" />
+            <span>
+              <strong className="block font-medium text-white">Email alerts</strong>
+              <span className="text-xs leading-5 text-pit-muted">Tournament and league reminders, results, and group or league updates.</span>
+            </span>
+          </span>
+        </label>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="btn-primary"
             disabled={updateProfileMutation.isPending}
-            onClick={() => updateProfileMutation.mutate({ phonenumber: phoneNumber.trim() || null, smsoptedin: smsOptIn })}
+            onClick={() => updateProfileMutation.mutate({
+              phonenumber: phoneNumber.trim() || null,
+              smsoptedin: smsOptIn,
+              emailalertsenabled: emailAlertsEnabled,
+            })}
           >
-            Save Contact
+            Save Notifications
           </button>
           <p className="text-xs leading-5 text-pit-muted">
             SMS sending is not active yet. This only stores consent and preferences so we can wire a provider cleanly later.

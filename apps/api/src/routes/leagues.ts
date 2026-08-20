@@ -26,6 +26,7 @@ import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../leagues
 import { getLeagueRsvpResultMutation } from '../leagues/rsvp-results';
 import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
 import { syncJoinCode } from '../joinCodes';
+import { normalizeCommunityImage } from '../communityImage';
 
 export const leaguesRouter = Router();
 leaguesRouter.use(requireAuth);
@@ -55,6 +56,8 @@ type LeagueRow = {
   approved?: boolean;
   membercount?: number;
   eventcount?: number;
+  communityimagedata?: string | null;
+  communityimagefilename?: string | null;
 };
 type SerializedLeague = Omit<LeagueRow, 'pointslookup' | 'finalmultiplierlookup'> & SerializedLeagueForFinals & {
   pointslookup: LeaguePointRule[];
@@ -687,23 +690,45 @@ async function getClaimableLeaguePlayers(leagueId: string, seasonId?: string | n
 
 async function getLeagueForUser(leagueId: string, userId: string) {
   return queryOne<LeagueRow>(
-    `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
+    `WITH selected_season AS (
+       SELECT seasonid
+       FROM leagueseasons
+       WHERE leagueid = $1 AND COALESCE(active, TRUE) = TRUE
+       ORDER BY begindate DESC, createdat DESC
+       LIMIT 1
+     ),
+     season_member_count AS (
+       SELECT count(*) AS membercount
+       FROM selected_season s
+       JOIN leagueseasonparticipants lsp
+         ON lsp.seasonid = s.seasonid
+        AND lsp.leagueid = $1
+        AND lsp.participating = TRUE
+       JOIN leaguemembers lm2
+         ON lm2.leagueid = lsp.leagueid
+        AND lm2.userid = lsp.userid
+        AND lm2.approved = TRUE
+     ),
+     season_event_count AS (
+       SELECT count(*) AS eventcount
+       FROM selected_season s
+       JOIN leagueevents e
+         ON e.leagueid = $1
+        AND e.seasonid = s.seasonid
+        AND e.active = TRUE
+     )
+     SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
+            l.communityimagedata, l.communityimagefilename,
             l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.memberledgervisible, l.active, l.createdat,
             lm.admin AS isadmin, lm.approved,
-            (SELECT count(*)
-             FROM leagueseasons s
-             JOIN leagueseasonparticipants lsp ON lsp.seasonid = s.seasonid
-             JOIN leaguemembers lm2 ON lm2.leagueid = lsp.leagueid AND lm2.userid = lsp.userid
-             WHERE s.leagueid = l.leagueid AND COALESCE(s.active, TRUE) = TRUE AND lm2.approved = TRUE AND lsp.participating = TRUE
-               AND s.seasonid = (SELECT s2.seasonid FROM leagueseasons s2 WHERE s2.leagueid = l.leagueid AND COALESCE(s2.active, TRUE) = TRUE ORDER BY s2.begindate DESC, s2.createdat DESC LIMIT 1)) AS membercount,
-            (SELECT count(*)
-             FROM leagueevents e
-             WHERE e.leagueid = l.leagueid AND e.active = TRUE
-               AND e.seasonid = (SELECT s2.seasonid FROM leagueseasons s2 WHERE s2.leagueid = l.leagueid AND COALESCE(s2.active, TRUE) = TRUE ORDER BY s2.begindate DESC, s2.createdat DESC LIMIT 1)) AS eventcount
+            season_member_count.membercount,
+            season_event_count.eventcount
      FROM leagues l
      JOIN leaguemembers lm ON lm.leagueid = l.leagueid AND lm.userid = $2
+     CROSS JOIN season_member_count
+     CROSS JOIN season_event_count
      WHERE l.leagueid = $1 AND COALESCE(l.active, TRUE) = TRUE`,
     [leagueId, userId]
   );
@@ -738,6 +763,7 @@ async function createLeagueEventStubs(client: PoolClient, leagueId: string, seas
 leaguesRouter.get('/', async (req: Request, res: Response) => {
   const rows = await query<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
+            l.communityimagedata, l.communityimagefilename,
             l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.memberledgervisible, l.active, l.createdat,
@@ -918,6 +944,8 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
     finalchiprounding?: number;
     finalstartingbigblind?: number;
     memberledgervisible?: boolean;
+    communityimagedata?: string | null;
+    communityimagefilename?: string | null;
   };
   const current = await getLeagueForUser(req.params.id, req.userId!);
   if (!current) {
@@ -940,6 +968,14 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
   const finalChipRounding = body.finalchiprounding == null ? Number(current.finalchiprounding || 100) : Math.max(1, Math.round(Number(body.finalchiprounding)));
   const finalStartingBigBlind = body.finalstartingbigblind == null ? Number(current.finalstartingbigblind || 100) : Math.max(1, Math.round(Number(body.finalstartingbigblind)));
   const memberLedgerVisible = body.memberledgervisible == null ? Boolean(current.memberledgervisible) : Boolean(body.memberledgervisible);
+  const imageProvided = Object.prototype.hasOwnProperty.call(body, 'communityimagedata');
+  const normalizedImage = imageProvided
+    ? normalizeCommunityImage(body.communityimagedata, body.communityimagefilename)
+    : { data: null, filename: null };
+  if (normalizedImage.error) {
+    res.status(400).json({ error: normalizedImage.error });
+    return;
+  }
 
   const client = await pool.connect();
   try {
@@ -959,11 +995,14 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
            finalmultiplierlookup = $11,
            finalchiprounding = $12,
            finalstartingbigblind = $13,
-           memberledgervisible = $14
+           memberledgervisible = $14,
+           communityimagedata = CASE WHEN $15::BOOL THEN $16 ELSE communityimagedata END,
+           communityimagefilename = CASE WHEN $15::BOOL THEN $17 ELSE communityimagefilename END
        WHERE leagueid = $1
        RETURNING leagueid, userid AS ownerid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints,
                  bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup,
-                 finalchiprounding, finalstartingbigblind, memberledgervisible, active, createdat`,
+                 finalchiprounding, finalstartingbigblind, memberledgervisible,
+                 communityimagedata, communityimagefilename, active, createdat`,
       [
         req.params.id,
         name,
@@ -979,6 +1018,9 @@ leaguesRouter.patch('/:id', async (req: Request, res: Response) => {
         finalChipRounding,
         finalStartingBigBlind,
         memberLedgerVisible,
+        imageProvided,
+        normalizedImage.data,
+        normalizedImage.filename,
       ]
     );
     if (body.pointslookup != null || body.showupbonuspoints != null) {
@@ -1098,6 +1140,45 @@ leaguesRouter.delete('/:id', async (req: Request, res: Response) => {
   } finally {
     client.release();
   }
+});
+
+leaguesRouter.put('/:id/community-image', async (req: Request, res: Response) => {
+  if (!await requireLeagueAdmin(req.params.id, req.userId!)) {
+    res.status(403).json({ error: 'League admin required.' });
+    return;
+  }
+
+  const normalizedImage = normalizeCommunityImage(
+    req.body?.communityimagedata,
+    req.body?.communityimagefilename
+  );
+  if (normalizedImage.error) {
+    res.status(400).json({ error: normalizedImage.error });
+    return;
+  }
+  if (!normalizedImage.data) {
+    res.status(400).json({ error: 'Choose an image to upload.' });
+    return;
+  }
+
+  const updated = await queryOne<{
+    leagueid: string;
+    communityimagedata: string | null;
+    communityimagefilename: string | null;
+  }>(
+    `UPDATE leagues
+     SET communityimagedata = $2,
+         communityimagefilename = $3
+     WHERE leagueid = $1
+     RETURNING leagueid, communityimagedata, communityimagefilename`,
+    [req.params.id, normalizedImage.data, normalizedImage.filename]
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'League not found.' });
+    return;
+  }
+
+  res.json({ success: true, ...updated });
 });
 
 leaguesRouter.post('/', async (req: Request, res: Response) => {
@@ -2802,8 +2883,10 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     return;
   }
   const league = serializeLeague(leagueRow);
-  const seasons = await getLeagueSeasons(league.leagueid);
-  const selectedSeason = await getSelectedSeason(league.leagueid, String(req.query.seasonId ?? '') || null);
+  const [seasons, selectedSeason] = await Promise.all([
+    getLeagueSeasons(league.leagueid),
+    getSelectedSeason(league.leagueid, String(req.query.seasonId ?? '') || null),
+  ]);
   if (!selectedSeason) {
     res.status(404).json({ error: 'League season not found.' });
     return;
@@ -2813,7 +2896,8 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     return;
   }
   const effectiveLeague = leagueWithSeasonSettings(league, selectedSeason);
-  const memberRows = await query<LeagueMemberRow>(
+  const [memberRows, events, results, payments, rsvps, auditlog] = await Promise.all([
+    query<LeagueMemberRow>(
     `SELECT u.guid AS userid, u.emailaddress, u.emailencrypted,
             ${leagueDisplayNameSql('m', 'u')} AS displayname,
             lm.admin AS isadmin, lm.approved, COALESCE(lsp.participating, FALSE) AS participating,
@@ -2841,7 +2925,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
          SELECT c.leagueid, c.guestuserid, c.claimedby, c.claimedat,
                 row_number() OVER (PARTITION BY c.leagueid, c.guestuserid ORDER BY c.claimedat DESC) AS rn
          FROM leagueguestclaims c
-         WHERE c.claimedat IS NOT NULL
+         WHERE c.leagueid = $1 AND c.claimedat IS NOT NULL
        ) ranked
        WHERE rn = 1
      ) claimed ON claimed.leagueid = lm.leagueid AND claimed.guestuserid = lm.userid
@@ -2851,8 +2935,87 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
      WHERE lm.leagueid = $1
        AND ($3::BOOL = TRUE OR lm.admin = TRUE OR COALESCE(lsp.participating, FALSE) = TRUE)
      ORDER BY lm.admin DESC, lm.approved DESC, lower(${leagueDisplayNameSql('m', 'u')}) ASC`,
-    [league.leagueid, selectedSeason.seasonid, Boolean(league.isadmin)]
-  );
+      [league.leagueid, selectedSeason.seasonid, Boolean(league.isadmin)]
+    ),
+    query<LeagueEventRow>(
+      `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber,
+              CAST(e.eventfee AS DECIMAL) AS eventfee, e.tournamentid, e.active, e.createdat,
+              (SELECT count(*) FROM leagueresults WHERE eventid = e.eventid) AS resultcount
+       FROM leagueevents e
+       WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.active = TRUE
+       ORDER BY e.eventnumber ASC NULLS LAST, e.eventdate ASC NULLS LAST, e.eventtime ASC NULLS LAST, e.createdat ASC`,
+      [league.leagueid, selectedSeason.seasonid]
+    ),
+    query<LeagueResultRow>(
+      `SELECT r.resultid, r.eventid, r.leagueid, r.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
+       FROM leagueresults r
+       JOIN leagueevents e ON e.eventid = r.eventid
+       JOIN users u ON u.guid = r.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       WHERE r.leagueid = $1 AND e.seasonid = $2`,
+      [league.leagueid, selectedSeason.seasonid]
+    ),
+    query<LeaguePaymentRow>(
+      `SELECT p.paymentid, p.leagueid, p.seasonid, p.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              p.eventid, e.name AS eventname, p.paymenttype, CAST(p.amount AS DECIMAL) AS amount,
+              p.paidat, p.note, p.recordedby, p.createdat
+       FROM leaguepayments p
+       JOIN leagueseasonparticipants lsp
+         ON lsp.seasonid = $2
+        AND lsp.leagueid = p.leagueid
+        AND lsp.userid = p.userid
+        AND lsp.participating = TRUE
+       JOIN users u ON u.guid = p.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       LEFT JOIN leagueevents e ON e.eventid = p.eventid
+       WHERE p.leagueid = $1 AND (p.seasonid = $2 OR e.seasonid = $2)
+       ORDER BY p.paidat DESC, p.createdat DESC`,
+      [league.leagueid, selectedSeason.seasonid]
+    ),
+    query<LeagueEventRsvpRow>(
+      `SELECT r.rsvpid, r.eventid, r.leagueid, r.userid,
+              ${leagueDisplayNameSql('m', 'u')} AS displayname,
+              u.emailaddress, u.emailencrypted,
+              r.status, r.createdat, r.updatedat
+       FROM leagueeventrsvps r
+       JOIN leagueevents e ON e.eventid = r.eventid
+       JOIN users u ON u.guid = r.userid
+       LEFT JOIN usermetadata m ON m.userid = u.guid
+       WHERE r.leagueid = $1 AND e.seasonid = $2
+       ORDER BY r.updatedat DESC`,
+      [league.leagueid, selectedSeason.seasonid]
+    ),
+    query<LeagueAuditRow>(
+      `SELECT a.auditid,
+              a.leagueid,
+              a.seasonid,
+              s.name AS seasonname,
+              a.eventid,
+              e.name AS eventname,
+              a.actorid,
+              ${leagueDisplayNameSql('am', 'au')} AS actorname,
+              a.targetuserid,
+              ${leagueDisplayNameSql('tm', 'tu')} AS targetname,
+              a.action,
+              a.summary,
+              a.details,
+              a.createdat
+       FROM leagueauditlogs a
+       LEFT JOIN leagueseasons s ON s.seasonid = a.seasonid
+       LEFT JOIN leagueevents e ON e.eventid = a.eventid
+       LEFT JOIN users au ON au.guid = a.actorid
+       LEFT JOIN usermetadata am ON am.userid = au.guid
+       LEFT JOIN users tu ON tu.guid = a.targetuserid
+       LEFT JOIN usermetadata tm ON tm.userid = tu.guid
+       WHERE a.leagueid = $1
+       ORDER BY a.createdat DESC
+       LIMIT 200`,
+      [league.leagueid]
+    ),
+  ]);
   const members = memberRows.map((member) => {
     const {
       emailaddress,
@@ -2878,84 +3041,6 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
       claimedbydisplayname: claimedByDisplayName,
     };
   });
-  const events = await query<LeagueEventRow>(
-    `SELECT e.eventid, e.leagueid, e.seasonid, e.name, e.eventdate, e.eventtime, e.eventnumber,
-            CAST(e.eventfee AS DECIMAL) AS eventfee, e.tournamentid, e.active, e.createdat,
-            (SELECT count(*) FROM leagueresults WHERE eventid = e.eventid) AS resultcount
-     FROM leagueevents e
-     WHERE e.leagueid = $1 AND e.seasonid = $2 AND e.active = TRUE
-     ORDER BY e.eventnumber ASC NULLS LAST, e.eventdate ASC NULLS LAST, e.eventtime ASC NULLS LAST, e.createdat ASC`,
-    [league.leagueid, selectedSeason.seasonid]
-  );
-  const results = await query<LeagueResultRow>(
-    `SELECT r.resultid, r.eventid, r.leagueid, r.userid,
-            ${leagueDisplayNameSql('m', 'u')} AS displayname,
-            r.placed, r.dnf, r.points, r.showupbonuspoints, r.loggedby, r.createdat, r.updatedat
-     FROM leagueresults r
-     JOIN leagueevents e ON e.eventid = r.eventid
-     JOIN users u ON u.guid = r.userid
-     LEFT JOIN usermetadata m ON m.userid = u.guid
-     WHERE r.leagueid = $1 AND e.seasonid = $2`,
-    [league.leagueid, selectedSeason.seasonid]
-  );
-  const payments = await query<LeaguePaymentRow>(
-    `SELECT p.paymentid, p.leagueid, p.seasonid, p.userid,
-            ${leagueDisplayNameSql('m', 'u')} AS displayname,
-            p.eventid, e.name AS eventname, p.paymenttype, CAST(p.amount AS DECIMAL) AS amount,
-            p.paidat, p.note, p.recordedby, p.createdat
-     FROM leaguepayments p
-     JOIN leagueseasonparticipants lsp
-       ON lsp.seasonid = $2
-      AND lsp.leagueid = p.leagueid
-      AND lsp.userid = p.userid
-      AND lsp.participating = TRUE
-     JOIN users u ON u.guid = p.userid
-     LEFT JOIN usermetadata m ON m.userid = u.guid
-     LEFT JOIN leagueevents e ON e.eventid = p.eventid
-     WHERE p.leagueid = $1 AND (p.seasonid = $2 OR e.seasonid = $2)
-     ORDER BY p.paidat DESC, p.createdat DESC`,
-    [league.leagueid, selectedSeason.seasonid]
-  );
-  const rsvps = await query<LeagueEventRsvpRow>(
-    `SELECT r.rsvpid, r.eventid, r.leagueid, r.userid,
-            ${leagueDisplayNameSql('m', 'u')} AS displayname,
-            u.emailaddress, u.emailencrypted,
-            r.status, r.createdat, r.updatedat
-     FROM leagueeventrsvps r
-     JOIN leagueevents e ON e.eventid = r.eventid
-     JOIN users u ON u.guid = r.userid
-     LEFT JOIN usermetadata m ON m.userid = u.guid
-     WHERE r.leagueid = $1 AND e.seasonid = $2
-     ORDER BY r.updatedat DESC`,
-    [league.leagueid, selectedSeason.seasonid]
-  );
-  const auditlog = await query<LeagueAuditRow>(
-    `SELECT a.auditid,
-            a.leagueid,
-            a.seasonid,
-            s.name AS seasonname,
-            a.eventid,
-            e.name AS eventname,
-            a.actorid,
-            ${leagueDisplayNameSql('am', 'au')} AS actorname,
-            a.targetuserid,
-            ${leagueDisplayNameSql('tm', 'tu')} AS targetname,
-            a.action,
-            a.summary,
-            a.details,
-            a.createdat
-     FROM leagueauditlogs a
-     LEFT JOIN leagueseasons s ON s.seasonid = a.seasonid
-     LEFT JOIN leagueevents e ON e.eventid = a.eventid
-     LEFT JOIN users au ON au.guid = a.actorid
-     LEFT JOIN usermetadata am ON am.userid = au.guid
-     LEFT JOIN users tu ON tu.guid = a.targetuserid
-     LEFT JOIN usermetadata tm ON tm.userid = tu.guid
-     WHERE a.leagueid = $1
-     ORDER BY a.createdat DESC
-     LIMIT 200`,
-    [league.leagueid]
-  );
   const currentPointsLookup = normalizePointsLookup(effectiveLeague.pointslookup);
   const currentShowupBonus = Math.max(0, Number(effectiveLeague.showupbonuspoints || 0));
   const normalizedResults = results.map((result) => {
@@ -4133,6 +4218,7 @@ async function getPublicLeagueKnockoutEvent(token: string) {
 async function getLeagueByIdForPublicEvent(leagueId: string) {
   return queryOne<LeagueRow>(
     `SELECT l.leagueid, l.userid AS ownerid, l.name, l.invitecode, l.approvalneeded,
+            l.communityimagedata, l.communityimagefilename,
             l.expectedplayercount, l.leaguefee, l.pereventfee, l.showupbonuspoints, l.bestfinishcount, l.pointslookup,
             l.finalenabled, l.finalmultiplierlookup, l.finalchiprounding, l.finalstartingbigblind,
             l.memberledgervisible, l.active, l.createdat

@@ -200,6 +200,19 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS emailalertsenabled BOOL DEFAULT TRUE
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
+      ADD COLUMN IF NOT EXISTS emailunsubscribetoken STRING(96)
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usermetadata_email_unsubscribe
+      ON usermetadata (emailunsubscribetoken)
+      WHERE emailunsubscribetoken IS NOT NULL
+    `);
+    await client.query(`
+      ALTER TABLE usermetadata
       ADD COLUMN IF NOT EXISTS isguestuser BOOL DEFAULT FALSE
     `);
     await client.query(`
@@ -278,6 +291,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS demosessionid STRING(64)
     `);
+    await client.query(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS communityimagedata STRING`);
+    await client.query(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS communityimagefilename STRING(160)`);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_groups_demo_session
       ON groups (demosessionid)
@@ -623,6 +638,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS active BOOL DEFAULT TRUE`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS demosessionid STRING(64)`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS communityimagedata STRING`);
+    await client.query(`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS communityimagefilename STRING(160)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leagues_demo_session ON leagues (demosessionid)`);
     await client.query(`ALTER TABLE leagues ALTER COLUMN active SET DEFAULT TRUE`);
     await client.query(`UPDATE leagues SET active = TRUE WHERE active IS NULL`);
@@ -919,6 +936,16 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON leagueevents (leagueid, eventnumber)
     `);
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueseasons_league_dates
+      ON leagueseasons (leagueid, begindate DESC, createdat DESC)
+      STORING (active)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leagueevents_league_season_active
+      ON leagueevents (leagueid, seasonid, active)
+      STORING (name, eventdate, eventnumber, eventtime, tournamentid, eventfee)
+    `);
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leagueevents_tournament
       ON leagueevents (tournamentid)
     `);
@@ -978,6 +1005,26 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
         createdat TIMESTAMPTZ DEFAULT now(),
         PRIMARY KEY (eventid, userid)
       )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS scheduleddeliveries (
+        deliveryid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        entitytype STRING(40) NOT NULL,
+        entityid UUID NOT NULL,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        deliverytype STRING(80) NOT NULL,
+        channel STRING(20) NOT NULL DEFAULT 'email',
+        status STRING(20) NOT NULL DEFAULT 'pending',
+        error STRING(500),
+        sentat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        UNIQUE (entitytype, entityid, userid, deliverytype, channel)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scheduleddeliveries_entity
+      ON scheduleddeliveries (entitytype, entityid, deliverytype, status)
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS pushsubscriptions (

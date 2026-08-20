@@ -10,7 +10,8 @@
     "generate:ai-demo-clips": "node scripts/generate-ai-demo-clips.mjs",
     "generate:demo-intro-clip": "node scripts/generate-demo-intro-clip.mjs",
     "generate:vapid": "npx web-push generate-vapid-keys",
-    "send:daily-reminders": "node scripts/run-daily-reminders.mjs"
+    "send:daily-reminders": "node scripts/run-daily-reminders.mjs",
+    "send:hourly-event-notifications": "node scripts/run-hourly-event-notifications.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

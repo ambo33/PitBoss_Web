@@ -1,6 +1,9 @@
 import nodemailer from 'nodemailer';
 import https from 'https';
+import crypto from 'crypto';
 import { getAppUrl } from '../config';
+import { query, queryOne } from '../db';
+import { hashEmail } from '../privacy';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const from = process.env.EMAIL_FROM ?? 'ThePokerPlanner <noreply@thepokerplanner.com>';
@@ -12,6 +15,7 @@ type EmailPayload = {
   to: string;
   subject: string;
   html: string;
+  respectEmailAlerts?: boolean;
 };
 
 const smtpTransporter = nodemailer.createTransport({
@@ -65,15 +69,70 @@ function postResendEmail(payload: EmailPayload): Promise<void> {
   });
 }
 
+type AccountEmailPreference = {
+  userid: string;
+  emailalertsenabled: boolean | null;
+  emailunsubscribetoken: string | null;
+};
+
+async function accountEmailPreference(email: string): Promise<AccountEmailPreference | null> {
+  const account = await queryOne<AccountEmailPreference>(
+    `SELECT u.guid AS userid,
+            COALESCE(um.emailalertsenabled, TRUE) AS emailalertsenabled,
+            um.emailunsubscribetoken
+     FROM users u
+     LEFT JOIN usermetadata um ON um.userid = u.guid
+     WHERE u.emailhash = $1 OR lower(u.emailaddress) = lower($2)
+     LIMIT 1`,
+    [hashEmail(email), email]
+  );
+  if (!account) return null;
+  if (account.emailunsubscribetoken) return account;
+
+  const token = crypto.randomBytes(36).toString('base64url');
+  await query(
+    `INSERT INTO usermetadata (userid, emailunsubscribetoken)
+     VALUES ($1, $2)
+     ON CONFLICT (userid)
+     DO UPDATE SET emailunsubscribetoken = COALESCE(usermetadata.emailunsubscribetoken, EXCLUDED.emailunsubscribetoken)`,
+    [account.userid, token]
+  );
+  const refreshed = await queryOne<AccountEmailPreference>(
+    `SELECT userid, COALESCE(emailalertsenabled, TRUE) AS emailalertsenabled, emailunsubscribetoken
+     FROM usermetadata
+     WHERE userid = $1`,
+    [account.userid]
+  );
+  return refreshed ?? { ...account, emailunsubscribetoken: token };
+}
+
+function withEmailPreferenceLink(html: string, token: string | null | undefined): string {
+  const footer = token
+    ? `Manage your email alerts or <a href="${appBaseUrl}/unsubscribe/${encodeURIComponent(token)}" style="color:#16b8b8;">unsubscribe</a>.`
+    : '';
+  return html.replace('<!-- ACCOUNT_EMAIL_PREFERENCES -->', footer);
+}
+
 async function sendMail(payload: EmailPayload): Promise<void> {
+  let preference: AccountEmailPreference | null = null;
+  try {
+    preference = await accountEmailPreference(payload.to);
+  } catch (error) {
+    console.warn('Unable to resolve email preferences.', error);
+  }
+  if (payload.respectEmailAlerts && preference?.emailalertsenabled === false) return;
+  const resolvedPayload = {
+    ...payload,
+    html: withEmailPreferenceLink(payload.html, preference?.emailunsubscribetoken),
+  };
   if (resendApiKey) {
-    await postResendEmail(payload);
+    await postResendEmail(resolvedPayload);
     return;
   }
 
   await smtpTransporter.sendMail({
     from,
-    ...payload,
+    ...resolvedPayload,
   });
 }
 
@@ -149,7 +208,7 @@ function emailLayout({
                 </tr>
                 <tr>
                   <td style="padding:18px 28px;border-top:1px solid #2a2c35;color:#8d93a5;font-size:12px;line-height:1.5;">
-                    You are receiving this because you use ThePokerPlanner. Replies may not be monitored.
+                    You are receiving this because you use ThePokerPlanner. Replies may not be monitored.<br><!-- ACCOUNT_EMAIL_PREFERENCES -->
                   </td>
                 </tr>
               </table>
@@ -458,6 +517,125 @@ export async function sendLeagueEventReminderEmail(
       `,
       ctaHref: lobbyUrl,
       ctaLabel: 'Open Knockout Page',
+    }),
+  });
+}
+
+export async function sendRsvpReminderEmail(
+  email: string,
+  details: {
+    kind: 'tournament' | 'league';
+    name: string;
+    groupOrLeagueName: string;
+    when: string;
+    url: string;
+  }
+): Promise<void> {
+  const label = details.kind === 'league' ? 'League Event' : 'Tournament';
+  await sendMail({
+    to: email,
+    subject: `RSVP requested: ${details.name}`,
+    respectEmailAlerts: true,
+    html: emailLayout({
+      eyebrow: `${label} RSVP`,
+      title: details.name,
+      intro: `${details.groupOrLeagueName} is planning this event. Let the host know whether you are in.`,
+      body: `<p style="margin:0;"><strong style="color:#ffffff;">When:</strong> ${escapeHtml(details.when)}</p>`,
+      ctaHref: details.url,
+      ctaLabel: 'RSVP now',
+    }),
+  });
+}
+
+export async function sendEventLobbyReminderEmail(
+  email: string,
+  details: {
+    kind: 'tournament' | 'league';
+    name: string;
+    when: string;
+    url: string;
+  }
+): Promise<void> {
+  await sendMail({
+    to: email,
+    subject: `${details.name} starts in about an hour`,
+    respectEmailAlerts: true,
+    html: emailLayout({
+      eyebrow: details.kind === 'league' ? 'League Event Reminder' : 'Tournament Reminder',
+      title: details.name,
+      intro: `You said you are playing. Your lobby is ready when you are.`,
+      body: `<p style="margin:0;"><strong style="color:#ffffff;">Start time:</strong> ${escapeHtml(details.when)}</p>`,
+      ctaHref: details.url,
+      ctaLabel: 'Open Player Lobby',
+    }),
+  });
+}
+
+export async function sendEventTodayReminderEmail(
+  email: string,
+  details: {
+    kind: 'tournament' | 'league';
+    name: string;
+    when: string;
+    url: string;
+  }
+): Promise<void> {
+  await sendMail({
+    to: email,
+    subject: `Reminder: ${details.name} is today`,
+    respectEmailAlerts: true,
+    html: emailLayout({
+      eyebrow: details.kind === 'league' ? 'League Event Reminder' : 'Tournament Reminder',
+      title: details.name,
+      intro: `You are marked as playing today.`,
+      body: `<p style="margin:0;"><strong style="color:#ffffff;">When:</strong> ${escapeHtml(details.when)}</p>`,
+      ctaHref: details.url,
+      ctaLabel: 'Open event',
+    }),
+  });
+}
+
+export async function sendEventRecapEmail(
+  email: string,
+  details: {
+    kind: 'tournament' | 'league';
+    name: string;
+    groupOrLeagueName: string;
+    placements: Array<{ place: number; playerName: string; points?: number | null }>;
+    url: string;
+  }
+): Promise<void> {
+  const placementRows = details.placements
+    .sort((left, right) => left.place - right.place)
+    .map((placement) => {
+      const remainder = placement.place % 100;
+      const suffix = remainder >= 11 && remainder <= 13
+        ? 'th'
+        : placement.place % 10 === 1
+          ? 'st'
+          : placement.place % 10 === 2
+            ? 'nd'
+            : placement.place % 10 === 3
+              ? 'rd'
+              : 'th';
+      const points = details.kind === 'league' && placement.points != null
+        ? ` <span style="color:#16b3b5;">${escapeHtml(String(placement.points))} pts</span>`
+        : '';
+      return `<li style="margin:0 0 8px;"><strong style="color:#ffffff;">${placement.place}${suffix}</strong> ${escapeHtml(placement.playerName)}${points}</li>`;
+    })
+    .join('');
+  const label = details.kind === 'league' ? 'League Event Results' : 'Tournament Results';
+  await sendMail({
+    to: email,
+    subject: `Results posted: ${details.name}`,
+    respectEmailAlerts: true,
+    html: emailLayout({
+      eyebrow: label,
+      title: details.name,
+      intro: `${details.groupOrLeagueName} has finalized the results.`,
+      body: `<ol style="margin:0;padding-left:22px;">${placementRows || '<li>No placements were recorded.</li>'}</ol>`,
+      ctaHref: details.url,
+      ctaLabel: 'View results',
     }),
   });
 }

@@ -587,9 +587,8 @@ function renderPage(page) {
     <meta name="twitter:description" content="${escapeHtml(page.description)}">
     <meta name="twitter:image" content="${siteUrl}/seo-assets/${page.screenshot}">
     <meta name="twitter:image:alt" content="${escapeHtml(page.screenshotAlt)}">
-    <link rel="icon" type="image/png" href="/branding/the-poker-planner-logo-192.png">
-    <link rel="alternate icon" type="image/png" href="/favicon.png">
-    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo-192.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/icons/spade-chip-favicon-v2-64.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/spade-chip-apple-v2-180.png">
     ${renderSchema(page)}
     <style>
       :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; --gold:#f4b24a; --red:#ef4444; }
@@ -733,9 +732,8 @@ function renderUtilityPage(page) {
     <meta name="twitter:description" content="${escapeHtml(page.description)}">
     <meta name="twitter:image" content="${defaultImage}">
     <meta name="twitter:image:alt" content="ThePokerPlanner poker tournament planning tools">
-    <link rel="icon" type="image/png" href="/branding/the-poker-planner-logo-192.png">
-    <link rel="alternate icon" type="image/png" href="/favicon.png">
-    <link rel="apple-touch-icon" href="/branding/the-poker-planner-logo-192.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/icons/spade-chip-favicon-v2-64.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/spade-chip-apple-v2-180.png">
     ${renderUtilitySchema(page)}
     <style>
       :root { color-scheme: dark; --bg:#101114; --surface:#181a1f; --card:#20232a; --text:#eef2f6; --muted:#a7b0be; --line:#333842; --teal:#14b8a6; }

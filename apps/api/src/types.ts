@@ -20,6 +20,7 @@ export interface User {
   hasavatarimage?: boolean;
   phonenumber?: string | null;
   smsoptedin?: boolean;
+  emailalertsenabled?: boolean;
 }
 
 export interface Group {
@@ -38,6 +39,8 @@ export interface Group {
   aiannouncercustomprompt?: string | null;
   aiannouncerclassicmode?: boolean;
   postapprovalrequired?: boolean;
+  communityimagedata?: string | null;
+  communityimagefilename?: string | null;
   active: boolean;
   createdat: string;
   membercount?: number;

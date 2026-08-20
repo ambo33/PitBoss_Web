@@ -28,3 +28,16 @@ services:
         value: mailto:support@thepokerplanner.com
       - key: JOB_SECRET
         sync: false
+  - type: cron
+    name: pitboss-event-notifications
+    runtime: node
+    plan: starter
+    region: ohio
+    schedule: "*/15 * * * *"
+    buildCommand: npm ci && npm run build
+    startCommand: npm run send:hourly-event-notifications
+    envVars:
+      - key: APP_URL
+        sync: false
+      - key: JOB_SECRET
+        sync: false

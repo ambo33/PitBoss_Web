@@ -87,6 +87,7 @@ export const api = {
     displayname?: string;
     phonenumber?: string | null;
     smsoptedin?: boolean;
+    emailalertsenabled?: boolean;
     checkinaudiodata?: string | null;
     checkinaudiofilename?: string | null;
     clearcheckinaudio?: boolean;
@@ -95,6 +96,8 @@ export const api = {
     clearavatarimage?: boolean;
     completeonboarding?: boolean;
   }) => put<AuthProfile>('/auth/me', data),
+  unsubscribeEmailAlerts: (token: string) =>
+    post<{ success: boolean; scope: 'account' }>(`/auth/unsubscribe/${encodeURIComponent(token)}`),
   submitFeedback: (data: { type: 'issue' | 'idea' | 'question'; message: string; pageurl?: string; useragent?: string }) =>
     post<{ success: boolean; id: string }>('/feedback', data),
   getNotificationPreferences: () =>
@@ -109,8 +112,10 @@ export const api = {
   createGroup: (data: { name: string; approvalneeded?: boolean }) =>
     post<{ groupid: string; invitecode: string }>('/groups', data),
   getGroup: (id: string) => get<Group & { members: GroupMember[] }>(`/groups/${id}`),
-  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string; aiannouncerclassicmode?: boolean; postapprovalrequired?: boolean }) =>
+  updateGroup: (id: string, data: { name?: string; approvalneeded?: boolean; invitecode?: string; defaulttrackingmode?: TrackingMode; tvseatingwelcomemessage?: string; speechfiveminutemessage?: string; speechoneminutemessage?: string; speechlevelupmessage?: string; aiannouncerenabled?: boolean; aiannouncerpreset?: AnnouncerPreset; aiannouncercustomprompt?: string; aiannouncerclassicmode?: boolean; postapprovalrequired?: boolean; communityimagedata?: string | null; communityimagefilename?: string | null }) =>
     put<{ success: boolean } & Partial<Group>>(`/groups/${id}`, data),
+  updateGroupCommunityImage: (id: string, data: { communityimagedata: string; communityimagefilename: string }) =>
+    put<{ success: boolean; groupid: string; communityimagedata: string | null; communityimagefilename: string | null }>(`/groups/${id}/community-image`, data),
   deleteGroup: (id: string) =>
     del<{ success: boolean }>(`/groups/${id}`),
   getGroupBlindStructures: (groupId: string) =>
@@ -181,8 +186,10 @@ export const api = {
   getLeagueSchedule: () => get<LeagueScheduleEvent[]>('/leagues/schedule'),
   createLeague: (data: { name: string; approvalneeded?: boolean; expectedplayercount?: number; leaguefee?: number; pereventfee?: number; showupbonuspoints?: number; bestfinishcount?: number; pointslookup?: LeaguePointRule[]; eventcount?: number; seasonname?: string; eventsasgames?: boolean }) =>
     post<{ leagueid: string; invitecode: string; seasonid: string }>('/leagues', data),
-  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible'>>) =>
+  updateLeague: (id: string, data: Partial<Pick<League, 'name' | 'approvalneeded' | 'expectedplayercount' | 'leaguefee' | 'pereventfee' | 'showupbonuspoints' | 'bestfinishcount' | 'pointslookup' | 'finalenabled' | 'finalmultiplierlookup' | 'finalchiprounding' | 'finalstartingbigblind' | 'memberledgervisible' | 'communityimagedata' | 'communityimagefilename'>>) =>
     patch<{ league: League; recalculatedResults?: number }>(`/leagues/${id}`, data),
+  updateLeagueCommunityImage: (id: string, data: { communityimagedata: string; communityimagefilename: string }) =>
+    put<{ success: boolean; leagueid: string; communityimagedata: string | null; communityimagefilename: string | null }>(`/leagues/${id}/community-image`, data),
   deleteLeague: (id: string) =>
     del<{ success: boolean }>(`/leagues/${id}`),
   createLeaguePayment: (id: string, data: { userid: string; eventid?: string | null; seasonid?: string | null; paymenttype: LeaguePaymentType; amount: number; paidat?: string; note?: string }) =>
@@ -394,6 +401,8 @@ export interface Group {
   nexttournamentname?: string | null;
   nexttournamentdate?: string | null;
   nexttournamenttime?: string | null;
+  communityimagedata?: string | null;
+  communityimagefilename?: string | null;
 }
 export type TrackingMode = 'standard' | 'player';
 export type AnnouncerPreset =
@@ -592,6 +601,8 @@ export interface League {
   approved?: boolean;
   membercount?: number;
   eventcount?: number;
+  communityimagedata?: string | null;
+  communityimagefilename?: string | null;
 }
 export interface LeagueMember {
   userid: string;
@@ -836,6 +847,7 @@ export interface AuthProfile {
   hasavatarimage?: boolean;
   phonenumber?: string | null;
   smsoptedin?: boolean;
+  emailalertsenabled?: boolean;
   onboardingcomplete?: boolean;
   onboardingtourcompletedat?: string | null;
   isdemo?: boolean;
