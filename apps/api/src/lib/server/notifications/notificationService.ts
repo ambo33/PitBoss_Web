@@ -236,12 +236,9 @@ async function getTournamentRecipientUserIds(
        ${includeParticipants ? `
        SELECT tp.userid
        FROM tournamentplayers tp
-       JOIN tournaments t ON t.tournamentid = tp.tournamentid
-       LEFT JOIN groupmembers gm ON gm.groupid = t.groupid AND gm.userid = tp.userid
        LEFT JOIN tournamentdeclines td ON td.tournamentid = tp.tournamentid AND td.userid = tp.userid
        WHERE tp.tournamentid = $1
          AND td.userid IS NULL
-         AND COALESCE(gm.pushalertsenabled, TRUE) = TRUE
          ${activeOnly || activeWithAdmins ? 'AND COALESCE(tp.checkedin, FALSE) = TRUE AND tp.placed IS NULL' : ''}
        ` : 'SELECT NULL::UUID AS userid WHERE FALSE'}
 
@@ -258,7 +255,6 @@ async function getTournamentRecipientUserIds(
        WHERE t.tournamentid = $1
          AND gm.approved = TRUE
          AND gm.admin = TRUE
-         AND COALESCE(gm.pushalertsenabled, TRUE) = TRUE
        ` : 'SELECT NULL::UUID AS userid WHERE FALSE'}
 
        UNION
@@ -271,7 +267,6 @@ async function getTournamentRecipientUserIds(
        WHERE t.tournamentid = $1
          AND gm.approved = TRUE
          AND td.userid IS NULL
-         AND COALESCE(gm.pushalertsenabled, TRUE) = TRUE
        ` : 'SELECT NULL::UUID AS userid WHERE FALSE'}
      ) recipients
      WHERE userid IS NOT NULL`,

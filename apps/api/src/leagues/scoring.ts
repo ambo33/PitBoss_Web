@@ -5,6 +5,7 @@ export type LeagueMemberRow = {
   emailaddress?: string | null;
   emailencrypted?: string | null;
   displayname: string | null;
+  avatarimagedata?: string | null;
   isadmin: boolean;
   approved: boolean;
   participating: boolean;
@@ -186,6 +187,7 @@ export function buildStandings(members: LeagueMemberRow[], results: LeagueResult
       return {
         userid: member.userid,
         displayname: member.displayname,
+        avatarimagedata: member.avatarimagedata ?? null,
         isadmin: member.isadmin,
         eventsplayed: playerResults.filter((result) => !result.dnf && result.placed != null).length,
         showupbonus: showupBonus,

@@ -173,6 +173,46 @@ export default function LeagueEventLobbyPage() {
               </p>
             )}
 
+            {data.isparticipant && !event.hasstarted && (
+              <div className={`rounded-2xl border p-4 ${
+                myRsvp?.status
+                  ? 'border-pit-border bg-pit-bg/55'
+                  : 'border-pit-gold/45 bg-pit-gold/[0.08] shadow-[0_18px_46px_rgba(244,178,74,0.12)]'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-gold/35 bg-pit-gold/15 text-pit-gold">
+                    <CalendarCheck size={20} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-gold">Are you coming?</p>
+                    <p className="mt-1 text-sm text-pit-text">
+                      {goingCount} going · {notGoingCount} can't go
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className={`${rsvpButtonBase} ${myRsvp?.status === 'going' ? 'border-pit-teal bg-pit-teal text-pit-bg shadow-lg shadow-pit-teal/20' : 'border-pit-teal/45 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'}`}
+                    disabled={rsvpMutation.isPending}
+                    onClick={() => rsvpMutation.mutate('going')}
+                  >
+                    <CheckCircle2 size={16} />
+                    Going
+                  </button>
+                  <button
+                    type="button"
+                    className={`${rsvpButtonBase} ${myRsvp?.status === 'not_going' ? 'border-red-300/45 bg-red-400/20 text-red-100 shadow-inner' : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'}`}
+                    disabled={rsvpMutation.isPending}
+                    onClick={() => rsvpMutation.mutate('not_going')}
+                  >
+                    <XCircle size={16} />
+                    Can't go
+                  </button>
+                </div>
+              </div>
+            )}
+
             {!data.isparticipant ? (
               <Notice title="You are not on this season's roster">
                 Contact a league admin if you should be participating in this event.
@@ -203,46 +243,6 @@ export default function LeagueEventLobbyPage() {
               </button>
             ) : (
               <Notice title="All finishes are recorded">The event field is complete.</Notice>
-            )}
-
-            {data.isparticipant && !event.hasstarted && (
-            <div className={`rounded-2xl border p-4 ${
-              myRsvp?.status
-                ? 'border-pit-border bg-pit-bg/55'
-                : 'border-pit-gold/45 bg-pit-gold/[0.08] shadow-[0_18px_46px_rgba(244,178,74,0.12)]'
-            }`}>
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-gold/35 bg-pit-gold/15 text-pit-gold">
-                  <CalendarCheck size={20} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-gold">Are you coming?</p>
-                  <p className="mt-1 text-sm text-pit-text">
-                    {goingCount} going · {notGoingCount} can't go
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  className={`${rsvpButtonBase} ${myRsvp?.status === 'going' ? 'border-pit-teal bg-pit-teal text-pit-bg shadow-lg shadow-pit-teal/20' : 'border-pit-teal/45 bg-pit-teal/10 text-pit-teal hover:bg-pit-teal/18'}`}
-                  disabled={rsvpMutation.isPending}
-                  onClick={() => rsvpMutation.mutate('going')}
-                >
-                  <CheckCircle2 size={16} />
-                  Going
-                </button>
-                <button
-                  type="button"
-                  className={`${rsvpButtonBase} ${myRsvp?.status === 'not_going' ? 'border-red-300/45 bg-red-400/20 text-red-100 shadow-inner' : 'border-red-300/30 bg-red-400/8 text-red-200 hover:bg-red-400/15'}`}
-                  disabled={rsvpMutation.isPending}
-                  onClick={() => rsvpMutation.mutate('not_going')}
-                >
-                  <XCircle size={16} />
-                  Can't go
-                </button>
-              </div>
-            </div>
             )}
 
             {event.hasstarted && (

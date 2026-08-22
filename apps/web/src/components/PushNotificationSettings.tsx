@@ -28,7 +28,37 @@ function statusText(status: PushSubscriptionStatus | 'idle' | 'checking') {
   }
 }
 
-export default function PushNotificationSettings() {
+const notificationCategoryGroups: Array<{
+  key: string;
+  label: string;
+  description: string;
+  example: string;
+  categories: NotificationCategory[];
+}> = [
+  {
+    key: 'essential',
+    label: 'Essential Alerts',
+    description: 'Schedule changes, cancellations, host announcements, and seat assignments.',
+    example: 'Seat assignment: Table 2, Seat 4.',
+    categories: ['essential'],
+  },
+  {
+    key: 'tournament',
+    label: 'Tournament Play',
+    description: 'Blind changes, breaks, check-ins, knockouts, bounties, rebuys, add-ons, and achievements.',
+    example: 'Blinds are going up: Level 4 is 200 / 400.',
+    categories: ['tournament_play', 'bounties_achievements'],
+  },
+  {
+    key: 'league',
+    label: 'League Updates',
+    description: 'Results, standings, rank changes, season updates, new games, and group activity.',
+    example: 'Standings updated for your league.',
+    categories: ['league', 'social'],
+  },
+];
+
+export default function PushNotificationSettings({ embedded = false, showHeader = true }: { embedded?: boolean; showHeader?: boolean }) {
   const userId = useAuthStore((state) => state.user?.guid);
   const qc = useQueryClient();
   const supported = useMemo(() => isPushSupported(), []);
@@ -46,8 +76,14 @@ export default function PushNotificationSettings() {
     queryFn: () => api.getNotificationPreferences(),
   });
   const updatePreferenceMutation = useMutation({
-    mutationFn: ({ category, enabled }: { category: NotificationCategory; enabled: boolean }) =>
-      api.updateNotificationPreference(category, { enabled }),
+    mutationFn: async ({ categories, enabled }: { categories: NotificationCategory[]; enabled: boolean }) => {
+      let result: Awaited<ReturnType<typeof api.updateNotificationPreference>> | undefined;
+      for (const category of categories) {
+        result = await api.updateNotificationPreference(category, { enabled });
+      }
+      if (!result) throw new Error('No notification categories were updated.');
+      return result;
+    },
     onSuccess: (result) => {
       qc.setQueryData(['notification-preferences'], { preferences: result.preferences });
     },
@@ -125,8 +161,8 @@ export default function PushNotificationSettings() {
   }
 
   return (
-    <section className="card space-y-4">
-      <div className="flex items-start justify-between gap-3">
+    <section className={embedded ? 'space-y-4' : 'card space-y-4'}>
+      {showHeader && <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <Bell size={18} className="text-pit-teal" />
           <div>
@@ -139,7 +175,7 @@ export default function PushNotificationSettings() {
         }`}>
           {subscribed ? 'Enabled' : 'Off'}
         </span>
-      </div>
+      </div>}
 
       <div className="rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-2 text-sm text-pit-text">
         <p>{statusText(status)}</p>
@@ -149,36 +185,41 @@ export default function PushNotificationSettings() {
       <div className="space-y-2">
         <div>
           <h4 className="text-sm font-semibold text-white">Notification categories</h4>
-          <p className="text-xs leading-5 text-pit-muted">These apply to every device signed into your account. Social nudges start off by default.</p>
+          <p className="text-xs leading-5 text-pit-muted">These apply to every device signed into your account.</p>
         </div>
         <div className="grid gap-2">
-          {(preferencesData?.preferences ?? []).map((preference) => (
-            <button
-              key={preference.category}
-              type="button"
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                preference.enabled
-                  ? 'border-pit-teal/40 bg-pit-teal/10'
-                  : 'border-pit-border bg-pit-bg/45'
-              }`}
-              disabled={updatePreferenceMutation.isPending}
-              onClick={() => updatePreferenceMutation.mutate({
-                category: preference.category,
-                enabled: !preference.enabled,
-              })}
-            >
-              <span className="flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold text-white">{preference.label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  preference.enabled ? 'bg-pit-teal/20 text-pit-teal' : 'bg-pit-border/50 text-pit-muted'
-                }`}>
-                  {preference.enabled ? 'On' : 'Off'}
+          {notificationCategoryGroups.map((group) => {
+            const enabled = group.categories.every((category) =>
+              preferencesData?.preferences.some((preference) => preference.category === category && preference.enabled)
+            );
+            return (
+              <button
+                key={group.key}
+                type="button"
+                className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                  enabled
+                    ? 'border-pit-teal/40 bg-pit-teal/10'
+                    : 'border-pit-border bg-pit-bg/45'
+                }`}
+                disabled={updatePreferenceMutation.isPending || !preferencesData}
+                onClick={() => updatePreferenceMutation.mutate({
+                  categories: group.categories,
+                  enabled: !enabled,
+                })}
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-white">{group.label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    enabled ? 'bg-pit-teal/20 text-pit-teal' : 'bg-pit-border/50 text-pit-muted'
+                  }`}>
+                    {enabled ? 'On' : 'Off'}
+                  </span>
                 </span>
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-pit-text">{preference.description}</span>
-              <span className="mt-1 block text-[11px] leading-4 text-pit-muted">{preference.example}</span>
-            </button>
-          ))}
+                <span className="mt-1 block text-xs leading-5 text-pit-text">{group.description}</span>
+                <span className="mt-1 block text-[11px] leading-4 text-pit-muted">{group.example}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

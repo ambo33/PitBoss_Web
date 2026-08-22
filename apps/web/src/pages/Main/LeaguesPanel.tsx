@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, Menu, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Search, Send, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Search, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule, LeagueSeason } from '../../api/client';
 import Modal from '../../components/Modal';
@@ -61,8 +61,13 @@ export default function LeaguesPanel({
 
   const createMutation = useMutation({
     mutationFn: api.createLeague,
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: ['leagues'] });
+    onSuccess: async (created) => {
+      await qc.invalidateQueries({ queryKey: ['leagues'], refetchType: 'none' });
+      await qc.fetchQuery({
+        queryKey: ['leagues'],
+        queryFn: api.getLeagues,
+        staleTime: 0,
+      });
       setOpenedFromList(true);
       setSelected({ leagueid: created.leagueid });
       setShowCreate(false);
@@ -693,7 +698,7 @@ function LeagueDetailView({
               aria-label="Manage league"
               title="Manage league"
             >
-              <Menu size={17} />
+              <Settings size={17} />
               <span className="hidden md:inline">Manage</span>
             </button>
             {manageMenuOpen && (
@@ -866,10 +871,10 @@ function LeagueDetailView({
           <button
             type="button"
             role="tab"
-            aria-selected={['audit', 'board', 'players'].includes(activeDetailTab)}
+            aria-selected={['audit', 'board'].includes(activeDetailTab)}
             aria-expanded={mobileMoreOpen}
             className={`min-w-0 rounded-lg border px-1 py-2 text-[11px] font-semibold transition-colors sm:text-xs ${
-              mobileMoreOpen || ['audit', 'board', 'players'].includes(activeDetailTab)
+              mobileMoreOpen || ['audit', 'board'].includes(activeDetailTab)
                 ? 'border-pit-teal bg-pit-teal/15 text-white'
                 : 'border-pit-border bg-pit-card/60 text-pit-text hover:border-pit-teal/50 hover:text-white'
             }`}
@@ -883,7 +888,6 @@ function LeagueDetailView({
             {[
               { id: 'board', label: 'Message Board', icon: <MessageSquare size={14} /> },
               { id: 'audit', label: 'Audit Trail', icon: <ScrollText size={14} /> },
-              { id: 'players', label: 'Players', icon: <Users size={14} /> },
             ].map((item) => (
               <button
                 key={item.id}
@@ -898,17 +902,6 @@ function LeagueDetailView({
                 {item.label}
               </button>
             ))}
-            <button
-              type="button"
-              className="btn-ghost justify-start gap-2 px-3 py-2 text-xs"
-              onClick={() => {
-                setMobileMoreOpen(false);
-                setSettingsModalOpen(true);
-              }}
-            >
-              <Pencil size={14} />
-              Season details
-            </button>
           </div>
         )}
         <div className="hidden min-w-0 max-w-full gap-2 overflow-x-auto border-b border-pit-border bg-pit-bg/45 px-4 py-3 min-[1100px]:flex">
@@ -1805,17 +1798,28 @@ function StandingsTable({
           >
             <div className="flex items-start justify-between gap-3 md:contents">
               <span className="shrink-0 font-mono text-pit-teal">#{index + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="break-words font-semibold text-white md:truncate">{standing.displayname ?? 'Player'}</p>
-                <p className="mt-1 text-xs text-pit-muted">
-                  Scored finishes: {bestPlacementSummary(detail, standing.userid)}
-                  <span className="md:hidden"> (Avg: {standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'})</span>
-                </p>
-                {finalEnabled && finalStack && (
-                  <p className="mt-1 text-xs text-pit-teal md:hidden">
-                    Final {formatNumber(Number(finalStack.startingstack || 0))} - {formatBbs(Number(finalStack.bbstostart || 0))} BBs ({formatPercentOfField(Number(finalStack.startingstack || 0), totalStartingStack)})
+              <div className="min-w-0 flex-1 xl:flex xl:items-center xl:gap-2.5">
+                <span className="hidden h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-pit-teal/35 bg-pit-teal/15 text-xs font-bold text-white xl:flex">
+                  {standing.avatarimagedata ? (
+                    <img
+                      src={standing.avatarimagedata}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : playerInitial(standing.displayname ?? 'Player')}
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words font-semibold text-white md:truncate">{standing.displayname ?? 'Player'}</p>
+                  <p className="mt-1 text-xs text-pit-muted">
+                    Scored finishes: {bestPlacementSummary(detail, standing.userid)}
+                    <span className="md:hidden"> (Avg: {standing.averagefinish ? standing.averagefinish.toFixed(1) : '-'})</span>
                   </p>
-                )}
+                  {finalEnabled && finalStack && (
+                    <p className="mt-1 text-xs text-pit-teal md:hidden">
+                      Final {formatNumber(Number(finalStack.startingstack || 0))} - {formatBbs(Number(finalStack.bbstostart || 0))} BBs ({formatPercentOfField(Number(finalStack.startingstack || 0), totalStartingStack)})
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="shrink-0 text-right md:hidden">
                 <span className="block text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Placement</span>

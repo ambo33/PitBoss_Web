@@ -205,7 +205,6 @@ jobsRouter.post('/tournament-reminders', async (req: Request, res: Response) => 
        AND td.userid IS NULL
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND COALESCE(um.emailalertsenabled, TRUE) = TRUE
-       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
        AND u.emailencrypted IS NOT NULL
        AND ((t.date::STRING || ' ' || COALESCE(t.time::STRING, '00:00:00'))::TIMESTAMP)
            BETWEEN now() AND now() + INTERVAL '26 hours'
@@ -269,7 +268,6 @@ jobsRouter.post('/daily-reminders', async (req: Request, res: Response) => {
        AND td.userid IS NULL
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND COALESCE(um.emailalertsenabled, TRUE) = TRUE
-       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
        AND u.emailencrypted IS NOT NULL
      ORDER BY t.time, t.name`,
     [targetDate]
@@ -473,7 +471,6 @@ async function tournamentReminderRecipients(targetDate: string, audience: 'unres
      WHERE t.date = $1
        AND COALESCE(t.active, TRUE) = TRUE
        AND COALESCE(gm.approved, TRUE) = TRUE
-       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND COALESCE(um.emailalertsenabled, TRUE) = TRUE
        AND u.emailencrypted IS NOT NULL
@@ -574,7 +571,6 @@ async function sendScheduledRecaps() {
          LEFT JOIN tournamentdeclines td ON td.tournamentid = tp.tournamentid AND td.userid = tp.userid
          WHERE tp.tournamentid = $1
            AND td.userid IS NULL
-           AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE
            AND COALESCE(um.isguestuser, FALSE) = FALSE
            AND COALESCE(um.emailalertsenabled, TRUE) = TRUE
            AND u.emailencrypted IS NOT NULL`,

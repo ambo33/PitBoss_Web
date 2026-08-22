@@ -72,11 +72,13 @@ export function reportClientIssue(input: ClientIssueInput): void {
 
 export function installGlobalErrorReporting(): void {
   window.addEventListener('error', (event) => {
+    const source = event.filename ? `Source: ${event.filename}` : '';
+    const stack = event.error instanceof Error ? event.error.stack : '';
     reportClientIssue({
       kind: 'browser_error',
       message: event.message || 'Unhandled browser error',
-      requestPath: event.filename || window.location.pathname,
-      stack: event.error instanceof Error ? event.error.stack : undefined,
+      requestPath: window.location.pathname,
+      stack: [source, stack].filter(Boolean).join(' '),
     });
   });
 

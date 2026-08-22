@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react';
+import { reportClientIssue } from '../lib/errorReporting';
 
 interface Props {
   children: ReactNode;
@@ -23,8 +24,14 @@ export default class RouteErrorBoundary extends Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: unknown) {
+  componentDidCatch(error: unknown, info: { componentStack?: string }) {
     console.error('Route render error', error);
+    reportClientIssue({
+      kind: 'browser_error',
+      message: error instanceof Error ? error.message : 'Route render error',
+      requestPath: window.location.pathname,
+      stack: info.componentStack,
+    });
   }
 
   render() {

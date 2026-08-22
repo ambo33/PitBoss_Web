@@ -94,8 +94,8 @@ export default function App() {
         <Route path="/join/group/:inviteCode" element={<JoinGroupPage />} />
         <Route path="/join/league/:inviteCode" element={<JoinLeaguePage />} />
         <Route path="/join/:inviteCode" element={<JoinCodePage />} />
-        <Route path="/lobby/:id" element={<PlayerLobbyPage />} />
-        <Route path="/checkin/:id" element={<PlayerLobbyPage mode="checkin" />} />
+        <Route path="/lobby/:id" element={<RouteErrorBoundary title="Lobby page error"><PlayerLobbyPage /></RouteErrorBoundary>} />
+        <Route path="/checkin/:id" element={<RouteErrorBoundary title="Check-in page error"><PlayerLobbyPage mode="checkin" /></RouteErrorBoundary>} />
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
         <Route path="/addon/:id" element={<AddonLobbyPage />} />
         <Route path="/league/:leagueId/event/:eventId" element={<RequireAuth><LeagueEventLobbyPage /></RequireAuth>} />

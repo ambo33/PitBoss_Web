@@ -1,6 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, GripVertical, Save, Wand2 } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleGauge,
+  Clock3,
+  Coffee,
+  Coins,
+  GripVertical,
+  Layers3,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { api, BlindLevel, Tournament } from '../../api/client';
 import {
   calculateTotalChips,
@@ -66,6 +79,28 @@ interface ParsedCalculatorSettings {
   expectedAddons: number;
   rebuyChips: number;
   addonChips: number;
+}
+
+type CalculatorField = keyof CalculatorSettings;
+type CalculatorErrors = Partial<Record<CalculatorField, string>>;
+
+function createDefaultCalculatorSettings(tournament: BlindStructureCalculatorContext): CalculatorSettings {
+  const players = getDefaultCalculatorPlayers(tournament);
+  return {
+    players: String(players),
+    startingStack: toNumber(tournament.rebuychips) > 0 ? String(toNumber(tournament.rebuychips)) : '10000',
+    targetHours: '3',
+    levelMinutes: '20',
+    startingBigBlind: '50',
+    chipDenominations: DEFAULT_CHIP_DENOMINATIONS,
+    finishBigBlinds: '14',
+    breakCount: '0',
+    breakMinutes: '10',
+    anteStartLevel: '0',
+    colorUps: DEFAULT_COLOR_UPS,
+    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(players * 0.4), 0)) : '0',
+    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(players * 0.5), 0)) : '0',
+  };
 }
 
 function toDraftLevel(level: BlindLevel): BlindStructureDraftLevel {
@@ -190,29 +225,19 @@ export function BlindStructureCalculator({
   saveDisabled?: boolean;
 }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
-  const defaultCalculatorPlayers = getDefaultCalculatorPlayers(tournament);
-  const [settings, setSettings] = useState<CalculatorSettings>({
-    players: String(defaultCalculatorPlayers),
-    startingStack: toNumber(tournament.rebuychips) > 0 ? String(toNumber(tournament.rebuychips)) : '10000',
-    targetHours: '3',
-    levelMinutes: '20',
-    startingBigBlind: '50',
-    chipDenominations: DEFAULT_CHIP_DENOMINATIONS,
-    finishBigBlinds: '14',
-    breakCount: '0',
-    breakMinutes: '10',
-    anteStartLevel: '0',
-    colorUps: DEFAULT_COLOR_UPS,
-    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(defaultCalculatorPlayers * 0.4), 0)) : '0',
-    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(defaultCalculatorPlayers * 0.5), 0)) : '0',
-  });
+  const initialSettings = useMemo(() => createDefaultCalculatorSettings(tournament), [tournament]);
+  const [settings, setSettings] = useState<CalculatorSettings>(initialSettings);
 
   const parsedSettings = useMemo(
     () => parseCalculatorSettings(settings, tournament),
     [settings, tournament]
   );
-  const generatedLevels = useMemo(() => generateBlindStructure(parsedSettings), [parsedSettings]);
-  const totalChips = calculateTotalChips(parsedSettings);
+  const validationErrors = useMemo(() => validateCalculatorSettings(settings), [settings]);
+  const generatedLevels = useMemo(
+    () => Object.keys(validationErrors).length === 0 ? generateBlindStructure(parsedSettings) : [],
+    [parsedSettings, validationErrors]
+  );
+  const totalChips = useMemo(() => calculateTotalChips(parsedSettings), [parsedSettings]);
   const rebuysEnabled = toNumber(tournament.rebuyprice) > 0 && toNumber(tournament.rebuychips) > 0;
   const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
   const chipDenominationOptions = useMemo(
@@ -223,6 +248,10 @@ export function BlindStructureCalculator({
     () => selectedChipUpDenominations(settings.colorUps, chipDenominationOptions),
     [chipDenominationOptions, settings.colorUps]
   );
+  const blindLevelCount = generatedLevels.filter((level) => !isBreakLevel(level)).length;
+  const estimatedMinutes = generatedLevels.reduce((total, level) => total + Number(level.minutes || 0), 0);
+  const hasChanges = JSON.stringify(settings) !== JSON.stringify(initialSettings);
+  const isValid = Object.keys(validationErrors).length === 0 && generatedLevels.length > 0;
 
   function update(field: keyof CalculatorSettings, value: string) {
     setSettings((current) => {
@@ -255,148 +284,366 @@ export function BlindStructureCalculator({
     });
   }
 
+  function reset() {
+    setSettings(initialSettings);
+  }
+
+  function save() {
+    if (!isValid || saving || saveDisabled) return;
+    onSave(generatedLevels);
+  }
+
   return (
-    <div className="card space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-white">
-          <Calculator size={18} className="text-pit-teal" />
-          <h3 className="font-semibold">{title}</h3>
+    <div className="space-y-4 pb-24 md:pb-0">
+      <section className="card overflow-hidden !p-0">
+        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2 text-white">
+            <Layers3 size={19} className="shrink-0 text-pit-teal" />
+            <h3 className="truncate text-base font-semibold sm:text-lg">{title}</h3>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost min-h-11 gap-2 px-3 text-sm"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? 'Collapse' : 'Expand'}
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
         </div>
-        <button type="button" className="btn-ghost text-sm" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? 'Collapse' : 'Expand'}
-        </button>
-      </div>
+
+        {expanded && (
+          <div className="border-t border-pit-border px-3 py-4 sm:px-5 sm:py-5">
+            {error && <p className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+
+            <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]">
+              <WizardSection number="1" title="Tournament setup" icon={<Users size={16} />}>
+                <div className="grid min-w-0 grid-cols-2 gap-3 max-[349px]:grid-cols-1">
+                  <NumberField field="players" label="Players" value={settings.players} min={2} error={validationErrors.players} onChange={(value) => update('players', value)} />
+                  <NumberField field="startingStack" label="Starting stack" value={settings.startingStack} min={100} step={100} error={validationErrors.startingStack} onChange={(value) => update('startingStack', value)} />
+                  <NumberField field="targetHours" label="Target hours" value={settings.targetHours} min={0.5} step={0.5} error={validationErrors.targetHours} onChange={(value) => update('targetHours', value)} />
+                  <NumberField field="levelMinutes" label="Level minutes" value={settings.levelMinutes} min={1} error={validationErrors.levelMinutes} onChange={(value) => update('levelMinutes', value)} />
+                  {rebuysEnabled && (
+                    <NumberField field="expectedRebuys" label="Expected rebuys" value={settings.expectedRebuys} min={0} error={validationErrors.expectedRebuys} onChange={(value) => update('expectedRebuys', value)} />
+                  )}
+                  {addonsEnabled && (
+                    <NumberField field="expectedAddons" label="Expected add-ons" value={settings.expectedAddons} min={0} error={validationErrors.expectedAddons} onChange={(value) => update('expectedAddons', value)} />
+                  )}
+                </div>
+              </WizardSection>
+
+              <WizardSection number="2" title="Breaks & antes" icon={<Coffee size={16} />}>
+                <div className="grid min-w-0 grid-cols-2 gap-3 max-[349px]:grid-cols-1">
+                  <NumberField field="breakCount" label="Breaks" value={settings.breakCount} min={0} error={validationErrors.breakCount} onChange={(value) => update('breakCount', value)} />
+                  <NumberField field="breakMinutes" label="Break minutes" value={settings.breakMinutes} min={1} error={validationErrors.breakMinutes} onChange={(value) => update('breakMinutes', value)} />
+                  <NumberField field="startingBigBlind" label="Starting BB" value={settings.startingBigBlind} min={1} error={validationErrors.startingBigBlind} onChange={(value) => update('startingBigBlind', value)} />
+                  <NumberField field="anteStartLevel" label="Ante starts at level" value={settings.anteStartLevel} min={0} error={validationErrors.anteStartLevel} onChange={(value) => update('anteStartLevel', value)} />
+                </div>
+              </WizardSection>
+
+              <WizardSection number="3" title="Chips" icon={<Coins size={16} />} className="lg:col-span-2 xl:col-span-1">
+                <TextField
+                  field="chipDenominations"
+                  label="Chip denominations"
+                  value={settings.chipDenominations}
+                  placeholder="25, 50, 100, 500, 1000"
+                  error={validationErrors.chipDenominations}
+                  helper="Enter the chip values in play, separated by commas."
+                  onChange={(value) => update('chipDenominations', value)}
+                />
+                <div className="min-w-0 space-y-2">
+                  <span className="block text-xs font-medium text-pit-text">Chip-up denominations</span>
+                  <div className="flex min-h-11 flex-wrap items-center gap-2">
+                    {chipDenominationOptions.map((denomination) => {
+                      const selected = selectedChipUps.includes(denomination);
+                      return (
+                        <button
+                          key={denomination}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => toggleChipUpDenomination(denomination)}
+                          className={`min-h-10 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            selected
+                              ? 'border-pit-teal bg-pit-teal/12 text-pit-teal shadow-[0_0_14px_rgba(20,184,166,0.08)]'
+                              : 'border-pit-border bg-pit-bg text-pit-text hover:border-pit-teal/40 hover:text-white'
+                          }`}
+                        >
+                          {denomination.toLocaleString()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] leading-4 text-pit-muted">Selected chips are removed at natural pause points in the generated schedule.</p>
+                </div>
+              </WizardSection>
+            </div>
+          </div>
+        )}
+      </section>
 
       {expanded && (
-        <>
-          {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>}
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <NumberField label="Players" value={settings.players} min={2} onChange={(value) => update('players', value)} />
-            <NumberField label="Starting stack" value={settings.startingStack} min={100} step={100} onChange={(value) => update('startingStack', value)} />
-            <NumberField label="Target hours" value={settings.targetHours} min={0.5} step={0.5} onChange={(value) => update('targetHours', value)} />
-            <NumberField label="Level minutes" value={settings.levelMinutes} min={1} onChange={(value) => update('levelMinutes', value)} />
-            <NumberField label="Breaks" value={settings.breakCount} min={0} onChange={(value) => update('breakCount', value)} />
-            <NumberField label="Break minutes" value={settings.breakMinutes} min={1} onChange={(value) => update('breakMinutes', value)} />
-            <NumberField label="Starting BB" value={settings.startingBigBlind} min={1} onChange={(value) => update('startingBigBlind', value)} />
-            <TextField
-              label="Chip denominations"
-              value={settings.chipDenominations}
-              placeholder="25,50,100,500,1000"
-              onChange={(value) => update('chipDenominations', value)}
-            />
-            <div className="space-y-1.5">
-              <span className="block text-xs font-medium uppercase tracking-wide text-pit-muted">Chip up denominations</span>
-              <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-lg border border-pit-border bg-pit-bg px-2 py-1.5">
-                {chipDenominationOptions.map((denomination) => {
-                  const selected = selectedChipUps.includes(denomination);
-                  return (
-                    <button
-                      key={denomination}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => toggleChipUpDenomination(denomination)}
-                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
-                        selected
-                          ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
-                          : 'border-pit-border bg-pit-surface text-pit-muted hover:border-pit-teal/40 hover:text-pit-text'
-                      }`}
-                    >
-                      {denomination.toLocaleString()}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] leading-4 text-pit-muted">Selected chips are chipped up at natural pause points in the structure.</p>
+        <section className="card !p-0">
+          <div className="flex flex-col gap-4 border-b border-pit-border p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <h4 className="text-base font-semibold text-white">Blind schedule</h4>
+              <StructureSummary
+                totalChips={totalChips}
+                levelCount={blindLevelCount}
+                minutes={estimatedMinutes}
+                valid={isValid}
+              />
             </div>
-            <NumberField label="Ante starts at level" value={settings.anteStartLevel} min={0} onChange={(value) => update('anteStartLevel', value)} />
-            {rebuysEnabled && (
-              <NumberField
-                label={`Expected rebuys (${toNumber(tournament.rebuychips).toLocaleString()} chips ea)`}
-                value={settings.expectedRebuys}
-                min={0}
-                onChange={(value) => update('expectedRebuys', value)}
-              />
-            )}
-            {addonsEnabled && (
-              <NumberField
-                label={`Expected add-ons (${toNumber(tournament.addonchips).toLocaleString()} chips ea)`}
-                value={settings.expectedAddons}
-                min={0}
-                onChange={(value) => update('expectedAddons', value)}
-              />
-            )}
-          </div>
-
-          <div className="rounded-lg border border-pit-border bg-pit-bg/50 p-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-pit-text">
-              <div className="flex items-center gap-2">
-                <Wand2 size={15} className="text-pit-teal" />
-                Total chips: <span className="font-semibold text-white">{totalChips.toLocaleString()}</span>
-              </div>
-              <button className="btn-primary gap-2" onClick={() => onSave(generatedLevels)} disabled={saving || saveDisabled || generatedLevels.length === 0}>
-                <Save size={15} />
-                {saving ? 'Saving...' : saveLabel}
+            <div className="hidden shrink-0 gap-2 md:flex">
+              <button type="button" className="btn-ghost min-h-11 gap-2" onClick={reset} disabled={!hasChanges || saving}>
+                <RotateCcw size={16} /> Reset
+              </button>
+              <button type="button" className="btn-primary min-h-11 min-w-40 gap-2" onClick={save} disabled={!isValid || saving || saveDisabled}>
+                <Save size={16} /> {saving ? 'Saving...' : saveLabel}
               </button>
             </div>
-            <BlindTable blinds={generatedLevels.map((level, index) => ({ ...level, id: `generated-${index}` }))} />
           </div>
-        </>
+
+          {!isValid ? (
+            <div className="p-4 sm:p-5">
+              <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 px-4 py-3 text-sm text-amber-100">
+                Fix the highlighted settings to generate a blind schedule.
+              </div>
+            </div>
+          ) : (
+            <GeneratedBlindSchedule levels={generatedLevels} />
+          )}
+        </section>
+      )}
+
+      {expanded && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-pit-border bg-pit-surface/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:hidden">
+          <div className="mx-auto flex max-w-screen-sm gap-2">
+            <button type="button" className="btn-ghost min-h-11 w-12 shrink-0 px-0" aria-label="Reset blind structure" onClick={reset} disabled={!hasChanges || saving}>
+              <RotateCcw size={18} />
+            </button>
+            <button type="button" className="btn-primary min-h-11 min-w-0 flex-1 gap-2 whitespace-nowrap" onClick={save} disabled={!isValid || saving || saveDisabled}>
+              <Save size={17} /> {saving ? 'Saving...' : saveLabel}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
+function WizardSection({
+  number,
+  title,
+  icon,
+  className = '',
+  children,
+}: {
+  number: string;
+  title: string;
+  icon: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`min-w-0 space-y-4 rounded-xl border border-pit-border bg-pit-bg/45 p-3.5 sm:p-4 ${className}`}>
+      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10 text-xs text-pit-teal">{number}</span>
+        <span className="text-pit-teal">{icon}</span>
+        <h4>{title}</h4>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function TextField({
+  field,
   label,
   value,
   placeholder,
+  helper,
+  error,
   onChange,
 }: {
+  field: CalculatorField;
   label: string;
   value: string;
   placeholder?: string;
+  helper?: string;
+  error?: string;
   onChange: (value: string) => void;
 }) {
+  const errorId = error ? `${field}-error` : undefined;
   return (
-    <label className="space-y-1.5">
-      <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">{label}</span>
+    <label className="block min-w-0 space-y-1.5">
+      <span className="text-xs font-medium text-pit-text">{label}</span>
       <input
-        className="input"
+        className={`input min-h-11 w-full min-w-0 ${error ? 'border-red-400/60 focus:border-red-400' : ''}`}
         type="text"
         placeholder={placeholder}
         value={value}
+        aria-invalid={Boolean(error)}
+        aria-describedby={errorId}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error
+        ? <p id={errorId} className="text-[11px] leading-4 text-red-300">{error}</p>
+        : helper && <p className="text-[11px] leading-4 text-pit-muted">{helper}</p>}
     </label>
   );
 }
 
 function NumberField({
+  field,
   label,
   value,
   min,
   step = 1,
+  error,
   onChange,
 }: {
+  field: CalculatorField;
   label: string;
   value: string;
   min: number;
   step?: number;
+  error?: string;
   onChange: (value: string) => void;
 }) {
+  const errorId = error ? `${field}-error` : undefined;
   return (
-    <label className="space-y-1.5">
-      <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">{label}</span>
+    <label className="block min-w-0 space-y-1.5">
+      <span className="block min-h-4 text-xs font-medium leading-4 text-pit-text">{label}</span>
       <input
-        className="input"
+        className={`input min-h-11 w-full min-w-0 tabular-nums ${error ? 'border-red-400/60 focus:border-red-400' : ''}`}
         type="text"
         inputMode={step % 1 === 0 ? 'numeric' : 'decimal'}
         aria-valuemin={min}
+        aria-invalid={Boolean(error)}
+        aria-describedby={errorId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error && <p id={errorId} className="text-[11px] leading-4 text-red-300">{error}</p>}
     </label>
+  );
+}
+
+function StructureSummary({
+  totalChips,
+  levelCount,
+  minutes,
+  valid,
+}: {
+  totalChips: number;
+  levelCount: number;
+  minutes: number;
+  valid: boolean;
+}) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const duration = hours > 0 ? `${hours}h${remainder ? ` ${remainder}m` : ''}` : `${remainder}m`;
+  const metrics = [
+    { label: 'Total chips', value: totalChips.toLocaleString(), icon: <Coins size={18} /> },
+    { label: 'Blind levels', value: valid ? levelCount.toLocaleString() : '-', icon: <Layers3 size={18} /> },
+    { label: 'Est. duration', value: valid ? duration : '-', icon: <Clock3 size={18} /> },
+    { label: 'Status', value: valid ? 'Ready' : 'Needs attention', icon: valid ? <ShieldCheck size={18} /> : <CircleGauge size={18} />, warning: !valid },
+  ];
+
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {metrics.map((metric) => (
+        <div key={metric.label} className="min-w-0 rounded-xl border border-pit-border bg-pit-bg/55 p-3">
+          <div className={`mb-2 ${metric.warning ? 'text-amber-300' : 'text-pit-teal'}`}>{metric.icon}</div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-pit-muted">{metric.label}</p>
+          <p className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-base ${metric.warning ? 'text-amber-200' : 'text-white'}`}>{metric.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GeneratedBlindSchedule({ levels }: { levels: BlindStructureDraftLevel[] }) {
+  return (
+    <div>
+      <div className="hidden max-h-[34rem] overflow-y-auto md:block">
+        <table className="w-full table-fixed text-sm">
+          <thead className="sticky top-0 z-10 bg-pit-surface text-xs uppercase tracking-[0.1em] text-pit-muted">
+            <tr className="border-b border-pit-border">
+              <th className="w-[24%] px-5 py-3 text-left">Level</th>
+              <th className="px-3 py-3 text-right">Small blind</th>
+              <th className="px-3 py-3 text-right">Big blind</th>
+              <th className="px-3 py-3 text-right">Ante</th>
+              <th className="px-3 py-3 text-right">Duration</th>
+              <th className="w-[18%] px-5 py-3 text-left">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {levels.map((level, index) => {
+              const chipUp = isChipUpLevel(level);
+              const breakRow = isBreakLevel(level);
+              return (
+                <tr
+                  key={`${level.level}-${level.label}-${index}`}
+                  className={`border-b border-pit-border/45 transition-colors hover:bg-white/[0.025] ${chipUp ? 'bg-pit-teal/[0.07]' : breakRow ? 'bg-amber-300/[0.06]' : ''}`}
+                >
+                  <td className={`px-5 py-3 font-semibold ${chipUp ? 'text-pit-teal' : breakRow ? 'text-amber-200' : 'text-white'}`}>{level.label}</td>
+                  {breakRow ? (
+                    <>
+                      <td className="px-3 py-3 text-right text-pit-muted">-</td>
+                      <td className="px-3 py-3 text-right text-pit-muted">-</td>
+                      <td className="px-3 py-3 text-right text-pit-muted">-</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-3 text-right tabular-nums text-pit-text">{level.smallblind.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-white">{level.bigblind.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-pit-text">{level.ante > 0 ? level.ante.toLocaleString() : '-'}</td>
+                    </>
+                  )}
+                  <td className="px-3 py-3 text-right tabular-nums text-pit-text">{level.minutes > 0 ? `${level.minutes} min` : '-'}</td>
+                  <td className={`px-5 py-3 text-xs ${chipUp ? 'text-pit-teal' : breakRow ? 'text-amber-200' : 'text-pit-muted'}`}>{chipUp ? 'Chip up' : breakRow ? 'Break' : ''}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-2 p-3 md:hidden">
+        {levels.map((level, index) => {
+          const chipUp = isChipUpLevel(level);
+          const breakRow = isBreakLevel(level);
+          if (breakRow) {
+            return (
+              <div
+                key={`${level.level}-${level.label}-${index}`}
+                className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${chipUp ? 'border-pit-teal/35 bg-pit-teal/[0.08] text-pit-teal' : 'border-amber-300/30 bg-amber-300/[0.07] text-amber-100'}`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{level.label}</p>
+                  <p className="mt-0.5 text-[11px] opacity-75">{chipUp ? 'Chip-up pause' : 'Scheduled break'}</p>
+                </div>
+                <span className="shrink-0 text-xs font-medium tabular-nums">{level.minutes > 0 ? `${level.minutes} min` : 'Pause'}</span>
+              </div>
+            );
+          }
+          return (
+            <div key={`${level.level}-${level.label}-${index}`} className="min-h-14 rounded-xl border border-pit-border bg-pit-bg/45 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-white">{level.label}</p>
+                <span className="text-xs tabular-nums text-pit-muted">{level.minutes} min</span>
+              </div>
+              <p className="mt-1 truncate text-xs tabular-nums text-pit-text">
+                SB {level.smallblind.toLocaleString()} <span className="px-1 text-pit-muted">·</span>
+                BB {level.bigblind.toLocaleString()} <span className="px-1 text-pit-muted">·</span>
+                Ante {level.ante > 0 ? level.ante.toLocaleString() : '-'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -624,6 +871,55 @@ function parseCalculatorSettings(settings: CalculatorSettings, tournament: Blind
   };
 }
 
+function validateCalculatorSettings(settings: CalculatorSettings): CalculatorErrors {
+  const errors: CalculatorErrors = {};
+  const validateNumber = (
+    field: CalculatorField,
+    label: string,
+    minimum: number,
+    options: { integer?: boolean; maximum?: number } = {}
+  ) => {
+    const raw = settings[field].trim();
+    const value = Number(raw);
+    if (!raw || !Number.isFinite(value)) {
+      errors[field] = `${label} is required.`;
+      return;
+    }
+    if (value < minimum) {
+      errors[field] = `${label} must be at least ${minimum}.`;
+      return;
+    }
+    if (options.maximum !== undefined && value > options.maximum) {
+      errors[field] = `${label} cannot exceed ${options.maximum}.`;
+      return;
+    }
+    if (options.integer && !Number.isInteger(value)) errors[field] = `${label} must be a whole number.`;
+  };
+
+  validateNumber('players', 'Players', 2, { integer: true });
+  validateNumber('startingStack', 'Starting stack', 100);
+  validateNumber('targetHours', 'Target hours', 0.5);
+  validateNumber('levelMinutes', 'Level minutes', 1, { integer: true });
+  validateNumber('breakCount', 'Breaks', 0, { integer: true, maximum: 10 });
+  validateNumber('breakMinutes', 'Break minutes', 1, { integer: true });
+  validateNumber('startingBigBlind', 'Starting BB', 1);
+  validateNumber('anteStartLevel', 'Ante start level', 0, { integer: true });
+  validateNumber('expectedRebuys', 'Expected rebuys', 0, { integer: true });
+  validateNumber('expectedAddons', 'Expected add-ons', 0, { integer: true });
+
+  const denominationPieces = settings.chipDenominations
+    .split(/[,;\s]+/)
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+  const denominationsAreValid = denominationPieces.length > 0
+    && denominationPieces.every((piece) => /^\d+(?:\.\d+)?$/.test(piece) && Number(piece) > 0);
+  if (!denominationsAreValid) {
+    errors.chipDenominations = 'Use positive chip values separated by commas.';
+  }
+
+  return errors;
+}
+
 function parseSetting(value: string, fallback: number) {
   if (value.trim() === '') return fallback;
   const parsed = Number(value);
@@ -655,6 +951,10 @@ function getDefaultCalculatorPlayers(tournament: BlindStructureCalculatorContext
 
 function isBreakLevel(level: Pick<BlindLevel, 'label' | 'smallblind' | 'bigblind'>): boolean {
   return /^break\b/i.test(String(level.label ?? '')) || (Number(level.smallblind) === 0 && Number(level.bigblind) === 0);
+}
+
+function isChipUpLevel(level: Pick<BlindLevel, 'label'>): boolean {
+  return /^chip\s*up\b/i.test(String(level.label ?? ''));
 }
 
 function isBreakEditableLevel(level: EditableBlindLevel): boolean {

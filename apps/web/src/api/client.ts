@@ -156,9 +156,6 @@ export const api = {
     post<{ coin: GroupCoin }>(`/groups/${groupId}/coins`, data),
   awardGroupCoin: (groupId: string, coinId: string, data: { userid: string; note?: string }) =>
     post<{ award: GroupCoinAward }>(`/groups/${groupId}/coins/${coinId}/awards`, data),
-  updateGroupNotificationPreferences: (groupId: string, data: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
-    put<{ success: boolean; preferences: Partial<GroupMember> }>(`/groups/${groupId}/notification-preferences`, data),
-
   // Games
   createGame: (data: CreateGameRequest) =>
     post<{ id: string; gameid: string }>('/games', data),
@@ -419,7 +416,6 @@ export type AnnouncerPreset =
 export interface GroupMember {
   userid: string; emailaddress: string; displayname?: string;
   isadmin: boolean; approved: boolean;
-  emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean;
   firstplacecount?: number; secondplacecount?: number; thirdplacecount?: number;
   cashfinishcount?: number; finaltablecount?: number;
 }
@@ -789,6 +785,7 @@ export interface LeaguePost {
 export interface LeagueStanding {
   userid: string;
   displayname?: string | null;
+  avatarimagedata?: string | null;
   isadmin: boolean;
   eventsplayed: number;
   showupbonus: number;

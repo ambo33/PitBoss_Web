@@ -58,8 +58,9 @@ async function sendGameCreatedEmail(args: GameCreatedArgs): Promise<void> {
     `SELECT u.emailaddress, u.emailencrypted
      FROM users u
      JOIN groupmembers gm ON gm.userid = u.guid AND gm.groupid = $2
+     LEFT JOIN usermetadata um ON um.userid = u.guid
      WHERE u.guid = ANY($1::UUID[])
-       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE`,
+       AND COALESCE(um.emailalertsenabled, TRUE) = TRUE`,
     [args.recipientUserIds, args.groupId]
   );
   await Promise.all(rows
@@ -82,8 +83,7 @@ async function sendGameCreatedPush(args: GameCreatedArgs): Promise<void> {
     `SELECT userid
      FROM groupmembers
      WHERE groupid = $2
-       AND userid = ANY($1::UUID[])
-       AND COALESCE(pushalertsenabled, TRUE) = TRUE`,
+       AND userid = ANY($1::UUID[])`,
     [args.recipientUserIds, args.groupId]
   );
   await sendNotificationToUsers(rows.map((row) => row.userid), 'new_tournament_created', {
@@ -97,7 +97,6 @@ async function sendGameCreatedPush(args: GameCreatedArgs): Promise<void> {
   }, {
     entityType: 'game',
     entityId: args.gameId,
-    skipPreferences: true,
   });
 }
 
@@ -107,8 +106,9 @@ async function sendGameCancelledEmail(args: GameCancelledArgs): Promise<void> {
     `SELECT u.emailaddress, u.emailencrypted
      FROM users u
      JOIN groupmembers gm ON gm.userid = u.guid AND gm.groupid = $2
+     LEFT JOIN usermetadata um ON um.userid = u.guid
      WHERE u.guid = ANY($1::UUID[])
-       AND COALESCE(gm.emailalertsenabled, TRUE) = TRUE`,
+       AND COALESCE(um.emailalertsenabled, TRUE) = TRUE`,
     [args.recipientUserIds, args.groupId]
   );
   await Promise.all(rows
@@ -128,8 +128,7 @@ async function sendGameCancelledPush(args: GameCancelledArgs): Promise<void> {
     `SELECT userid
      FROM groupmembers
      WHERE groupid = $2
-       AND userid = ANY($1::UUID[])
-       AND COALESCE(pushalertsenabled, TRUE) = TRUE`,
+       AND userid = ANY($1::UUID[])`,
     [args.recipientUserIds, args.groupId]
   );
   await sendNotificationToUsers(rows.map((row) => row.userid), 'tournament_cancelled', {
@@ -143,6 +142,5 @@ async function sendGameCancelledPush(args: GameCancelledArgs): Promise<void> {
   }, {
     entityType: 'game',
     entityId: args.gameId,
-    skipPreferences: true,
   });
 }

@@ -59,6 +59,7 @@ export default function TournamentsPanel({
   const [showCommunityCreate, setShowCommunityCreate] = useState(false);
   const [showCommunityJoin, setShowCommunityJoin] = useState(false);
   const [showFullUpcomingSchedule, setShowFullUpcomingSchedule] = useState(false);
+  const [historyCommunityFilter, setHistoryCommunityFilter] = useState('all');
   const [localSection, setLocalSection] = useState<CommandCenterSection>('upcoming');
   const lastCreateGameRequestRef = useRef(createGameRequestId);
   const lastHomeRequestRef = useRef(homeRequestId);
@@ -196,13 +197,34 @@ export default function TournamentsPanel({
     () => allScheduleItems.filter((item) => !isUpcomingScheduleItem(item)).sort(compareScheduleItems).reverse(),
     [allScheduleItems]
   );
+  const historyCommunityOptions = useMemo(() => {
+    const options = new Map<string, { value: string; label: string; type: 'Group' | 'League' }>();
+    historyScheduleItems.forEach((item) => {
+      const value = getScheduleCommunityKey(item);
+      if (!value || !item.parentName) return;
+      options.set(value, {
+        value,
+        label: item.parentName,
+        type: item.kind === 'league' ? 'League' : 'Group',
+      });
+    });
+    return [...options.values()].sort((a, b) => (
+      a.label.localeCompare(b.label) || a.type.localeCompare(b.type)
+    ));
+  }, [historyScheduleItems]);
+  const filteredHistoryScheduleItems = useMemo(
+    () => historyCommunityFilter === 'all'
+      ? historyScheduleItems
+      : historyScheduleItems.filter((item) => getScheduleCommunityKey(item) === historyCommunityFilter),
+    [historyCommunityFilter, historyScheduleItems]
+  );
   const featuredUpcomingItem = scheduleView === 'upcoming' ? upcomingScheduleItems[0] ?? null : null;
   const upcomingItemsAfterFeatured = featuredUpcomingItem
     ? upcomingScheduleItems.slice(1)
     : upcomingScheduleItems;
   const comingUpScheduleItems = upcomingItemsAfterFeatured.filter((item) => !isThirtyOrMoreDaysAway(item));
   const laterScheduleItems = upcomingItemsAfterFeatured.filter(isThirtyOrMoreDaysAway);
-  const scheduleList = scheduleView === 'history' ? historyScheduleItems : upcomingScheduleItems;
+  const scheduleList = scheduleView === 'history' ? filteredHistoryScheduleItems : upcomingScheduleItems;
   const firstHostedTournament = mine.find((tournament) => isUpcomingScheduleItem(tournamentToScheduleItem(tournament)) && tournament.ownerid === me?.guid)
     ?? mine.find((tournament) => isUpcomingScheduleItem(tournamentToScheduleItem(tournament)))
     ?? null;
@@ -247,6 +269,13 @@ export default function TournamentsPanel({
       onScheduleModeChange?.('home');
     }
   }, [activeSection, onScheduleModeChange]);
+
+  useEffect(() => {
+    if (historyCommunityFilter === 'all') return;
+    if (!historyCommunityOptions.some((option) => option.value === historyCommunityFilter)) {
+      setHistoryCommunityFilter('all');
+    }
+  }, [historyCommunityFilter, historyCommunityOptions]);
 
   function setScheduleMode(mode: 'home' | 'games') {
     setShowFullUpcomingSchedule(mode === 'games');
@@ -388,12 +417,36 @@ export default function TournamentsPanel({
             scheduleView === 'upcoming' ? <HomeScheduleSkeleton /> : <LoadingSpinner className="mt-16" />
           ) : scheduleView === 'history' ? (
             <section>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-pit-teal">History</p>
-                <span className="rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da]">{historyScheduleItems.length}</span>
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex items-center justify-between gap-3 sm:block">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-pit-teal">History</p>
+                  <span className="rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da] sm:hidden">
+                    {historyCommunityFilter === 'all' ? historyScheduleItems.length : `${filteredHistoryScheduleItems.length} of ${historyScheduleItems.length}`}
+                  </span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <label className="min-w-0 flex-1 sm:w-72 sm:flex-none">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#b8b8c7]">Group or league</span>
+                    <select
+                      className="input h-10 w-full cursor-pointer py-0 text-sm"
+                      value={historyCommunityFilter}
+                      onChange={(event) => setHistoryCommunityFilter(event.target.value)}
+                      aria-label="Filter history by group or league"
+                    >
+                      <option value="all">All history</option>
+                      {historyCommunityOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label} ({option.type})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="hidden shrink-0 rounded-full border border-pit-border bg-pit-surface px-2.5 py-1 text-xs font-semibold text-[#d0d0da] sm:inline-flex">
+                    {historyCommunityFilter === 'all' ? historyScheduleItems.length : `${filteredHistoryScheduleItems.length} of ${historyScheduleItems.length}`}
+                  </span>
+                </div>
               </div>
               <ScheduleList
-                items={historyScheduleItems}
+                key={`history-${historyCommunityFilter}`}
+                items={filteredHistoryScheduleItems}
                 focusItemId={focusScheduleItemId}
                 view="history"
                 pageSize={HISTORY_PAGE_SIZE}
@@ -2747,6 +2800,12 @@ function leagueEventToScheduleItem(event: LeagueScheduleEvent): ScheduleItem {
     goingCount: Number(event.goingcount ?? 0),
     seasonPlayerCount: Number(event.seasonplayercount ?? 0),
   };
+}
+
+function getScheduleCommunityKey(item: ScheduleItem): string | null {
+  if (item.kind === 'league') return `league:${item.leagueId}`;
+  if (item.kind === 'cash') return item.game.groupid ? `group:${item.game.groupid}` : null;
+  return item.tournament.groupid ? `group:${item.tournament.groupid}` : null;
 }
 
 function compareScheduleItems(a: ScheduleItem, b: ScheduleItem) {

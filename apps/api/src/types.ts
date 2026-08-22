@@ -54,9 +54,6 @@ export interface GroupMember {
   displayname?: string;
   isadmin: boolean;
   approved: boolean;
-  emailalertsenabled?: boolean;
-  smsalertsenabled?: boolean;
-  pushalertsenabled?: boolean;
   firstplacecount?: number;
   secondplacecount?: number;
   thirdplacecount?: number;

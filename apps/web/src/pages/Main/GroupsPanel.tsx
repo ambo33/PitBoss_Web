@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, Calendar, Clock, FileText, Info, Layers3, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Check, ChevronRight, Clock, Copy, FileText, Home, Info, Layers3, MoreHorizontal, Pencil, Settings2, ShieldCheck, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote, type LucideIcon } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -19,6 +19,7 @@ import {
   DEFAULT_LEVEL_UP_ANNOUNCEMENT,
   DEFAULT_ONE_MINUTE_ANNOUNCEMENT,
 } from '../../utils/timerAudio';
+import { prepareAvatarImage } from '../../utils/avatarImage';
 
 type GroupOpenRequest = { groupId: string; tab?: 'posts'; postId?: string; token: number } | null;
 
@@ -50,7 +51,12 @@ export default function GroupsPanel({
   const createMutation = useMutation({
     mutationFn: (data: { name: string; approvalneeded: boolean }) => api.createGroup(data),
     onSuccess: async (result) => {
-      const refreshed = await qc.fetchQuery({ queryKey: ['groups'], queryFn: api.getGroups });
+      await qc.invalidateQueries({ queryKey: ['groups'], refetchType: 'none' });
+      const refreshed = await qc.fetchQuery({
+        queryKey: ['groups'],
+        queryFn: api.getGroups,
+        staleTime: 0,
+      });
       const createdGroup = refreshed.find((group) => group.groupid === result.groupid);
       setShowCreate(false);
       if (createdGroup) {
@@ -373,33 +379,6 @@ function AnnouncementField({
   );
 }
 
-function PreferenceToggle({
-  label,
-  active,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
-        active
-          ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
-          : 'border-pit-border bg-pit-surface text-pit-muted hover:text-white'
-      }`}
-    >
-      {label} {active ? 'On' : 'Off'}
-    </button>
-  );
-}
-
 function previewAnnouncement(template: string) {
   return template
     .replace(/\{BlindLevel\}/g, '4')
@@ -409,7 +388,7 @@ function previewAnnouncement(template: string) {
 }
 
 function groupTabLabel(tab: DetailTab, memberCount: number) {
-  if (tab === 'info') return 'Info';
+  if (tab === 'info') return 'Overview';
   if (tab === 'members') return `Members (${memberCount})`;
   if (tab === 'posts') return 'Posts';
   if (tab === 'coins') return 'Coins';
@@ -503,6 +482,12 @@ function GroupDetailView({
   const [structureWizardOpen, setStructureWizardOpen] = useState(false);
   const [newStructureName, setNewStructureName] = useState('');
   const [structureNameError, setStructureNameError] = useState('');
+  const [openMenu, setOpenMenu] = useState<'group' | 'more' | null>(null);
+  const [settingEditor, setSettingEditor] = useState<'group' | 'join' | 'tracking' | 'tv' | null>(null);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [groupName, setGroupName] = useState(group.name);
+  const [approvalNeeded, setApprovalNeeded] = useState(Boolean(group.approvalneeded));
+  const [communityImageError, setCommunityImageError] = useState('');
 
   useEffect(() => {
     if (initialTab) setDetailTab(initialTab);
@@ -574,11 +559,6 @@ function GroupDetailView({
       qc.invalidateQueries({ queryKey: ['tournament'] });
     },
   });
-  const notificationPrefsMutation = useMutation({
-    mutationFn: (payload: { emailalertsenabled?: boolean; smsalertsenabled?: boolean; pushalertsenabled?: boolean }) =>
-      api.updateGroupNotificationPreferences(group.groupid, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group.groupid] }),
-  });
   const leaveMutation = useMutation({
     mutationFn: () => api.leaveGroup(group.groupid, user!.guid),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['groups'] }); onBack(); },
@@ -607,6 +587,8 @@ function GroupDetailView({
   });
   const updateGroupMutation = useMutation({
     mutationFn: (payload: {
+      name?: string;
+      approvalneeded?: boolean;
       invitecode?: string;
       defaulttrackingmode?: 'standard' | 'player';
       tvseatingwelcomemessage?: string;
@@ -635,6 +617,24 @@ function GroupDetailView({
       setDeleteGroupConfirmOpen(false);
       onBack();
     },
+  });
+  const updateCommunityImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const prepared = await prepareAvatarImage(file);
+      return api.updateGroupCommunityImage(group.groupid, {
+        communityimagedata: prepared.dataUrl,
+        communityimagefilename: prepared.filename,
+      });
+    },
+    onSuccess: (result) => {
+      setCommunityImageError('');
+      qc.setQueryData<Group & { members: GroupMember[] }>(
+        ['group', group.groupid],
+        (current) => current ? { ...current, ...result } : current
+      );
+      qc.invalidateQueries({ queryKey: ['groups'] });
+    },
+    onError: (error) => setCommunityImageError(error instanceof Error ? error.message : 'Group image could not be saved.'),
   });
 
   const toggleAnnouncerMutation = useMutation({
@@ -750,7 +750,6 @@ function GroupDetailView({
     () => sortGroupMembersByName(members.filter(m => m.approved)),
     [members]
   );
-  const currentMember = members.find((member) => member.userid === user?.guid);
   const joinPath = `/join/${encodeURIComponent(effectiveGroup.invitecode)}`;
   const account = profile ?? user;
   const demoMode = Boolean(user?.isdemo);
@@ -760,8 +759,22 @@ function GroupDetailView({
   const detailTabs: DetailTab[] = group.isadmin
     ? ['info', 'members', 'posts', 'structures', 'history', 'voice']
     : ['info', 'members', 'posts', 'structures', 'history'];
+  const mobilePrimaryTabs: DetailTab[] = ['info', 'members', 'posts'];
+  const mobileMoreTabs = detailTabs.filter((tab) => !mobilePrimaryTabs.includes(tab));
+  const activeMobileMoreTab = mobileMoreTabs.includes(detailTab);
+  const groupInitial = effectiveGroup.name.trim().slice(0, 1).toUpperCase() || 'G';
+  const aggregateStats = useMemo(() => approved.reduce((totals, member) => ({
+    first: totals.first + Number(member.firstplacecount ?? 0),
+    second: totals.second + Number(member.secondplacecount ?? 0),
+    third: totals.third + Number(member.thirdplacecount ?? 0),
+    cashes: totals.cashes + Number(member.cashfinishcount ?? 0),
+    finals: totals.finals + Number(member.finaltablecount ?? 0),
+  }), { first: 0, second: 0, third: 0, cashes: 0, finals: 0 }), [approved]);
 
   useEffect(() => {
+    setGroupName(effectiveGroup.name);
+    setApprovalNeeded(Boolean(effectiveGroup.approvalneeded));
+    setInviteCode(effectiveGroup.invitecode);
     setDefaultTrackingMode(effectiveGroup.defaulttrackingmode ?? 'standard');
     setTvSeatingMessage(effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
     setSpeechFiveMinuteMessage(effectiveGroup.speechfiveminutemessage ?? DEFAULT_FIVE_MINUTE_ANNOUNCEMENT);
@@ -772,6 +785,9 @@ function GroupDetailView({
     setAiAnnouncerPrompt(effectiveGroup.aiannouncercustomprompt ?? '');
     setAiAnnouncerClassicMode(Boolean(effectiveGroup.aiannouncerclassicmode));
   }, [
+    effectiveGroup.name,
+    effectiveGroup.approvalneeded,
+    effectiveGroup.invitecode,
     effectiveGroup.defaulttrackingmode,
     effectiveGroup.tvseatingwelcomemessage,
     effectiveGroup.speechfiveminutemessage,
@@ -782,6 +798,26 @@ function GroupDetailView({
     effectiveGroup.aiannouncercustomprompt,
     effectiveGroup.aiannouncerclassicmode,
   ]);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenMenu(null);
+    };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [openMenu]);
+
+  async function copyInviteCode() {
+    try {
+      await navigator.clipboard.writeText(effectiveGroup.invitecode);
+      setCopyState('copied');
+      window.setTimeout(() => setCopyState('idle'), 1800);
+    } catch {
+      setCopyState('error');
+      window.setTimeout(() => setCopyState('idle'), 2200);
+    }
+  }
 
   useEffect(() => () => {
     announcerPreviewRef.current?.pause();
@@ -843,68 +879,160 @@ function GroupDetailView({
     setCoinImageFilename(file.name);
   }
 
+  function saveSettingEditor() {
+    if (settingEditor === 'group') {
+      const nextName = groupName.trim();
+      if (!nextName) return;
+      updateGroupMutation.mutate(
+        { name: nextName, approvalneeded: approvalNeeded },
+        { onSuccess: () => setSettingEditor(null) }
+      );
+      return;
+    }
+    if (settingEditor === 'join') {
+      const nextCode = normalizeGroupInviteCode(inviteCode);
+      if (!nextCode) return;
+      updateGroupMutation.mutate(
+        { invitecode: nextCode },
+        { onSuccess: () => setSettingEditor(null) }
+      );
+      return;
+    }
+    if (settingEditor === 'tracking') {
+      updateGroupMutation.mutate(
+        { defaulttrackingmode: defaultTrackingMode },
+        { onSuccess: () => setSettingEditor(null) }
+      );
+      return;
+    }
+    if (settingEditor === 'tv') {
+      updateGroupMutation.mutate(
+        { tvseatingwelcomemessage: tvSeatingMessage.trim() },
+        { onSuccess: () => setSettingEditor(null) }
+      );
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <button
-          type="button"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 via-[#122E30] to-pit-teal/10 px-3 py-2 text-xs font-semibold text-pit-teal shadow-[0_0_18px_rgba(20,184,166,0.12)] transition hover:border-pit-teal/60 hover:text-white"
-          onClick={onBack}
-        >
-          <ArrowLeft size={15} />
-          Back
-        </button>
-        <h2 className="min-w-0 flex-1 truncate text-xl font-bold text-white sm:text-2xl">{effectiveGroup.name}</h2>
-        {group.isadmin && (
-          <span className="badge shrink-0 border border-pit-gold/20 bg-pit-gold/10 text-pit-gold">
-            <Crown size={9} className="mr-0.5" /> Admin
-          </span>
+    <div className="mx-auto w-full max-w-[1280px] space-y-3 sm:space-y-4">
+      <section className="relative overflow-visible rounded-2xl border border-pit-border bg-[radial-gradient(circle_at_top_right,rgba(20,184,181,0.15),transparent_30%),linear-gradient(135deg,rgba(18,28,34,0.98),rgba(18,46,48,0.72))] px-3 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.25)] sm:px-5 sm:py-4">
+        {openMenu === 'group' && (
+          <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="Close group menu" onClick={() => setOpenMenu(null)} />
         )}
-        {group.isadmin ? (
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-4">
           <button
             type="button"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200"
-            onClick={() => setDeleteGroupConfirmOpen(true)}
-            disabled={deleteGroupMutation.isPending}
-            aria-label="Delete group"
-            title="Delete group"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pit-border bg-pit-bg/60 text-pit-text transition hover:border-pit-teal/55 hover:text-white lg:w-auto lg:px-3"
+            onClick={onBack}
+            aria-label="Back"
           >
-            <Trash2 size={16} />
+            <ArrowLeft size={16} />
+            <span className="ml-1.5 hidden text-xs font-semibold lg:inline">Back</span>
           </button>
-        ) : (
-          <button
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/5 px-3 text-xs font-semibold text-red-300 transition hover:border-red-400/45 hover:bg-red-400/10 hover:text-red-200"
-            onClick={() => leaveMutation.mutate()}
-            disabled={leaveMutation.isPending}
-          >
-            <LogOut size={14} />
-            <span className="ml-1.5">{leaveMutation.isPending ? 'Leaving...' : 'Leave'}</span>
-          </button>
-        )}
-      </div>
 
-      <div className="space-y-4">
-        <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-w-max gap-2 rounded-xl border border-pit-border bg-pit-bg/55 p-1">
-            {detailTabs.map((t) => {
-              const Icon = groupTabIcon(t);
-              return (
-                <button
-                  key={t}
-                  onClick={() => setDetailTab(t)}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors duration-150 ${
-                    detailTab === t
-                      ? 'border-pit-teal bg-pit-teal/15 text-white'
-                      : 'border-transparent bg-transparent text-pit-muted hover:border-pit-teal/35 hover:bg-pit-card/70 hover:text-pit-text'
-                  }`}
-                >
-                  <Icon size={13} />
-                  {groupTabLabel(t, approved.length)}
-                </button>
-              );
-            })}
+          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-pit-teal/50 bg-pit-teal/10 text-xl font-black text-white ring-2 ring-pit-bg ring-offset-2 ring-offset-pit-teal/70 sm:h-14 sm:w-14">
+            {effectiveGroup.communityimagedata ? (
+              <img src={effectiveGroup.communityimagedata} alt="" className="h-full w-full object-cover" />
+            ) : groupInitial}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 className="min-w-0 truncate text-xl font-black text-white sm:text-2xl">{effectiveGroup.name}</h2>
+              {group.isadmin && (
+                <span className="inline-flex shrink-0 items-center rounded-full border border-pit-gold/35 bg-pit-gold/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-pit-gold">
+                  <Crown size={10} className="mr-1" /> Admin
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-pit-text sm:text-xs">
+              {approved.length} member{approved.length === 1 ? '' : 's'} <span className="mx-1.5 text-pit-muted">•</span> {effectiveGroup.approvalneeded ? 'Approval required' : 'Open group'}
+            </p>
+          </div>
+
+          {group.isadmin && (
+            <button type="button" className="btn-ghost hidden h-10 shrink-0 px-3 text-xs lg:inline-flex" onClick={() => setSettingEditor('group')}>
+              <Pencil size={14} /> Edit group
+            </button>
+          )}
+          <div className="relative z-30 shrink-0">
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-pit-border bg-pit-bg/65 text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+              aria-label="Group actions"
+              aria-expanded={openMenu === 'group'}
+              onClick={() => setOpenMenu(openMenu === 'group' ? null : 'group')}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {openMenu === 'group' && (
+              <div className="absolute right-0 top-12 z-30 w-48 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+                {group.isadmin && (
+                  <button type="button" className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-pit-text hover:bg-white/5 hover:text-white lg:hidden" onClick={() => { setOpenMenu(null); setSettingEditor('group'); }}>
+                    <Pencil size={14} /> Edit group
+                  </button>
+                )}
+                {!demoMode && group.isadmin && (
+                  <button type="button" className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-pit-text hover:bg-white/5 hover:text-white" onClick={() => { setOpenMenu(null); setShareInviteOpen(true); }}>
+                    <Share size={14} /> Share invite
+                  </button>
+                )}
+                {group.isadmin ? (
+                  <button type="button" className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200" onClick={() => { setOpenMenu(null); setDeleteGroupConfirmOpen(true); }}>
+                    <Trash2 size={14} /> Delete group
+                  </button>
+                ) : (
+                  <button type="button" className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-red-300 hover:bg-red-400/10 hover:text-red-200" onClick={() => { setOpenMenu(null); leaveMutation.mutate(); }} disabled={leaveMutation.isPending}>
+                    <LogOut size={14} /> {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
+      </section>
+
+      <div className="space-y-3 sm:space-y-4">
+        <nav className="hidden grid-cols-6 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:grid" aria-label="Group sections">
+          {detailTabs.map((tab) => {
+            const Icon = groupTabIcon(tab);
+            return (
+              <button key={tab} type="button" onClick={() => setDetailTab(tab)} className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-2.5 text-xs font-semibold transition ${detailTab === tab ? 'border-pit-teal bg-pit-teal/15 text-white' : 'border-transparent text-pit-text hover:bg-white/5 hover:text-white'}`}>
+                <Icon size={14} className="shrink-0" />
+                <span className="truncate">{groupTabLabel(tab, approved.length)}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <nav className="relative grid grid-cols-4 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:hidden" aria-label="Group sections">
+          {mobilePrimaryTabs.map((tab) => {
+            const Icon = groupTabIcon(tab);
+            return (
+              <button key={tab} type="button" onClick={() => { setOpenMenu(null); setDetailTab(tab); }} className={`flex h-11 min-w-0 items-center justify-center gap-1 rounded-lg border px-1 text-[11px] font-semibold transition ${detailTab === tab ? 'border-pit-teal bg-pit-teal/15 text-white' : 'border-transparent text-pit-text'}`}>
+                <Icon size={13} className="shrink-0" /><span className="truncate">{groupTabLabel(tab, approved.length).replace(/ \(.*\)$/, '')}</span>
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setOpenMenu(openMenu === 'more' ? null : 'more')} aria-expanded={openMenu === 'more'} className={`flex h-11 min-w-0 items-center justify-center gap-1 rounded-lg border px-1 text-[11px] font-semibold transition ${activeMobileMoreTab ? 'border-pit-teal bg-pit-teal/15 text-white' : 'border-transparent text-pit-text'}`}>
+            <MoreHorizontal size={14} /><span>More</span>
+          </button>
+          {openMenu === 'more' && (
+            <>
+              <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="Close section menu" onClick={() => setOpenMenu(null)} />
+              <div className="absolute right-1 top-[3.15rem] z-30 w-56 overflow-hidden rounded-xl border border-pit-border bg-pit-surface p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+                {mobileMoreTabs.map((tab) => {
+                  const Icon = groupTabIcon(tab);
+                  return (
+                    <button key={tab} type="button" className={`flex h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold ${detailTab === tab ? 'bg-pit-teal/15 text-white' : 'text-pit-text hover:bg-white/5 hover:text-white'}`} onClick={() => { setDetailTab(tab); setOpenMenu(null); }}>
+                      <Icon size={15} /> {groupTabLabel(tab, approved.length)}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </nav>
 
         {demoMode && (
           <div className="rounded-xl border border-yellow-300/25 bg-yellow-300/10 px-4 py-3 text-sm font-medium text-yellow-100">
@@ -913,139 +1041,81 @@ function GroupDetailView({
         )}
 
         {detailTab === 'info' && (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <div className="space-y-3">
-              {!demoMode && group.isadmin && (
-                <section className="rounded-xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.13),transparent_34%),linear-gradient(135deg,rgba(18,46,48,0.85),rgba(16,16,21,0.96))] p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pit-teal">Join code</p>
-                  <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-lg font-mono text-2xl font-black tracking-[0.22em] text-white transition hover:text-pit-teal focus:outline-none focus:ring-2 focus:ring-pit-teal/60"
-                      onClick={() => setShareInviteOpen(true)}
-                      title="Share group invite"
-                    >
-                      <Share size={18} className="shrink-0" aria-hidden="true" />
-                      {effectiveGroup.invitecode}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary px-3 py-2 text-xs"
-                      onClick={() => setShareInviteOpen(true)}
-                    >
-                      Share invite
-                    </button>
-                  </div>
-                </section>
-              )}
-
-              <section className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-pit-border bg-pit-bg px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Members</p>
-                  <p className="mt-2 text-2xl font-black text-white">{approved.length}</p>
+          <div className="grid min-w-0 gap-3 xl:grid-cols-[350px_minmax(0,1fr)] xl:gap-4">
+            {!demoMode && group.isadmin && (
+              <section className="min-w-0 rounded-2xl border border-pit-teal/25 bg-[radial-gradient(circle_at_top_left,rgba(20,184,181,0.15),transparent_36%),linear-gradient(140deg,rgba(18,46,48,0.8),rgba(18,19,24,0.98))] p-3.5 xl:col-start-1 xl:row-start-1 xl:p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-pit-teal">Join code</p>
+                <div className="mt-2 flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-2xl font-black tracking-[0.2em] text-white sm:text-3xl">{effectiveGroup.invitecode}</span>
+                  <button type="button" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pit-border bg-pit-bg/70 text-pit-text transition hover:border-pit-teal/50 hover:text-white" onClick={() => void copyInviteCode()} aria-label="Copy join code" title="Copy join code">
+                    {copyState === 'copied' ? <Check size={17} className="text-emerald-300" /> : <Copy size={17} />}
+                  </button>
+                  <button type="button" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pit-teal/40 bg-pit-teal/10 text-pit-teal transition hover:bg-pit-teal hover:text-pit-bg" onClick={() => setShareInviteOpen(true)} aria-label="Share group invite" title="Share group invite">
+                    <Share size={17} />
+                  </button>
                 </div>
-                <div className="rounded-xl border border-pit-border bg-pit-bg px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Approval</p>
-                  <p className="mt-2 text-sm font-bold text-white">{effectiveGroup.approvalneeded ? 'Required' : 'Open'}</p>
-                </div>
+                <p className={`mt-2 text-xs ${copyState === 'error' ? 'text-red-300' : 'text-pit-text'}`}>
+                  {copyState === 'copied' ? 'Join code copied.' : copyState === 'error' ? 'Could not copy the code.' : 'Copy or share this code to invite players.'}
+                </p>
               </section>
-
-            </div>
-
-            {group.isadmin && (
-              <div className="space-y-3">
-                {!user?.isdemo && (
-                  <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">Group Join Code</p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        className="input font-mono uppercase"
-                        value={inviteCode}
-                        onChange={(e) => setInviteCode(formatGroupInviteCodeInput(e.target.value))}
-                        onBlur={() => setInviteCode(normalizeGroupInviteCode(inviteCode))}
-                        maxLength={10}
-                        aria-label="Group join code"
-                      />
-                      <button
-                        className="btn-primary shrink-0"
-                        onClick={() => updateGroupMutation.mutate({ invitecode: normalizeGroupInviteCode(inviteCode) })}
-                        disabled={updateGroupMutation.isPending || !inviteCode.trim()}
-                      >
-                        <Save size={14} />
-                        {updateGroupMutation.isPending ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                    {updateGroupMutation.error && <p className="mt-2 text-sm text-red-400">{updateGroupMutation.error.message}</p>}
-                  </section>
-                )}
-
-                <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
-                  <div>
-                    <p className="text-sm font-semibold text-white">New tournament player tracking</p>
-                    <p className="mt-1 text-xs leading-5 text-pit-muted">
-                      This sets the default for tournaments created in this group. You can still change it while creating any individual tournament.
-                    </p>
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <select
-                      className="input"
-                      value={canUseClubFeatures ? defaultTrackingMode : 'standard'}
-                      onChange={(event) => setDefaultTrackingMode(event.target.value as 'standard' | 'player')}
-                      disabled={!canUseClubFeatures}
-                    >
-                      <option value="standard">Standard tracking</option>
-                      <option value="player">Player tracked stats</option>
-                    </select>
-                    <button
-                      className="btn-primary shrink-0"
-                      onClick={() => updateGroupMutation.mutate({ defaulttrackingmode: canUseClubFeatures ? defaultTrackingMode : 'standard' })}
-                      disabled={updateGroupMutation.isPending || !canUseClubFeatures}
-                    >
-                      <Save size={14} />
-                      Save
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-pit-muted">
-                    <span className="font-semibold text-pit-text">Standard tracking</span> keeps entries and results with the host.{' '}
-                    <span className="font-semibold text-pit-text">Player tracked stats</span> connects results to members so their finishes and trophies build over time.
-                  </p>
-                  {!canUseClubFeatures && (
-                    <p className="mt-2 text-xs leading-5 text-pit-muted">
-                      Host accounts use standard tracking. Player-tracked stats unlock with Club or Pro.
-                    </p>
-                  )}
-                </section>
-
-                <section className="rounded-xl border border-pit-border bg-pit-bg p-4">
-                  <div>
-                    <p className="text-sm font-semibold text-white">TV board check-in message</p>
-                    <p className="mt-1 text-xs leading-5 text-pit-muted">Shown on the TV board while players arrive and check in.</p>
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <input
-                      className="input"
-                      value={canUseClubFeatures ? tvSeatingMessage : (effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!')}
-                      onChange={(event) => setTvSeatingMessage(event.target.value)}
-                      disabled={!canUseClubFeatures}
-                      maxLength={180}
-                    />
-                    <button
-                      className="btn-primary shrink-0"
-                      onClick={() => updateGroupMutation.mutate({ tvseatingwelcomemessage: tvSeatingMessage })}
-                      disabled={updateGroupMutation.isPending || !canUseClubFeatures}
-                    >
-                      <Save size={14} />
-                      Save
-                    </button>
-                  </div>
-                </section>
-
-              </div>
             )}
+
+            <section className={`grid grid-cols-2 gap-2 xl:col-start-1 ${!demoMode && group.isadmin ? 'xl:row-start-2' : 'xl:row-start-1'}`}>
+              <button type="button" onClick={() => setDetailTab('members')} className="flex min-w-0 items-center gap-3 rounded-2xl border border-pit-border bg-pit-bg/75 p-3 text-left transition hover:border-pit-teal/45">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-teal/25 bg-pit-teal/10 text-pit-teal"><Users size={18} /></span>
+                <span className="min-w-0"><span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-pit-muted">Members</span><span className="mt-1 block text-xl font-black text-white">{approved.length}</span><span className="mt-1 hidden text-[10px] text-pit-muted sm:block">View all members</span></span>
+              </button>
+              <button type="button" onClick={() => group.isadmin && setSettingEditor('group')} className="flex min-w-0 items-center gap-3 rounded-2xl border border-pit-border bg-pit-bg/75 p-3 text-left transition hover:border-pit-teal/45">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-teal/25 bg-pit-teal/10 text-pit-teal"><ShieldCheck size={18} /></span>
+                <span className="min-w-0"><span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-pit-muted">Approval</span><span className="mt-1 block truncate text-base font-black text-white">{effectiveGroup.approvalneeded ? 'Required' : 'Open'}</span><span className="mt-1 hidden truncate text-[10px] text-pit-muted sm:block">{effectiveGroup.approvalneeded ? 'Admin approval' : 'Anyone can join'}</span></span>
+              </button>
+            </section>
+
+            <section className="min-w-0 rounded-2xl border border-pit-border bg-pit-surface/70 p-3 xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Settings2 size={17} className="text-pit-teal" />
+                <div><h3 className="text-sm font-bold text-white">Group Settings</h3><p className="mt-0.5 hidden text-xs text-pit-muted sm:block">Defaults used when players join and tournaments are created.</p></div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/55">
+                {!demoMode && group.isadmin && <GroupSettingRow icon={Hash} label="Group Join Code" description="The code players use to join this group." value={effectiveGroup.invitecode} onEdit={() => setSettingEditor('join')} />}
+                <GroupSettingRow icon={Users} label="Default Player Tracking" description="Connect tournament results to group members." value={effectiveGroup.defaulttrackingmode === 'player' ? 'Player tracked stats' : 'Standard tracking'} onEdit={group.isadmin && canUseClubFeatures ? () => setSettingEditor('tracking') : undefined} />
+                <GroupSettingRow icon={Home} label="TV Board Check-in Message" description="Shown while players arrive and check in." value={effectiveGroup.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!'} onEdit={group.isadmin && canUseClubFeatures ? () => setSettingEditor('tv') : undefined} last />
+              </div>
+              {updateGroupMutation.error && <p className="mt-2 text-sm text-red-300">{updateGroupMutation.error.message}</p>}
+            </section>
+
+            <section className="min-w-0 rounded-2xl border border-pit-border bg-pit-surface/70 p-3 xl:col-start-2 xl:row-start-3 xl:p-4">
+              <div className="mb-2 flex items-center gap-2"><Layers3 size={17} className="text-pit-teal" /><h3 className="text-sm font-bold text-white">Quick Access</h3></div>
+              <div className="grid gap-1.5 sm:grid-cols-5">
+                {([
+                  { tab: 'members' as DetailTab, icon: Users, label: 'Members', status: `${approved.length} member${approved.length === 1 ? '' : 's'}` },
+                  { tab: 'posts' as DetailTab, icon: MessageSquare, label: 'Posts', status: `${Number(effectiveGroup.postcount ?? 0)} posts` },
+                  { tab: 'structures' as DetailTab, icon: Layers3, label: 'Blind Structures', status: 'Saved setups' },
+                  { tab: 'history' as DetailTab, icon: Trophy, label: 'Tournament History', status: 'Results' },
+                  ...(group.isadmin ? [{ tab: 'voice' as DetailTab, icon: Mic2, label: 'Voice Config', status: aiAnnouncerEnabled ? 'Enabled' : 'Disabled' }] : []),
+                ]).map((item) => (
+                  <button key={item.tab} type="button" onClick={() => setDetailTab(item.tab)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-pit-border bg-pit-bg/55 px-3 py-2 text-left transition hover:border-pit-teal/40 sm:flex-col sm:justify-center sm:gap-1.5 sm:px-2 sm:py-3 sm:text-center">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pit-teal/10 text-pit-teal"><item.icon size={16} /></span>
+                    <span className="min-w-0 flex-1 sm:flex-none"><span className="block truncate text-xs font-semibold text-white">{item.label}</span><span className="mt-0.5 block truncate text-[10px] text-pit-muted">{item.status}</span></span>
+                    <ChevronRight size={14} className="shrink-0 text-pit-muted sm:hidden" />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="min-w-0 rounded-2xl border border-pit-border bg-pit-surface/70 p-3 xl:col-start-2 xl:row-start-4 xl:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Clock size={16} className="text-pit-teal" /><h3 className="text-sm font-bold text-white">Recent Activity</h3></div></div>
+              <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
+                <div className="rounded-xl border border-pit-border bg-pit-bg/55 px-3 py-3">
+                  <div className="flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pit-teal/10 text-pit-teal"><Users size={15} /></span><div className="min-w-0"><p className="truncate text-xs font-semibold text-white">{effectiveGroup.name} created</p><p className="mt-0.5 text-[10px] text-pit-muted">{formatGroupDate(effectiveGroup.createdat) || 'Group activity'}</p></div></div>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5 rounded-xl border border-pit-border bg-pit-bg/55 p-2">
+                  {[['🏆', aggregateStats.first, '1st'], ['🥈', aggregateStats.second, '2nd'], ['🥉', aggregateStats.third, '3rd'], ['💰', aggregateStats.cashes, 'Cashes'], ['🏁', aggregateStats.finals, 'Finals']].map(([icon, value, label]) => (
+                    <div key={String(label)} className="min-w-0 text-center"><span className="block text-sm" aria-hidden="true">{icon}</span><span className="mt-0.5 block text-sm font-black text-white">{value}</span><span className="block truncate text-[8px] uppercase tracking-wide text-pit-muted">{label}</span></div>
+                  ))}
+                </div>
+              </div>
+            </section>
           </div>
         )}
 
@@ -1407,41 +1477,6 @@ function GroupDetailView({
         {/* Members tab */}
         {detailTab === 'members' && (
           <div className="space-y-3">
-            {currentMember?.approved && (
-              <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">Your group alerts</p>
-                    <p className="mt-1 text-xs leading-5 text-pit-muted">
-                      Choose how this group can notify you. SMS and push are preference-ready while provider/browser delivery is wired.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <PreferenceToggle
-                      label="Email"
-                      active={currentMember.emailalertsenabled !== false}
-                      disabled={notificationPrefsMutation.isPending}
-                      onClick={() => notificationPrefsMutation.mutate({ emailalertsenabled: currentMember.emailalertsenabled === false })}
-                    />
-                    <PreferenceToggle
-                      label="SMS"
-                      active={Boolean(currentMember.smsalertsenabled)}
-                      disabled={notificationPrefsMutation.isPending}
-                      onClick={() => notificationPrefsMutation.mutate({ smsalertsenabled: !currentMember.smsalertsenabled })}
-                    />
-                    <PreferenceToggle
-                      label="Push"
-                      active={Boolean(currentMember.pushalertsenabled)}
-                      disabled={notificationPrefsMutation.isPending}
-                      onClick={() => notificationPrefsMutation.mutate({ pushalertsenabled: !currentMember.pushalertsenabled })}
-                    />
-                  </div>
-                </div>
-                {notificationPrefsMutation.error && (
-                  <p className="mt-2 text-sm text-red-400">{notificationPrefsMutation.error.message}</p>
-                )}
-              </div>
-            )}
             {pending.length > 0 && group.isadmin && (
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1738,14 +1773,14 @@ function GroupDetailView({
           <div className="space-y-3">
             {structureWizardOpen ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">New blind structure</p>
-                    <p className="mt-1 text-xs text-pit-muted">Set up the structure, then save it for this group.</p>
+                    <h2 className="text-xl font-semibold text-white sm:text-2xl">New blind structure</h2>
+                    <p className="mt-1 text-sm text-pit-muted">Build a custom blind structure for your group.</p>
                   </div>
                   <button
                     type="button"
-                    className="btn-ghost px-3 py-2 text-xs"
+                    className="btn-ghost min-h-11 shrink-0 px-3 py-2 text-sm"
                     onClick={() => {
                       setStructureWizardOpen(false);
                       setStructureNameError('');
@@ -1755,10 +1790,10 @@ function GroupDetailView({
                     Cancel
                   </button>
                 </div>
-                <label className="block rounded-xl border border-pit-border bg-pit-bg p-4">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-pit-muted">Structure name</span>
+                <label className="block rounded-xl border border-pit-border bg-pit-surface p-4 sm:p-5">
+                  <span className="text-sm font-semibold text-white">Structure name</span>
                   <input
-                    className="input mt-2"
+                    className="input mt-2 min-h-11 w-full"
                     value={newStructureName}
                     onChange={(event) => {
                       setNewStructureName(event.target.value);
@@ -1768,6 +1803,7 @@ function GroupDetailView({
                     maxLength={80}
                     autoFocus
                   />
+                  <span className="mt-2 block text-xs text-pit-muted">Choose a clear name your hosts will recognize later.</span>
                 </label>
                 <BlindStructureCalculator
                   tournament={{ maxplayers: 0, rebuychips: 0, addonchips: 0, rebuyprice: 0, addonprice: 0 }}
@@ -1838,6 +1874,100 @@ function GroupDetailView({
           </div>
         )}
       </div>
+      <Modal
+        open={Boolean(settingEditor)}
+        title={settingEditor === 'group'
+          ? 'Edit group'
+          : settingEditor === 'join'
+            ? 'Group join code'
+            : settingEditor === 'tracking'
+              ? 'Default player tracking'
+              : 'TV board check-in message'}
+        onClose={() => setSettingEditor(null)}
+        mobilePlacement="center"
+        footer={(
+          <>
+            <button type="button" className="btn-ghost" onClick={() => setSettingEditor(null)} disabled={updateGroupMutation.isPending}>Cancel</button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={saveSettingEditor}
+              disabled={updateGroupMutation.isPending || (settingEditor === 'group' && !groupName.trim()) || (settingEditor === 'join' && !normalizeGroupInviteCode(inviteCode))}
+            >
+              <Save size={14} /> {updateGroupMutation.isPending ? 'Saving...' : 'Save'}
+            </button>
+          </>
+        )}
+      >
+        {settingEditor === 'group' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl border border-pit-border bg-pit-bg/60 p-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-pit-teal/45 bg-pit-teal/10 text-xl font-black text-white">
+                {effectiveGroup.communityimagedata ? <img src={effectiveGroup.communityimagedata} alt="" className="h-full w-full object-cover" /> : groupInitial}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Group image</p>
+                <p className="mt-1 text-xs leading-5 text-pit-muted">Upload a PNG, JPG, GIF, or WebP up to 25 MB. It will be resized automatically.</p>
+                <label className="btn-ghost mt-2 inline-flex cursor-pointer px-3 py-2 text-xs">
+                  <Upload size={14} /> {updateCommunityImageMutation.isPending ? 'Preparing...' : 'Choose image'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="sr-only"
+                    disabled={updateCommunityImageMutation.isPending}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) updateCommunityImageMutation.mutate(file);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            {communityImageError && <p className="text-sm text-red-300">{communityImageError}</p>}
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">Group name</span>
+              <input className="input" value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={100} autoFocus />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-pit-border bg-pit-bg/60 px-3 py-3">
+              <span><span className="block text-sm font-semibold text-white">Require approval to join</span><span className="mt-1 block text-xs text-pit-muted">New members wait for an admin before entering the group.</span></span>
+              <input type="checkbox" className="h-5 w-5 accent-pit-teal" checked={approvalNeeded} onChange={(event) => setApprovalNeeded(event.target.checked)} />
+            </label>
+          </div>
+        )}
+        {settingEditor === 'join' && (
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">Group join code</span>
+            <input
+              className="input font-mono uppercase tracking-[0.14em]"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(formatGroupInviteCodeInput(event.target.value))}
+              onBlur={() => setInviteCode(normalizeGroupInviteCode(inviteCode))}
+              maxLength={10}
+              autoFocus
+            />
+            <span className="mt-2 block text-xs leading-5 text-pit-muted">Use 1-10 letters, numbers, or spaces. Join codes are unique across groups and leagues.</span>
+          </label>
+        )}
+        {settingEditor === 'tracking' && (
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">Player tracking</span>
+            <select className="input" value={defaultTrackingMode} onChange={(event) => setDefaultTrackingMode(event.target.value as 'standard' | 'player')} autoFocus>
+              <option value="standard">Standard tracking</option>
+              <option value="player">Player tracked stats</option>
+            </select>
+            <span className="mt-2 block text-xs leading-5 text-pit-muted">Player tracked stats connect tournament results to member histories and automatic trophies.</span>
+          </label>
+        )}
+        {settingEditor === 'tv' && (
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-pit-muted">Check-in message</span>
+            <textarea className="input min-h-24" value={tvSeatingMessage} onChange={(event) => setTvSeatingMessage(event.target.value)} maxLength={180} autoFocus />
+            <span className="mt-2 block text-xs leading-5 text-pit-muted">Shown on the TV board while players arrive and check in.</span>
+          </label>
+        )}
+        {updateGroupMutation.error && <p className="mt-3 text-sm text-red-300">{updateGroupMutation.error.message}</p>}
+      </Modal>
       <JoinShareDialog
         open={shareInviteOpen}
         onClose={() => setShareInviteOpen(false)}
@@ -1893,6 +2023,41 @@ function sortGroupMembersByName(members: GroupMember[]): GroupMember[] {
     if (nameCompare !== 0) return nameCompare;
     return a.userid.localeCompare(b.userid);
   });
+}
+
+function GroupSettingRow({
+  icon: Icon,
+  label,
+  description,
+  value,
+  onEdit,
+  last = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  value: string;
+  onEdit?: () => void;
+  last?: boolean;
+}) {
+  return (
+    <div className={`grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3 py-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_minmax(180px,0.65fr)_auto] sm:gap-x-3 ${last ? '' : 'border-b border-pit-border'}`}>
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal"><Icon size={16} /></span>
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-semibold text-white sm:text-sm">{label}</span>
+        <span className="mt-0.5 hidden truncate text-[10px] text-pit-muted sm:block">{description}</span>
+        <span className="mt-1 block truncate text-[11px] text-pit-text sm:hidden">{value}</span>
+      </span>
+      <span className="hidden min-w-0 truncate rounded-lg border border-pit-border bg-pit-surface/70 px-3 py-2 text-xs text-pit-text sm:block">{value}</span>
+      {onEdit ? (
+        <button type="button" aria-label={`Edit ${label}`} className="flex h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-pit-teal transition hover:bg-pit-teal/10 hover:text-white" onClick={onEdit}>
+          <span className="hidden sm:inline">Edit</span><ChevronRight size={14} />
+        </button>
+      ) : (
+        <span className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+    </div>
+  );
 }
 
 function CoinImage({ coin }: { coin: GroupCoin }) {

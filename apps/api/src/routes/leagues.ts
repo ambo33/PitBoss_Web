@@ -2900,6 +2900,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
     query<LeagueMemberRow>(
     `SELECT u.guid AS userid, u.emailaddress, u.emailencrypted,
             ${leagueDisplayNameSql('m', 'u')} AS displayname,
+            COALESCE(claimed_meta.avatarimagedata, m.avatarimagedata) AS avatarimagedata,
             lm.admin AS isadmin, lm.approved, COALESCE(lsp.participating, FALSE) AS participating,
             COALESCE(m.isguestuser, FALSE) AS isguestuser,
             claimed.claimedby AS claimedbyuserid,
