@@ -294,7 +294,7 @@ export function BlindStructureCalculator({
   }
 
   return (
-    <div className="space-y-4 pb-24 md:pb-0">
+    <div className="space-y-4">
       <section className="card overflow-hidden !p-0">
         <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-2 text-white">
@@ -416,7 +416,7 @@ export function BlindStructureCalculator({
       )}
 
       {expanded && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-pit-border bg-pit-surface/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:hidden">
+        <div className="sticky bottom-0 z-20 -mx-1 mt-3 border-t border-pit-border bg-pit-surface/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-screen-sm gap-2">
             <button type="button" className="btn-ghost min-h-11 w-12 shrink-0 px-0" aria-label="Reset blind structure" onClick={reset} disabled={!hasChanges || saving}>
               <RotateCcw size={18} />

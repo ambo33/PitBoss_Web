@@ -49,6 +49,16 @@ export function initSocket(httpServer: HttpServer): void {
       startInterval(tournamentId);
       await persistTimer(state);
       io.to(`t:${tournamentId}`).emit('timer-state', state);
+      void sendTournamentNotification(tournamentId, 'tournament_timer_started', {
+        levelNumber: state.currentlevel,
+        tag: `tournament-${tournamentId}-timer-status`,
+      }, {
+        audience: 'active-participants-and-admins',
+        entityId: `${tournamentId}:timer-status`,
+        dedupe: false,
+      }).catch((err) => {
+        console.error('Tournament timer started push failed', err instanceof Error ? err.message : err);
+      });
       if (state.currentlevel !== previousLevel) notifyLevelChanged(state);
     });
 
@@ -69,14 +79,23 @@ export function initSocket(httpServer: HttpServer): void {
       notifyLevelChanged(state);
     });
 
-    socket.on('timer-pause', async ({ tournamentId }: { tournamentId: string }) => {
+    socket.on('timer-pause', async ({ tournamentId, reason }: { tournamentId: string; reason?: 'tournament-completed' }) => {
       if (!await canControlTournamentTimer(socket, tournamentId)) return;
-      const state = timerState.get(tournamentId);
-      if (!state) return;
-      state.running = false;
-      stopInterval(tournamentId);
-      await persistTimer(state);
-      io.to(`t:${tournamentId}`).emit('timer-state', state);
+      const state = timerState.get(tournamentId) ?? await loadTimerState(tournamentId);
+      if (!state.running) return;
+      await pauseTournamentTimer(tournamentId, { reason });
+      if (reason !== 'tournament-completed') {
+        void sendTournamentNotification(tournamentId, 'tournament_timer_paused', {
+          levelNumber: state.currentlevel,
+          tag: `tournament-${tournamentId}-timer-status`,
+        }, {
+          audience: 'active-participants-and-admins',
+          entityId: `${tournamentId}:timer-status`,
+          dedupe: false,
+        }).catch((err) => {
+          console.error('Tournament timer paused push failed', err instanceof Error ? err.message : err);
+        });
+      }
     });
 
     socket.on('timer-next', async ({ tournamentId }: { tournamentId: string }) => {

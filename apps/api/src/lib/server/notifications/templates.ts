@@ -31,6 +31,8 @@ const COMMAND_CENTER_NOTIFICATION_TYPES = new Set<NotificationType>([
 const TOURNAMENT_LOBBY_NOTIFICATION_TYPES = new Set<NotificationType>([
   'tournament_starting_soon',
   'tournament_registration_closing',
+  'tournament_timer_started',
+  'tournament_timer_paused',
   'blinds_level_up',
   'break_started',
   'break_ending_soon',
@@ -80,6 +82,14 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTempla
   host_announcement_posted: {
     title: 'Host announcement',
     body: '{announcementPreview}',
+  },
+  tournament_timer_started: {
+    title: '{tournamentName} is running',
+    body: 'The tournament clock is running at Level {levelNumber}.',
+  },
+  tournament_timer_paused: {
+    title: '{tournamentName} is paused',
+    body: 'The tournament clock has been paused.',
   },
   blinds_level_up: {
     title: 'Blinds are going up',

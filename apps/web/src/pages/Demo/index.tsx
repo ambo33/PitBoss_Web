@@ -37,6 +37,7 @@ export default function DemoPage() {
         window.clearInterval(buildStatusTimer);
         buildStatusTimer = null;
       }
+      sessionStorage.setItem('pb_demo_token', demo.token);
       localStorage.setItem('pb_token', demo.token);
       setStatus('Loading the tournament room...');
       const profile = await api.me();

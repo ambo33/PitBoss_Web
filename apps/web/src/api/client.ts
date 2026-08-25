@@ -4,7 +4,7 @@ const BASE = '/api';
 const REQUEST_TIMEOUT_MS = 20_000;
 
 function getToken(): string | null {
-  return localStorage.getItem('pb_token');
+  return sessionStorage.getItem('pb_demo_token') ?? localStorage.getItem('pb_token');
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

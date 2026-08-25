@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/auth';
 import { getConfiguredBountyPool } from '../../utils/bountyMath';
 import { isEnabledFlag } from '../../utils/flags';
 
-interface Props { tournamentId: string; tournament: Tournament; }
+interface Props { tournamentId: string; tournament: Tournament; summaryOnly?: boolean; }
 type PayoutMode = 'count' | 'percent';
 
 interface PayoutStructureConfig {
@@ -24,7 +24,7 @@ const DEFAULT_SPLITS: Record<number, number[]> = {
 };
 const DEFAULT_PAYOUT_PLANNING_LIMIT = 20;
 
-export default function Payouts({ tournamentId, tournament }: Props) {
+export default function Payouts({ tournamentId, tournament, summaryOnly = false }: Props) {
   const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const canUseClubFeatures = Boolean(user?.issuperadmin || user?.canuseclubfeatures);
@@ -176,6 +176,35 @@ export default function Payouts({ tournamentId, tournament }: Props) {
   }
 
   const payouts = buildRoundedPayouts(totalPot, visibleSplits, payoutConfig.roundingdenomination);
+
+  if (summaryOnly) {
+    return (
+      <section className="order-5 min-w-0 overflow-hidden rounded-xl border border-pit-border bg-pit-card xl:order-none">
+        <div className="flex items-center justify-between gap-3 border-b border-pit-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-pit-teal">$</span>
+            <h2 className="text-sm font-bold text-white">Payout Structure</h2>
+          </div>
+          <span className="text-xs text-pit-muted">{places} paid spot{places === 1 ? '' : 's'}</span>
+        </div>
+        <div className="grid gap-3 p-4 sm:grid-cols-[minmax(130px,.65fr)_1fr]">
+          <div className="rounded-lg border border-pit-border bg-pit-bg/45 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-pit-muted">Prize Pool</p>
+            <p className="mt-1 text-xl font-bold text-pit-teal">${totalPot.toFixed(2)}</p>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-pit-border">
+            {payouts.slice(0, 5).map((amount, index) => (
+              <div key={index} className="flex items-center justify-between border-b border-pit-border px-3 py-2.5 text-sm last:border-b-0">
+                <span className="font-bold text-white">{ordinal(index + 1)}</span>
+                <span className="font-semibold text-pit-teal">${amount.toFixed(2)}</span>
+              </div>
+            ))}
+            {!payouts.length && <p className="px-3 py-5 text-center text-sm text-pit-muted">Payouts will appear as players enter.</p>}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="overflow-hidden rounded-xl border border-pit-border bg-pit-card">

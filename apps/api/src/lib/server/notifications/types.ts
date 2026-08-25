@@ -6,6 +6,8 @@ export const NOTIFICATION_TYPES = [
   'tournament_cancelled',
   'group_member_approved',
   'host_announcement_posted',
+  'tournament_timer_started',
+  'tournament_timer_paused',
   'blinds_level_up',
   'break_started',
   'break_ending_soon',
@@ -97,6 +99,8 @@ export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCa
 
   tournament_starting_soon: 'tournament_play',
   tournament_registration_closing: 'tournament_play',
+  tournament_timer_started: 'tournament_play',
+  tournament_timer_paused: 'tournament_play',
   blinds_level_up: 'tournament_play',
   break_started: 'tournament_play',
   break_ending_soon: 'tournament_play',
@@ -108,10 +112,10 @@ export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCa
   rebuy_request_sent: 'tournament_play',
   addon_request_sent: 'tournament_play',
 
-  knockout_recorded: 'bounties_achievements',
-  bounty_earned: 'bounties_achievements',
-  mystery_bounty_unlocked: 'bounties_achievements',
-  achievement_earned: 'bounties_achievements',
+  knockout_recorded: 'tournament_play',
+  bounty_earned: 'tournament_play',
+  mystery_bounty_unlocked: 'tournament_play',
+  achievement_earned: 'tournament_play',
 
   tournament_finalized: 'league',
   league_standings_updated: 'league',

@@ -39,6 +39,11 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       setAuth: (token, user) => {
+        if (user.isdemo) {
+          sessionStorage.setItem('pb_demo_token', token);
+        } else {
+          sessionStorage.removeItem('pb_demo_token');
+        }
         localStorage.setItem('pb_token', token);
         set({ token, user });
       },
@@ -48,6 +53,7 @@ export const useAuthStore = create<AuthState>()(
         }));
       },
       logout: () => {
+        sessionStorage.removeItem('pb_demo_token');
         localStorage.removeItem('pb_token');
         set({ token: null, user: null });
       },

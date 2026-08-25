@@ -2195,18 +2195,22 @@ function CreateTournamentComposer({
         <section className="overflow-hidden rounded-2xl border border-pit-border bg-pit-surface/80 shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
           <div className="border-b border-pit-border bg-gradient-to-r from-pit-teal/10 to-transparent px-4 py-4 sm:px-6">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pit-teal">{steps[step]}</p>
-            <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">
-              {step === 0 && 'What are you hosting?'}
-              {step === 1 && (isCashGame ? 'Set the cash-game details' : 'Build the game details')}
-              {step === 2 && 'Choose the room options'}
-              {step === 3 && 'Review your game'}
-            </h2>
-            <p className="mt-1 text-sm leading-5 text-pit-muted">
-              {step === 0 && 'Start with the essentials. You can fine-tune everything later.'}
-              {step === 1 && (isCashGame ? 'Set the stakes, seats, and buy-in range.' : 'Set the field, buy-in, rebuys, and add-ons.')}
-              {step === 2 && (isCashGame ? 'Choose visibility and alerts.' : 'Choose structure, tracking, and announcements.')}
-              {step === 3 && 'Give it one last look before it goes on the calendar.'}
-            </p>
+            {(step !== 1 || isCashGame) && (
+              <>
+                <h2 className="mt-1 text-xl font-black text-white sm:text-2xl">
+                  {step === 0 && 'What are you hosting?'}
+                  {step === 1 && 'Set the cash-game details'}
+                  {step === 2 && 'Choose the room options'}
+                  {step === 3 && 'Review your game'}
+                </h2>
+                <p className="mt-1 text-sm leading-5 text-pit-muted">
+                  {step === 0 && 'Start with the essentials. You can fine-tune everything later.'}
+                  {step === 1 && 'Set the stakes, seats, and buy-in range.'}
+                  {step === 2 && (isCashGame ? 'Choose visibility and alerts.' : 'Choose structure, tracking, and announcements.')}
+                  {step === 3 && 'Give it one last look before it goes on the calendar.'}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="p-4 sm:p-6">
@@ -2336,7 +2340,6 @@ function CreateTournamentComposer({
                     checked={addonsActive}
                     onChange={(event) => setForm((current) => ({ ...current, addonsenabled: event.target.checked }))}
                     title="Offer an add-on"
-                    description="Reveal the price and chip amount only when used."
                     icon={<Banknote size={18} />}
                   />
                   {addonsActive && (
@@ -2410,7 +2413,7 @@ function CreateTournamentComposer({
                     />
                   </WizardPanel>
 
-                  <ToggleRow checked={form.registerself} onChange={set('registerself')} title="Register me" description={selectedGroupName ? `Add me to ${selectedGroupName} when it is created.` : 'Add me as a player when it is created.'} icon={<CheckCircle2 size={18} />} />
+                  <ToggleRow checked={form.registerself} onChange={set('registerself')} title="Register me" description="Enable to register self to this game" icon={<CheckCircle2 size={18} />} />
                   <ToggleRow checked={Boolean(form.groupid) && form.notifygroup} disabled={!form.groupid} onChange={set('notifygroup')} title="Announce to the group" description="Email approved group members when the tournament is posted." icon={<Bell size={18} />} />
                 </div>
               )
@@ -2686,7 +2689,7 @@ function ToggleRow({
   disabled?: boolean;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   title: string;
-  description: string;
+  description?: string;
   icon?: React.ReactNode;
   tone?: 'teal' | 'violet';
 }) {
@@ -2698,7 +2701,7 @@ function ToggleRow({
         {icon && <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${accent}`}>{icon}</div>}
         <div className="min-w-0">
           <p className="text-sm font-black text-white">{title}</p>
-          <p className="mt-0.5 text-xs leading-4 text-pit-muted">{description}</p>
+          {description && <p className="mt-0.5 text-xs leading-4 text-pit-muted">{description}</p>}
         </div>
       </div>
       <div className={`flex h-6 w-11 shrink-0 items-center rounded-full px-1 transition-colors duration-150 ${switchColor}`}>

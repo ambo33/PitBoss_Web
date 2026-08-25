@@ -29,12 +29,15 @@ interface Props {
   title?: string;
   back?: string;
   backLabel?: string;
+  backIcon?: React.ReactNode;
+  backAriaLabel?: string;
   tab?: NavTab;
   onTabChange?: (tab: NavTab) => void;
   compactSidebar?: boolean;
   hideSidebar?: boolean;
   hideMobileNav?: boolean;
   hideFeedback?: boolean;
+  hideHeader?: boolean;
   headerRight?: React.ReactNode | ((actions: { openFeedback: () => void }) => React.ReactNode);
   mainWidthClassName?: string;
   responsiveHomeShell?: ResponsiveHomeShellProps;
@@ -53,12 +56,15 @@ export default function Layout({
   title,
   back,
   backLabel,
+  backIcon,
+  backAriaLabel,
   tab,
   onTabChange,
   compactSidebar = false,
   hideSidebar = false,
   hideMobileNav = false,
   hideFeedback = false,
+  hideHeader = false,
   headerRight,
   mainWidthClassName = 'max-w-5xl',
   responsiveHomeShell,
@@ -287,17 +293,21 @@ export default function Layout({
         )}
 
         <div className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden ${contentMarginClass}`}>
-          <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/80 bg-[#111318]/95 shadow-[0_10px_28px_rgba(0,0,0,0.26)] backdrop-blur md:bg-[#111318]/95 ${responsiveHomeShell ? 'min-[1100px]:hidden' : ''} ${headerPaddingClass}`}>
+          {!hideHeader && <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/80 bg-[#111318]/95 shadow-[0_10px_28px_rgba(0,0,0,0.26)] backdrop-blur md:bg-[#111318]/95 ${responsiveHomeShell ? 'min-[1100px]:hidden' : ''} ${headerPaddingClass}`}>
             <div className="flex min-w-0 items-center gap-3">
               {back ? (
                 <Link
                   to={back}
-                  className={backLabel
+                  aria-label={backAriaLabel ?? backLabel ?? 'Back'}
+                  title={backAriaLabel ?? backLabel ?? 'Back'}
+                  className={backIcon
+                    ? 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pit-teal/30 bg-gradient-to-br from-pit-teal/15 to-[#122E30] text-pit-teal shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition hover:border-pit-teal/65 hover:bg-pit-teal/20 hover:text-white'
+                    : backLabel
                     ? 'inline-flex shrink-0 items-center gap-1 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 to-[#122E30] px-3 py-2 text-xs font-semibold text-pit-teal transition hover:border-pit-teal/70 hover:text-white'
                     : 'flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white'}
                 >
-                  <ChevronLeft size={18} />
-                  <span className={backLabel ? '' : 'hidden sm:inline'}>{backLabel ?? 'Back'}</span>
+                  {backIcon ?? <ChevronLeft size={18} />}
+                  {!backIcon && <span className={backLabel ? '' : 'hidden sm:inline'}>{backLabel ?? 'Back'}</span>}
                 </Link>
               ) : (
                 <div className={hideSidebar || responsiveHomeShell ? 'block' : 'md:hidden'}>
@@ -318,7 +328,7 @@ export default function Layout({
               )}
               {resolvedHeaderRight}
             </div>
-          </header>
+          </header>}
 
           <main className={`mx-auto w-full min-w-0 max-w-full flex-1 overflow-x-hidden ${mainPaddingClass} ${mainWidthClassName}`}>
             {children}

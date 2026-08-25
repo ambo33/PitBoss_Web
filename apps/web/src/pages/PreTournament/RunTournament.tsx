@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, Share, Skull, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Share, Skull, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
@@ -159,6 +159,7 @@ export default function RunTournament({
   const [activeMysteryBounty, setActiveMysteryBounty] = useState<MysteryBountyReveal | null>(null);
   const [activeChampion, setActiveChampion] = useState<ChampionCelebration | null>(null);
   const [showTvMenu, setShowTvMenu] = useState(false);
+  const [playerLobbyQrExpanded, setPlayerLobbyQrExpanded] = useState(false);
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
   const [timerStartError, setTimerStartError] = useState('');
   const [demoStartCoachDismissed, setDemoStartCoachDismissed] = useState(false);
@@ -200,7 +201,7 @@ export default function RunTournament({
   const demoMode = Boolean(user?.isdemo || tournament.isdemo);
   const tvGreetingDisplayEnabled = tournament.tvgreetingdisplayenabled ?? true;
   const tvGreetingAudioEnabled = tournament.tvgreetingaudioenabled ?? true;
-  const showKnockoutQr = !demoMode && (mode === 'admin' || (displayMode && (tournament.tvshowknockoutqrenabled ?? true)));
+  const showPlayerLobbyQr = !demoMode && mode === 'admin';
   const persistedTvDisplayMode: TvDisplayMode = tournament.tvdisplaymode === 'seating' ? 'seating' : 'timer';
   const [localTvDisplayMode, setLocalTvDisplayMode] = useState<TvDisplayMode>(persistedTvDisplayMode);
   const mobileStructurePanelId = `mobile-run-structure-${tournamentId}`;
@@ -623,12 +624,6 @@ export default function RunTournament({
   );
 
   const selectedPlayer = actionablePlayers.find((player) => player.userid === selectedPlayerId) ?? actionablePlayers[0] ?? null;
-  const selectedPlayerLabel = selectedPlayer ? playerNameWithMedals(selectedPlayer) : 'No active players';
-  const longestPlayerLabelLength = actionablePlayers.reduce((max, player) => {
-    const label = playerNameWithMedals(player);
-    return Math.max(max, label.length);
-  }, selectedPlayerLabel.length);
-  const playerSelectWidth = clamp((longestPlayerLabelLength * 8) + 56, 190, 360);
 
   useEffect(() => {
     if (!selectedPlayerId && actionablePlayers[0]) {
@@ -1145,6 +1140,10 @@ export default function RunTournament({
     : secs <= 300
       ? 'border-yellow-300/40 bg-yellow-300/10'
       : 'border-pit-border bg-pit-bg/50';
+  const adminTimerTextTone = showAdminControls && !timerState?.running ? 'text-yellow-300' : urgency;
+  const adminTimerPanelTone = showAdminControls && !timerState?.running
+    ? 'border-yellow-300/45 bg-[radial-gradient(circle_at_center,rgba(250,204,21,0.08),rgba(8,20,25,0.72)_68%)]'
+    : timerTone;
   const playerLobbyUrl = `${window.location.origin}/lobby/${tournamentId}`;
 
   function handleManualLevelChange(targetBlind: BlindLevel | null | undefined) {
@@ -1201,6 +1200,13 @@ export default function RunTournament({
     return counts;
   }, [players]);
   const tournamentComplete = players.some((player) => Number(player.placed) === 1);
+  useEffect(() => {
+    if (!showAdminControls || displayMode || !tournamentComplete || !timerState?.running) return;
+    socketRef.current?.emit('timer-pause', {
+      tournamentId,
+      reason: 'tournament-completed',
+    });
+  }, [displayMode, showAdminControls, timerState?.running, tournamentComplete, tournamentId]);
   const finalPaidPlacements = useMemo(
     () => Array.from({ length: payoutPlaces }, (_, index) => {
       const place = index + 1;
@@ -1284,6 +1290,12 @@ export default function RunTournament({
     ...(tournament.bountyenabled ? [{ label: 'Bounties Left', value: formatMoney(bountyRemaining), accent: true }] : []),
     ...(knockoutLeader ? [{ label: 'Knockout Leader', value: `${knockoutLeader.name} (${knockoutLeader.count})` }] : []),
   ];
+  const structureFocusIndex = Math.max(
+    0,
+    effectiveBlinds.findIndex((blind) => blind.level === effectiveLevel)
+  );
+  const compactStructureStart = Math.max(0, structureFocusIndex - 1);
+  const compactStructureEnd = Math.min(effectiveBlinds.length, structureFocusIndex + 3);
   const seatedPlayers = useMemo(
     () => players
       .filter((player) => player.tablenumber != null && player.seat != null && player.placed == null)
@@ -1356,14 +1368,89 @@ export default function RunTournament({
     );
   }
 
+  const finalRecapPanel = showAdminControls && !displayMode && tournamentComplete && finalRecapSvg ? (
+    <section className="rounded-2xl border border-pit-teal/30 bg-pit-card/92 p-4 shadow-2xl shadow-pit-teal/5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-pit-teal">Final tournament recap</p>
+          <h2 className="mt-1 text-2xl font-black text-white">{tournament.name}</h2>
+          <p className="mt-1 text-sm text-pit-text">
+            Share the paid results, player count, rebuys, add-ons, and tracked knockouts.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" className="btn-primary gap-2" onClick={() => void handleShareFinalRecap(false)}>
+            <Share size={16} />
+            Share recap
+          </button>
+          <button type="button" className="btn-ghost gap-2" onClick={() => void handleShareFinalRecap(true)}>
+            <Download size={16} />
+            Save image
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        {[
+          { label: 'Total Players', value: fieldSize },
+          { label: 'Prize Pool', value: formatMoney(totalPot), accent: true },
+          { label: 'Total Rebuys', value: totalRebuys },
+          { label: 'Total Add-Ons', value: totalAddons },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-pit-border bg-pit-bg/50 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">{stat.label}</p>
+            <p className={`mt-1 text-lg font-black ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-pit-border">
+        <div className="min-w-[30rem]">
+          <div className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] bg-pit-bg/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">
+            <span>Place</span>
+            <span>Player</span>
+            <span>Knockouts</span>
+            <span className="text-right">Won</span>
+          </div>
+          {finalPaidPlacements.map((placement) => {
+            const playerName = placement.player ? playerNameWithMedals(placement.player) : 'TBD';
+            return (
+              <div
+                key={placement.place}
+                className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] items-center border-t border-pit-border bg-pit-surface/35 px-3 py-2 text-sm"
+              >
+                <span className="font-black text-pit-teal">{ordinal(placement.place)}</span>
+                <span className="min-w-0 truncate font-semibold text-white">{playerName}</span>
+                <span className="inline-flex items-center gap-1 font-semibold text-amber-200">
+                  <Skull size={14} />
+                  {placement.knockouts}
+                </span>
+                <span className="text-right font-black text-pit-teal">{formatMoney(placement.amount)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  ) : null;
+  const runnerShellClass = `space-y-4 ${
+    displayMode
+      ? ''
+      : '-mx-4 -mb-24 -mt-4 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_12%_5%,rgba(20,184,166,0.22),transparent_36%),radial-gradient(circle_at_86%_7%,rgba(139,92,246,0.15),transparent_34%),linear-gradient(to_bottom,rgba(18,46,48,0.74)_0%,rgba(13,18,24,0.9)_48%,#050609_88%,#050609_100%)] px-2 pb-24 pt-4 sm:-mx-6 sm:px-2 md:-mt-6 md:pt-6 lg:-mx-8 lg:px-2'
+  }`;
+
+  if (finalRecapPanel && !activeChampion && !activeMysteryBounty) {
+    return (
+      <div className={runnerShellClass}>
+        <div ref={screenRef} className="relative overflow-hidden p-0">
+          {finalRecapPanel}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`space-y-4 ${
-        displayMode
-          ? ''
-          : '-mx-4 -mb-24 -mt-4 min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_12%_5%,rgba(20,184,166,0.22),transparent_36%),radial-gradient(circle_at_86%_7%,rgba(139,92,246,0.15),transparent_34%),linear-gradient(to_bottom,rgba(18,46,48,0.74)_0%,rgba(13,18,24,0.9)_48%,#050609_88%,#050609_100%)] px-2 pb-24 pt-4 sm:-mx-6 sm:px-3 md:-mt-6 md:pt-6 lg:-mx-8 lg:px-4'
-      }`}
-    >
+    <div className={runnerShellClass}>
       <div
         ref={screenRef}
         className={`relative overflow-hidden space-y-3 ${
@@ -1373,7 +1460,7 @@ export default function RunTournament({
         }`}
       >
         {showDemoStartCoach && (
-          <div className="sticky top-16 z-40 rounded-2xl border border-pit-teal/45 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:top-4">
+          <div className="relative z-40 rounded-2xl border border-pit-teal/45 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md">
             <p className="text-sm font-black text-white">Click Start to continue the demo.</p>
             <p className="mt-1 text-xs leading-5 text-pit-text">
               You are already mid-tournament with players seated, payouts live, and the TV board ready.
@@ -1381,7 +1468,7 @@ export default function RunTournament({
           </div>
         )}
         {demoExploreTipVisible && !showDemoStartCoach && (
-          <div className="sticky top-16 z-40 flex flex-col gap-3 rounded-2xl border border-pit-teal/35 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:top-4 md:flex-row md:items-center md:justify-between">
+          <div className="relative z-40 flex flex-col gap-3 rounded-2xl border border-pit-teal/35 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-black text-white">Now play around with the room.</p>
               <p className="mt-1 text-xs leading-5 text-pit-text">
@@ -1399,12 +1486,11 @@ export default function RunTournament({
           </div>
         )}
         {showAdminControls ? (
-          <section className="flex flex-wrap items-center gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex min-w-0 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5">
+          <section className="w-full border-y border-pit-border/80 bg-black/15 px-1 py-2 sm:px-2">
+              <div className="grid w-full grid-cols-2 items-center gap-2 min-[768px]:grid-cols-[minmax(0,1fr)_auto] min-[1180px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                <div className="col-span-2 grid min-w-0 grid-cols-2 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5 min-[768px]:col-span-1 min-[768px]:max-w-[420px]">
                   <select
-                    className="input min-w-0 py-1.5 pr-8 text-sm"
-                  style={{ width: `${playerSelectWidth}px`, maxWidth: 'min(68vw, 320px)' }}
+                    className="input w-full min-w-0 py-1.5 pr-8 text-sm"
                   value={selectedPlayer?.userid ?? ''}
                   onChange={(event) => {
                     setSelectedPlayerId(event.target.value);
@@ -1529,7 +1615,7 @@ export default function RunTournament({
                   </div>
                 </div>
 
-                <div className="flex items-center rounded-xl border border-pit-border bg-pit-bg/65 p-1">
+                <div className="flex items-center justify-self-start rounded-xl border border-pit-border bg-pit-bg/65 p-1 min-[1180px]:justify-self-center">
                   <button
                     type="button"
                     className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'timer' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
@@ -1547,7 +1633,7 @@ export default function RunTournament({
                 </div>
 
                 {featureFlags.tvBoard && tournament.tvdisplaycode && (
-                  <div className="relative">
+                  <div className="relative justify-self-end">
                     <button
                       type="button"
                       className="flex items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 px-3 py-2 text-sm text-white hover:border-pit-teal/70 hover:bg-pit-surface/70"
@@ -1584,14 +1670,6 @@ export default function RunTournament({
                           disabled={tvOptionsMutation.isPending}
                           onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
                         />
-                        {!demoMode && (
-                          <TvMenuToggle
-                            label="Player Lobby QR"
-                            enabled={tournament.tvshowknockoutqrenabled ?? true}
-                            disabled={tvOptionsMutation.isPending}
-                            onClick={() => tvOptionsMutation.mutate({ tvshowknockoutqrenabled: !(tournament.tvshowknockoutqrenabled ?? true) })}
-                          />
-                        )}
                       </div>
                     )}
                   </div>
@@ -1658,8 +1736,8 @@ export default function RunTournament({
                 />
               </div>
             ) : (
-            <div className={`grid items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-2 lg:grid-cols-[252px_minmax(0,1fr)_252px] xl:grid-cols-[274px_minmax(0,1fr)_274px]'}`}>
-              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
+            <div className={`grid min-w-0 items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-3 min-[1024px]:grid-cols-[minmax(0,1.9fr)_minmax(280px,.85fr)] min-[1280px]:grid-cols-[clamp(250px,19vw,300px)_minmax(0,1fr)_clamp(280px,21vw,330px)]'}`}>
+              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'order-3 p-3 min-[1024px]:col-start-2 min-[1024px]:row-start-1 min-[1280px]:order-1 min-[1280px]:col-start-1'}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
                   <div className="flex items-center gap-2">
@@ -1667,7 +1745,7 @@ export default function RunTournament({
                     {!tvMode && (
                       <button
                         type="button"
-                        className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold lg:hidden"
+                        className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold min-[1280px]:hidden"
                         aria-expanded={!mobileStructureCollapsed}
                         aria-controls={mobileStructurePanelId}
                         onClick={() => setMobileStructureCollapsed((collapsed) => !collapsed)}
@@ -1680,7 +1758,7 @@ export default function RunTournament({
                 </div>
                 <div
                   id={mobileStructurePanelId}
-                  className={`${!tvMode && mobileStructureCollapsed ? 'hidden lg:block' : 'block'}`}
+                  className="block"
                 >
                 <div className="overflow-hidden rounded-lg border border-pit-border">
                   <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
@@ -1689,16 +1767,19 @@ export default function RunTournament({
                     <span className="text-right">Time</span>
                   </div>
                   <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
-                    {effectiveBlinds.map((blind) => {
+                    {effectiveBlinds.map((blind, blindIndex) => {
                       const isCurrent = blind.level === effectiveLevel;
                       const isNext = nextBlind?.level === blind.level;
+                      const hideInCompactStructure = !displayMode
+                        && mobileStructureCollapsed
+                        && (blindIndex < compactStructureStart || blindIndex >= compactStructureEnd);
                       return (
                         <button
                           type="button"
                           key={blind.id}
                           disabled={!showAdminControls}
                           onClick={() => handleManualLevelChange(blind)}
-                          className={`grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
+                          className={`${hideInCompactStructure ? 'max-[1279px]:hidden' : ''} grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
                             isCurrent
                               ? 'border-l-4 border-l-pit-teal border-t-pit-teal/75 bg-gradient-to-r from-pit-teal/50 via-pit-teal/24 to-pit-teal/10 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.55),0_0_18px_rgba(20,184,166,0.18)]'
                               : isNext
@@ -1719,21 +1800,24 @@ export default function RunTournament({
                 </div>
               </section>
 
-              <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'space-y-4'}`}>
-                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${timerTone}`}>
+              <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'order-1 space-y-3 min-[1024px]:col-start-1 min-[1024px]:row-span-2 min-[1024px]:row-start-1 min-[1280px]:order-2 min-[1280px]:col-start-2 min-[1280px]:row-span-1'}`}>
+                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${adminTimerPanelTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <button
                         type="button"
                         aria-pressed={showAdjustments}
-                        className={`px-3 py-1.5 text-xs transition-none ${
+                        className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                           showAdjustments
-                            ? 'rounded-lg border border-yellow-300/70 bg-yellow-300/20 font-semibold text-yellow-200'
-                            : 'btn-ghost text-pit-muted'
+                            ? 'border-pit-teal/70 bg-pit-teal/15 text-white'
+                            : 'border-pit-border bg-pit-bg/50 text-pit-muted hover:border-pit-teal/50 hover:text-white'
                         }`}
                         onClick={() => setShowAdjustments((current) => !current)}
                       >
-                        Adjust Timer
+                        <span>Adjust Timer</span>
+                        <span className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${showAdjustments ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`} aria-hidden="true">
+                          <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${showAdjustments ? 'translate-x-[17px]' : 'translate-x-0.5'}`} />
+                        </span>
                       </button>
                       {timerState?.running
                         ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void warmTimerAudio(); emit('timer-pause'); }}>Pause</button>
@@ -1791,7 +1875,7 @@ export default function RunTournament({
                       </div>
                     )}
                     <div
-                      className={`flex min-w-0 max-w-full items-center justify-center overflow-hidden leading-none ${urgency} ${
+                      className={`flex min-w-0 max-w-full items-center justify-center overflow-hidden leading-none ${adminTimerTextTone} ${
                         tvMode
                           ? 'font-mono font-bold tabular-nums tracking-tight'
                         : showAdjustments
@@ -1806,7 +1890,7 @@ export default function RunTournament({
                           ? { fontSize: 'clamp(4.5rem, 19vw, 12.3rem)' }
                           : displayMode
                             ? { fontSize: 'clamp(5rem, 20vw, 19.5rem)' }
-                            : { fontSize: 'clamp(4.8rem, 25vw, 15.2rem)' }}
+                            : { fontSize: 'clamp(4rem, 14vw, 10.4rem)' }}
                     >
                       <span>{minsStr}</span>
                       <span className="-mx-[0.08em]">:</span>
@@ -1834,7 +1918,7 @@ export default function RunTournament({
                     )}
                   </div>
 
-                  <div className={`mt-2 grid gap-2 ${displayMode ? 'grid-cols-2 xl:gap-3' : 'md:grid-cols-2'}`}>
+                  <div className={`mt-2 grid gap-2 ${displayMode ? 'grid-cols-2 xl:gap-3' : 'grid-cols-2 max-[350px]:grid-cols-1'}`}>
                     <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3'}`}>
                       <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Current Blinds</p>
                       <p
@@ -1849,10 +1933,10 @@ export default function RunTournament({
                           tvMode
                             ? currentBlindIsBreak ? 'font-sans' : 'font-mono tabular-nums'
                             : currentBlindIsBreak
-                              ? 'font-sans text-[2.4rem] md:text-[3rem] xl:text-[3.4rem]'
+                              ? 'font-sans text-[1.7rem] sm:text-[2.2rem] xl:text-[3rem]'
                               : currentBlind.ante > 0
-                                ? 'font-sans font-[300] tracking-tight text-[2.5rem] md:text-[3.15rem] xl:text-[3.55rem]'
-                                : 'font-sans font-[300] tracking-tight text-[3rem] md:text-[3.65rem] xl:text-[4.15rem]'
+                                ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] xl:text-[3rem]'
+                                : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] xl:text-[3.35rem]'
                         }`}
                       >
                         {currentBlindIsBreak ? formatBreakDisplayLabel(currentBlind) : formatCompactFeaturedBlinds(currentBlind)}
@@ -1877,10 +1961,10 @@ export default function RunTournament({
                               tvMode
                                 ? nextBlindIsBreak ? 'font-sans' : 'font-mono tabular-nums'
                                 : nextBlindIsBreak
-                                  ? 'font-sans text-[2.4rem] md:text-[3rem] xl:text-[3.4rem]'
+                                  ? 'font-sans text-[1.7rem] sm:text-[2.2rem] xl:text-[3rem]'
                                   : nextBlind.ante > 0
-                                    ? 'font-sans font-[300] tracking-tight text-[2.5rem] md:text-[3.15rem] xl:text-[3.55rem]'
-                                    : 'font-sans font-[300] tracking-tight text-[3rem] md:text-[3.65rem] xl:text-[4.15rem]'
+                                    ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] xl:text-[3rem]'
+                                    : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] xl:text-[3.35rem]'
                             }`}
                           >
                             {nextBlindIsBreak ? formatBreakDisplayLabel(nextBlind) : formatCompactFeaturedBlinds(nextBlind)}
@@ -1897,11 +1981,41 @@ export default function RunTournament({
                       )}
                     </div>
                   </div>
+                  {showAdminControls && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-10 justify-center gap-2 px-2 py-2 text-xs"
+                        disabled={!previousBlind}
+                        onClick={() => previousBlind && handleManualLevelChange(previousBlind)}
+                      >
+                        <ChevronLeft size={15} />
+                        Prior Level
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-10 justify-center gap-2 px-2 py-2 text-xs"
+                        disabled={!nextBlind}
+                        onClick={() => nextBlind && handleManualLevelChange(nextBlind)}
+                      >
+                        <ChevronRight size={15} />
+                        Next Level
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-10 justify-center gap-2 px-2 py-2 text-xs"
+                        onClick={() => handleManualLevelChange(currentBlind)}
+                      >
+                        <RotateCcw size={15} />
+                        Restart Level
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid gap-2 xl:grid-cols-1">
                   <div
-                    className={`grid gap-2 ${summaryStats.length === 1 ? 'grid-cols-1' : summaryStats.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}
+                    className={`grid gap-2 ${summaryStats.length === 1 ? 'grid-cols-1' : summaryStats.length === 2 ? 'grid-cols-2' : displayMode ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3'}`}
                   >
                     {summaryStats.map((stat) => {
                       const canAdjustRebuys = showAdminControls && !canUseClubFeatures && stat.label === 'Rebuys';
@@ -1946,18 +2060,32 @@ export default function RunTournament({
                 </div>
               </section>
 
-              <section className={`space-y-2.5 ${displayMode ? 'pt-1' : ''}`}>
-                {showKnockoutQr && (
-                  <div className={`rounded-xl border border-pit-border bg-pit-bg/60 text-center ${tvMode ? 'p-1.5' : 'p-2.5'}`}>
-                    <div className="mb-1 text-white">
-                      <p className={`${tvMode ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-wide`}>Open Player Lobby</p>
-                    </div>
-                    <div className={`inline-block rounded-md bg-white ${tvMode ? 'p-0.5' : 'p-1.5'}`}>
-                      <QRCodeSVG value={playerLobbyUrl} size={tvMode ? 58 : 88} />
-                    </div>
+              <section className={displayMode ? 'space-y-2.5 pt-1' : 'order-2 flex min-w-0 flex-col gap-2.5 min-[1024px]:col-start-2 min-[1024px]:row-start-2 min-[1280px]:order-3 min-[1280px]:col-start-3 min-[1280px]:row-start-1'}>
+                {showPlayerLobbyQr && (
+                  <div className="order-3 overflow-hidden rounded-xl border border-pit-border bg-pit-bg/60">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-pit-surface/45"
+                      onClick={() => setPlayerLobbyQrExpanded((expanded) => !expanded)}
+                      aria-expanded={playerLobbyQrExpanded}
+                    >
+                      <span>Player Lobby QR</span>
+                      {playerLobbyQrExpanded ? (
+                        <ChevronUp size={17} className="shrink-0 text-pit-teal" />
+                      ) : (
+                        <ChevronDown size={17} className="shrink-0 text-pit-muted" />
+                      )}
+                    </button>
+                    {playerLobbyQrExpanded && (
+                      <div className="border-t border-pit-border px-3 py-3 text-center">
+                        <div className="inline-block rounded-md bg-white p-1.5">
+                          <QRCodeSVG value={playerLobbyUrl} size={96} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
+                <div className={`${displayMode ? '' : 'order-1'} rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
                   {!tvMode && (
                     <div className="mb-2">
                       <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Payout Structure</h3>
@@ -2001,7 +2129,7 @@ export default function RunTournament({
                     })}
                   </div>
                 </div>
-                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
+                <div className={`${displayMode ? '' : 'order-2'} rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-2.5' : displayMode ? 'p-4' : 'p-3'}`}>
                   {tournament.bountyenabled ? (
                     <div className="mb-2 flex items-center gap-1 rounded-lg border border-pit-border bg-pit-bg/50 p-1">
                       {(['bounties', 'knockouts'] as SidePanelView[]).map((view) => (
@@ -2087,69 +2215,7 @@ export default function RunTournament({
           <p className="py-8 text-center text-pit-text">No blind structure yet.</p>
         )}
 
-        {showAdminControls && !displayMode && tournamentComplete && finalRecapSvg && (
-          <section className="rounded-2xl border border-pit-teal/30 bg-pit-card/92 p-4 shadow-2xl shadow-pit-teal/5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-pit-teal">Final tournament recap</p>
-                <h2 className="mt-1 text-2xl font-black text-white">{tournament.name}</h2>
-                <p className="mt-1 text-sm text-pit-text">
-                  Share the paid results, player count, rebuys, add-ons, and tracked knockouts.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <button type="button" className="btn-primary gap-2" onClick={() => void handleShareFinalRecap(false)}>
-                  <Share size={16} />
-                  Share recap
-                </button>
-                <button type="button" className="btn-ghost gap-2" onClick={() => void handleShareFinalRecap(true)}>
-                  <Download size={16} />
-                  Save image
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-2 sm:grid-cols-4">
-              {[
-                { label: 'Total Players', value: fieldSize },
-                { label: 'Prize Pool', value: formatMoney(totalPot), accent: true },
-                { label: 'Total Rebuys', value: totalRebuys },
-                { label: 'Total Add-Ons', value: totalAddons },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-xl border border-pit-border bg-pit-bg/50 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">{stat.label}</p>
-                  <p className={`mt-1 text-lg font-black ${'accent' in stat && stat.accent ? 'text-pit-teal' : 'text-white'}`}>{stat.value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-xl border border-pit-border">
-              <div className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] bg-pit-bg/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">
-                <span>Place</span>
-                <span>Player</span>
-                <span>Knockouts</span>
-                <span className="text-right">Won</span>
-              </div>
-              {finalPaidPlacements.map((placement) => {
-                const playerName = placement.player ? playerNameWithMedals(placement.player) : 'TBD';
-                return (
-                  <div
-                    key={placement.place}
-                    className="grid grid-cols-[72px_minmax(0,1fr)_96px_112px] items-center border-t border-pit-border bg-pit-surface/35 px-3 py-2 text-sm"
-                  >
-                    <span className="font-black text-pit-teal">{ordinal(placement.place)}</span>
-                    <span className="min-w-0 truncate font-semibold text-white">{playerName}</span>
-                    <span className="inline-flex items-center gap-1 font-semibold text-amber-200">
-                      <Skull size={14} />
-                      {placement.knockouts}
-                    </span>
-                    <span className="text-right font-black text-pit-teal">{formatMoney(placement.amount)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        {finalRecapPanel}
 
         {displayMode && activeGreeting && tvGreetingDisplayEnabled && (
           <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center overflow-hidden px-6 py-8">

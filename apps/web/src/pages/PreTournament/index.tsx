@@ -1,7 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Home, Lock, LogOut, Menu, Pencil, Play, Settings, Shield, Timer, Trash2, User, Users } from 'lucide-react';
+import {
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock3,
+  Coins,
+  Home,
+  Layers3,
+  Lock,
+  LogOut,
+  Menu,
+  Pencil,
+  Play,
+  Settings,
+  Shield,
+  Skull,
+  Timer,
+  Trash2,
+  User,
+  UserCheck,
+  Users,
+  X,
+} from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
@@ -13,6 +35,7 @@ import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 import { isEnabledFlag } from '../../utils/flags';
+import type { BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
 import Payouts from './Payouts';
@@ -103,14 +126,27 @@ export default function PreTournamentPage() {
     },
   });
 
+  const { data: blinds = [] } = useQuery({
+    queryKey: ['blinds', id],
+    queryFn: () => api.getBlinds(id!),
+    enabled: !!id,
+  });
+
+  const { data: timerState } = useQuery({
+    queryKey: ['timer', id],
+    queryFn: () => api.getTimer(id!),
+    enabled: !!id,
+    refetchInterval: tab === 'details' ? 15_000 : false,
+  });
+
   const canManage = tournament ? isEnabledFlag(tournament.canmanage) || tournament.ownerid === user?.guid : false;
 
   useEffect(() => {
     if (tournament && !canManage && tab === 'run') setTab('details');
   }, [tournament, canManage, tab]);
 
-  if (isLoading) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
-  if (!tournament) return <Layout back="/" backLabel="Return to Command Center" hideSidebar hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
+  if (isLoading) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" hideSidebar hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
+  if (!tournament) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" hideSidebar hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const scheduleLocked = eventStarted && !user?.issuperadmin;
@@ -130,37 +166,33 @@ export default function PreTournamentPage() {
   return (
     <Layout
       back="/"
-      backLabel="Return to Command Center"
+      backIcon={<Home size={19} />}
+      backAriaLabel="Home"
       hideSidebar
       hideMobileNav
-      headerRight={(
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="hidden min-w-0 gap-1 rounded-2xl border border-pit-border bg-pit-card/80 p-1 shadow-[0_12px_28px_rgba(0,0,0,0.16)] md:flex">
-            {tabs.map((currentTab) => {
-              const Icon = currentTab.Icon;
-              return (
-                <button
-                  key={currentTab.id}
-                  className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] font-semibold transition sm:text-sm lg:min-w-32 lg:justify-start ${
-                    tab === currentTab.id
-                      ? 'bg-pit-teal/20 text-white shadow-[0_0_22px_rgba(20,184,166,0.2)] ring-1 ring-pit-teal/35'
-                      : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
-                  }`}
-                  onClick={() => setTab(currentTab.id)}
-                >
-                  <Icon size={15} className="shrink-0" />
-                  <span className="hidden md:inline">{currentTab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <TournamentAccountMenu />
-        </div>
-      )}
-      mainWidthClassName="max-w-7xl"
+      hideHeader={tab === 'run'}
+      headerRight={<TournamentAccountMenu />}
+      mainWidthClassName={tab === 'run' ? 'max-w-none' : 'max-w-7xl'}
     >
+      <TournamentCommandHeader
+        tournament={tournament}
+        canManage={canManage}
+        tabs={tabs}
+        activeTab={tab}
+        onTabChange={setTab}
+        accountMenu={tab === 'run' ? <TournamentAccountMenu /> : null}
+      />
+
       {tab === 'details' && (
-        <div className="space-y-4">
+        <TournamentDashboard
+          tournament={tournament}
+          players={players}
+          blinds={blinds}
+          timerState={timerState}
+          canManage={canManage}
+          onOpenBlinds={() => setTab('blinds')}
+          onRun={() => setTab('run')}
+          details={(
           <TournamentDetailsCard
             tournament={tournament}
             totalRebuys={totalRebuys}
@@ -178,9 +210,9 @@ export default function PreTournamentPage() {
             pocketAdminUrl={showPocketAdmin ? pocketAdminUrl : null}
             showTvBoard={showTvBoard}
           />
-
-          <Payouts tournamentId={id!} tournament={tournament} />
-        </div>
+          )}
+          payouts={<Payouts tournamentId={id!} tournament={tournament} summaryOnly />}
+        />
       )}
 
       {tab === 'players' && <CheckIn tournamentId={id!} isOwner={canManage} tournament={tournament} />}
@@ -195,13 +227,6 @@ export default function PreTournamentPage() {
           onDemoStartCoachDone={handleDemoStartCoachDone}
         />
       )}
-      <div className="h-20 md:hidden" />
-      <TournamentMobileNav
-        tabs={tabs}
-        activeTab={tab}
-        onTabChange={setTab}
-        dockToBottom
-      />
     </Layout>
   );
 }
@@ -250,31 +275,33 @@ function TournamentAccountMenu() {
     <div ref={menuRef} className="relative">
       <button
         type="button"
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
+        className={`group relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border bg-gradient-to-br shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition ${open ? 'border-pit-teal/70 from-pit-teal/25 to-[#122E30] text-white ring-2 ring-pit-teal/15' : 'border-pit-border from-pit-card to-[#151f22] text-pit-text hover:border-pit-teal/50 hover:text-white'}`}
         onClick={() => setOpen((value) => !value)}
-        aria-label="Open account menu"
+        aria-label={open ? 'Close account menu' : 'Open account menu'}
         aria-expanded={open}
+        aria-haspopup="menu"
       >
-        <Menu size={20} />
+        <span className="absolute inset-x-2 top-0 h-px bg-gradient-to-r from-transparent via-pit-teal/70 to-transparent" aria-hidden="true" />
+        {open ? <X size={19} /> : <Menu size={20} />}
       </button>
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-xl border border-pit-border bg-pit-card py-1 shadow-2xl">
-          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white" onClick={() => goHome()}>
+        <div className="absolute right-0 top-[3.25rem] z-50 w-56 overflow-hidden rounded-2xl border border-pit-border bg-[#15171d]/[0.98] p-1.5 shadow-[0_22px_55px_rgba(0,0,0,0.48)] backdrop-blur-xl" role="menu">
+          <button type="button" className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-pit-teal/10 hover:text-white" onClick={() => goHome()} role="menuitem">
             <Home size={15} />
-            Command Center
+            Home
           </button>
-          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white" onClick={() => goHome({ tab: 'profile' })}>
+          <button type="button" className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-pit-teal/10 hover:text-white" onClick={() => goHome({ tab: 'profile' })} role="menuitem">
             <User size={15} />
             Profile
           </button>
           {user?.issuperadmin && (
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100" onClick={() => goHome({ tab: 'admin' })}>
+            <button type="button" className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100" onClick={() => goHome({ tab: 'admin' })} role="menuitem">
               <Shield size={15} />
               Admin
             </button>
           )}
           <div className="my-1 border-t border-pit-border" />
-          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300" onClick={handleLogout}>
+          <button type="button" className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300" onClick={handleLogout} role="menuitem">
             <LogOut size={15} />
             Sign Out
           </button>
@@ -284,46 +311,295 @@ function TournamentAccountMenu() {
   );
 }
 
-function TournamentMobileNav({
+function TournamentCommandHeader({
+  tournament,
+  canManage,
   tabs,
   activeTab,
   onTabChange,
-  dockToBottom = false,
+  accountMenu,
 }: {
+  tournament: Tournament;
+  canManage: boolean;
   tabs: { id: Tab; label: string; mobileLabel: string; Icon: React.ElementType }[];
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
-  dockToBottom?: boolean;
+  accountMenu?: React.ReactNode;
 }) {
-  return (
-    <nav
-      className={`fixed inset-x-0 z-40 grid border-t border-pit-teal/30 bg-[#122E30]/96 shadow-[0_-12px_32px_rgba(0,0,0,0.42)] backdrop-blur-md md:hidden ${dockToBottom ? 'bottom-0' : 'bottom-[4.75rem]'}`}
-      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
-    >
-      {tabs.map(({ id, mobileLabel, Icon }) => {
-        const active = activeTab === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onTabChange(id)}
-            className={`flex min-w-0 flex-col items-center gap-1 px-1 pt-2.5 pb-3 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-              active ? 'text-white' : 'text-teal-100/65 hover:text-white'
-            }`}
+  if (activeTab === 'run') {
+    return (
+      <section className="-mx-4 mb-2 border-b border-pit-border bg-[linear-gradient(110deg,rgba(18,46,48,0.72),rgba(13,17,22,0.96)_42%,rgba(13,17,22,0.98))] sm:-mx-6 lg:-mx-8">
+        <div className="flex min-h-16 w-full items-center gap-2 px-3 py-2 sm:px-4 lg:px-5">
+          <Link
+            to="/"
+            aria-label="Home"
+            title="Home"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-pit-teal/30 bg-pit-teal/10 text-pit-teal transition hover:border-pit-teal/65 hover:text-white"
           >
-            <div className={`flex h-7 w-11 items-center justify-center rounded-full transition-all duration-150 ${
-              active
-                ? 'bg-pit-teal/25 shadow-[0_0_24px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40'
-                : 'bg-black/15'
-            }`}>
-              <Icon size={18} strokeWidth={active ? 2.5 : 1.75} />
+            <Home size={18} />
+          </Link>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-pit-teal/45 bg-pit-teal/10 text-base font-black text-white">
+              {tournament.name?.trim().charAt(0).toUpperCase() || 'T'}
             </div>
-            <span className="max-w-full truncate">{mobileLabel}</span>
-          </button>
-        );
-      })}
-    </nav>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-sm font-bold text-white sm:text-base">{tournament.name}</h1>
+                {canManage && <span className="hidden rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-300 sm:inline">Admin</span>}
+              </div>
+              <p className="hidden truncate text-[11px] text-pit-text sm:block">{tournament.groupname || 'Poker tournament'}</p>
+            </div>
+          </div>
+          <nav className="ml-auto hidden min-w-0 flex-1 items-center justify-end gap-1 min-[768px]:flex" aria-label="Tournament navigation">
+            {tabs.map(({ id, label, Icon }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onTabChange(id)}
+                  className={`flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${active ? 'bg-pit-teal/18 text-white ring-1 ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'}`}
+                >
+                  <Icon size={16} className="shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="ml-auto shrink-0 min-[768px]:ml-1">{accountMenu}</div>
+        </div>
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 grid border-t border-pit-border bg-[#0d1116]/96 px-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_40px_rgba(0,0,0,.42)] backdrop-blur-xl min-[768px]:hidden"
+          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+          aria-label="Tournament navigation"
+        >
+          {tabs.map(({ id, mobileLabel, Icon }) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onTabChange(id)}
+                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-[10px] font-semibold transition ${active ? 'bg-pit-teal/18 text-white ring-1 ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'}`}
+              >
+                <Icon size={16} className="shrink-0" />
+                <span className="truncate">{mobileLabel}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </section>
+    );
+  }
+
+  return (
+    <section className="-mx-4 mb-3 border-y border-pit-border bg-[linear-gradient(110deg,rgba(18,46,48,0.72),rgba(13,17,22,0.96)_42%,rgba(13,17,22,0.98))] sm:-mx-6 lg:-mx-8">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-pit-teal/45 bg-pit-teal/10 text-base font-black text-white sm:h-10 sm:w-10 sm:text-lg">
+            {tournament.name?.trim().charAt(0).toUpperCase() || 'T'}
+          </div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-sm font-bold text-white sm:text-lg">{tournament.name}</h1>
+              {canManage && <span className="hidden rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-300 sm:inline">Admin</span>}
+            </div>
+            <p className="truncate text-xs text-pit-text">{tournament.groupname || 'Poker tournament'}</p>
+          </div>
+        </div>
+        {tournament.tvdisplaycode && (
+          <a
+            href={`/tv/${tournament.tvdisplaycode}`}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden shrink-0 rounded-xl border border-pit-border bg-black/20 px-3 py-2 font-mono text-xs tracking-[0.16em] text-pit-text transition hover:border-pit-teal/50 hover:text-white sm:block"
+          >
+            TV {tournament.tvdisplaycode}
+          </a>
+        )}
+      </div>
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 grid border-t border-pit-border bg-[#0d1116]/96 px-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_40px_rgba(0,0,0,.42)] backdrop-blur-xl min-[768px]:static min-[768px]:mx-auto min-[768px]:max-w-[1600px] min-[768px]:border-t min-[768px]:bg-transparent min-[768px]:px-4 min-[768px]:pb-2 min-[768px]:pt-1.5 min-[768px]:shadow-none lg:px-8"
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      >
+        {tabs.map(({ id, label, mobileLabel, Icon }) => {
+          const active = activeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onTabChange(id)}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-[10px] font-semibold transition min-[768px]:flex-row min-[768px]:gap-2 min-[768px]:rounded-xl min-[768px]:py-2 min-[768px]:text-sm ${
+                active ? 'bg-pit-teal/18 text-white ring-1 ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Icon size={16} className="shrink-0" />
+              <span className="truncate min-[768px]:hidden">{mobileLabel}</span>
+              <span className="hidden truncate min-[768px]:inline">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </section>
   );
+}
+
+function TournamentDashboard({
+  tournament,
+  players,
+  blinds,
+  timerState,
+  canManage,
+  onOpenBlinds,
+  onRun,
+  details,
+  payouts,
+}: {
+  tournament: Tournament;
+  players: TournamentPlayer[];
+  blinds: BlindLevel[];
+  timerState?: TimerSnapshot;
+  canManage: boolean;
+  onOpenBlinds: () => void;
+  onRun: () => void;
+  details: React.ReactNode;
+  payouts: React.ReactNode;
+}) {
+  const checkedIn = players.filter((player) => player.checkedin).length;
+  const activePlayers = players.filter((player) => player.checkedin && player.placed == null).length;
+  const knockedOut = [...players]
+    .filter((player) => player.placed != null)
+    .sort((a, b) => Number(a.placed) - Number(b.placed));
+  const totalRebuys = players.reduce((sum, player) => sum + toNumber(player.rebuys), 0) + toNumber(tournament.genericrebuys);
+  const totalAddons = players.filter((player) => Boolean(player.addedon)).length + toNumber(tournament.genericaddons);
+  const sortedBlinds = [...blinds].sort((a, b) => Number(a.level) - Number(b.level));
+  const currentLevel = timerState?.currentlevel ?? sortedBlinds[0]?.level ?? 1;
+  const currentIndex = Math.max(0, sortedBlinds.findIndex((blind) => Number(blind.level) === Number(currentLevel)));
+  const blindWindow = sortedBlinds.slice(Math.max(0, currentIndex - 2), Math.min(sortedBlinds.length, currentIndex + 4));
+  const checkInUrl = `${window.location.origin}/checkin/${tournament.tournamentid}`;
+
+  return (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-2 lg:items-start xl:grid-cols-[minmax(275px,.88fr)_minmax(420px,1.35fr)_minmax(260px,.82fr)]">
+      <div className="contents xl:col-start-1 xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
+        <div className="order-1 min-w-0">{details}</div>
+        <ArrivalCheckInCard url={checkInUrl} registered={players.length} checkedIn={checkedIn} />
+      </div>
+      <div className="contents xl:col-start-2 xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
+        <BlindStructureCard blinds={blindWindow} totalLevels={sortedBlinds.length} currentLevel={currentLevel} onEdit={canManage ? onOpenBlinds : undefined} />
+        <div className="order-5 min-w-0">{payouts}</div>
+      </div>
+      <div className="contents xl:col-start-3 xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
+        <QuickStatsCard activePlayers={activePlayers} totalRebuys={totalRebuys} totalAddons={totalAddons} onRun={canManage ? onRun : undefined} />
+        <KnockoutSummaryCard players={knockedOut} />
+      </div>
+    </div>
+  );
+}
+
+function DashboardCard({ title, icon, action, className = '', children }: { title: string; icon: React.ReactNode; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return (
+    <section className={`min-w-0 overflow-hidden rounded-xl border border-pit-border bg-pit-card ${className}`}>
+      <div className="flex min-h-13 items-center justify-between gap-3 border-b border-pit-border px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-white">{icon}<h2>{title}</h2></div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ArrivalCheckInCard({ url, registered, checkedIn }: { url: string; registered: number; checkedIn: number }) {
+  return (
+    <DashboardCard title="Arrival Check-In" icon={<UserCheck size={17} className="text-pit-teal" />} className="order-2">
+      <div className="p-4">
+        <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-pit-text">After payment, scan here to check in</p>
+        <div className="mx-auto w-fit rounded-xl bg-white p-2"><QRCodeSVG value={url} size={112} /></div>
+      </div>
+      <div className="grid grid-cols-3 border-t border-pit-border">
+        <DashboardMetric label="Registered" value={registered} />
+        <DashboardMetric label="Checked In" value={checkedIn} />
+        <DashboardMetric label="Not Arrived" value={Math.max(0, registered - checkedIn)} />
+      </div>
+    </DashboardCard>
+  );
+}
+
+function BlindStructureCard({ blinds, totalLevels, currentLevel, onEdit }: { blinds: BlindLevel[]; totalLevels: number; currentLevel: number; onEdit?: () => void }) {
+  return (
+    <DashboardCard
+      title="Blind Structure"
+      icon={<Layers3 size={17} className="text-pit-teal" />}
+      className="order-3"
+      action={onEdit ? <button type="button" className="btn-ghost min-h-9 px-3 py-1.5 text-xs" onClick={onEdit}>Edit Structure</button> : undefined}
+    >
+      <div className="px-4 py-3">
+        <p className="mb-2 text-xs text-pit-muted">{totalLevels} levels</p>
+        {blinds.length ? (
+          <div className="overflow-hidden rounded-lg border border-pit-border">
+            <div className="grid grid-cols-[3rem_1fr_4rem] border-b border-pit-border bg-black/15 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-pit-muted sm:grid-cols-[4rem_1fr_5rem]">
+              <span>Level</span><span>Blinds / Ante</span><span className="hidden sm:block">Time</span><span className="text-right sm:hidden">Time</span>
+            </div>
+            {blinds.map((blind) => {
+              const active = Number(blind.level) === Number(currentLevel);
+              const isBreak = Number(blind.smallblind) === 0 && Number(blind.bigblind) === 0;
+              return (
+                <div key={blind.id} className={`grid grid-cols-[3rem_1fr_4rem] items-center px-3 py-2 text-xs sm:grid-cols-[4rem_1fr_5rem] ${active ? 'bg-pit-teal/15 text-white ring-1 ring-inset ring-pit-teal/40' : 'border-t border-pit-border/55 text-pit-text'}`}>
+                  <span className="font-semibold">{blind.level}</span>
+                  <span className="font-semibold">{isBreak ? (blind.label || 'Break') : `${formatCompactNumber(blind.smallblind)} / ${formatCompactNumber(blind.bigblind)}${blind.ante ? ` (${formatCompactNumber(blind.ante)})` : ''}`}</span>
+                  <span className="hidden sm:block">{blind.minutes}m</span>
+                  <span className="text-right sm:hidden">{blind.minutes}m</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : <p className="rounded-lg border border-dashed border-pit-border px-3 py-6 text-center text-sm text-pit-muted">No blind structure saved yet.</p>}
+      </div>
+    </DashboardCard>
+  );
+}
+
+function QuickStatsCard({ activePlayers, totalRebuys, totalAddons, onRun }: { activePlayers: number; totalRebuys: number; totalAddons: number; onRun?: () => void }) {
+  return (
+    <DashboardCard title="Quick Stats" icon={<Coins size={17} className="text-pit-teal" />} className="order-4">
+      <div className="divide-y divide-pit-border px-4">
+        <CompactStat label="Players Left" value={activePlayers} icon={<Users size={14} />} />
+        <CompactStat label="Rebuys" value={totalRebuys} icon={<Clock3 size={14} />} />
+        <CompactStat label="Add-ons" value={totalAddons} icon={<CheckCircle2 size={14} />} />
+      </div>
+      {onRun && <div className="p-3"><button type="button" className="btn-primary w-full gap-2" onClick={onRun}><Play size={15} /> Run Tournament</button></div>}
+    </DashboardCard>
+  );
+}
+
+function KnockoutSummaryCard({ players }: { players: TournamentPlayer[] }) {
+  return (
+    <DashboardCard title={`Knocked Out (${players.length})`} icon={<Skull size={17} className="text-pit-teal" />} className="order-6">
+      {players.length ? (
+        <div className="divide-y divide-pit-border px-4">
+          {players.slice(0, 5).map((player) => (
+            <div key={player.userid} className="grid grid-cols-[3rem_1fr] gap-2 py-2.5 text-sm">
+              <span className="font-bold text-white">{formatOrdinal(Number(player.placed))}</span>
+              <span className="truncate text-pit-text">{player.displayname || 'Player'}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-40 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+          <Skull size={32} className="text-pit-muted/55" />
+          <p className="font-semibold text-white">No players eliminated yet.</p>
+          <p className="text-xs text-pit-muted">Knocked out players will appear here.</p>
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
+function DashboardMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="min-w-0 border-r border-pit-border px-2 py-3 text-center last:border-r-0"><p className="truncate text-[9px] font-bold uppercase text-pit-muted">{label}</p><p className="mt-1 text-lg font-bold text-white">{value}</p></div>;
+}
+
+function CompactStat({ label, value, icon }: { label: string; value: React.ReactNode; icon: React.ReactNode }) {
+  return <div className="flex items-center justify-between gap-3 py-3 text-sm"><span className="flex items-center gap-2 text-pit-text">{icon}{label}</span><strong className="text-white">{value}</strong></div>;
 }
 
 function TournamentDetailsCard({
@@ -502,15 +778,14 @@ function TournamentDetailsCard({
   const registeredPlayerCount = Number(tournament.playercount ?? 0);
 
   return (
-    <section className="card overflow-hidden p-4">
-      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <section className="overflow-hidden rounded-xl border border-pit-border bg-pit-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3 border-b border-pit-border pb-3">
         <div className="min-w-0">
-          <p className="eyebrow">Tournament details</p>
-          <h2 className="mt-1 truncate text-xl font-bold text-white sm:text-2xl">{tournament.name}</h2>
+          <div className="flex items-center gap-2 text-sm font-bold text-white"><ClipboardList size={17} className="text-pit-teal" /><h2>Tournament Details</h2></div>
         </div>
-        <div className="flex w-full min-w-0 flex-wrap items-start justify-end gap-2 lg:w-auto">
+        <div className="flex min-w-0 flex-wrap items-start justify-end gap-2">
           {pocketAdminUrl && (
-            <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-2 lg:w-auto">
+            <div className="hidden min-w-0 items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/50 px-2.5 py-2 2xl:flex">
               <div className="inline-block rounded-md bg-white p-1">
                 <QRCodeSVG value={pocketAdminUrl} size={42} />
               </div>
@@ -777,49 +1052,16 @@ function TournamentDetailsCard({
           </div>
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailTile label="Date" value={normalizeDate(tournament.tourneydate) ?? 'TBD'} />
-          <DetailTile label="Time" value={normalizeTime(tournament.tourneytime) ?? 'TBD'} />
-          <DetailTile label="Buy-in" value={formatMoney(tournament.buyin)} accent />
-          <DetailTile label="Max players" value={tournament.maxplayers || 'Unlimited'} />
-          <DetailTile label="Rake" value={formatMoney(toNumber(tournament.rake))} />
-          <DetailTile
-            label="Rebuy"
-            value={tournament.rebuyprice > 0
-              ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips${tournament.rebuylastlevel ? ` through L${tournament.rebuylastlevel}` : ''}`
-              : 'Not enabled'}
-          />
-          <DetailTile label="Rebuys taken" value={totalRebuys} />
-          <DetailTile
-            label="Add-on"
-            value={tournament.addonprice > 0 ? `${formatMoney(tournament.addonprice)} / ${tournament.addonchips} chips` : 'Not enabled'}
-          />
-          <DetailTile label="Add-ons taken" value={totalAddons} />
-          <DetailTile
-            label="Bounties"
-            className="sm:col-span-2 xl:col-span-2"
-            value={tournament.bountyenabled
-              ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Standard Knockout'} - ${formatBountyPool(tournament, bountyTotal)}${formatBountyStart(tournament)}${formatBountyMinimum(tournament)}`
-              : 'Not enabled'}
-          />
-          {showTvBoard && (
-            <DetailTile
-              label="TV board"
-              className="sm:col-span-2 xl:col-span-1"
-              value={
-                <div className="space-y-1">
-                  <div className="font-mono tracking-[0.18em] text-white">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</div>
-                  {tournament.tvdisplaycode ? (
-                    <a className="text-xs text-pit-teal hover:text-pit-teal/80" href={`/tv/${tournament.tvdisplaycode}`} target="_blank" rel="noreferrer">
-                      Open TV board
-                    </a>
-                  ) : (
-                    <div className="text-xs text-pit-muted">Refresh if code is still generating</div>
-                  )}
-                </div>
-              }
-            />
-          )}
+        <div className="divide-y divide-pit-border">
+          <DetailRow icon={<CalendarDays size={14} />} label="Date" value={normalizeDate(tournament.tourneydate) ?? 'TBD'} />
+          <DetailRow icon={<Clock3 size={14} />} label="Time" value={normalizeTime(tournament.tourneytime) ?? 'TBD'} />
+          <DetailRow icon={<Coins size={14} />} label="Buy-in" value={formatMoney(tournament.buyin)} accent />
+          <DetailRow icon={<Users size={14} />} label="Max players" value={tournament.maxplayers || 'Unlimited'} />
+          <DetailRow label="Rake" value={formatMoney(toNumber(tournament.rake))} />
+          <DetailRow label="Rebuy" value={tournament.rebuyprice > 0 ? `${formatMoney(tournament.rebuyprice)} / ${tournament.rebuychips} chips${tournament.rebuylastlevel ? ` through L${tournament.rebuylastlevel}` : ''}` : 'Not enabled'} />
+          <DetailRow label="Add-on" value={tournament.addonprice > 0 ? `${formatMoney(tournament.addonprice)} / ${tournament.addonchips} chips` : 'Not enabled'} />
+          <DetailRow label="Bounties" value={tournament.bountyenabled ? `${tournament.bountymode === 'mystery' ? 'Mystery' : 'Standard Knockout'} - ${formatBountyPool(tournament, bountyTotal)}${formatBountyStart(tournament)}${formatBountyMinimum(tournament)}` : 'Not enabled'} />
+          {showTvBoard && <DetailRow label="TV board" value={tournament.tvdisplaycode ?? 'Unavailable'} />}
         </div>
       )}
 
@@ -874,21 +1116,21 @@ function TournamentDetailsCard({
   );
 }
 
-function DetailTile({
+function DetailRow({
+  icon,
   label,
   value,
   accent = false,
-  className = '',
 }: {
+  icon?: React.ReactNode;
   label: string;
   value: React.ReactNode;
   accent?: boolean;
-  className?: string;
 }) {
   return (
-    <div className={`min-w-0 rounded-xl border border-pit-border bg-pit-bg/40 px-3 py-2.5 ${className}`}>
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-muted">{label}</div>
-      <div className={`mt-1 min-w-0 break-words text-sm font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</div>
+    <div className="grid min-w-0 grid-cols-[minmax(90px,.8fr)_minmax(0,1.2fr)] items-start gap-3 py-2.5 text-sm">
+      <div className="flex items-center gap-2 text-pit-text">{icon}<span>{label}</span></div>
+      <div className={`min-w-0 break-words text-right font-semibold ${accent ? 'text-pit-teal' : 'text-white'}`}>{value}</div>
     </div>
   );
 }
@@ -941,6 +1183,14 @@ function hasTournamentStarted(tourneydate: string | null | undefined, tourneytim
 
 function formatMoney(value: number) {
   return `$${toNumber(value).toFixed(2)}`;
+}
+
+function formatCompactNumber(value: number | string | null | undefined) {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric)) return '0';
+  if (Math.abs(numeric) < 1000) return numeric.toLocaleString();
+  const compact = numeric / 1000;
+  return `${Number.isInteger(compact) ? compact.toFixed(0) : compact.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}K`;
 }
 
 function formatOrdinal(value: number) {
