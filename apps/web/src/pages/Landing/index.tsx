@@ -1,885 +1,389 @@
+import { useEffect, useRef, useState, type ComponentType, type SVGProps } from 'react';
 import { Link } from 'react-router-dom';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Menu, Mic2, Play, QrCode, Sparkles, Trophy, Users, UserCircle } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Clock3,
+  Layers3,
+  Menu,
+  Play,
+  ShieldCheck,
+  Trophy,
+  Users,
+  X,
+  Zap,
+} from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
+import { featureFlags } from '../../features';
+import './marketing.css';
 
-const features = [
-  {
-    title: 'Tournament clock',
-    body: 'Run levels, breaks, blind changes, warnings, and TV-friendly timer views from one clean control surface.',
-    icon: Clock3,
-    stat: '25/50',
-  },
-  {
-    title: 'Player flow',
-    body: 'Players can register, check in, see seats, use the lobby, and report knockouts without crowding the host.',
-    icon: Users,
-    stat: '18 in',
-  },
-  {
-    title: 'Room display',
-    body: 'Put the timer, QR codes, payouts, field stats, and table assignments on a big screen for the whole room.',
-    icon: QrCode,
-    stat: 'TV',
-  },
-  {
-    title: 'Voice director',
-    body: 'Set a group voice style and let level changes announce the action with game-aware context and personality.',
-    icon: Mic2,
-    stat: 'Voice',
-  },
-];
+type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
+type MarketingArtName = 'calendar' | 'players' | 'timer' | 'blinds' | 'trophy' | 'medallion';
 
-const steps = [
-  'Create a group and schedule the game.',
-  'Build blinds, payouts, seating, and player rules.',
-  'Run the clock, display the board, and let the room follow along.',
-];
-
-const playerTrackingHighlights = [
-  {
-    title: 'Entries and finishes stay organized',
-    body: 'Track who entered, checked in, rebought, added on, busted, and placed without turning the host into a spreadsheet clerk.',
-    stat: '13 players',
-  },
-  {
-    title: 'Placement medals build history',
-    body: 'Registered players can carry first, second, and third-place counts with them, so regulars earn a little visible status over time.',
-    stat: '1st x2',
-  },
-  {
-    title: 'Challenge coins make it social',
-    body: 'Groups can award fun coins for table stories, running jokes, streaks, bounties, and custom achievements that make each room feel like its own club.',
-    stat: 'Coins',
-  },
-];
-
-type VoiceClip = {
-  style: string;
-  label: string;
-  src?: string;
-  text: string;
-  sampleText?: string;
-};
-
-const cannedVoiceStyles: VoiceClip[] = [
-  {
-    style: 'velvet_dealer',
-    label: 'Velvet Dealer',
-    text: 'Cool female casino host for upscale intros and player welcomes.',
-  },
-  {
-    style: 'all_in_alex',
-    label: 'All-In Alex',
-    text: 'Fast Vegas poker announcer for intros, level increases, and final table moments.',
-  },
-  {
-    style: 'royal_rumble_riley',
-    label: 'Royal Rumble Riley',
-    text: 'Sports arena energy for knockouts, champion reveals, and shuffle-up moments.',
-  },
-  {
-    style: 'chipstorm',
-    label: 'Chipstorm',
-    text: 'Hyper esports caster for turbo tournaments and fast blind warnings.',
-  },
-  {
-    style: 'queen_of_spades',
-    label: 'Queen of Spades',
-    text: 'Fast confident female announcer for premium modern poker rooms.',
-  },
-  {
-    style: 'the_pit_boss',
-    label: 'The Pit Boss',
-    text: 'Gruff casino-floor authority for level-ups, warnings, and rebuy deadlines.',
-  },
-  {
-    style: 'british_high_roller',
-    label: 'British High Roller',
-    text: 'Fast luxury British host for premium high roller themes.',
-  },
-  {
-    style: 'turbo_tony',
-    label: 'Turbo Tony',
-    text: 'Fast-talking New York poker room chaos for rowdy home games.',
-  },
-  {
-    style: 'midnight_mayhem',
-    label: 'Midnight Mayhem',
-    text: 'Dark cinematic narrator for bounty events and final tables.',
-  },
-  {
-    style: 'sunny_stacks',
-    label: 'Sunny Stacks',
-    text: 'Friendly upbeat host for casual clubs and beginner nights.',
-  },
-];
-
-type VoiceManifestEntry = {
-  style?: string;
-  label?: string;
-  text?: string;
-  url?: string;
-};
-
-export default function LandingPage() {
-  const [voiceError, setVoiceError] = useState('');
-  const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(cannedVoiceStyles);
-  const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    const elements = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) entry.target.classList.add('is-visible');
-        });
-      },
-      { threshold: 0.22 }
-    );
-    elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    fetch('/sounds/ai-demo/custom/manifest.json')
-      .then((response) => {
-        if (!response.ok) throw new Error('No saved voice manifest.');
-        return response.json() as Promise<VoiceManifestEntry[]>;
-      })
-      .then((manifest) => {
-        const savedByStyle = new Map(
-          manifest
-            .filter((entry) => entry.style && entry.label && entry.text && entry.url)
-            .map((entry) => [entry.style!, entry])
-        );
-        setVoiceClips(cannedVoiceStyles.map((style) => {
-          const saved = savedByStyle.get(style.style);
-          return saved
-            ? {
-                ...style,
-                label: saved.label ?? style.label,
-                sampleText: saved.text,
-                src: saved.url!,
-              }
-            : style;
-        }));
-      })
-      .catch(() => {});
-  }, []);
-
-  async function playVoicePreview(index: number) {
-    const clip = voiceClips[index];
-    if (!clip) return;
-    setVoiceError('');
-    audioRef.current?.pause();
-    if (!clip.src) {
-      setVoiceError(`${clip.label} does not have a saved MP3 preview yet.`);
-      return;
-    }
-    try {
-      audioRef.current = new Audio(clip.src);
-      await audioRef.current.play();
-    } catch (err) {
-      setVoiceError(err instanceof Error ? err.message : 'Stored voice preview clip is not available yet.');
-    }
-  }
-
-  const selectedVoiceClip = voiceClips[selectedVoiceIndex] ?? voiceClips[0] ?? cannedVoiceStyles[0];
-  const selectAdjacentVoice = (direction: -1 | 1) => {
-    setSelectedVoiceIndex((current) => {
-      const total = voiceClips.length || cannedVoiceStyles.length;
-      return (current + direction + total) % total;
-    });
-    setVoiceError('');
-  };
-
-  return (
-    <main className="min-h-screen overflow-x-hidden bg-pit-bg text-white">
-      <style>{`
-        @keyframes pp-meter {
-          0% { transform: translateX(-55%); }
-          100% { transform: translateX(155%); }
-        }
-        @keyframes pp-pulse-ring {
-          0%, 100% { opacity: 0.35; transform: scale(0.92); }
-          50% { opacity: 0.9; transform: scale(1.04); }
-        }
-        [data-reveal] {
-          opacity: 0;
-          transform: translateY(24px);
-          transition: opacity 680ms ease, transform 680ms ease, border-color 680ms ease;
-        }
-        [data-reveal].is-visible {
-          opacity: 1;
-          transform: translateY(0);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          [data-reveal] { opacity: 1; transform: none; transition: none; }
-          .pp-meter-bar, .pp-ring { animation: none !important; }
-        }
-      `}</style>
-
-      <section className="relative overflow-hidden border-b border-pit-border bg-[#111113]">
-        <div className="absolute inset-0 opacity-70">
-          <div className="h-full w-full bg-[radial-gradient(circle_at_30%_12%,rgba(14,165,165,0.20),transparent_30%),radial-gradient(circle_at_78%_8%,rgba(240,165,0,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_58%)]" />
-        </div>
-
-        <div className="relative mx-auto flex max-w-7xl flex-col px-5 pb-4 pt-5 sm:px-8 sm:pb-5 lg:px-10">
-          <header className="-mx-5 -mt-5 border-b border-pit-teal/20 bg-[#122E30]/95 px-4 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur sm:-mx-8 sm:rounded-b-2xl sm:px-8 sm:py-4 lg:-mx-10 lg:px-10">
-            <div className="flex h-12 items-center justify-between gap-3 sm:h-auto">
-            <Link to="/landing" className="flex min-w-0 items-center gap-2" aria-label="ThePokerPlanner home">
-              <img
-                src="/branding/thepokerplanner-spade-logo-192.png"
-                alt=""
-                className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-white/15 sm:h-10 sm:w-10"
-              />
-              <span className="truncate text-base font-extrabold leading-none text-white sm:text-base">ThePokerPlanner</span>
-            </Link>
-
-            <nav className="hidden shrink-0 items-center gap-2 sm:flex">
-              <Link className="btn h-10 whitespace-nowrap border-white/15 bg-white/5 px-3 text-sm text-white hover:bg-white/10" to="/login">Sign in</Link>
-              <Link className="btn h-10 whitespace-nowrap bg-pit-teal px-3 text-sm text-white shadow-[0_10px_30px_rgba(0,0,0,0.20)] hover:bg-pit-teal-hover" to="/login?mode=register">Create account</Link>
-            </nav>
-
-            <button
-              type="button"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white sm:hidden"
-              onClick={() => setMobileMenuOpen((open) => !open)}
-              aria-label="Open menu"
-              aria-expanded={mobileMenuOpen}
-            >
-              <Menu size={20} />
-            </button>
-            </div>
-
-            {mobileMenuOpen && (
-              <div className="grid gap-2 border-t border-white/10 pt-3 sm:hidden">
-                <Link className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white" to="/login" onClick={() => setMobileMenuOpen(false)}>
-                  <UserCircle size={16} />
-                  Sign in
-                </Link>
-                <Link className="flex items-center gap-2 rounded-lg border border-pit-teal/30 bg-pit-teal/15 px-3 py-2 text-sm font-semibold text-pit-teal" to="/login?mode=register" onClick={() => setMobileMenuOpen(false)}>
-                  <Users size={16} />
-                  Create account
-                </Link>
-              </div>
-            )}
-          </header>
-
-          <div className="grid items-start gap-3 py-3 sm:gap-10 sm:pb-10 sm:pt-4 min-[1100px]:grid-cols-[minmax(340px,0.86fr)_minmax(520px,1.14fr)] min-[1100px]:pb-14 min-[1100px]:pt-8">
-            <div data-reveal className="mx-auto max-w-2xl text-center min-[1100px]:mx-0 min-[1100px]:text-left">
-              <p className="mb-2 inline-flex rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-1 text-[10px] font-semibold uppercase text-pit-teal sm:mb-3 sm:text-xs">
-                Poker nights, organized
-              </p>
-              <h1 className="whitespace-nowrap text-[clamp(1.62rem,6.9vw,2rem)] font-black leading-none text-white sm:whitespace-normal sm:text-6xl sm:leading-[0.98] lg:text-7xl">
-                Run Better Poker Nights
-              </h1>
-              <p className="mx-auto mt-2 max-w-[20rem] text-[13px] leading-[1.45] text-pit-text sm:mt-6 sm:max-w-xl sm:text-lg sm:leading-8 min-[1100px]:mx-0">
-                Schedule your tournaments, seat your players, run the clock, display the room board, manage your players, and give every group its own personality.
-              </p>
-              <div className="mx-auto mt-4 max-w-[20rem] sm:hidden">
-                <Link className="btn-primary w-full justify-center px-5 py-4 text-base shadow-[0_18px_45px_rgba(20,184,166,0.26)]" to="/demo">
-                  <Play size={18} />
-                  Run a Demo Tournament
-                </Link>
-              </div>
-              <div className="mt-8 hidden max-w-lg sm:flex">
-                <Link
-                  className="group flex w-full items-center justify-between gap-5 rounded-2xl border border-pit-teal/45 bg-pit-teal px-6 py-5 text-left text-white shadow-[0_22px_55px_rgba(20,184,166,0.24)] transition hover:bg-pit-teal-hover hover:shadow-[0_26px_70px_rgba(20,184,166,0.32)]"
-                  to="/demo"
-                >
-                  <span>
-                    <span className="block text-xl font-black">Run a Demo Tournament</span>
-                    <span className="mt-1 block text-sm font-semibold text-white/80">Jump straight into a 40-player tournament.</span>
-                  </span>
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 transition group-hover:bg-white/20">
-                    <Play size={22} fill="currentColor" />
-                  </span>
-                </Link>
-              </div>
-            </div>
-
-            <div data-reveal className="sm:hidden">
-              <MobileHeroPreview />
-            </div>
-
-            <div data-reveal className="hidden sm:block">
-              <HeroBoard />
-            </div>
-
-            <div data-reveal className="hidden max-w-lg gap-2 self-start text-sm text-pit-text sm:grid sm:grid-cols-3 min-[1100px]:mt-[-0.25rem]">
-              {steps.map((step, index) => (
-                <div key={step} className="rounded-lg border border-pit-border bg-pit-surface/55 p-3">
-                  <span className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-pit-teal/15 text-xs font-bold text-pit-teal">
-                    {index + 1}
-                  </span>
-                  <p>{step}</p>
-                </div>
-              ))}
-            </div>
-
-            <div data-reveal className="hidden self-start sm:block min-[1100px]:mt-[-0.25rem]">
-              <HeroSupportRail />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div data-reveal className="mb-8">
-          <p className="text-sm font-semibold uppercase text-pit-teal">Screen views</p>
-          <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Designed for hosts, players, and the room.</h2>
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-3">
-          <ProductShot
-            title="Run Tournament"
-            eyebrow="Host command center"
-            caption="Large timer, current blinds, payout rail, QR access, and fast player actions from one screen."
-          >
-            <RunTournamentMock />
-          </ProductShot>
-          <ProductShot
-            title="Player Lobby"
-            eyebrow="Phone friendly"
-            caption="Players can see their seat, clock, registration status, payout info, and report when they bust."
-          >
-            <PlayerLobbyMock />
-          </ProductShot>
-          <ProductShot
-            title="Pocket Admin"
-            eyebrow="Mobile control"
-            caption="Hosts can control the timer and handle quick actions while walking the room."
-          >
-            <PocketAdminMock />
-          </ProductShot>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div data-reveal className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-sm font-semibold uppercase text-pit-teal">Built for live games</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">A better rhythm for every part of tournament night.</h2>
-          </div>
-          <p className="max-w-xl text-sm leading-6 text-pit-text">
-            ThePokerPlanner keeps the host focused on decisions instead of explanations: clear state, fast actions, and screens that make sense from across the room.
-          </p>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-4">
-          {features.map((feature, index) => {
-            const Icon = feature.icon;
-            return (
-              <article
-                key={feature.title}
-                data-reveal
-                style={{ transitionDelay: `${index * 80}ms` }}
-                className="group relative overflow-hidden rounded-xl border border-pit-border bg-pit-card p-5 transition-colors hover:border-pit-teal/45"
-              >
-                <div className="absolute inset-x-0 top-0 h-px overflow-hidden bg-pit-border">
-                  <span className="pp-meter-bar block h-px w-1/2 bg-pit-teal" style={{ animation: 'pp-meter 2.8s linear infinite' }} />
-                </div>
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
-                    <Icon size={22} />
-                  </div>
-                  <span className="rounded-lg border border-pit-border bg-pit-bg px-2 py-1 font-mono text-xs text-pit-text">{feature.stat}</span>
-                </div>
-                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-pit-text">{feature.body}</p>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section id="voice-director" className="overflow-hidden border-y border-pit-border bg-pit-surface/30">
-        <div className="mx-auto grid max-w-7xl min-w-0 gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:px-10">
-          <div data-reveal className="min-w-0 lg:sticky lg:top-8 lg:self-start">
-            <p className="text-sm font-semibold uppercase text-pit-teal">Voice director</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Your game can sound like your game.</h2>
-            <p className="mt-4 text-sm leading-6 text-pit-text">
-              Pick a voice style for each group and let tournament announcements match the room: polished, chaotic, cinematic, friendly, or full sports-arena hype.
-            </p>
-            <div className="mt-6 space-y-3">
-              <div className="rounded-xl border border-pit-border bg-pit-bg/60 p-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-pit-teal" />
-                  <h3 className="text-sm font-semibold text-white">Context when it matters</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-pit-text">
-                  Classic mode keeps announcements short and clean. When a group wants more color, level changes can include live tournament context like field movement, rebuys, add-ons, and bounty pressure.
-                </p>
-              </div>
-              <div className="grid gap-2 text-sm text-pit-text sm:grid-cols-2 lg:grid-cols-1">
-                {['Group-level voice preset', 'Custom prompt flavor', 'Concise clock, pause, knockout, rebuy, and add-on calls', 'Preview styles before game night'].map((item) => (
-                  <div key={item} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
-                    <CheckCircle2 size={15} className="text-pit-teal" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div data-reveal className="min-w-0 overflow-hidden rounded-xl border border-pit-border bg-pit-card p-4 sm:p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase text-pit-muted">Voice preview</p>
-                <h3 className="mt-1 text-xl font-bold text-white">Hear the table personalities</h3>
-              </div>
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10">
-                <span className="pp-ring absolute inset-1 rounded-full border border-pit-teal/40" style={{ animation: 'pp-pulse-ring 1.8s ease-in-out infinite' }} />
-                <Bot size={22} className="relative text-pit-teal" />
-              </div>
-            </div>
-
-            <div className="mb-4 flex items-center gap-3 sm:hidden">
-              <button
-                type="button"
-                aria-label="Previous voice"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-pit-border bg-pit-bg/70 text-pit-text"
-                onClick={() => selectAdjacentVoice(-1)}
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <div className="min-w-0 flex-1 rounded-full border border-pit-teal/30 bg-pit-teal/10 px-3 py-2 text-center">
-                <p className="truncate text-sm font-semibold text-white">{selectedVoiceClip.label}</p>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-teal">
-                  {selectedVoiceIndex + 1} of {voiceClips.length}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Next voice"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-pit-border bg-pit-bg/70 text-pit-text"
-                onClick={() => selectAdjacentVoice(1)}
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-
-            <div className="-mx-1 mb-4 hidden max-w-full gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden">
-              {voiceClips.map((clip, index) => (
-                <button
-                  key={clip.style}
-                  type="button"
-                  onClick={() => {
-                    setSelectedVoiceIndex(index);
-                    setVoiceError('');
-                  }}
-                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    index === selectedVoiceIndex
-                      ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
-                      : 'border-pit-border bg-pit-bg/70 text-pit-muted hover:text-white'
-                  }`}
-                >
-                  {clip.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="min-w-0 rounded-xl border border-pit-teal/30 bg-pit-teal/10 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-pit-teal">Now previewing</p>
-                  <h4 className="mt-1 text-2xl font-bold text-white">{selectedVoiceClip.label}</h4>
-                  <p className="mt-2 text-sm leading-6 text-pit-text">{selectedVoiceClip.text}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary w-full shrink-0 px-4 py-2 text-sm sm:w-auto"
-                  onClick={() => playVoicePreview(selectedVoiceIndex)}
-                >
-                  <Play size={15} />
-                  Play clip
-                </button>
-              </div>
-              <div className="mt-4 rounded-lg border border-pit-border bg-pit-bg/70 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-pit-muted">Sample line</p>
-                <p className="mt-1 break-words text-sm leading-6 text-white">
-                  {selectedVoiceClip.sampleText ?? (selectedVoiceClip.src ? 'Saved MP3 preview is ready.' : 'No saved MP3 preview yet.')}
-                </p>
-              </div>
-            </div>
-
-            {voiceError && (
-              <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-                {voiceError}
-              </p>
-            )}
-
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-          <div data-reveal>
-            <p className="text-sm font-semibold uppercase text-pit-teal">Player tracking</p>
-            <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Track the game without losing the night.</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-pit-text">
-              ThePokerPlanner keeps the useful history: entries, check-ins, knockouts, payouts, placement medals, and group challenge coins. The point is not to make poker night feel like work. It is to let the app quietly handle the record keeping while the group focuses on the table talk, rivalries, and stories people actually remember.
-            </p>
-            <div className="mt-6 grid gap-3 md:grid-cols-3">
-              {playerTrackingHighlights.map((item, index) => (
-                <article
-                  key={item.title}
-                  data-reveal
-                  style={{ transitionDelay: `${index * 80}ms` }}
-                  className="rounded-xl border border-pit-border bg-pit-card p-4"
-                >
-                  <div className="mb-3 inline-flex rounded-lg border border-pit-teal/25 bg-pit-teal/10 px-2 py-1 font-mono text-xs font-semibold text-pit-teal">
-                    {item.stat}
-                  </div>
-                  <h3 className="text-base font-semibold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-pit-text">{item.body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase text-pit-muted">Group pride</p>
-                <h3 className="mt-1 text-xl font-bold text-white">Coins, medals, and bragging rights</h3>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-yellow-200/25 bg-yellow-200/10 text-yellow-200">
-                <Trophy size={22} />
-              </div>
-            </div>
-            <PlayerTrackingMock />
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
-        <div data-reveal className="rounded-xl border border-pit-border bg-pit-card p-6 sm:p-8 lg:flex lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-white">Ready for the next poker night?</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-pit-text">
-              Beta access is open: run real games with the full feature set and help shape what comes next.
-            </p>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-3 lg:mt-0">
-            <Link className="btn-primary px-5 py-3" to="/login?mode=register">Create account</Link>
-            <Link className="btn-ghost px-5 py-3" to="/login">Sign in</Link>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function HeroBoard() {
-  return (
-    <div className="relative mx-auto w-full max-w-3xl">
-      <div className="rounded-xl border border-white/10 bg-pit-card p-3 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
-        <div className="rounded-lg border border-pit-border bg-[#151519] p-3">
-          <div className="mb-3 flex items-center justify-between border-b border-pit-border pb-3">
-            <div>
-              <p className="text-[10px] font-semibold uppercase text-pit-muted">Tournament Display</p>
-              <h2 className="text-lg font-bold text-white">Saturday Championship</h2>
-            </div>
-            <BrandLockup compact showSlogan={false} className="scale-90" />
-          </div>
-          <div className="grid gap-3 xl:grid-cols-[150px_minmax(0,1fr)_150px]">
-            <MiniStructure />
-            <div className="rounded-xl border border-pit-border bg-black/25 p-4 text-center">
-              <p className="text-xs font-semibold uppercase text-pit-text">Level 4 of 12</p>
-              <p className="mt-3 font-mono text-6xl font-black leading-none text-white md:text-7xl">18:42</p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <MiniBlind label="Current" value="300 / 600" />
-                <MiniBlind label="Next" value="500 / 1K" />
-              </div>
-            </div>
-            <MiniPayout />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroSupportRail() {
-  const items = [
-    {
-      icon: QrCode,
-      label: 'Room-ready display',
-      body: 'TV codes, payouts, seating, and clock state stay visible for everyone.',
-    },
-    {
-      icon: Users,
-      label: 'Player flow',
-      body: 'Register, RSVP, check in, seat players, and track finishes cleanly.',
-    },
-    {
-      icon: Mic2,
-      label: 'Voice director',
-      body: 'Level changes, warnings, breaks, and knockouts can sound like your room.',
-    },
-  ];
-
-  return (
-    <div className="mx-auto grid w-full max-w-3xl gap-3 md:grid-cols-3">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div key={item.label} className="rounded-xl border border-pit-border bg-pit-card/70 p-3 shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
-            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/10 text-pit-teal">
-              <Icon size={15} />
-            </div>
-            <p className="text-sm font-bold text-white">{item.label}</p>
-            <p className="mt-1 text-xs leading-5 text-pit-text">{item.body}</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function MobileHeroPreview() {
-  return (
-    <div className="mx-auto w-full max-w-[23rem] overflow-hidden rounded-xl border border-white/10 bg-[#111114] shadow-[0_22px_60px_rgba(0,0,0,0.5)]">
-      <div className="flex items-center justify-between border-b border-pit-border bg-pit-card px-3 py-2">
-        <div className="min-w-0">
-          <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-pit-muted">Tournament Display</p>
-          <p className="truncate text-xs font-bold text-white">Saturday Championship</p>
-        </div>
-        <span className="rounded-md border border-pit-teal/30 bg-pit-teal/10 px-2 py-1 text-[9px] font-semibold text-pit-teal">
-          TV 478381
-        </span>
-      </div>
-      <div className="grid grid-cols-[0.62fr_1fr] gap-2 p-2">
-        <div className="rounded-lg border border-pit-border bg-black/25 p-2">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="text-[9px] font-bold uppercase text-white">Blinds</p>
-            <span className="text-[8px] text-pit-muted">12</span>
-          </div>
-          {['100 / 200', '150 / 300', '200 / 400', '300 / 600'].map((level, index) => (
-            <div
-              key={level}
-              className={`mt-1 flex justify-between rounded px-1.5 py-1 text-[9px] ${
-                index === 3 ? 'bg-yellow-200/80 text-yellow-950' : 'bg-pit-bg/70 text-pit-text'
-              }`}
-            >
-              <span>{index + 1}</span>
-              <span>{level}</span>
-            </div>
-          ))}
-        </div>
-        <div className="rounded-lg border border-pit-border bg-black/30 p-3 text-center">
-          <p className="text-[9px] font-semibold uppercase text-pit-text">Level 4 of 12</p>
-          <p className="mt-2 font-mono text-5xl font-black leading-none text-white">18:42</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-md border border-pit-border bg-pit-bg/70 p-2">
-              <p className="text-[8px] uppercase text-pit-muted">Current</p>
-              <p className="mt-0.5 text-sm font-bold text-white">300/600</p>
-            </div>
-            <div className="rounded-md border border-pit-border bg-pit-bg/70 p-2">
-              <p className="text-[8px] uppercase text-pit-muted">Players</p>
-              <p className="mt-0.5 text-sm font-bold text-white">18 in</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniStructure() {
-  const levels = ['100 / 200', '150 / 300', '200 / 400', '300 / 600', '500 / 1K'];
-  return (
-    <div className="rounded-xl border border-pit-border bg-black/25 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-bold uppercase text-white">Structure</p>
-        <span className="text-[10px] text-pit-muted">12 levels</span>
-      </div>
-      <div className="space-y-1">
-        {levels.map((level, index) => (
-          <div key={level} className={`flex justify-between rounded-md px-2 py-1 text-xs ${index === 3 ? 'bg-yellow-200/80 text-yellow-950' : 'bg-pit-bg/70 text-pit-text'}`}>
-            <span>{index + 1}</span>
-            <span>{level}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MiniBlind({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-pit-border bg-pit-bg/70 p-3">
-      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
-      <p className="mt-1 text-xl font-bold text-white">{value}</p>
-    </div>
-  );
-}
-
-function MiniPayout() {
-  return (
-    <div className="rounded-xl border border-pit-border bg-black/25 p-3">
-      <p className="text-xs font-bold uppercase text-white">Payouts</p>
-      <p className="mt-2 text-sm text-pit-teal">$860 pool</p>
-      {['1st $430', '2nd $258', '3rd $172'].map((row) => (
-        <div key={row} className="mt-2 rounded-md border border-pit-border bg-pit-bg/70 px-2 py-1 text-xs text-white">
-          {row}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PlayerTrackingMock() {
-  const rows = [
-    {
-      name: 'Ambo',
-      detail: 'Checked in - Table 2 Seat 4',
-      medals: '1st x2  2nd x1',
-      coins: ['/challenge-coins/defaults/big-stack.svg', '/challenge-coins/defaults/royal-highness.svg', '/challenge-coins/defaults/table-talker.svg'],
-    },
-    {
-      name: 'Steve',
-      detail: 'Finished 2nd - Paid',
-      medals: '2nd x3  3rd x1',
-      coins: ['/challenge-coins/defaults/lockdown.svg', '/challenge-coins/defaults/lucky-dog.svg'],
-    },
-    {
-      name: 'Rob',
-      detail: 'Bounty claimed',
-      medals: '3rd x2',
-      coins: ['/challenge-coins/defaults/bounty-hunter.svg', '/challenge-coins/defaults/hot-streak.svg'],
-    },
-  ];
-
-  return (
-    <div className="space-y-3 rounded-xl border border-pit-border bg-pit-bg/70 p-3">
-      {rows.map((row) => (
-        <div key={row.name} className="rounded-lg border border-pit-border bg-pit-card/80 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{row.name}</p>
-              <p className="mt-1 text-xs text-pit-muted">{row.detail}</p>
-            </div>
-            <span className="shrink-0 rounded-full border border-yellow-200/30 bg-yellow-200/10 px-2 py-0.5 text-[10px] font-semibold text-yellow-200">
-              {row.medals}
-            </span>
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            {row.coins.map((coin) => (
-              <img
-                key={coin}
-                src={coin}
-                alt=""
-                className="h-9 w-9 rounded-full border border-white/10 bg-pit-bg object-cover shadow"
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ProductShot({
-  title,
-  eyebrow,
-  caption,
-  children,
-}: {
-  title: string;
+type FeatureSplash = {
+  id: string;
   eyebrow: string;
-  caption: string;
-  children: ReactNode;
+  title: string;
+  description: string;
+  benefits: string[];
+  art: MarketingArtName;
+  icon: IconComponent;
+};
+
+const FEATURE_CARDS: FeatureSplash[] = [
+  {
+    id: 'schedule',
+    eyebrow: 'Set the night',
+    title: 'Schedule tournaments',
+    description: 'Create the game, share it with your group, and keep every RSVP in one place.',
+    benefits: ['Shared game calendar', 'Group and league RSVPs', 'Automatic reminders'],
+    art: 'calendar',
+    icon: CalendarDays,
+  },
+  {
+    id: 'players',
+    eyebrow: 'Run the room',
+    title: 'Manage players',
+    description: 'Track arrivals, seating, rebuys, add-ons, knockouts, and results without a side spreadsheet.',
+    benefits: ['QR check-in', 'Live seat assignments', 'Player history'],
+    art: 'players',
+    icon: Users,
+  },
+  {
+    id: 'clock',
+    eyebrow: 'Keep it moving',
+    title: 'Run the clock',
+    description: 'A synchronized tournament timer keeps the host, players, and TV board on the same level.',
+    benefits: ['Blind-level timer', 'Break and chip-up markers', 'Room announcements'],
+    art: 'timer',
+    icon: Clock3,
+  },
+  {
+    id: 'payouts',
+    eyebrow: 'Finish cleanly',
+    title: 'Payouts made easy',
+    description: 'Set the paid places up front and let the prize pool update as the field checks in.',
+    benefits: ['Flexible payout splits', 'Bounty tracking', 'Shareable recaps'],
+    art: 'trophy',
+    icon: Trophy,
+  },
+];
+
+const SPLASHES: FeatureSplash[] = [
+  FEATURE_CARDS[0],
+  FEATURE_CARDS[1],
+  FEATURE_CARDS[2],
+  {
+    id: 'blinds',
+    eyebrow: 'Build the structure',
+    title: 'Blinds that fit the night',
+    description: 'Create a blind schedule around your field, chip set, target duration, and break plan.',
+    benefits: ['Guided blind calculator', 'Saved group structures', 'Chip-up planning'],
+    art: 'blinds',
+    icon: Layers3,
+  },
+  FEATURE_CARDS[3],
+  {
+    id: 'command-center',
+    eyebrow: 'See the whole season',
+    title: 'One command center',
+    description: 'Upcoming games, groups, leagues, player stories, and results stay connected after the cards are put away.',
+    benefits: ['Groups and leagues', 'Standings and history', 'Device alerts'],
+    art: 'medallion',
+    icon: ShieldCheck,
+  },
+];
+
+function MarketingArt({
+  name,
+  alt,
+  className = '',
+  eager = false,
+}: {
+  name: MarketingArtName;
+  alt: string;
+  className?: string;
+  eager?: boolean;
 }) {
   return (
-    <article data-reveal className="overflow-hidden rounded-xl border border-pit-border bg-pit-card">
-      <div className="border-b border-pit-border p-4">
-        <p className="text-xs font-semibold uppercase text-pit-teal">{eyebrow}</p>
-        <h3 className="mt-1 text-xl font-bold text-white">{title}</h3>
-        <p className="mt-2 text-sm leading-6 text-pit-text">{caption}</p>
+    <img
+      src={`/marketing/${name}-512.webp`}
+      srcSet={`/marketing/${name}-256.webp 256w, /marketing/${name}-512.webp 512w, /marketing/${name}-768.webp 768w`}
+      sizes="(max-width: 767px) 220px, (max-width: 1023px) 320px, 420px"
+      width="768"
+      height="768"
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      className={className}
+      alt={alt}
+    />
+  );
+}
+
+function TournamentPreview() {
+  const blindLevels = [
+    ['1', '100 / 200'],
+    ['2', '150 / 300'],
+    ['3', '200 / 400'],
+    ['4', '300 / 600'],
+    ['5', '400 / 800'],
+  ];
+  const payouts = [
+    ['1st', '$1,250'],
+    ['2nd', '$750'],
+    ['3rd', '$450'],
+    ['4th', '$300'],
+    ['5th', '$200'],
+  ];
+
+  return (
+    <div className="marketing-preview-wrap" aria-label="Example tournament control board">
+      <div className="marketing-preview">
+        <header className="marketing-preview__header">
+          <div>
+            <span>TOURNAMENT DISPLAY</span>
+            <strong>Saturday Championship</strong>
+          </div>
+          <span className="marketing-preview__code">TV 478381</span>
+        </header>
+
+        <div className="marketing-preview__body">
+          <section className="marketing-preview__rail" aria-label="Blind structure preview">
+            <div className="marketing-preview__section-title">BLIND STRUCTURE</div>
+            {blindLevels.map(([level, blinds]) => (
+              <div className={`marketing-preview__row${level === '4' ? ' is-active' : ''}`} key={level}>
+                <span>{level}</span>
+                <span>{blinds}</span>
+              </div>
+            ))}
+          </section>
+
+          <section className="marketing-preview__clock" aria-label="Tournament timer preview">
+            <span className="marketing-preview__running">RUNNING</span>
+            <strong className="marketing-preview__time">18:42</strong>
+            <div className="marketing-preview__clock-stats">
+              <div><span>CURRENT BLINDS</span><strong>300 / 600</strong></div>
+              <div><span>PLAYERS LEFT</span><strong>18 / 54</strong></div>
+            </div>
+            <div className="marketing-preview__controls" aria-hidden="true">
+              <span>Pause</span><span>Next level</span><span>Adjust timer</span>
+            </div>
+          </section>
+
+          <section className="marketing-preview__rail marketing-preview__payouts" aria-label="Payout preview">
+            <div className="marketing-preview__section-title">PAYOUTS</div>
+            {payouts.map(([place, amount]) => (
+              <div className="marketing-preview__row" key={place}>
+                <strong>{place}</strong><span>{amount}</span>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div className="marketing-preview__metrics" aria-label="Tournament status preview">
+          <div><strong>18</strong><span>Players left</span></div>
+          <div><strong>5</strong><span>Rebuys</span></div>
+          <div><strong>2</strong><span>Add-ons</span></div>
+          <div><strong>24.5K</strong><span>Avg stack</span></div>
+        </div>
       </div>
-      <div className="bg-[#111113] p-4">{children}</div>
+      <MarketingArt name="trophy" alt="" className="marketing-preview__trophy" eager />
+      <MarketingArt name="medallion" alt="" className="marketing-preview__chip" eager />
+    </div>
+  );
+}
+
+function FeatureSplashSection({ feature, index }: { feature: FeatureSplash; index: number }) {
+  const Icon = feature.icon;
+  return (
+    <article id={feature.id} className={`marketing-splash${index % 2 ? ' marketing-splash--reverse' : ''}`}>
+      <div className="marketing-splash__art" aria-hidden="true">
+        <MarketingArt name={feature.art} alt="" />
+      </div>
+      <div className="marketing-splash__copy">
+        <span className="marketing-eyebrow">{feature.eyebrow}</span>
+        <h3>{feature.title}</h3>
+        <p>{feature.description}</p>
+        <ul>
+          {feature.benefits.map((benefit) => (
+            <li key={benefit}><Check aria-hidden="true" />{benefit}</li>
+          ))}
+        </ul>
+        <div className="marketing-splash__icon" aria-hidden="true"><Icon /></div>
+      </div>
     </article>
   );
 }
 
-function RunTournamentMock() {
+export default function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const startPath = featureFlags.deferredAuthQuickStart ? '/quick-start' : '/login?mode=register';
+  const startLabel = featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Get started';
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    closeButtonRef.current?.focus();
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
+
   return (
-    <div className="rounded-xl border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="rounded-md border border-pit-border px-2 py-1 text-xs text-pit-text">TV 478381</span>
-        <span className="rounded-md bg-pit-teal px-2 py-1 text-xs font-semibold text-white">Start</span>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-4 text-center">
-        <p className="text-xs uppercase text-pit-text">Level 3 of 9</p>
-        <p className="font-mono text-5xl font-black text-white">19:07</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <MiniBlind label="Current" value="75 / 150" />
-          <MiniBlind label="Next" value="125 / 250" />
+    <div className="marketing-page">
+      <header className="marketing-header">
+        <Link to="/landing" className="marketing-header__brand" aria-label="ThePokerPlanner home">
+          <BrandLockup compact showSlogan={false} />
+        </Link>
+        <nav className="marketing-header__nav" aria-label="Marketing navigation">
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#capabilities">Product</a>
+        </nav>
+        <div className="marketing-header__actions">
+          <Link to="/login" className="marketing-button marketing-button--quiet">Log in</Link>
+          <Link to={startPath} className="marketing-button marketing-button--primary">{startLabel}</Link>
         </div>
-      </div>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {['3 left', '4 rebuys', '$155 pot'].map((item) => (
-          <div key={item} className="rounded-md border border-pit-border bg-pit-card p-2 text-center text-xs text-white">{item}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
+        <button
+          type="button"
+          className="marketing-header__menu"
+          aria-label="Open navigation"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Menu aria-hidden="true" />
+        </button>
+      </header>
 
-function PlayerLobbyMock() {
-  return (
-    <div className="mx-auto max-w-[250px] rounded-[1.75rem] border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 text-center">
-        <p className="text-sm font-bold text-white">June Tournament</p>
-        <p className="mt-1 text-[11px] text-pit-teal">TABLE 4 SEAT 6</p>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-3 text-center">
-        <p className="font-mono text-4xl font-black text-white">08:54</p>
-        <p className="mt-1 text-xs text-pit-text">300 / 600</p>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <LobbyPill label="Registered" value="Yes" />
-        <LobbyPill label="Checked In" value="Yes" />
-      </div>
-      <button className="mt-3 w-full rounded-lg bg-red-600/25 px-3 py-2 text-xs font-bold text-red-300">I Have Been Knocked Out</button>
-    </div>
-  );
-}
-
-function LobbyPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-pit-border bg-pit-card p-2 text-center">
-      <p className="text-[10px] uppercase text-pit-muted">{label}</p>
-      <p className="text-sm font-bold text-white">{value}</p>
-    </div>
-  );
-}
-
-function PocketAdminMock() {
-  return (
-    <div className="mx-auto max-w-[250px] rounded-xl border border-pit-border bg-pit-bg p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] uppercase text-pit-muted">Pocket Admin</p>
-          <p className="text-sm font-bold text-white">June Tournament</p>
+      {menuOpen && (
+        <div className="marketing-menu-backdrop" role="presentation" onMouseDown={closeMenu}>
+          <aside
+            className="marketing-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="marketing-menu__top">
+              <BrandLockup compact showSlogan={false} />
+              <button ref={closeButtonRef} type="button" aria-label="Close navigation" onClick={closeMenu}><X aria-hidden="true" /></button>
+            </div>
+            <a href="#features" onClick={closeMenu}>Features<ChevronRight aria-hidden="true" /></a>
+            <a href="#how-it-works" onClick={closeMenu}>How it works<ChevronRight aria-hidden="true" /></a>
+            <a href="#capabilities" onClick={closeMenu}>Product<ChevronRight aria-hidden="true" /></a>
+            <Link to="/login" onClick={closeMenu}>Log in<ChevronRight aria-hidden="true" /></Link>
+            <Link to={startPath} className="marketing-button marketing-button--primary" onClick={closeMenu}>{startLabel}</Link>
+          </aside>
         </div>
-        <span className="rounded-md border border-yellow-300/50 px-2 py-1 text-[10px] text-yellow-200">Awake</span>
-      </div>
-      <div className="rounded-lg border border-pit-border bg-black/25 p-3 text-center">
-        <p className="font-mono text-4xl font-black text-white">20:00</p>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {['Start', '+ Rebuy', '+ Add-On', 'Next'].map((item) => (
-          <button key={item} className="rounded-lg border border-pit-border bg-pit-card px-2 py-2 text-xs font-semibold text-white">{item}</button>
-        ))}
-      </div>
+      )}
+
+      <main>
+        <section className="marketing-hero">
+          <div className="marketing-hero__copy">
+            <span className="marketing-eyebrow">POKER NIGHTS, ORGANIZED</span>
+            <h1>
+              <span className="marketing-hero__line marketing-hero__line--light">Build.</span>
+              <span className="marketing-hero__line marketing-hero__line--light">Run.</span>
+              <span className="marketing-hero__line">Win.</span>
+            </h1>
+            <p>Create tournaments in minutes, run the clock with confidence, and pay out winners <strong>stress free.</strong></p>
+            {featureFlags.deferredAuthQuickStart && (
+              <p className="marketing-hero__subcopy">No account needed to start. Ready in under a minute.</p>
+            )}
+            <div className="marketing-hero__actions">
+              <Link to={startPath} className="marketing-button marketing-button--primary marketing-button--hero">
+                <Zap aria-hidden="true" />{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create Tournament'}
+              </Link>
+              <Link to="/demo" className="marketing-button marketing-button--secondary marketing-button--hero">
+                <Play aria-hidden="true" />Demo Full Experience<ChevronRight aria-hidden="true" />
+              </Link>
+            </div>
+            <div className="marketing-highlight-rail" aria-label="Product highlights">
+              <div><CalendarDays aria-hidden="true" /><span>Wizard<strong>in Minutes</strong></span></div>
+              <div><Clock3 aria-hidden="true" /><span>Live Timer<strong>with Breaks</strong></span></div>
+              <div><Users aria-hidden="true" /><span>Manage<strong>Players</strong></span></div>
+              <div><Trophy aria-hidden="true" /><span>Payouts<strong>Made Easy</strong></span></div>
+            </div>
+          </div>
+          <TournamentPreview />
+        </section>
+
+        <section id="features" className="marketing-feature-grid" aria-labelledby="features-heading">
+          <div className="marketing-section-heading">
+            <span className="marketing-eyebrow">One connected night</span>
+            <h2 id="features-heading">Everything a host needs at the table</h2>
+          </div>
+          <div className="marketing-feature-grid__items">
+            {FEATURE_CARDS.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <a href={`#${feature.id}`} className="marketing-feature-card" key={feature.id}>
+                  <MarketingArt name={feature.art} alt="" />
+                  <div>
+                    <span className="marketing-feature-card__icon"><Icon aria-hidden="true" /></span>
+                    <h3>{feature.title}</h3>
+                    <p>{feature.description}</p>
+                  </div>
+                  <ChevronRight aria-hidden="true" />
+                </a>
+              );
+            })}
+          </div>
+        </section>
+
+        <section id="how-it-works" className="marketing-steps" aria-labelledby="steps-heading">
+          <div className="marketing-section-heading">
+            <span className="marketing-eyebrow">From invite to winner</span>
+            <h2 id="steps-heading">Run the night in three moves</h2>
+          </div>
+          <div className="marketing-steps__grid">
+            <article><span>1</span><CalendarDays aria-hidden="true" /><h3>Set the game</h3><p>Choose the group, date, buy-in, field, and blind structure.</p></article>
+            <article><span>2</span><Users aria-hidden="true" /><h3>Check in and seat</h3><p>Confirm the field, settle entries, and create the seating chart.</p></article>
+            <article><span>3</span><Trophy aria-hidden="true" /><h3>Run and recap</h3><p>Advance the clock, track results, and share the final finish.</p></article>
+          </div>
+        </section>
+
+        <section id="capabilities" className="marketing-splashes" aria-labelledby="capabilities-heading">
+          <div className="marketing-section-heading">
+            <span className="marketing-eyebrow">Made for live poker</span>
+            <h2 id="capabilities-heading">The room stays in sync</h2>
+          </div>
+          {SPLASHES.map((feature, index) => <FeatureSplashSection key={feature.id} feature={feature} index={index} />)}
+        </section>
+
+        <section className="marketing-final-cta">
+          <MarketingArt name="medallion" alt="" />
+          <div>
+            <span className="marketing-eyebrow">Your next game starts here</span>
+            <h2>Run the night. Enjoy the table.</h2>
+            <p>Try a complete tournament without creating an account, or set up your first group when you are ready.</p>
+          </div>
+          <div className="marketing-final-cta__actions">
+            <Link to={startPath} className="marketing-button marketing-button--primary"><Zap aria-hidden="true" />{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create account'}</Link>
+            <Link to="/demo" className="marketing-button marketing-button--secondary"><Play aria-hidden="true" />Run the demo<ChevronRight aria-hidden="true" /></Link>
+          </div>
+        </section>
+      </main>
+
+      <footer className="marketing-footer">
+        <BrandLockup compact showSlogan={false} />
+        <p>Run better poker nights.</p>
+        <nav aria-label="Footer navigation">
+          <Link to="/login">Log in</Link>
+          <Link to={startPath}>{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create account'}</Link>
+          <a href="/terms/">Terms</a>
+        </nav>
+      </footer>
     </div>
   );
 }

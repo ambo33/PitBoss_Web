@@ -41,6 +41,20 @@ function generateInviteCode(length = 6): string {
 
 type DbClient = PoolClient;
 const APP_TIMEZONE = 'America/New_York';
+const DEMO_POOL_READY_TARGET = 5;
+const DEMO_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+type DemoSessionStatus = 'ready' | 'claimed';
+type DemoSessionRecord = {
+  demosessionid: string;
+  demohostuserid: string;
+  tournamentid: string;
+  groupid: string;
+  tvdisplaycode: string;
+};
+
+let demoMaintenanceStarted = false;
+let demoMaintenancePromise: Promise<void> | null = null;
 
 function buildInsertValues(rows: unknown[][]): { placeholders: string; values: unknown[] } {
   const values: unknown[] = [];
@@ -117,6 +131,439 @@ function demoDateTimeAfter(days: number, hour: number, minute = 0): { date: Date
   return { date, appDate, appTime };
 }
 
+async function createDemoSession(client: DbClient, status: DemoSessionStatus = 'ready'): Promise<DemoSessionRecord> {
+  const sessionId = crypto.randomUUID();
+  const demoUserId = crypto.randomUUID();
+  const demoEmail = `demo+${sessionId}@demo.thepokerplanner.com`;
+  const passwordHash = await bcrypt.hash(`demo:${sessionId}`, 4);
+
+  await client.query(
+    `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+     VALUES ($1, $2, $3, $4, $5, TRUE)`,
+    [demoUserId, privateEmailPlaceholder(demoUserId), hashEmail(demoEmail), encryptEmail(demoEmail), passwordHash]
+  );
+  await client.query(
+    `INSERT INTO usermetadata (userid, fullname, nickname, tierid, accounttier, issuperadmin, hostedtournamentcount, termsacceptedat, onboardingtourcompletedat, aicreditsremaining, aicreditsrefreshedat, isdemo, demosessionid)
+     VALUES ($1, 'Demo Host', 'Demo Host', 2, 'premium', FALSE, 0, now(), now(), 25, now(), TRUE, $2)`,
+    [demoUserId, sessionId]
+  );
+
+  const inviteCode = await createUniqueInviteCode(client);
+  const groupResult = await client.query<{ groupid: string }>(
+    `INSERT INTO groups (userid, name, invitecode, approvalneeded, defaulttrackingmode, tvseatingwelcomemessage, aiannouncerenabled, aiannouncerpreset, aiannouncerclassicmode, postapprovalrequired, demosessionid)
+     VALUES ($1, 'Demo Poker Room', $2, FALSE, 'standard', 'Demo table assignments are live. Scan to follow along.', TRUE, 'all_in_alex', FALSE, FALSE, $3)
+     RETURNING groupid`,
+    [demoUserId, inviteCode, sessionId]
+  );
+  const groupId = groupResult.rows[0]?.groupid;
+  if (!groupId) throw new Error('Failed to create demo group.');
+  await client.query(
+    `INSERT INTO groupmembers (groupid, userid, admin, approved)
+     VALUES ($1, $2, TRUE, TRUE)`,
+    [groupId, demoUserId]
+  );
+
+  const tvCode = await createUniqueTvCode(client);
+  const demoStart = new Date(Date.now() + 60 * 60 * 1000);
+  const { date: demoDate, time: demoTime } = formatAppDateTimeForDb(demoStart);
+  const payoutStructure = JSON.stringify({
+    mode: 'count',
+    value: 8,
+    roundingdenomination: 5,
+    splits: [32, 22, 15, 10, 7, 5, 5, 4],
+  });
+  const tournamentResult = await client.query<{ tournamentid: string }>(
+    `INSERT INTO tournaments
+     (userid, name, date, time, buyin, adjustment, rebuycost, rebuychips, rebuylastlevel, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode, tvdisplaymode, seatingmaxpertable, bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, demosessionid)
+     VALUES ($1, 'Demo Championship Night', $2, $3, 25, 0, 25, 10000, 6, 20, 15000, 40, TRUE, $4, $5, $6, 'timer', 8, FALSE, 'manual', 0, 'amount', 5, $7)
+     RETURNING tournamentid`,
+    [demoUserId, demoDate, demoTime, groupId, payoutStructure, tvCode, sessionId]
+  );
+  const tournamentId = tournamentResult.rows[0]?.tournamentid;
+  if (!tournamentId) throw new Error('Failed to create demo tournament.');
+
+  const levelInsert = buildInsertValues(
+    DEMO_LEVELS.map(([level, label, smallBlind, bigBlind, ante, minutes]) => [
+      tournamentId,
+      level,
+      label,
+      smallBlind,
+      bigBlind,
+      ante,
+      minutes,
+      level === DEMO_LEVELS.length,
+    ])
+  );
+  await client.query(
+    `INSERT INTO blindstructure (tournamentid, level, label, smallblind, bigblind, ante, minutes, islastlevel)
+     VALUES ${levelInsert.placeholders}`,
+    levelInsert.values
+  );
+  await client.query(
+    `INSERT INTO tournamenttimer (tournamentid, currentlevel, remainingsecs, running, lastupdated)
+     VALUES ($1, 8, 732, FALSE, now())`,
+    [tournamentId]
+  );
+
+  const now = Date.now();
+  const demoPlayers = DEMO_PLAYER_NAMES.map((name, index) => {
+    const playerId = crypto.randomUUID();
+    const email = `demo-player-${index + 1}+${sessionId}@demo.thepokerplanner.com`;
+    const placed = index < 34 ? 40 - index : null;
+    return {
+      email,
+      index,
+      name,
+      playerId,
+      placed,
+      knockedOutAt: placed == null ? null : new Date(now - placed * 4 * 60 * 1000),
+    };
+  });
+
+  const demoUserInsert = buildInsertValues(
+    demoPlayers.map((player) => [
+      player.playerId,
+      privateEmailPlaceholder(player.playerId),
+      hashEmail(player.email),
+      encryptEmail(player.email),
+      `guest:${sessionId}:${player.index}`,
+      true,
+    ])
+  );
+  await client.query(
+    `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
+     VALUES ${demoUserInsert.placeholders}`,
+    demoUserInsert.values
+  );
+
+  const demoMetadataInsert = buildInsertValues(
+    demoPlayers.map((player) => [
+      player.playerId,
+      player.name,
+      player.name,
+      true,
+      demoUserId,
+      true,
+      sessionId,
+    ])
+  );
+  await client.query(
+    `INSERT INTO usermetadata (userid, fullname, nickname, isguestuser, guestofuserid, isdemo, demosessionid)
+     VALUES ${demoMetadataInsert.placeholders}`,
+    demoMetadataInsert.values
+  );
+
+  const demoMembersInsert = buildInsertValues(
+    demoPlayers.map((player) => [groupId, player.playerId, false, true])
+  );
+  await client.query(
+    `INSERT INTO groupmembers (groupid, userid, admin, approved)
+     VALUES ${demoMembersInsert.placeholders}`,
+    demoMembersInsert.values
+  );
+
+  const cashGameRows = [
+    {
+      gameId: crypto.randomUUID(),
+      title: 'Friday Night Cash Crew',
+      startsAt: demoDateTimeAfter(2, 20, 30).date,
+      stakes: '$1/$2',
+      minBuyIn: 100,
+      maxBuyIn: 300,
+      seats: 8,
+      playerCount: 5,
+      notes: 'Friendly demo cash game with open seating and running buy-in totals.',
+    },
+    {
+      gameId: crypto.randomUUID(),
+      title: 'Deep Stack Cash Session',
+      startsAt: demoDateTimeAfter(6, 19, 45).date,
+      stakes: '$2/$5',
+      minBuyIn: 300,
+      maxBuyIn: 1000,
+      seats: 9,
+      playerCount: 7,
+      notes: 'Bigger-stakes demo night for showing off the cash-game ledger.',
+    },
+  ];
+  const cashGameInsert = buildInsertValues(
+    cashGameRows.map((cashGame) => [
+      cashGame.gameId,
+      groupId,
+      demoUserId,
+      'cash',
+      cashGame.title,
+      'scheduled',
+      'group_public',
+      cashGame.startsAt.toISOString(),
+      sessionId,
+    ])
+  );
+  await client.query(
+    `INSERT INTO games (id, groupid, createdbyuserid, gametype, title, status, visibility, startsat, demosessionid)
+     VALUES ${cashGameInsert.placeholders}`,
+    cashGameInsert.values
+  );
+  const cashDetailsInsert = buildInsertValues(
+    cashGameRows.map((cashGame) => [
+      cashGame.gameId,
+      cashGame.stakes,
+      cashGame.minBuyIn,
+      cashGame.maxBuyIn,
+      cashGame.seats,
+      cashGame.notes,
+    ])
+  );
+  await client.query(
+    `INSERT INTO cashgamedetails (gameid, stakeslabel, minbuyin, maxbuyin, seatsavailable, notes)
+     VALUES ${cashDetailsInsert.placeholders}`,
+    cashDetailsInsert.values
+  );
+  const cashPlayerRows = cashGameRows.flatMap((cashGame) =>
+    demoPlayers
+      .slice(0, cashGame.playerCount)
+      .map((player) => [cashGame.gameId, player.playerId, player.name, 'interested'])
+  );
+  const cashPlayerInsert = buildInsertValues(cashPlayerRows);
+  await client.query(
+    `INSERT INTO cashgameplayers (gameid, userid, displaynamesnapshot, status)
+     VALUES ${cashPlayerInsert.placeholders}`,
+    cashPlayerInsert.values
+  );
+
+  const leagueInviteCode = await createUniqueLeagueInviteCode(client);
+  const pointsLookup = JSON.stringify([
+    { place: 'DNF', points: 0 },
+    { place: 1, points: 500 },
+    { place: 2, points: 350 },
+    { place: 3, points: 250 },
+    { place: 4, points: 175 },
+    { place: 5, points: 125 },
+    { place: 6, points: 100 },
+    { place: 7, points: 75 },
+    { place: 8, points: 50 },
+  ]);
+  const finalMultipliers = JSON.stringify([
+    { place: 1, multiplier: 18 },
+    { place: 2, multiplier: 16 },
+    { place: 3, multiplier: 14 },
+    { place: 4, multiplier: 12 },
+    { place: 5, multiplier: 10 },
+    { place: 6, multiplier: 8 },
+    { place: 7, multiplier: 6 },
+    { place: 8, multiplier: 4 },
+  ]);
+  const leagueResult = await client.query<{ leagueid: string }>(
+    `INSERT INTO leagues
+     (userid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints, bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup, finalchiprounding, finalstartingbigblind, memberledgervisible, demosessionid)
+     VALUES ($1, 'Demo Season League', $2, FALSE, 24, 100, 35, 100, 6, $3::JSONB, TRUE, $4::JSONB, 100, 100, TRUE, $5)
+     RETURNING leagueid`,
+    [demoUserId, leagueInviteCode, pointsLookup, finalMultipliers, sessionId]
+  );
+  const leagueId = leagueResult.rows[0]?.leagueid;
+  if (!leagueId) throw new Error('Failed to create demo league.');
+  const seasonStart = demoDateTimeAfter(1, 12, 0);
+  const seasonEnd = demoDateTimeAfter(90, 12, 0);
+  const seasonResult = await client.query<{ seasonid: string }>(
+    `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
+     VALUES ($1, 'Spring Demo Season', $2, $3, 35)
+     RETURNING seasonid`,
+    [leagueId, seasonStart.appDate, seasonEnd.appDate]
+  );
+  const seasonId = seasonResult.rows[0]?.seasonid;
+  if (!seasonId) throw new Error('Failed to create demo league season.');
+  const leagueMemberRows = [
+    [leagueId, demoUserId, true, true],
+    ...demoPlayers.slice(0, 16).map((player) => [leagueId, player.playerId, false, true]),
+  ];
+  const leagueMemberInsert = buildInsertValues(leagueMemberRows);
+  await client.query(
+    `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
+     VALUES ${leagueMemberInsert.placeholders}`,
+    leagueMemberInsert.values
+  );
+  const seasonParticipantInsert = buildInsertValues(
+    leagueMemberRows.map((row) => [seasonId, row[0], row[1], true])
+  );
+  await client.query(
+    `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
+     VALUES ${seasonParticipantInsert.placeholders}`,
+    seasonParticipantInsert.values
+  );
+  const leagueEventRows = [
+    { name: 'League Event #1 - Opening Night', when: demoDateTimeAfter(3, 19, 0), number: 1 },
+    { name: 'League Event #2 - Bounty Night', when: demoDateTimeAfter(10, 19, 30), number: 2 },
+    { name: 'League Event #3 - Final Table Chase', when: demoDateTimeAfter(17, 20, 0), number: 3 },
+  ];
+  const leagueEventInsert = buildInsertValues(
+    leagueEventRows.map((event) => [
+      leagueId,
+      seasonId,
+      event.name,
+      event.when.appDate,
+      event.when.appTime,
+      event.number,
+      35,
+    ])
+  );
+  await client.query(
+    `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventtime, eventnumber, eventfee)
+     VALUES ${leagueEventInsert.placeholders}`,
+    leagueEventInsert.values
+  );
+
+  const demoTournamentPlayersInsert = buildInsertValues(
+    demoPlayers.map((player) => [
+      tournamentId,
+      player.playerId,
+      true,
+      true,
+      player.index % 9 === 0 ? 1 : 0,
+      player.index % 5 === 0 ? 1 : 0,
+      player.placed,
+      player.knockedOutAt,
+      0,
+      null,
+      null,
+    ])
+  );
+  await client.query(
+    `INSERT INTO tournamentplayers (tournamentid, userid, checkedin, paid, rebuys, addedon, placed, knockedoutat, bountyamount, bountyclaimedbyuserid, bountyclaimedat)
+     VALUES ${demoTournamentPlayersInsert.placeholders}`,
+    demoTournamentPlayersInsert.values
+  );
+
+  const activeSeatRows = demoPlayers
+    .filter((player) => player.placed == null)
+    .map((player, activeIndex) => [
+      tournamentId,
+      player.playerId,
+      activeIndex < 3 ? 1 : 2,
+      (activeIndex % 3) + 1,
+    ]);
+  if (activeSeatRows.length > 0) {
+    const demoSeatingInsert = buildInsertValues(activeSeatRows);
+    await client.query(
+      `INSERT INTO tournamentseating (tournamentid, userid, "Table", seat)
+       VALUES ${demoSeatingInsert.placeholders}`,
+      demoSeatingInsert.values
+    );
+  }
+
+  await client.query(
+    `INSERT INTO groupposts (groupid, createdby, posttype, message, active, status, approvedat, approvedby)
+     VALUES
+     ($1, $2, 'message', 'Demo room is open. Seat draw is live and the final table is getting close.', TRUE, 'approved', now(), $2),
+     ($1, $2, 'message', 'Try editing players, re-seating the field, opening the TV board, and moving blind levels around.', TRUE, 'approved', now(), $2)`,
+    [groupId, demoUserId]
+  );
+
+  await client.query(
+    `INSERT INTO demosessions (demosessionid, demohostuserid, tournamentid, groupid, tvdisplaycode, status, claimedat)
+     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6 = 'claimed' THEN now() ELSE NULL END)`,
+    [sessionId, demoUserId, tournamentId, groupId, tvCode, status]
+  );
+
+  return {
+    demosessionid: sessionId,
+    demohostuserid: demoUserId,
+    tournamentid: tournamentId,
+    groupid: groupId,
+    tvdisplaycode: tvCode,
+  };
+}
+
+async function refreshClaimedDemoSession(client: DbClient, sessionId: string): Promise<void> {
+  const demoStart = new Date(Date.now() + 60 * 60 * 1000);
+  const { date: demoDate, time: demoTime } = formatAppDateTimeForDb(demoStart);
+  const firstCashGame = demoDateTimeAfter(2, 20, 30).date;
+  const secondCashGame = demoDateTimeAfter(6, 19, 45).date;
+  const seasonStart = demoDateTimeAfter(1, 12, 0);
+  const seasonEnd = demoDateTimeAfter(90, 12, 0);
+  const leagueEvents = [
+    demoDateTimeAfter(3, 19, 0),
+    demoDateTimeAfter(10, 19, 30),
+    demoDateTimeAfter(17, 20, 0),
+  ];
+
+  await client.query(
+    `UPDATE tournaments
+     SET date = $2, time = $3
+     WHERE demosessionid = $1`,
+    [sessionId, demoDate, demoTime]
+  );
+  await client.query(
+    `UPDATE tournamenttimer
+     SET currentlevel = 8, remainingsecs = 732, running = FALSE, lastupdated = now()
+     WHERE tournamentid IN (SELECT tournamentid FROM tournaments WHERE demosessionid = $1)`,
+    [sessionId]
+  );
+  await client.query(
+    `UPDATE games
+     SET startsat = CASE
+       WHEN title = 'Friday Night Cash Crew' THEN $2::TIMESTAMPTZ
+       WHEN title = 'Deep Stack Cash Session' THEN $3::TIMESTAMPTZ
+       ELSE startsat
+     END,
+     status = 'scheduled',
+     updatedat = now()
+     WHERE demosessionid = $1`,
+    [sessionId, firstCashGame.toISOString(), secondCashGame.toISOString()]
+  );
+  await client.query(
+    `UPDATE leagueseasons
+     SET begindate = $2, enddate = $3
+     WHERE leagueid IN (SELECT leagueid FROM leagues WHERE demosessionid = $1)`,
+    [sessionId, seasonStart.appDate, seasonEnd.appDate]
+  );
+  await client.query(
+    `UPDATE leagueevents
+     SET eventdate = CASE eventnumber
+       WHEN 1 THEN $2
+       WHEN 2 THEN $4
+       WHEN 3 THEN $6
+       ELSE eventdate
+     END,
+     eventtime = CASE eventnumber
+       WHEN 1 THEN $3
+       WHEN 2 THEN $5
+       WHEN 3 THEN $7
+       ELSE eventtime
+     END
+     WHERE leagueid IN (SELECT leagueid FROM leagues WHERE demosessionid = $1)`,
+    [
+      sessionId,
+      leagueEvents[0].appDate,
+      leagueEvents[0].appTime,
+      leagueEvents[1].appDate,
+      leagueEvents[1].appTime,
+      leagueEvents[2].appDate,
+      leagueEvents[2].appTime,
+    ]
+  );
+}
+
+async function claimReadyDemoSession(client: DbClient): Promise<DemoSessionRecord | null> {
+  const claimRows = await client.query<DemoSessionRecord>(
+    `UPDATE demosessions
+     SET status = 'claimed',
+         claimedat = now(),
+         purgedat = NULL
+     WHERE demosessionid = (
+       SELECT demosessionid
+       FROM demosessions
+       WHERE status = 'ready'
+       ORDER BY createdat ASC
+       LIMIT 1
+     )
+     RETURNING demosessionid, demohostuserid, tournamentid, groupid, tvdisplaycode`
+  );
+  const claimed = claimRows.rows[0];
+  if (!claimed) return null;
+  await refreshClaimedDemoSession(client, claimed.demosessionid);
+  return claimed;
+}
+
 async function purgeDemoSessions(client: DbClient, userId?: string): Promise<void> {
   const sessionRows = userId
     ? await client.query<{ demosessionid: string }>(
@@ -128,16 +575,32 @@ async function purgeDemoSessions(client: DbClient, userId?: string): Promise<voi
         [userId]
       )
     : await client.query<{ demosessionid: string }>(
-        `SELECT DISTINCT um.demosessionid
+        `SELECT demosessionid
+         FROM demosessions
+         WHERE status = 'claimed'
+           AND claimedat IS NOT NULL
+           AND claimedat < now() - INTERVAL '24 hours'
+         UNION
+         SELECT DISTINCT um.demosessionid
          FROM usermetadata um
+         LEFT JOIN demosessions ds ON ds.demosessionid = um.demosessionid
          WHERE COALESCE(um.isdemo, FALSE) = TRUE
            AND um.demosessionid IS NOT NULL
+           AND ds.demosessionid IS NULL
            AND COALESCE(um.democreatedat, now()) < now() - INTERVAL '24 hours'`
       );
   const sessionIds = sessionRows.rows.map((row) => row.demosessionid).filter(Boolean);
   if (sessionIds.length === 0) {
     return;
   }
+
+  await client.query(
+    `UPDATE demosessions
+     SET status = 'purged',
+         purgedat = COALESCE(purgedat, now())
+     WHERE demosessionid = ANY($1::STRING[])`,
+    [sessionIds]
+  );
 
   const userRows = await client.query<{ userid: string }>(
     `SELECT userid
@@ -234,346 +697,83 @@ async function purgeDemoSessionsInTransaction(userId?: string): Promise<void> {
   }
 }
 
+async function ensureReadyDemoPool(client: DbClient): Promise<void> {
+  const countRows = await client.query<{ readycount: string | number }>(
+    `SELECT count(*) AS readycount
+     FROM demosessions
+     WHERE status = 'ready'`
+  );
+  const readyCount = Number(countRows.rows[0]?.readycount ?? 0);
+  const demosToCreate = Math.max(DEMO_POOL_READY_TARGET - readyCount, 0);
+  for (let index = 0; index < demosToCreate; index += 1) {
+    await createDemoSession(client, 'ready');
+  }
+}
+
+async function maintainDemoPoolInTransaction(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await purgeDemoSessions(client);
+    await ensureReadyDemoPool(client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function scheduleDemoMaintenance() {
+  setTimeout(() => {
+    void runDemoMaintenance('scheduled').catch((err) => {
+      console.error('Demo maintenance failed', err instanceof Error ? err.message : err);
+    });
+  }, 0);
+}
+
+export function runDemoMaintenance(reason = 'manual'): Promise<void> {
+  if (demoMaintenancePromise) return demoMaintenancePromise;
+  demoMaintenancePromise = maintainDemoPoolInTransaction()
+    .catch((err) => {
+      console.error(`Demo maintenance failed (${reason})`, err instanceof Error ? err.message : err);
+      throw err;
+    })
+    .finally(() => {
+      demoMaintenancePromise = null;
+    });
+  return demoMaintenancePromise;
+}
+
+export function startDemoMaintenance() {
+  if (demoMaintenanceStarted) return;
+  demoMaintenanceStarted = true;
+  scheduleDemoMaintenance();
+  setInterval(scheduleDemoMaintenance, DEMO_PURGE_INTERVAL_MS);
+}
+
 demoRouter.post('/start', optionalAuth, async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const sessionId = crypto.randomUUID();
-    const demoUserId = crypto.randomUUID();
-    const demoEmail = `demo+${sessionId}@demo.thepokerplanner.com`;
-    const passwordHash = await bcrypt.hash(`demo:${sessionId}`, 4);
-
-    await client.query(
-      `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
-       VALUES ($1, $2, $3, $4, $5, TRUE)`,
-      [demoUserId, privateEmailPlaceholder(demoUserId), hashEmail(demoEmail), encryptEmail(demoEmail), passwordHash]
-    );
-    await client.query(
-      `INSERT INTO usermetadata (userid, fullname, nickname, tierid, accounttier, issuperadmin, hostedtournamentcount, termsacceptedat, onboardingtourcompletedat, aicreditsremaining, aicreditsrefreshedat, isdemo, demosessionid)
-       VALUES ($1, 'Demo Host', 'Demo Host', 2, 'premium', FALSE, 0, now(), now(), 25, now(), TRUE, $2)`,
-      [demoUserId, sessionId]
-    );
-
-    const inviteCode = await createUniqueInviteCode(client);
-    const groupResult = await client.query<{ groupid: string }>(
-      `INSERT INTO groups (userid, name, invitecode, approvalneeded, defaulttrackingmode, tvseatingwelcomemessage, aiannouncerenabled, aiannouncerpreset, aiannouncerclassicmode, postapprovalrequired, demosessionid)
-       VALUES ($1, 'Demo Poker Room', $2, FALSE, 'standard', 'Demo table assignments are live. Scan to follow along.', TRUE, 'all_in_alex', FALSE, FALSE, $3)
-       RETURNING groupid`,
-      [demoUserId, inviteCode, sessionId]
-    );
-    const groupId = groupResult.rows[0]?.groupid;
-    if (!groupId) throw new Error('Failed to create demo group.');
-    await client.query(
-      `INSERT INTO groupmembers (groupid, userid, admin, approved)
-       VALUES ($1, $2, TRUE, TRUE)`,
-      [groupId, demoUserId]
-    );
-
-    const tvCode = await createUniqueTvCode(client);
-    const demoStart = new Date(Date.now() + 60 * 60 * 1000);
-    const { date: demoDate, time: demoTime } = formatAppDateTimeForDb(demoStart);
-    const payoutStructure = JSON.stringify({
-      mode: 'count',
-      value: 8,
-      roundingdenomination: 5,
-      splits: [32, 22, 15, 10, 7, 5, 5, 4],
-    });
-    const tournamentResult = await client.query<{ tournamentid: string }>(
-      `INSERT INTO tournaments
-       (userid, name, date, time, buyin, adjustment, rebuycost, rebuychips, rebuylastlevel, addoncost, addonchips, maxplayers, playerselftracking, groupid, payoutstructure, tvdisplaycode, tvdisplaymode, seatingmaxpertable, bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, demosessionid)
-       VALUES ($1, 'Demo Championship Night', $2, $3, 25, 0, 25, 10000, 6, 20, 15000, 40, TRUE, $4, $5, $6, 'timer', 8, FALSE, 'manual', 0, 'amount', 5, $7)
-       RETURNING tournamentid`,
-      [demoUserId, demoDate, demoTime, groupId, payoutStructure, tvCode, sessionId]
-    );
-    const tournamentId = tournamentResult.rows[0]?.tournamentid;
-    if (!tournamentId) throw new Error('Failed to create demo tournament.');
-
-    const levelInsert = buildInsertValues(
-      DEMO_LEVELS.map(([level, label, smallBlind, bigBlind, ante, minutes]) => [
-        tournamentId,
-        level,
-        label,
-        smallBlind,
-        bigBlind,
-        ante,
-        minutes,
-        level === DEMO_LEVELS.length,
-      ])
-    );
-    await client.query(
-      `INSERT INTO blindstructure (tournamentid, level, label, smallblind, bigblind, ante, minutes, islastlevel)
-       VALUES ${levelInsert.placeholders}`,
-      levelInsert.values
-    );
-    await client.query(
-      `INSERT INTO tournamenttimer (tournamentid, currentlevel, remainingsecs, running, lastupdated)
-       VALUES ($1, 8, 732, FALSE, now())`,
-      [tournamentId]
-    );
-
-    const now = Date.now();
-    const demoPlayers = DEMO_PLAYER_NAMES.map((name, index) => {
-      const playerId = crypto.randomUUID();
-      const email = `demo-player-${index + 1}+${sessionId}@demo.thepokerplanner.com`;
-      const placed = index < 34 ? 40 - index : null;
-      return {
-        email,
-        index,
-        name,
-        playerId,
-        placed,
-        knockedOutAt: placed == null ? null : new Date(now - placed * 4 * 60 * 1000),
-      };
-    });
-
-    const demoUserInsert = buildInsertValues(
-      demoPlayers.map((player) => [
-        player.playerId,
-        privateEmailPlaceholder(player.playerId),
-        hashEmail(player.email),
-        encryptEmail(player.email),
-        `guest:${sessionId}:${player.index}`,
-        true,
-      ])
-    );
-    await client.query(
-      `INSERT INTO users (guid, emailaddress, emailhash, emailencrypted, password, emailverified)
-       VALUES ${demoUserInsert.placeholders}`,
-      demoUserInsert.values
-    );
-
-    const demoMetadataInsert = buildInsertValues(
-      demoPlayers.map((player) => [
-        player.playerId,
-        player.name,
-        player.name,
-        true,
-        demoUserId,
-        true,
-        sessionId,
-      ])
-    );
-    await client.query(
-      `INSERT INTO usermetadata (userid, fullname, nickname, isguestuser, guestofuserid, isdemo, demosessionid)
-       VALUES ${demoMetadataInsert.placeholders}`,
-      demoMetadataInsert.values
-    );
-
-    const demoMembersInsert = buildInsertValues(
-      demoPlayers.map((player) => [groupId, player.playerId, false, true])
-    );
-    await client.query(
-      `INSERT INTO groupmembers (groupid, userid, admin, approved)
-       VALUES ${demoMembersInsert.placeholders}`,
-      demoMembersInsert.values
-    );
-
-    const cashGameRows = [
-      {
-        gameId: crypto.randomUUID(),
-        title: 'Friday Night Cash Crew',
-        startsAt: demoDateTimeAfter(2, 20, 30).date,
-        stakes: '$1/$2',
-        minBuyIn: 100,
-        maxBuyIn: 300,
-        seats: 8,
-        playerCount: 5,
-        notes: 'Friendly demo cash game with open seating and running buy-in totals.',
-      },
-      {
-        gameId: crypto.randomUUID(),
-        title: 'Deep Stack Cash Session',
-        startsAt: demoDateTimeAfter(6, 19, 45).date,
-        stakes: '$2/$5',
-        minBuyIn: 300,
-        maxBuyIn: 1000,
-        seats: 9,
-        playerCount: 7,
-        notes: 'Bigger-stakes demo night for showing off the cash-game ledger.',
-      },
-    ];
-    const cashGameInsert = buildInsertValues(
-      cashGameRows.map((cashGame) => [
-        cashGame.gameId,
-        groupId,
-        demoUserId,
-        'cash',
-        cashGame.title,
-        'scheduled',
-        'group_public',
-        cashGame.startsAt.toISOString(),
-        sessionId,
-      ])
-    );
-    await client.query(
-      `INSERT INTO games (id, groupid, createdbyuserid, gametype, title, status, visibility, startsat, demosessionid)
-       VALUES ${cashGameInsert.placeholders}`,
-      cashGameInsert.values
-    );
-    const cashDetailsInsert = buildInsertValues(
-      cashGameRows.map((cashGame) => [
-        cashGame.gameId,
-        cashGame.stakes,
-        cashGame.minBuyIn,
-        cashGame.maxBuyIn,
-        cashGame.seats,
-        cashGame.notes,
-      ])
-    );
-    await client.query(
-      `INSERT INTO cashgamedetails (gameid, stakeslabel, minbuyin, maxbuyin, seatsavailable, notes)
-       VALUES ${cashDetailsInsert.placeholders}`,
-      cashDetailsInsert.values
-    );
-    const cashPlayerRows = cashGameRows.flatMap((cashGame) =>
-      demoPlayers
-        .slice(0, cashGame.playerCount)
-        .map((player) => [cashGame.gameId, player.playerId, player.name, 'interested'])
-    );
-    const cashPlayerInsert = buildInsertValues(cashPlayerRows);
-    await client.query(
-      `INSERT INTO cashgameplayers (gameid, userid, displaynamesnapshot, status)
-       VALUES ${cashPlayerInsert.placeholders}`,
-      cashPlayerInsert.values
-    );
-
-    const leagueInviteCode = await createUniqueLeagueInviteCode(client);
-    const pointsLookup = JSON.stringify([
-      { place: 'DNF', points: 0 },
-      { place: 1, points: 500 },
-      { place: 2, points: 350 },
-      { place: 3, points: 250 },
-      { place: 4, points: 175 },
-      { place: 5, points: 125 },
-      { place: 6, points: 100 },
-      { place: 7, points: 75 },
-      { place: 8, points: 50 },
-    ]);
-    const finalMultipliers = JSON.stringify([
-      { place: 1, multiplier: 18 },
-      { place: 2, multiplier: 16 },
-      { place: 3, multiplier: 14 },
-      { place: 4, multiplier: 12 },
-      { place: 5, multiplier: 10 },
-      { place: 6, multiplier: 8 },
-      { place: 7, multiplier: 6 },
-      { place: 8, multiplier: 4 },
-    ]);
-    const leagueResult = await client.query<{ leagueid: string }>(
-      `INSERT INTO leagues
-       (userid, name, invitecode, approvalneeded, expectedplayercount, leaguefee, pereventfee, showupbonuspoints, bestfinishcount, pointslookup, finalenabled, finalmultiplierlookup, finalchiprounding, finalstartingbigblind, memberledgervisible, demosessionid)
-       VALUES ($1, 'Demo Season League', $2, FALSE, 24, 100, 35, 100, 6, $3::JSONB, TRUE, $4::JSONB, 100, 100, TRUE, $5)
-       RETURNING leagueid`,
-      [demoUserId, leagueInviteCode, pointsLookup, finalMultipliers, sessionId]
-    );
-    const leagueId = leagueResult.rows[0]?.leagueid;
-    if (!leagueId) throw new Error('Failed to create demo league.');
-    const seasonStart = demoDateTimeAfter(1, 12, 0);
-    const seasonEnd = demoDateTimeAfter(90, 12, 0);
-    const seasonResult = await client.query<{ seasonid: string }>(
-      `INSERT INTO leagueseasons (leagueid, name, begindate, enddate, pereventfee)
-       VALUES ($1, 'Spring Demo Season', $2, $3, 35)
-       RETURNING seasonid`,
-      [leagueId, seasonStart.appDate, seasonEnd.appDate]
-    );
-    const seasonId = seasonResult.rows[0]?.seasonid;
-    if (!seasonId) throw new Error('Failed to create demo league season.');
-    const leagueMemberRows = [
-      [leagueId, demoUserId, true, true],
-      ...demoPlayers.slice(0, 16).map((player) => [leagueId, player.playerId, false, true]),
-    ];
-    const leagueMemberInsert = buildInsertValues(leagueMemberRows);
-    await client.query(
-      `INSERT INTO leaguemembers (leagueid, userid, admin, approved)
-       VALUES ${leagueMemberInsert.placeholders}`,
-      leagueMemberInsert.values
-    );
-    const seasonParticipantInsert = buildInsertValues(
-      leagueMemberRows.map((row) => [seasonId, row[0], row[1], true])
-    );
-    await client.query(
-      `INSERT INTO leagueseasonparticipants (seasonid, leagueid, userid, participating)
-       VALUES ${seasonParticipantInsert.placeholders}`,
-      seasonParticipantInsert.values
-    );
-    const leagueEventRows = [
-      { name: 'League Event #1 - Opening Night', when: demoDateTimeAfter(3, 19, 0), number: 1 },
-      { name: 'League Event #2 - Bounty Night', when: demoDateTimeAfter(10, 19, 30), number: 2 },
-      { name: 'League Event #3 - Final Table Chase', when: demoDateTimeAfter(17, 20, 0), number: 3 },
-    ];
-    const leagueEventInsert = buildInsertValues(
-      leagueEventRows.map((event) => [
-        leagueId,
-        seasonId,
-        event.name,
-        event.when.appDate,
-        event.when.appTime,
-        event.number,
-        35,
-      ])
-    );
-    await client.query(
-      `INSERT INTO leagueevents (leagueid, seasonid, name, eventdate, eventtime, eventnumber, eventfee)
-       VALUES ${leagueEventInsert.placeholders}`,
-      leagueEventInsert.values
-    );
-
-    const demoTournamentPlayersInsert = buildInsertValues(
-      demoPlayers.map((player) => [
-        tournamentId,
-        player.playerId,
-        true,
-        true,
-        player.index % 9 === 0 ? 1 : 0,
-        player.index % 5 === 0 ? 1 : 0,
-        player.placed,
-        player.knockedOutAt,
-        0,
-        null,
-        null,
-      ])
-    );
-    await client.query(
-      `INSERT INTO tournamentplayers (tournamentid, userid, checkedin, paid, rebuys, addedon, placed, knockedoutat, bountyamount, bountyclaimedbyuserid, bountyclaimedat)
-       VALUES ${demoTournamentPlayersInsert.placeholders}`,
-      demoTournamentPlayersInsert.values
-    );
-
-    const activeSeatRows = demoPlayers
-      .filter((player) => player.placed == null)
-      .map((player, activeIndex) => [
-        tournamentId,
-        player.playerId,
-        activeIndex < 3 ? 1 : 2,
-        (activeIndex % 3) + 1,
-      ]);
-    if (activeSeatRows.length > 0) {
-      const demoSeatingInsert = buildInsertValues(activeSeatRows);
-      await client.query(
-        `INSERT INTO tournamentseating (tournamentid, userid, "Table", seat)
-         VALUES ${demoSeatingInsert.placeholders}`,
-        demoSeatingInsert.values
-      );
+    let demo = await claimReadyDemoSession(client);
+    if (!demo) {
+      demo = await createDemoSession(client, 'claimed');
     }
-
-    await client.query(
-      `INSERT INTO groupposts (groupid, createdby, posttype, message, active, status, approvedat, approvedby)
-       VALUES
-       ($1, $2, 'message', 'Demo room is open. Seat draw is live and the final table is getting close.', TRUE, 'approved', now(), $2),
-       ($1, $2, 'message', 'Try editing players, re-seating the field, opening the TV board, and moving blind levels around.', TRUE, 'approved', now(), $2)`,
-      [groupId, demoUserId]
-    );
 
     await client.query('COMMIT');
     res.status(201).json({
-      token: signToken(demoUserId),
-      tournamentId,
-      groupId,
-      tvCode,
+      token: signToken(demo.demohostuserid),
+      tournamentId: demo.tournamentid,
+      groupId: demo.groupid,
+      tvCode: demo.tvdisplaycode,
     });
-    scheduleDemoPurge(req.userId);
-    scheduleDemoPurge();
+    if (req.userId) {
+      scheduleDemoPurge(req.userId);
+    }
+    scheduleDemoMaintenance();
   } catch (err) {
     await client.query('ROLLBACK');
     const message = err instanceof Error ? err.message : String(err);

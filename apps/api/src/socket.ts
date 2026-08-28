@@ -1,7 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { query, queryOne } from './db';
-import { getClientUrl } from './config';
+import { isAllowedClientOrigin } from './config';
 import { BlindLevel, TimerState } from './types';
 import { sendTournamentNotification } from './lib/server/notifications/notificationService';
 import { decodeAuthToken } from './middleware/auth';
@@ -15,7 +15,15 @@ let io: Server;
 
 export function initSocket(httpServer: HttpServer): void {
   io = new Server(httpServer, {
-    cors: { origin: getClientUrl() },
+    cors: {
+      origin(origin, callback) {
+        if (isAllowedClientOrigin(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error(`Origin ${origin} is not allowed by CORS`));
+      },
+    },
   });
 
   io.on('connection', (socket) => {

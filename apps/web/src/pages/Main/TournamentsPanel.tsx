@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Banknote, Bell, Calendar, CalendarCheck, Camera, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Coins, Crown, Diamond, Home, ListChecks, PlayCircle, Settings, SlidersHorizontal, Spade, Trophy, UserPlus, Users, X } from 'lucide-react';
 import { api, CreateGameRequest, GameListItem, Group, League, LeagueScheduleEvent, Tournament } from '../../api/client';
+import DemoCoachDialog from '../../components/DemoCoachDialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -72,6 +73,7 @@ export default function TournamentsPanel({
     queryKey: ['me'],
     queryFn: api.me,
   });
+  const demoMode = Boolean(me?.isdemo);
 
   const { data: mine = [], isLoading: loadingMine } = useQuery({
     queryKey: ['tournaments', 'mine'],
@@ -299,7 +301,7 @@ export default function TournamentsPanel({
     if (item.kind === 'tournament') {
       navigate(
         item.canManage ? `/tournament/${item.tournament.tournamentid}` : `/lobby/${item.tournament.tournamentid}`,
-        item.canManage ? { state: { tab: 'run' } } : undefined
+        item.canManage ? { state: { tab: 'run', ...(demoMode ? { demoCoach: 'start' } : {}) } } : undefined
       );
       return;
     }
@@ -481,6 +483,7 @@ export default function TournamentsPanel({
               laterCount={laterScheduleItems.length}
               totalUpcomingCount={upcomingScheduleItems.length}
               canHost={hostableGroups.length > 0}
+              demoSpotlight={demoMode}
               onOpen={openHomeScheduleItem}
               onManage={openScheduleItem}
               onViewAll={() => setScheduleMode('games')}
@@ -1099,7 +1102,7 @@ type ScheduleItem =
       game: GameListItem;
     };
 
-function NextUpFocus({ item, onOpen, onManage }: { item: ScheduleItem; onOpen: () => void; onManage: () => void }) {
+function NextUpFocus({ item, demoSpotlight = false, onOpen, onManage }: { item: ScheduleItem; demoSpotlight?: boolean; onOpen: () => void; onManage: () => void }) {
   const isTournament = item.kind === 'tournament';
   const isLeague = item.kind === 'league';
   const isCash = item.kind === 'cash';
@@ -1137,11 +1140,16 @@ function NextUpFocus({ item, onOpen, onManage }: { item: ScheduleItem; onOpen: (
   const isParticipant = isScheduleParticipant(item);
   const primaryIsManage = item.canManage && !isParticipant;
 
+  const mutedDemoContent = demoSpotlight ? 'opacity-35 grayscale' : '';
+  const manageSpotlightClass = demoSpotlight && primaryIsManage
+    ? 'relative z-[90] pointer-events-auto animate-[pp-demo-manage-pulse_1.05s_ease-in-out_infinite] ring-4 ring-pit-teal/55 shadow-[0_0_42px_rgba(20,184,166,0.75)]'
+    : '';
+
   return (
-    <section className="relative isolate overflow-hidden rounded-2xl border border-pit-teal/55 bg-[radial-gradient(circle_at_82%_32%,rgba(20,184,166,0.22),transparent_34%),linear-gradient(145deg,rgba(5,48,49,0.98),rgba(15,24,28,0.98)_76%)] shadow-[0_20px_52px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.035)]">
+    <section className={`relative isolate rounded-2xl border border-pit-teal/55 bg-[radial-gradient(circle_at_82%_32%,rgba(20,184,166,0.22),transparent_34%),linear-gradient(145deg,rgba(5,48,49,0.98),rgba(15,24,28,0.98)_76%)] shadow-[0_20px_52px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.035)] ${demoSpotlight ? 'pointer-events-none overflow-visible' : 'overflow-hidden'}`}>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute right-4 top-7 z-0 h-24 w-28 opacity-20 sm:right-7 sm:top-6 sm:h-28 sm:w-32"
+        className={`pointer-events-none absolute right-4 top-7 z-0 h-24 w-28 opacity-20 sm:right-7 sm:top-6 sm:h-28 sm:w-32 ${demoSpotlight ? 'opacity-10 grayscale' : ''}`}
       >
         <div className="absolute left-1 top-2 flex h-[76%] w-[62%] -rotate-12 items-center justify-center rounded-xl border border-pit-teal/60 bg-pit-black/20">
           <Diamond className="h-8 w-8 text-pit-teal/55" strokeWidth={1.4} />
@@ -1151,7 +1159,7 @@ function NextUpFocus({ item, onOpen, onManage }: { item: ScheduleItem; onOpen: (
         </div>
       </div>
       <div className="relative z-10 flex flex-col px-4 py-4 sm:px-5">
-        <div className="min-w-0 max-w-[78%] sm:max-w-[72%]">
+        <div className={`min-w-0 max-w-[78%] sm:max-w-[72%] ${mutedDemoContent}`}>
           <div className="flex min-w-0 items-center gap-2">
             <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] ${typePillClass}`}>
               {typeLabel}
@@ -1182,14 +1190,14 @@ function NextUpFocus({ item, onOpen, onManage }: { item: ScheduleItem; onOpen: (
           </div>
         </div>
         <div className="mt-3 flex items-end justify-between gap-4">
-          <div className="inline-flex items-baseline gap-2 whitespace-nowrap">
+          <div className={`inline-flex items-baseline gap-2 whitespace-nowrap ${mutedDemoContent}`}>
             <span className="text-xl font-black text-pit-teal">{formatCostLabel(item.cost)}</span>
             <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-pit-muted">Buy-in</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className={`btn-primary w-[8.5rem] justify-center px-3 sm:w-[11rem] ${isLive && !primaryIsManage ? 'h-[3.25rem] flex-col gap-0.5 py-1.5' : 'h-10 gap-1.5 text-sm'}`}
+              className={`btn-primary justify-center px-3 sm:w-[11rem] ${primaryIsManage ? 'w-[9.25rem] whitespace-nowrap text-[13px]' : 'w-[8.5rem]'} ${isLive && !primaryIsManage ? 'h-[3.25rem] flex-col gap-0.5 py-1.5' : 'h-10 gap-1.5 text-sm'} ${manageSpotlightClass}`}
               onClick={onOpen}
             >
               {isLive && !primaryIsManage ? (
@@ -1206,7 +1214,7 @@ function NextUpFocus({ item, onOpen, onManage }: { item: ScheduleItem; onOpen: (
               ) : (
                 <>
                   {primaryIsManage && <Settings size={15} />}
-                  {primaryIsManage ? 'Manage game' : 'View details'}
+                  {primaryIsManage ? 'Manage Game' : 'View details'}
                   {!primaryIsManage && <ChevronRight size={16} />}
                 </>
               )}
@@ -1235,6 +1243,7 @@ function HomeSchedule({
   laterCount,
   totalUpcomingCount,
   canHost,
+  demoSpotlight = false,
   onOpen,
   onManage,
   onViewAll,
@@ -1245,6 +1254,7 @@ function HomeSchedule({
   laterCount: number;
   totalUpcomingCount: number;
   canHost: boolean;
+  demoSpotlight?: boolean;
   onOpen: (item: ScheduleItem) => void;
   onManage: (item: ScheduleItem) => void;
   onViewAll: () => void;
@@ -1257,15 +1267,23 @@ function HomeSchedule({
     return <HomeEmptyState canHost={canHost} onHostGame={onHostGame} />;
   }
 
+  const spotlightActive = demoSpotlight && nextUp.canManage && !isScheduleParticipant(nextUp);
+
   return (
     <div className="mx-auto max-w-[48rem] space-y-5 sm:space-y-6">
-      <section aria-labelledby="next-up-heading">
-        <p id="next-up-heading" className="mb-2.5 text-[11px] font-black uppercase tracking-[0.18em] text-pit-teal">Next up</p>
-        <NextUpFocus item={nextUp} onOpen={() => onOpen(nextUp)} onManage={() => onManage(nextUp)} />
+      {spotlightActive && <div className="fixed inset-0 z-[60] bg-[#05070a]/72 backdrop-grayscale pointer-events-auto" aria-hidden="true" />}
+      {spotlightActive && (
+        <DemoCoachDialog>
+          Let's jump into hosting a tournament. Click &quot;Manage Game&quot;.
+        </DemoCoachDialog>
+      )}
+      <section className={spotlightActive ? 'relative z-[70] pointer-events-none' : ''} aria-labelledby="next-up-heading">
+        <p id="next-up-heading" className={`mb-2.5 text-[11px] font-black uppercase tracking-[0.18em] text-pit-teal ${spotlightActive ? 'opacity-45 grayscale' : ''}`}>Next up</p>
+        <NextUpFocus item={nextUp} demoSpotlight={spotlightActive} onOpen={() => onOpen(nextUp)} onManage={() => onManage(nextUp)} />
       </section>
 
       {visibleComingUp.length > 0 && (
-        <section aria-labelledby="coming-up-heading">
+        <section className={spotlightActive ? 'pointer-events-none opacity-25 grayscale' : ''} aria-labelledby="coming-up-heading">
           <div className="mb-2.5 flex items-center justify-between gap-3">
             <p id="coming-up-heading" className="text-[11px] font-black uppercase tracking-[0.18em] text-pit-teal">Coming up</p>
             <span className="text-[11px] font-semibold text-[#bfc0cb]">{comingUp.length} upcoming</span>
@@ -1289,7 +1307,7 @@ function HomeSchedule({
       )}
 
       {laterCount > 0 && (
-        <section aria-labelledby="later-games-heading">
+        <section className={spotlightActive ? 'pointer-events-none opacity-25 grayscale' : ''} aria-labelledby="later-games-heading">
           <div className="mb-2.5 flex items-center justify-between gap-3">
             <p id="later-games-heading" className="text-[11px] font-black uppercase tracking-[0.18em] text-pit-teal">Later</p>
             <span className="text-[11px] font-semibold text-[#bfc0cb]">{laterCount} games</span>
@@ -1303,6 +1321,16 @@ function HomeSchedule({
             <ChevronRight size={18} className="text-pit-teal" />
           </button>
         </section>
+      )}
+
+      {spotlightActive && (
+        <style>{`
+          @keyframes pp-demo-manage-pulse {
+            0%, 100% { transform: scale(1); filter: brightness(1); opacity: 1; }
+            38% { transform: scale(1.08); filter: brightness(1.32); opacity: 0.82; }
+            62% { transform: scale(1.03); filter: brightness(1.12); opacity: 1; }
+          }
+        `}</style>
       )}
 
     </div>

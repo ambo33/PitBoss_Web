@@ -7,6 +7,7 @@ import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '..
 import BrandLockup from '../../components/BrandLockup';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import DemoCoachDialog from '../../components/DemoCoachDialog';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
@@ -163,7 +164,7 @@ export default function RunTournament({
   const [startWithoutSeatingOpen, setStartWithoutSeatingOpen] = useState(false);
   const [timerStartError, setTimerStartError] = useState('');
   const [demoStartCoachDismissed, setDemoStartCoachDismissed] = useState(false);
-  const [demoExploreTipVisible, setDemoExploreTipVisible] = useState(false);
+  const [demoKnockoutCoachVisible, setDemoKnockoutCoachVisible] = useState(false);
   const [sidePanelView, setSidePanelView] = useState<SidePanelView>(() => tournament.bountyenabled ? 'bounties' : 'knockouts');
   const lastWarningRef = useRef<{ fiveMin: boolean; oneMin: boolean; level: number | null }>({
     fiveMin: false,
@@ -174,7 +175,7 @@ export default function RunTournament({
   const lastRunningRef = useRef<boolean | null>(null);
   const tournamentIntroAnnouncedRef = useRef(false);
   const demoIntroAnnouncedRef = useRef(false);
-  const demoExploreTipShownRef = useRef(false);
+  const demoKnockoutCoachShownRef = useRef(false);
   const levelStartedAtRef = useRef<string | null>(null);
   const announcementTemplatesRef = useRef({
     fiveMinute: tournament.speechfiveminutemessage,
@@ -624,6 +625,11 @@ export default function RunTournament({
   );
 
   const selectedPlayer = actionablePlayers.find((player) => player.userid === selectedPlayerId) ?? actionablePlayers[0] ?? null;
+  const bubbleBobPlayer = useMemo(
+    () => players.find((player) => (player.displayname ?? player.emailaddress ?? '').trim().toLowerCase() === 'bubble bob') ?? null,
+    [players]
+  );
+  const bubbleBobSelected = Boolean(bubbleBobPlayer && selectedPlayer?.userid === bubbleBobPlayer.userid);
 
   useEffect(() => {
     if (!selectedPlayerId && actionablePlayers[0]) {
@@ -638,6 +644,18 @@ export default function RunTournament({
   useEffect(() => {
     setKnockoutCreditOpen(false);
   }, [selectedPlayer?.userid]);
+
+  useEffect(() => {
+    if (!demoMode || !showAdminControls || displayMode || !demoKnockoutCoachVisible || !bubbleBobPlayer || bubbleBobPlayer.placed != null) return;
+    if (selectedPlayerId !== bubbleBobPlayer.userid) {
+      setSelectedPlayerId(bubbleBobPlayer.userid);
+    }
+  }, [bubbleBobPlayer?.placed, bubbleBobPlayer?.userid, demoKnockoutCoachVisible, demoMode, displayMode, selectedPlayerId, showAdminControls]);
+
+  useEffect(() => {
+    if (!demoKnockoutCoachVisible || !bubbleBobPlayer || bubbleBobPlayer.placed == null) return;
+    setDemoKnockoutCoachVisible(false);
+  }, [bubbleBobPlayer?.placed, bubbleBobPlayer?.userid, demoKnockoutCoachVisible]);
 
   useEffect(() => () => {
     if (greetingTimeoutRef.current) {
@@ -690,7 +708,7 @@ export default function RunTournament({
       setDemoStartCoachDismissed(true);
       onDemoStartCoachDone?.();
       if (demoMode && showAdminControls && !displayMode) {
-        showDemoExploreTipOnce();
+        showDemoKnockoutCoachOnce();
       }
     }
   }, [demoMode, displayMode, onDemoStartCoachDone, showAdminControls, timerState?.running]);
@@ -710,16 +728,16 @@ export default function RunTournament({
     knockMutation.mutate({ userId, placed, knockedOutByUserId });
   }
 
-  function showDemoExploreTipOnce() {
-    const storageKey = `pb-demo-explore-tip:${tournamentId}`;
-    const alreadyShown = demoExploreTipShownRef.current || window.sessionStorage.getItem(storageKey) === '1';
+  function showDemoKnockoutCoachOnce() {
+    const storageKey = `pb-demo-knockout-coach:${tournamentId}`;
+    const alreadyShown = demoKnockoutCoachShownRef.current || window.sessionStorage.getItem(storageKey) === '1';
     if (alreadyShown) {
-      demoExploreTipShownRef.current = true;
+      demoKnockoutCoachShownRef.current = true;
       return;
     }
-    demoExploreTipShownRef.current = true;
+    demoKnockoutCoachShownRef.current = true;
     window.sessionStorage.setItem(storageKey, '1');
-    setDemoExploreTipVisible(true);
+    setDemoKnockoutCoachVisible(true);
   }
 
   function handleStartTimer() {
@@ -732,7 +750,7 @@ export default function RunTournament({
       return;
     }
     if (demoMode && showAdminControls && !displayMode) {
-      showDemoExploreTipOnce();
+      showDemoKnockoutCoachOnce();
     }
 
     if (showAdminControls && seatedPlayers.length === 0 && checkedInRoster.length > 0) {
@@ -759,7 +777,7 @@ export default function RunTournament({
     setDemoStartCoachDismissed(true);
     onDemoStartCoachDone?.();
     if (demoMode && showAdminControls && !displayMode) {
-      showDemoExploreTipOnce();
+      showDemoKnockoutCoachOnce();
     }
     emit('timer-start');
   }
@@ -1134,6 +1152,9 @@ export default function RunTournament({
   const sec = secs % 60;
   const minsStr = String(mins).padStart(2, '0');
   const secsStr = String(sec).padStart(2, '0');
+  const adminTimerFontSize = minsStr.length > 2
+    ? 'clamp(4rem, 16vw, 17rem)'
+    : 'clamp(4rem, 20vw, 20rem)';
   const urgency = secs <= 60 ? 'text-red-400' : secs <= 300 ? 'text-yellow-400' : 'text-white';
   const timerTone = secs <= 60
     ? 'border-red-400/40 bg-red-500/10 animate-pulse'
@@ -1351,6 +1372,22 @@ export default function RunTournament({
     && demoStartCoachActive
     && !timerState?.running
     && !demoStartCoachDismissed;
+  const demoStartSpotlightClass = showDemoStartCoach
+    ? 'relative z-[90] pointer-events-auto animate-[pp-demo-manage-pulse_1.05s_ease-in-out_infinite] ring-4 ring-pit-teal/55 shadow-[0_0_42px_rgba(20,184,166,0.75)]'
+    : '';
+  const showDemoKnockoutCoach = demoMode
+    && showAdminControls
+    && !displayMode
+    && demoKnockoutCoachVisible
+    && !showDemoStartCoach
+    && Boolean(bubbleBobPlayer)
+    && bubbleBobPlayer?.placed == null;
+  const demoPlayerActionsSpotlightClass = showDemoKnockoutCoach && !showPlayerActions
+    ? 'relative z-[90] animate-[pp-demo-manage-pulse_1.05s_ease-in-out_infinite] ring-2 ring-pit-teal/60 shadow-[0_0_32px_rgba(20,184,166,0.55)]'
+    : '';
+  const demoKnockoutButtonSpotlightClass = showDemoKnockoutCoach && showPlayerActions && bubbleBobSelected
+    ? 'animate-[pp-demo-manage-pulse_1.05s_ease-in-out_infinite] ring-2 ring-red-300/60 shadow-[0_0_26px_rgba(248,113,113,0.38)]'
+    : '';
 
   async function handleShareFinalRecap(downloadOnly = false) {
     if (!finalRecapSvg) return;
@@ -1459,26 +1496,27 @@ export default function RunTournament({
             : 'p-0'
         }`}
       >
-        {showDemoStartCoach && (
-          <div className="relative z-40 rounded-2xl border border-pit-teal/45 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md">
-            <p className="text-sm font-black text-white">Click Start to continue the demo.</p>
-            <p className="mt-1 text-xs leading-5 text-pit-text">
-              You are already mid-tournament with players seated, payouts live, and the TV board ready.
-            </p>
-          </div>
+        {(showDemoStartCoach || showDemoKnockoutCoach) && (
+          <style>{`
+            @keyframes pp-demo-manage-pulse {
+              0%, 100% { transform: scale(1); filter: brightness(1); opacity: 1; }
+              38% { transform: scale(1.08); filter: brightness(1.32); opacity: 0.82; }
+              62% { transform: scale(1.03); filter: brightness(1.12); opacity: 1; }
+            }
+          `}</style>
         )}
-        {demoExploreTipVisible && !showDemoStartCoach && (
-          <div className="relative z-40 flex flex-col gap-3 rounded-2xl border border-pit-teal/35 bg-pit-card/95 px-4 py-3 text-left shadow-2xl shadow-pit-teal/10 backdrop-blur-md md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-black text-white">Now play around with the room.</p>
-              <p className="mt-1 text-xs leading-5 text-pit-text">
-                Pick a player, use Player Actions for knockouts, test blind changes, or open the TV board.
-              </p>
-            </div>
-            <button type="button" className="btn-ghost shrink-0 px-3 py-1.5 text-xs" onClick={() => setDemoExploreTipVisible(false)}>
-              Got it
-            </button>
-          </div>
+        {showDemoStartCoach && (
+          <DemoCoachDialog>
+            Now let's un-pause this game and put cards back in the air.
+          </DemoCoachDialog>
+        )}
+        {showDemoKnockoutCoach && (
+          <DemoCoachDialog placement="bottom" icon={<Skull size={22} />}>
+            <span className="mt-1 block text-xl font-black leading-6 text-white">Knock out Bubble Bob.</span>
+            <span className="mt-2 block text-sm font-semibold leading-5 text-pit-text">
+              Open Player Actions, choose Knockout, then credit the player who got him.
+            </span>
+          </DemoCoachDialog>
         )}
         {showAdminControls && timerStartError && (
           <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 shadow-lg shadow-red-950/20">
@@ -1487,7 +1525,7 @@ export default function RunTournament({
         )}
         {showAdminControls ? (
           <section className="w-full border-y border-pit-border/80 bg-black/15 px-1 py-2 sm:px-2">
-              <div className="grid w-full grid-cols-2 items-center gap-2 min-[768px]:grid-cols-[minmax(0,1fr)_auto] min-[1180px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+              <div className="grid w-full grid-cols-2 items-center gap-2 min-[768px]:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="col-span-2 grid min-w-0 grid-cols-2 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5 min-[768px]:col-span-1 min-[768px]:max-w-[420px]">
                   <select
                     className="input w-full min-w-0 py-1.5 pr-8 text-sm"
@@ -1511,7 +1549,7 @@ export default function RunTournament({
                   <div className="relative">
                     <button
                       type="button"
-                      className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
+                      className={`btn-ghost gap-1.5 px-3 py-1.5 text-xs ${demoPlayerActionsSpotlightClass}`}
                       onClick={() => {
                         if (showPlayerActions) setKnockoutCreditOpen(false);
                         setShowPlayerActions(!showPlayerActions);
@@ -1564,7 +1602,7 @@ export default function RunTournament({
                         )}
                         <button
                           type="button"
-                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50 ${demoKnockoutButtonSpotlightClass}`}
                           onClick={() => setKnockoutCreditOpen((current) => !current)}
                           disabled={!selectedPlayer.checkedin || selectedPlayer.placed != null || knockMutation.isPending}
                           aria-expanded={knockoutCreditOpen}
@@ -1615,65 +1653,67 @@ export default function RunTournament({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-self-start rounded-xl border border-pit-border bg-pit-bg/65 p-1 min-[1180px]:justify-self-center">
-                  <button
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'timer' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
-                    onClick={() => selectTvDisplayMode('timer')}
-                  >
-                    Timer
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'seating' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
-                    onClick={() => selectTvDisplayMode('seating')}
-                  >
-                    Seat Chart
-                  </button>
-                </div>
-
-                {featureFlags.tvBoard && tournament.tvdisplaycode && (
-                  <div className="relative justify-self-end">
+                <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 min-[768px]:col-span-1 min-[768px]:justify-end">
+                  <div className="flex shrink-0 items-center rounded-xl border border-pit-border bg-pit-bg/65 p-1">
                     <button
                       type="button"
-                      className="flex items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 px-3 py-2 text-sm text-white hover:border-pit-teal/70 hover:bg-pit-surface/70"
-                      onClick={() => setShowTvMenu((current) => !current)}
-                      aria-expanded={showTvMenu}
-                      aria-label="TV board options"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'timer' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
+                      onClick={() => selectTvDisplayMode('timer')}
                     >
-                      <span className="text-[11px] uppercase tracking-[0.2em] text-pit-muted">TV</span>
-                      <span className="font-mono font-semibold tracking-[0.24em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
-                      <Menu size={15} className="text-pit-muted" />
+                      Timer
                     </button>
-                    {showTvMenu && (
-                      <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 text-left shadow-2xl">
-                        <a
-                          className="mb-2 block rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-xs font-medium text-pit-teal hover:text-pit-teal/80"
-                          href={`/tv/${tournament.tvdisplaycode}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open TV board
-                        </a>
-                        <p className="mb-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 font-mono text-[11px] leading-4 text-white">
-                          ThePokerPlanner.com/TV/{tournament.tvdisplaycode}
-                        </p>
-                        <TvMenuToggle
-                          label="Greeting Display"
-                          enabled={tournament.tvgreetingdisplayenabled ?? true}
-                          disabled={tvOptionsMutation.isPending}
-                          onClick={() => tvOptionsMutation.mutate({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
-                        />
-                        <TvMenuToggle
-                          label="Greeting Audio"
-                          enabled={tournament.tvgreetingaudioenabled ?? true}
-                          disabled={tvOptionsMutation.isPending}
-                          onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
-                        />
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${activeTvDisplayMode === 'seating' ? 'bg-pit-teal text-white shadow-[0_0_16px_rgba(20,184,166,0.22)]' : 'text-pit-muted hover:text-white'}`}
+                      onClick={() => selectTvDisplayMode('seating')}
+                    >
+                      Seat Chart
+                    </button>
                   </div>
-                )}
+
+                  {featureFlags.tvBoard && tournament.tvdisplaycode && (
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 rounded-xl border border-pit-border bg-pit-bg/65 px-2.5 py-1.5 text-xs text-white hover:border-pit-teal/70 hover:bg-pit-surface/70"
+                        onClick={() => setShowTvMenu((current) => !current)}
+                        aria-expanded={showTvMenu}
+                        aria-label="TV board options"
+                      >
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-pit-muted">TV</span>
+                        <span className="font-mono font-semibold tracking-[0.18em]">{tournament.tvdisplaycode ?? 'UNAVAILABLE'}</span>
+                        <Menu size={14} className="text-pit-muted" />
+                      </button>
+                      {showTvMenu && (
+                        <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-pit-border bg-pit-card p-2 text-left shadow-2xl">
+                          <a
+                            className="mb-2 block rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 text-xs font-medium text-pit-teal hover:text-pit-teal/80"
+                            href={`/tv/${tournament.tvdisplaycode}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open TV board
+                          </a>
+                          <p className="mb-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2 font-mono text-[11px] leading-4 text-white">
+                            ThePokerPlanner.com/TV/{tournament.tvdisplaycode}
+                          </p>
+                          <TvMenuToggle
+                            label="Greeting Display"
+                            enabled={tournament.tvgreetingdisplayenabled ?? true}
+                            disabled={tvOptionsMutation.isPending}
+                            onClick={() => tvOptionsMutation.mutate({ tvgreetingdisplayenabled: !(tournament.tvgreetingdisplayenabled ?? true) })}
+                          />
+                          <TvMenuToggle
+                            label="Greeting Audio"
+                            enabled={tournament.tvgreetingaudioenabled ?? true}
+                            disabled={tvOptionsMutation.isPending}
+                            onClick={() => tvOptionsMutation.mutate({ tvgreetingaudioenabled: !(tournament.tvgreetingaudioenabled ?? true) })}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
           </section>
         ) : displayMode && !tvMode ? (
@@ -1736,8 +1776,8 @@ export default function RunTournament({
                 />
               </div>
             ) : (
-            <div className={`grid min-w-0 items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-3 min-[1024px]:grid-cols-[minmax(0,1.9fr)_minmax(280px,.85fr)] min-[1280px]:grid-cols-[clamp(250px,19vw,300px)_minmax(0,1fr)_clamp(280px,21vw,330px)]'}`}>
-              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'order-3 p-3 min-[1024px]:col-start-2 min-[1024px]:row-start-1 min-[1280px]:order-1 min-[1280px]:col-start-1'}`}>
+            <div className={`grid min-w-0 items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-3 min-[1024px]:grid-cols-[minmax(0,1.9fr)_minmax(280px,.85fr)] min-[1280px]:grid-cols-[clamp(250px,19vw,300px)_minmax(0,1fr)_clamp(280px,21vw,340px)] min-[1440px]:gap-4'}`}>
+              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'order-3 p-3 min-[1024px]:col-start-2 min-[1024px]:row-start-1 min-[1280px]:order-1 min-[1280px]:col-start-1 min-[1280px]:row-start-1'}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
                   <div className="flex items-center gap-2">
@@ -1800,8 +1840,8 @@ export default function RunTournament({
                 </div>
               </section>
 
-              <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'order-1 space-y-3 min-[1024px]:col-start-1 min-[1024px]:row-span-2 min-[1024px]:row-start-1 min-[1280px]:order-2 min-[1280px]:col-start-2 min-[1280px]:row-span-1'}`}>
-                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4'} ${adminTimerPanelTone}`}>
+              <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'order-1 space-y-3 min-[1024px]:col-start-1 min-[1024px]:row-span-2 min-[1024px]:row-start-1 min-[1280px]:order-2 min-[1280px]:col-start-2 min-[1280px]:row-span-1 min-[1280px]:row-start-1'}`}>
+                <div className={`rounded-xl border text-center ${tvMode ? 'px-3 py-3' : displayMode ? 'px-4 py-4' : 'px-3 py-4 min-[1024px]:px-4 min-[1024px]:py-5 min-[1280px]:px-4 min-[1280px]:py-5'} ${adminTimerPanelTone}`}>
                   {showAdminControls && (
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <button
@@ -1815,13 +1855,13 @@ export default function RunTournament({
                         onClick={() => setShowAdjustments((current) => !current)}
                       >
                         <span>Adjust Timer</span>
-                        <span className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${showAdjustments ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`} aria-hidden="true">
-                          <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${showAdjustments ? 'translate-x-[17px]' : 'translate-x-0.5'}`} />
+                        <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${showAdjustments ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`} aria-hidden="true">
+                          <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${showAdjustments ? 'translate-x-4' : 'translate-x-0'}`} />
                         </span>
                       </button>
                       {timerState?.running
                         ? <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => { void warmTimerAudio(); emit('timer-pause'); }}>Pause</button>
-                        : <button className={`btn-primary px-3 py-1.5 text-xs ${showDemoStartCoach ? 'relative z-[70] ring-4 ring-pit-teal/40 shadow-[0_0_36px_rgba(20,184,166,0.55)]' : ''}`} onClick={handleStartTimer}>{chipUpAwaitingAck ? 'Chip-up done' : 'Start'}</button>
+                        : <button className={`btn-primary px-3 py-1.5 text-xs ${demoStartSpotlightClass}`} onClick={handleStartTimer}>{chipUpAwaitingAck ? 'Chip-up done' : 'Start'}</button>
                       }
                     </div>
                   )}
@@ -1890,7 +1930,7 @@ export default function RunTournament({
                           ? { fontSize: 'clamp(4.5rem, 19vw, 12.3rem)' }
                           : displayMode
                             ? { fontSize: 'clamp(5rem, 20vw, 19.5rem)' }
-                            : { fontSize: 'clamp(4rem, 14vw, 10.4rem)' }}
+                            : { fontSize: adminTimerFontSize }}
                     >
                       <span>{minsStr}</span>
                       <span className="-mx-[0.08em]">:</span>
@@ -1918,9 +1958,9 @@ export default function RunTournament({
                     )}
                   </div>
 
-                  <div className={`mt-2 grid gap-2 ${displayMode ? 'grid-cols-2 xl:gap-3' : 'grid-cols-2 max-[350px]:grid-cols-1'}`}>
-                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3'}`}>
-                      <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Current Blinds</p>
+                  <div className={`mt-2 grid gap-2 ${displayMode ? 'grid-cols-2 xl:gap-3' : 'grid-cols-2 max-[350px]:grid-cols-1 min-[1024px]:mt-4 min-[1024px]:gap-3 min-[1280px]:gap-4'}`}>
+                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3 min-[1024px]:px-4 min-[1024px]:py-4 min-[1280px]:px-5 min-[1280px]:py-5'}`}>
+                      <p className="text-xs uppercase tracking-[0.2em] text-pit-muted min-[1024px]:text-sm min-[1280px]:text-base">Current Blinds</p>
                       <p
                         style={tvMode
                           ? {
@@ -1933,20 +1973,20 @@ export default function RunTournament({
                           tvMode
                             ? currentBlindIsBreak ? 'font-sans' : 'font-mono tabular-nums'
                             : currentBlindIsBreak
-                              ? 'font-sans text-[1.7rem] sm:text-[2.2rem] xl:text-[3rem]'
+                                  ? 'font-sans text-[1.7rem] sm:text-[2.2rem] min-[1024px]:text-[3.5rem] min-[1280px]:text-[4rem] min-[1536px]:text-[4.5rem]'
                               : currentBlind.ante > 0
-                                ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] xl:text-[3rem]'
-                                : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] xl:text-[3.35rem]'
+                                ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] min-[1024px]:text-[3.35rem] min-[1280px]:text-[3.7rem] min-[1536px]:text-[4.25rem]'
+                                : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] min-[1024px]:text-[3.75rem] min-[1280px]:text-[4.2rem] min-[1536px]:text-[4.75rem]'
                         }`}
                       >
                         {currentBlindIsBreak ? formatBreakDisplayLabel(currentBlind) : formatCompactFeaturedBlinds(currentBlind)}
                       </p>
                       {!currentBlindIsBreak && currentBlind.ante > 0 && (
-                        <p className="mt-1 text-sm text-pit-text md:text-base">Ante {formatCompactBlindAmount(currentBlind.ante, 2)}</p>
+                        <p className="mt-1 text-sm text-pit-text md:text-base min-[1280px]:text-lg">Ante {formatCompactBlindAmount(currentBlind.ante, 2)}</p>
                       )}
                     </div>
-                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3'}`}>
-                      <p className="text-xs uppercase tracking-[0.2em] text-pit-muted">Next Blinds</p>
+                    <div className={`rounded-lg border border-pit-border bg-black/25 ${displayMode ? 'px-3 py-3' : 'px-3 py-3 min-[1024px]:px-4 min-[1024px]:py-4 min-[1280px]:px-5 min-[1280px]:py-5'}`}>
+                      <p className="text-xs uppercase tracking-[0.2em] text-pit-muted min-[1024px]:text-sm min-[1280px]:text-base">Next Blinds</p>
                       {nextBlind ? (
                         <>
                           <p
@@ -1961,16 +2001,16 @@ export default function RunTournament({
                               tvMode
                                 ? nextBlindIsBreak ? 'font-sans' : 'font-mono tabular-nums'
                                 : nextBlindIsBreak
-                                  ? 'font-sans text-[1.7rem] sm:text-[2.2rem] xl:text-[3rem]'
+                                  ? 'font-sans text-[1.7rem] sm:text-[2.2rem] min-[1024px]:text-[3.5rem] min-[1280px]:text-[4rem] min-[1536px]:text-[4.5rem]'
                                   : nextBlind.ante > 0
-                                    ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] xl:text-[3rem]'
-                                    : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] xl:text-[3.35rem]'
+                                    ? 'font-sans font-[300] tracking-tight text-[1.7rem] sm:text-[2.25rem] min-[1024px]:text-[3.35rem] min-[1280px]:text-[3.7rem] min-[1536px]:text-[4.25rem]'
+                                    : 'font-sans font-[300] tracking-tight text-[1.9rem] sm:text-[2.5rem] min-[1024px]:text-[3.75rem] min-[1280px]:text-[4.2rem] min-[1536px]:text-[4.75rem]'
                             }`}
                           >
                             {nextBlindIsBreak ? formatBreakDisplayLabel(nextBlind) : formatCompactFeaturedBlinds(nextBlind)}
                           </p>
                           {!nextBlindIsBreak && nextBlind.ante > 0 && (
-                            <p className="mt-1 text-sm text-pit-text md:text-base">Ante {formatCompactBlindAmount(nextBlind.ante, 2)}</p>
+                            <p className="mt-1 text-sm text-pit-text md:text-base min-[1280px]:text-lg">Ante {formatCompactBlindAmount(nextBlind.ante, 2)}</p>
                           )}
                         </>
                       ) : (

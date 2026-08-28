@@ -11,6 +11,49 @@ CREATE TABLE IF NOT EXISTS users (
   createdat     TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS demosessions (
+  demosessionid  STRING(64) PRIMARY KEY,
+  demohostuserid UUID,
+  tournamentid   UUID,
+  groupid        UUID,
+  tvdisplaycode  STRING(8),
+  status         STRING(20) NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'claimed', 'purged')),
+  claimedat      TIMESTAMPTZ,
+  purgedat       TIMESTAMPTZ,
+  createdat      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_demosessions_status_created
+  ON demosessions (status, createdat);
+
+CREATE INDEX IF NOT EXISTS idx_demosessions_claimed
+  ON demosessions (status, claimedat);
+
+CREATE TABLE IF NOT EXISTS anonymoustournamentdrafts (
+  draftid             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  anonymoussessionid STRING(96) NOT NULL,
+  status             STRING(20) NOT NULL DEFAULT 'anonymous' CHECK (status IN ('anonymous', 'claim_pending', 'claimed', 'expired')),
+  wizardinput        JSONB NOT NULL,
+  generatedstructure JSONB NOT NULL,
+  tournamentconfig   JSONB NOT NULL,
+  version            INT NOT NULL DEFAULT 1,
+  expiresat          TIMESTAMPTZ NOT NULL,
+  claimedbyuserid    UUID,
+  claimedtournamentid UUID,
+  createdat          TIMESTAMPTZ DEFAULT now(),
+  updatedat          TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_anonymoustournamentdrafts_session
+  ON anonymoustournamentdrafts (anonymoussessionid, updatedat);
+
+CREATE INDEX IF NOT EXISTS idx_anonymoustournamentdrafts_expires
+  ON anonymoustournamentdrafts (status, expiresat);
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_anonymoustournamentdrafts_claimed_tournament
+  ON anonymoustournamentdrafts (claimedtournamentid)
+  WHERE claimedtournamentid IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS usermetadata (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   userid      UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,

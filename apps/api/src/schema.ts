@@ -27,6 +27,56 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       ON CONFLICT (key) DO NOTHING
     `, [process.env.DEFAULT_AI_CREDITS ?? '25']);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS demosessions (
+        demosessionid STRING(64) PRIMARY KEY,
+        demohostuserid UUID,
+        tournamentid UUID,
+        groupid UUID,
+        tvdisplaycode STRING(8),
+        status STRING(20) NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'claimed', 'purged')),
+        claimedat TIMESTAMPTZ,
+        purgedat TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_demosessions_status_created
+      ON demosessions (status, createdat)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_demosessions_claimed
+      ON demosessions (status, claimedat)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS anonymoustournamentdrafts (
+        draftid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        anonymoussessionid STRING(96) NOT NULL,
+        status STRING(20) NOT NULL DEFAULT 'anonymous' CHECK (status IN ('anonymous', 'claim_pending', 'claimed', 'expired')),
+        wizardinput JSONB NOT NULL,
+        generatedstructure JSONB NOT NULL,
+        tournamentconfig JSONB NOT NULL,
+        version INT NOT NULL DEFAULT 1,
+        expiresat TIMESTAMPTZ NOT NULL,
+        claimedbyuserid UUID,
+        claimedtournamentid UUID,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_anonymoustournamentdrafts_session
+      ON anonymoustournamentdrafts (anonymoussessionid, updatedat)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_anonymoustournamentdrafts_expires
+      ON anonymoustournamentdrafts (status, expiresat)
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_anonymoustournamentdrafts_claimed_tournament
+      ON anonymoustournamentdrafts (claimedtournamentid)
+      WHERE claimedtournamentid IS NOT NULL
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS accounttiers (
         tierid INT PRIMARY KEY,
         tierkey STRING(20) NOT NULL UNIQUE,
@@ -1102,6 +1152,8 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       CREATE INDEX IF NOT EXISTS idx_games_visibility
       ON games (visibility, groupid)
     `);
+    await client.query(`ALTER TABLE games ADD COLUMN IF NOT EXISTS createdat TIMESTAMPTZ DEFAULT now()`);
+    await client.query(`ALTER TABLE games ADD COLUMN IF NOT EXISTS updatedat TIMESTAMPTZ DEFAULT now()`);
     await client.query(`ALTER TABLE games ADD COLUMN IF NOT EXISTS demosessionid STRING(64)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_games_demo_session ON games (demosessionid)`);
     await client.query(`

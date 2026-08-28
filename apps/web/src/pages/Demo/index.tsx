@@ -39,33 +39,30 @@ export default function DemoPage() {
       }
       sessionStorage.setItem('pb_demo_token', demo.token);
       localStorage.setItem('pb_token', demo.token);
-      setStatus('Loading the tournament room...');
+      setStatus('Loading the demo home...');
       const profile = await api.me();
       setAuth(demo.token, profile);
-      setStatus('Loading the blind structure...');
+      setStatus('Loading the schedule...');
       await Promise.all([
         queryClient.fetchQuery({
-          queryKey: ['tournament', demo.tournamentId],
-          queryFn: () => api.getTournament(demo.tournamentId),
+          queryKey: ['tournaments', 'mine'],
+          queryFn: api.getTournaments,
         }),
         queryClient.fetchQuery({
-          queryKey: ['players', demo.tournamentId],
-          queryFn: () => api.getPlayers(demo.tournamentId),
+          queryKey: ['groups'],
+          queryFn: api.getGroups,
         }),
         queryClient.fetchQuery({
-          queryKey: ['blinds', demo.tournamentId],
-          queryFn: () => api.getBlinds(demo.tournamentId),
+          queryKey: ['leagues'],
+          queryFn: api.getLeagues,
         }),
         queryClient.fetchQuery({
-          queryKey: ['timer', demo.tournamentId],
-          queryFn: () => api.getTimer(demo.tournamentId),
+          queryKey: ['games'],
+          queryFn: api.getGames,
         }),
       ]);
-      setStatus('Opening Run Tournament...');
-      navigate(`/tournament/${demo.tournamentId}`, {
-        replace: true,
-        state: { tab: 'run', demoCoach: 'start' },
-      });
+      setStatus('Opening the demo home...');
+      navigate('/', { replace: true });
     } catch (err) {
       if (buildStatusTimer) {
         window.clearInterval(buildStatusTimer);
@@ -95,7 +92,7 @@ export default function DemoPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.32em] text-pit-teal">Live demo</p>
         <h1 className="mt-3 text-3xl font-black text-white">{status}</h1>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-pit-text">
-          We are bringing you right into the middle of the action in a 40-person game, with players seated, payouts live, and the clock ready to run.
+          We are setting up a 40-person game with players seated, payouts live, and the clock ready to run.
         </p>
         {!error && (
           <div className="mx-auto mt-7 h-2 w-full max-w-xs overflow-hidden rounded-full bg-pit-bg">

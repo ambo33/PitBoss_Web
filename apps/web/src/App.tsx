@@ -3,6 +3,8 @@ import { useAuthStore } from './store/auth';
 import LoginPage from './pages/Login';
 import MainPage from './pages/Main';
 import LandingPage from './pages/Landing';
+import QuickStartTournamentPage from './pages/QuickStart';
+import QuickStartRunPage from './pages/QuickStart/Run';
 import DemoPage from './pages/Demo';
 import PricingPage from './pages/Pricing';
 import TermsPage from './pages/Terms';
@@ -25,6 +27,7 @@ import JoinGroupPage from './pages/JoinGroup';
 import JoinLeaguePage from './pages/JoinLeague';
 import JoinCodePage from './pages/JoinCode';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
+import { featureFlags } from './features';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -81,6 +84,8 @@ export default function App() {
         <Route path="/register" element={<AppSubdomainRedirect mode="register" />} />
         <Route path="/app" element={<AppSubdomainRedirect />} />
         <Route path="/landing" element={<LandingPage />} />
+        <Route path="/quick-start" element={featureFlags.deferredAuthQuickStart ? <QuickStartTournamentPage /> : <Navigate to="/" replace />} />
+        <Route path="/quick-start/run" element={featureFlags.deferredAuthQuickStart ? <QuickStartRunPage /> : <Navigate to="/" replace />} />
         <Route path="/demo" element={<DemoPage />} />
         <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
         <Route path="/pricing" element={<PricingPage />} />

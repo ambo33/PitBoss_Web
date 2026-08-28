@@ -328,7 +328,7 @@ function TournamentCommandHeader({
 }) {
   if (activeTab === 'run') {
     return (
-      <section className="-mx-4 mb-2 border-b border-pit-border bg-[linear-gradient(110deg,rgba(18,46,48,0.72),rgba(13,17,22,0.96)_42%,rgba(13,17,22,0.98))] sm:-mx-6 lg:-mx-8">
+      <section className="relative z-30 -mx-4 mb-2 border-b border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.34)] sm:-mx-6 lg:-mx-8">
         <div className="flex min-h-16 w-full items-center gap-2 px-3 py-2 sm:px-4 lg:px-5">
           <Link
             to="/"
@@ -369,7 +369,7 @@ function TournamentCommandHeader({
           <div className="ml-auto shrink-0 min-[768px]:ml-1">{accountMenu}</div>
         </div>
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 grid border-t border-pit-border bg-[#0d1116]/96 px-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_40px_rgba(0,0,0,.42)] backdrop-blur-xl min-[768px]:hidden"
+          className="mx-3 mb-2 grid rounded-xl border border-pit-border bg-black/25 p-1 min-[768px]:hidden"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
           aria-label="Tournament navigation"
         >
@@ -380,7 +380,8 @@ function TournamentCommandHeader({
                 key={id}
                 type="button"
                 onClick={() => onTabChange(id)}
-                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-[10px] font-semibold transition ${active ? 'bg-pit-teal/18 text-white ring-1 ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'}`}
+                aria-current={active ? 'page' : undefined}
+                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 py-2 text-[10px] font-semibold transition ${active ? 'bg-pit-teal/18 text-white ring-1 ring-inset ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'}`}
               >
                 <Icon size={16} className="shrink-0" />
                 <span className="truncate">{mobileLabel}</span>
@@ -393,7 +394,7 @@ function TournamentCommandHeader({
   }
 
   return (
-    <section className="-mx-4 mb-3 border-y border-pit-border bg-[linear-gradient(110deg,rgba(18,46,48,0.72),rgba(13,17,22,0.96)_42%,rgba(13,17,22,0.98))] sm:-mx-6 lg:-mx-8">
+    <section className="relative z-20 -mx-4 mb-3 border-y border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.28)] sm:-mx-6 lg:-mx-8">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-pit-teal/45 bg-pit-teal/10 text-base font-black text-white sm:h-10 sm:w-10 sm:text-lg">
@@ -419,8 +420,9 @@ function TournamentCommandHeader({
         )}
       </div>
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid border-t border-pit-border bg-[#0d1116]/96 px-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_40px_rgba(0,0,0,.42)] backdrop-blur-xl min-[768px]:static min-[768px]:mx-auto min-[768px]:max-w-[1600px] min-[768px]:border-t min-[768px]:bg-transparent min-[768px]:px-4 min-[768px]:pb-2 min-[768px]:pt-1.5 min-[768px]:shadow-none lg:px-8"
+        className="mx-3 mb-2 grid rounded-xl border border-pit-border bg-black/25 p-1 min-[768px]:mx-auto min-[768px]:mb-0 min-[768px]:max-w-[1600px] min-[768px]:rounded-none min-[768px]:border-x-0 min-[768px]:border-b-0 min-[768px]:bg-transparent min-[768px]:px-4 min-[768px]:pb-2 min-[768px]:pt-1.5 lg:px-8"
         style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+        aria-label="Tournament navigation"
       >
         {tabs.map(({ id, label, mobileLabel, Icon }) => {
           const active = activeTab === id;
@@ -429,8 +431,9 @@ function TournamentCommandHeader({
               key={id}
               type="button"
               onClick={() => onTabChange(id)}
+              aria-current={active ? 'page' : undefined}
               className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-[10px] font-semibold transition min-[768px]:flex-row min-[768px]:gap-2 min-[768px]:rounded-xl min-[768px]:py-2 min-[768px]:text-sm ${
-                active ? 'bg-pit-teal/18 text-white ring-1 ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'
+                active ? 'bg-pit-teal/18 text-white ring-1 ring-inset ring-pit-teal/45' : 'text-pit-text hover:bg-white/5 hover:text-white'
               }`}
             >
               <Icon size={16} className="shrink-0" />

@@ -14,6 +14,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    credentials: 'include',
     signal: options.signal ?? controller.signal,
     headers: {
       'Content-Type': 'application/json',
@@ -70,8 +71,8 @@ const del = <T>(path: string, body?: unknown) =>
 
 export const api = {
   // Auth
-  register: (data: { email: string; password: string; name: string; displayname: string; acceptterms?: boolean; returnpath?: string }) =>
-    post('/auth/register', data),
+  register: (data: { email: string; password: string; name: string; displayname: string; acceptterms?: boolean; returnpath?: string; quickstartsession?: boolean }) =>
+    post<{ message?: string; token?: string; requiresverification?: boolean }>('/auth/register', data),
   verifyEmail: (data: { email: string; pin: string }) =>
     post<{ token: string }>('/auth/verify-email', data),
   login: (data: { email: string; password: string }) =>
@@ -269,6 +270,14 @@ export const api = {
   getRegistered: () => get<Tournament[]>('/tournaments/registered'),
   createTournament: (data: Partial<Tournament>) =>
     post<{ tournamentid: string }>('/tournaments', data),
+  createTournamentDraft: (data: TournamentDraftPayload) =>
+    post<TournamentDraftResponse>('/tournament-drafts', data),
+  getTournamentDraft: (id: string) =>
+    get<TournamentDraftResponse>(`/tournament-drafts/${encodeURIComponent(id)}`),
+  updateTournamentDraft: (id: string, data: TournamentDraftPayload & { version?: number }) =>
+    put<TournamentDraftResponse>(`/tournament-drafts/${encodeURIComponent(id)}`, data),
+  claimTournamentDraft: (id: string) =>
+    post<{ tournamentid: string; alreadyclaimed?: boolean }>(`/tournament-drafts/${encodeURIComponent(id)}/claim`),
   getTournament: (id: string) => get<Tournament>(`/tournaments/${id}`),
   updateTournament: (id: string, data: Partial<Tournament>) => put(`/tournaments/${id}`, data),
   deleteTournament: (id: string, data?: { notifyPlayers?: boolean }) =>
@@ -366,6 +375,7 @@ export const api = {
   getAdminAiCreditSettings: () => get<{ defaultaicredits: number }>('/admin/settings/ai-credits'),
   updateAdminAiCreditSettings: (data: { defaultaicredits: number }) =>
     put<{ defaultaicredits: number }>('/admin/settings/ai-credits', data),
+  getAdminDemoSummary: () => get<AdminDemoSummary>('/admin/demos/summary'),
   getAdminFeedback: () => get<AdminFeedbackResponse>('/admin/feedback'),
   getAdminFeedbackSummary: () => get<{ newcount: number }>('/admin/feedback/summary'),
   updateAdminFeedback: (id: string, data: { status: AdminFeedbackStatus }) =>
@@ -458,6 +468,54 @@ export interface Tournament {
   isowner?: boolean;
   playercount?: number; checkedincount?: number; isregistered?: boolean; isdeclined?: boolean;
   isgroupadmin?: boolean; canmanage?: boolean;
+}
+export interface QuickStartWizardInput {
+  players: number;
+  durationBucket: '2h' | '3h' | '4h' | 'recommend';
+  startingStack: number;
+  targetHours: number;
+  levelMinutes: number;
+  startingBigBlind: number;
+  chipDenominations: string;
+  finishBigBlinds: number;
+  breakCount: number;
+  breakMinutes: number;
+  anteStartLevel: number;
+  colorUps: string;
+  rebuysEnabled: boolean;
+  addonsEnabled: boolean;
+  rebuyChips: number;
+  addonChips: number;
+}
+export interface TournamentDraftConfig {
+  name: string;
+  tourneydate: string;
+  tourneytime: string;
+  buyin: number;
+  rake: number;
+  rebuyprice: number;
+  rebuychips: number;
+  rebuylastlevel: number | null;
+  addonprice: number;
+  addonchips: number;
+  maxplayers: number;
+  playerselftracking: boolean;
+  registerself: boolean;
+}
+export interface TournamentDraftPayload {
+  wizardInput: QuickStartWizardInput;
+  generatedStructure: Omit<BlindLevel, 'id'>[];
+  tournamentConfig: TournamentDraftConfig;
+}
+export interface TournamentDraftResponse {
+  id: string;
+  status: 'anonymous' | 'claim_pending' | 'claimed' | 'expired';
+  wizardInput: QuickStartWizardInput;
+  generatedStructure: Omit<BlindLevel, 'id'>[];
+  tournamentConfig: TournamentDraftConfig;
+  version: number;
+  expiresAt: string;
+  claimedTournamentId?: string | null;
 }
 export interface TournamentPlayer {
   userid: string; emailaddress: string; displayname?: string;
@@ -1037,6 +1095,17 @@ export interface AdminUserDetail {
   account: AuthProfile;
   groups: Group[];
   tournaments: Tournament[];
+}
+
+export interface AdminDemoSummary {
+  totalran: number;
+  readycount: number;
+  claimedcount: number;
+  purgedcount: number;
+  claimedlast24hours: number;
+  readytarget: number;
+  lastclaimedat: string | null;
+  lastpurgedat: string | null;
 }
 
 export interface AdminFeedback {

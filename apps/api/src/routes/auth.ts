@@ -13,6 +13,8 @@ const AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav|mp4|m4a|
 const MAX_AUDIO_DATA_URL_LENGTH = 4_200_000;
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
 
 function normalizePhoneNumber(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
@@ -26,11 +28,13 @@ function normalizePhoneNumber(value: unknown): string | null | undefined {
 }
 
 authRouter.post('/register', async (req: Request, res: Response) => {
-  const { email, password, displayname, name, acceptterms, returnpath } = req.body as {
-    email: string; password: string; displayname?: string; name?: string; acceptterms?: boolean; returnpath?: string;
+  const { email, password, displayname, name, acceptterms, returnpath, quickstartsession } = req.body as {
+    email: string; password: string; displayname?: string; name?: string; acceptterms?: boolean; returnpath?: string; quickstartsession?: boolean;
   };
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !password) { res.status(400).json({ error: 'Email and password required' }); return; }
+  if (!EMAIL_PATTERN.test(normalizedEmail)) { res.status(400).json({ error: 'Enter a valid email address.' }); return; }
+  if (password.length < MIN_PASSWORD_LENGTH) { res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }); return; }
   if (acceptterms !== true) { res.status(400).json({ error: 'You must agree to the Terms of Service to create an account.' }); return; }
   const normalizedName = String(name ?? '').trim().slice(0, 160);
   const normalizedDisplayName = String(displayname ?? '').trim().slice(0, 80);
@@ -65,6 +69,12 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     await sendVerificationEmail(normalizedEmail, pin, returnpath);
   } catch (err) {
     console.error('Verification email failed', err instanceof Error ? err.message : err);
+  }
+
+  if (quickstartsession === true) {
+    const token = signToken(row.guid);
+    res.status(201).json({ token, requiresverification: true });
+    return;
   }
 
   res.status(201).json({ message: 'Account created. Check your email for a verification PIN.' });

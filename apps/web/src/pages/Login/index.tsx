@@ -9,6 +9,8 @@ import { getPendingGroupInvite, getPendingJoinPath, normalizeJoinPath, setPendin
 type View = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
 type InvitationKind = 'group' | 'league' | null;
 
+const MIN_PASSWORD_LENGTH = 8;
+
 function normalizeInternalPath(value: string | null): string | null {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
   return value;
@@ -79,6 +81,7 @@ export default function LoginPage() {
     api.verifyEmail({ email: verifyEmail, pin: verifyCode })
       .then(async ({ token }) => {
         if (cancelled) return;
+        sessionStorage.removeItem('pb_demo_token');
         localStorage.setItem('pb_token', token);
         queryClient.clear();
         const user = await api.me();
@@ -200,6 +203,7 @@ function LoginForm({
     setLoading(true);
     try {
       const { token } = await api.login({ email, password });
+      sessionStorage.removeItem('pb_demo_token');
       localStorage.setItem('pb_token', token);
       queryClient.clear();
       const user = await api.me();
@@ -265,6 +269,10 @@ function RegisterForm({
       setError('Passwords do not match');
       return;
     }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     if (!acceptTerms) {
       setError('You must agree to the Terms of Service to create an account.');
       return;
@@ -297,8 +305,8 @@ function RegisterForm({
       <input className="input" type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
       <input className="input" type="text" placeholder="Table nickname" value={displayname} onChange={(e) => setDisplayname(e.target.value)} required />
       <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      <input className="input" type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+      <input className="input" type="password" minLength={MIN_PASSWORD_LENGTH} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <input className="input" type="password" minLength={MIN_PASSWORD_LENGTH} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-pit-border bg-pit-bg/40 px-3 py-3 text-left">
         <input
           type="checkbox"
@@ -351,6 +359,7 @@ function VerifyForm({
     setLoading(true);
     try {
       const { token } = await api.verifyEmail({ email, pin });
+      sessionStorage.removeItem('pb_demo_token');
       localStorage.setItem('pb_token', token);
       queryClient.clear();
       const user = await api.me();

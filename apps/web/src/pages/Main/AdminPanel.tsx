@@ -3,7 +3,7 @@ import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ExternalLink, MessageSquare, Mic2, Search, Shield, Trophy, Users } from 'lucide-react';
-import { api, AccountTier, AdminFeedback, AdminFeedbackStatus, AdminUserSummary, Tournament } from '../../api/client';
+import { api, AccountTier, AdminDemoSummary, AdminFeedback, AdminFeedbackStatus, AdminUserSummary, Tournament } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 type TierFilter = 'all' | AccountTier;
@@ -34,6 +34,10 @@ export default function AdminPanel() {
   const { data: aiCreditSettings } = useQuery({
     queryKey: ['admin', 'settings', 'ai-credits'],
     queryFn: api.getAdminAiCreditSettings,
+  });
+  const { data: demoSummary } = useQuery({
+    queryKey: ['admin', 'demos', 'summary'],
+    queryFn: api.getAdminDemoSummary,
   });
 
   const summary = useMemo(() => buildSummary(users), [users]);
@@ -130,6 +134,8 @@ export default function AdminPanel() {
         <SummaryTile label="Superadmins" value={summary.admins} icon={Shield} accent />
         <SummaryTile label="New Feedback" value={feedbackNewCount} icon={MessageSquare} danger={feedbackNewCount > 0} />
       </section>
+
+      <DemoSummaryPanel summary={demoSummary} />
 
       <section className="rounded-xl border border-pit-border bg-pit-card p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -424,6 +430,39 @@ function SummaryTile({
       </div>
       <p className={`mt-1 text-2xl font-semibold ${valueClass}`}>{value}</p>
     </div>
+  );
+}
+
+function DemoSummaryPanel({ summary }: { summary?: AdminDemoSummary }) {
+  const readyCount = summary?.readycount ?? 0;
+  const readyTarget = summary?.readytarget ?? 5;
+  return (
+    <section className="rounded-xl border border-pit-border bg-pit-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">Demo Pool</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">Live demo inventory</h2>
+        </div>
+        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+          readyCount >= readyTarget
+            ? 'border-pit-teal/40 bg-pit-teal/10 text-pit-teal'
+            : 'border-yellow-300/30 bg-yellow-300/10 text-yellow-200'
+        }`}>
+          {readyCount} / {readyTarget} ready
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Stat label="Total Ran" value={summary?.totalran ?? 0} accent={(summary?.totalran ?? 0) > 0} />
+        <Stat label="Last 24 Hours" value={summary?.claimedlast24hours ?? 0} />
+        <Stat label="Ready" value={readyCount} accent={readyCount >= readyTarget} />
+        <Stat label="Claimed" value={summary?.claimedcount ?? 0} />
+        <Stat label="Purged" value={summary?.purgedcount ?? 0} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-pit-muted">
+        <span>Last claimed {formatOptionalDateTime(summary?.lastclaimedat)}</span>
+        <span>Last purged {formatOptionalDateTime(summary?.lastpurgedat)}</span>
+      </div>
+    </section>
   );
 }
 
@@ -953,6 +992,10 @@ function formatDateTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function formatOptionalDateTime(value: string | null | undefined) {
+  return value ? formatDateTime(value) : 'Never';
 }
 
 function compactUrl(value: string) {

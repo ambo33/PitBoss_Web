@@ -22,9 +22,10 @@ import { feedbackRouter } from './routes/feedback';
 import { aiRouter } from './routes/ai';
 import { pushRouter } from './routes/push';
 import { gamesRouter } from './routes/games';
-import { demoRouter } from './routes/demo';
+import { demoRouter, startDemoMaintenance } from './routes/demo';
+import { tournamentDraftsRouter } from './routes/tournamentDrafts';
 import { joinCodesRouter } from './routes/joinCodes';
-import { getAllowedClientUrls } from './config';
+import { isAllowedClientOrigin } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
 import { initSocket } from './socket';
@@ -71,10 +72,9 @@ app.use(helmet({
     },
   },
 }));
-const allowedClientUrls = getAllowedClientUrls();
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedClientUrls.includes(origin)) {
+    if (isAllowedClientOrigin(origin)) {
       callback(null, true);
       return;
     }
@@ -98,6 +98,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/games', gamesRouter);
 app.use('/api/demo', demoRouter);
+app.use('/api/tournament-drafts', tournamentDraftsRouter);
 app.use('/api/join-codes', joinCodesRouter);
 app.use('/api/groups', groupsRouter);
 app.use('/api/leagues', leaguesRouter);
@@ -210,6 +211,7 @@ const PORT = process.env.PORT ?? 3001;
 
 async function start() {
   await ensureDatabaseSchema();
+  startDemoMaintenance();
   httpServer.listen(PORT, () => console.log(`PitBoss API running on :${PORT}`));
 }
 

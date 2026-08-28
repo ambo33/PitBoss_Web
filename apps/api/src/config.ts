@@ -10,6 +10,16 @@ function isHostedRuntime(): boolean {
   return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
 }
 
+function isLocalLoopbackOrigin(value: string): boolean {
+  try {
+    const url = new URL(cleanUrl(value));
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function getClientUrl(): string {
   return cleanUrl(process.env.CLIENT_URL ?? process.env.APP_URL ?? (isHostedRuntime() ? productionAppUrl : localClientUrl));
 }
@@ -46,4 +56,11 @@ export function getAllowedClientUrls(): string[] {
       .filter(Boolean)
       .map(cleanUrl),
   ));
+}
+
+export function isAllowedClientOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  const cleanOrigin = cleanUrl(origin);
+  if (getAllowedClientUrls().includes(cleanOrigin)) return true;
+  return !isHostedRuntime() && isLocalLoopbackOrigin(cleanOrigin);
 }

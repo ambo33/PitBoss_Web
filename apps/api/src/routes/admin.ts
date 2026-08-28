@@ -88,6 +88,39 @@ adminRouter.put('/settings/ai-credits', async (req: Request, res: Response) => {
   res.json({ defaultaicredits: await setDefaultAiCredits(credits) });
 });
 
+adminRouter.get('/demos/summary', async (_req: Request, res: Response) => {
+  const rows = await query<{
+    totalran: string | number;
+    readycount: string | number;
+    claimedcount: string | number;
+    purgedcount: string | number;
+    claimedlast24hours: string | number;
+    lastclaimedat: string | null;
+    lastpurgedat: string | null;
+  }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN claimedat IS NOT NULL THEN 1 ELSE 0 END), 0) AS totalran,
+       COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0) AS readycount,
+       COALESCE(SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END), 0) AS claimedcount,
+       COALESCE(SUM(CASE WHEN status = 'purged' THEN 1 ELSE 0 END), 0) AS purgedcount,
+       COALESCE(SUM(CASE WHEN claimedat >= now() - INTERVAL '24 hours' THEN 1 ELSE 0 END), 0) AS claimedlast24hours,
+       max(claimedat) AS lastclaimedat,
+       max(purgedat) AS lastpurgedat
+     FROM demosessions`
+  );
+  const row = rows[0];
+  res.json({
+    totalran: Number(row?.totalran ?? 0),
+    readycount: Number(row?.readycount ?? 0),
+    claimedcount: Number(row?.claimedcount ?? 0),
+    purgedcount: Number(row?.purgedcount ?? 0),
+    claimedlast24hours: Number(row?.claimedlast24hours ?? 0),
+    readytarget: 5,
+    lastclaimedat: row?.lastclaimedat ?? null,
+    lastpurgedat: row?.lastpurgedat ?? null,
+  });
+});
+
 adminRouter.put('/feedback/:id', async (req: Request, res: Response) => {
   const { status } = req.body as { status?: string };
   const nextStatus = status === 'closed' ? 'closed' : status === 'new' ? 'new' : 'looked_at';
