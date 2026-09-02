@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Settings2, Share, Skull, Star, Timer, XCircle } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Settings2, Share, Skull, Star, Timer, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, PublicLobbyMusic, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
@@ -168,6 +169,7 @@ export default function RunTournament({
   const [musicRequestLimitEnabled, setMusicRequestLimitEnabled] = useState(true);
   const [musicRequestSettingsReady, setMusicRequestSettingsReady] = useState(false);
   const [musicSettingsMenuOpen, setMusicSettingsMenuOpen] = useState(false);
+  const [musicConnectionPrompt, setMusicConnectionPrompt] = useState(false);
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
   const [activeMysteryBounty, setActiveMysteryBounty] = useState<MysteryBountyReveal | null>(null);
@@ -312,11 +314,16 @@ export default function RunTournament({
     queryKey: ['tournament-music', tournamentId],
     queryFn: () => api.getTournamentMusicQueue(tournamentId),
     enabled: showAdminControls,
-    refetchInterval: (query) => (query.state.data?.musicrequestsenabled || (query.state.data?.spotify.connected && query.state.data?.isRunning)) ? 30_000 : false,
+    refetchInterval: (query) => (
+      query.state.data?.musicrequestsenabled
+      || (query.state.data?.spotify.connected && (query.state.data?.isRunning || timerState?.running))
+      || timerState?.running
+    ) ? 30_000 : false,
   });
   const musicToggleMutation = useMutation({
     mutationFn: (enabled: boolean) => api.updateTournament(tournamentId, { musicrequestsenabled: enabled }),
     onSuccess: () => {
+      setMusicConnectionPrompt(false);
       refreshTournamentData();
       qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] });
     },
@@ -332,6 +339,11 @@ export default function RunTournament({
     mutationFn: ({ userId, blocked }: { userId: string; blocked: boolean }) => api.setMusicRequesterBlocked(tournamentId, userId, blocked),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] }),
   });
+
+  useEffect(() => {
+    if (!showAdminControls || !timerState?.running) return;
+    void qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] });
+  }, [qc, showAdminControls, timerState?.running, tournamentId]);
 
   useEffect(() => {
     if (!musicQueueQuery.data) return;
@@ -1233,6 +1245,7 @@ export default function RunTournament({
   const musicQueue = musicQueueQuery.data?.requests ?? [];
   const musicRequesters = musicQueueQuery.data?.requesters ?? [];
   const musicRequestsEnabled = musicQueueQuery.data?.musicrequestsenabled ?? Boolean(tournament.musicrequestsenabled);
+  const spotifyMusicConnected = musicQueueQuery.data?.spotify.connected === true;
   const musicIsRunning = musicQueueQuery.data?.isRunning ?? Boolean(timerState?.running);
   const spotifyConnected = Boolean(musicQueueQuery.data?.spotify.connected ?? musicSnapshot?.spotifyConnected);
   const currentSpotifyTrack = musicQueueQuery.data?.currentTrack ?? musicSnapshot?.currentTrack ?? null;
@@ -1580,6 +1593,10 @@ export default function RunTournament({
             aria-label="Allow player song requests"
             className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${musicRequestsEnabled ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`}
             onClick={() => {
+              if (!musicRequestsEnabled && !spotifyMusicConnected) {
+                setMusicConnectionPrompt(true);
+                return;
+              }
               if (musicRequestsEnabled) setMusicSettingsMenuOpen(false);
               musicToggleMutation.mutate(!musicRequestsEnabled);
             }}
@@ -1603,6 +1620,18 @@ export default function RunTournament({
           )}
         </div>
       </div>
+      {musicConnectionPrompt && !spotifyMusicConnected && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs">
+          <p className="min-w-0 text-amber-100">Connect Spotify before turning on Poker Jukebox.</p>
+          <Link
+            to="/?spotify=connect"
+            className="inline-flex shrink-0 items-center gap-1 font-semibold text-pit-teal hover:text-pit-teal/80"
+          >
+            Open Profile
+            <ArrowUpRight size={13} />
+          </Link>
+        </div>
+      )}
       {musicRequestsEnabled && musicSettingsMenuOpen && (
         <div id={`music-settings-${tournamentId}`} className="border-b border-pit-border bg-pit-surface/30 px-3 py-2.5">
           <div className="space-y-2">
@@ -1679,7 +1708,7 @@ export default function RunTournament({
         </div>
       )}
       {musicRequestsEnabled && (
-        <div className="space-y-2 p-3">
+        <div className="space-y-2 p-3 min-[768px]:max-[1279px]:hidden">
           {showMusicRequestQr && (
             <div className="flex items-center gap-2 border-b border-pit-border pb-2">
               <div className="shrink-0 rounded-md bg-white p-1">
