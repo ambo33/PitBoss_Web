@@ -160,6 +160,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.musicrequestsenabled, FALSE) AS musicrequestsenabled,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
             COALESCE(t.bountymode, 'manual') AS bountymode,
@@ -225,6 +226,7 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.musicrequestsenabled, FALSE) AS musicrequestsenabled,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
             COALESCE(t.bountymode, 'manual') AS bountymode,
@@ -465,6 +467,7 @@ tournamentsRouter.get('/:id', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.musicrequestsenabled, FALSE) AS musicrequestsenabled,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
             COALESCE(t.bountymode, 'manual') AS bountymode,
@@ -527,28 +530,31 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
     'tvgreetingaudioenabled',
     'tvshowknockoutqrenabled',
     'tvdisplaymode',
+    'musicrequestsenabled',
   ]);
   const isTvOptionsOnly = requestKeys.length > 0 && requestKeys.every((key) => tvOptionKeys.has(key));
 
   if (isTvOptionsOnly) {
-    const { tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode } = req.body as Partial<Tournament>;
+    const { tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, musicrequestsenabled } = req.body as Partial<Tournament>;
     const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
     await query(
       `UPDATE tournaments SET
          tvgreetingdisplayenabled = COALESCE($1, tvgreetingdisplayenabled),
          tvgreetingaudioenabled = COALESCE($2, tvgreetingaudioenabled),
          tvshowknockoutqrenabled = COALESCE($3, tvshowknockoutqrenabled),
-         tvdisplaymode = COALESCE($4, tvdisplaymode)
-       WHERE tournamentid = $5`,
+         tvdisplaymode = COALESCE($4, tvdisplaymode),
+         musicrequestsenabled = COALESCE($5, musicrequestsenabled)
+       WHERE tournamentid = $6`,
       [
         tvgreetingdisplayenabled ?? null,
         tvgreetingaudioenabled ?? null,
         tvshowknockoutqrenabled ?? null,
         normalizedTvDisplayMode,
+        musicrequestsenabled ?? null,
         req.params.id,
       ]
     );
-    broadcastTournamentUpdate(req.params.id, { tournament: true, source: 'tournament-tv-options' });
+    broadcastTournamentUpdate(req.params.id, { tournament: true, music: true, source: 'tournament-options' });
     res.json({ success: true });
     return;
   }
@@ -562,7 +568,7 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
 
   const { name, tourneydate, tourneytime, buyin, rebuyprice, rebuychips, rebuylastlevel, genericrebuys,
           addonprice, addonchips, genericaddons, maxplayers, playerselftracking, groupid, rake, payoutstructure,
-          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, seatingmaxpertable,
+          tvgreetingdisplayenabled, tvgreetingaudioenabled, tvshowknockoutqrenabled, tvdisplaymode, musicrequestsenabled, seatingmaxpertable,
           bountyenabled, bountymode, bountyprizepool, bountypooltype, bountyroundingdenomination, bountystartplace, bountyminpayout } = req.body as Partial<Tournament>;
   const normalizedTvDisplayMode = tvdisplaymode === 'seating' ? 'seating' : tvdisplaymode === 'timer' ? 'timer' : null;
   const normalizedBountyMode = bountymode == null ? null : normalizeBountyMode(bountymode);
@@ -742,21 +748,22 @@ tournamentsRouter.put('/:id', async (req: Request, res: Response) => {
        tvgreetingaudioenabled = COALESCE($20, tvgreetingaudioenabled),
        tvshowknockoutqrenabled = COALESCE($21, tvshowknockoutqrenabled),
        tvdisplaymode = COALESCE($22, tvdisplaymode),
-       seatingmaxpertable = COALESCE($23, seatingmaxpertable),
-       bountyenabled = COALESCE($24, bountyenabled),
-       bountymode = COALESCE($25, bountymode),
-       bountyprizepool = COALESCE($26, bountyprizepool),
-       bountypooltype = COALESCE($27, bountypooltype),
-       bountyroundingdenomination = COALESCE($28, bountyroundingdenomination),
-       bountystartplace = CASE WHEN $29::BOOL THEN $30::INT ELSE bountystartplace END,
-       bountyminpayout = COALESCE($31, bountyminpayout)
+       musicrequestsenabled = COALESCE($23, musicrequestsenabled),
+       seatingmaxpertable = COALESCE($24, seatingmaxpertable),
+       bountyenabled = COALESCE($25, bountyenabled),
+       bountymode = COALESCE($26, bountymode),
+       bountyprizepool = COALESCE($27, bountyprizepool),
+       bountypooltype = COALESCE($28, bountypooltype),
+       bountyroundingdenomination = COALESCE($29, bountyroundingdenomination),
+       bountystartplace = CASE WHEN $30::BOOL THEN $31::INT ELSE bountystartplace END,
+       bountyminpayout = COALESCE($32, bountyminpayout)
      WHERE tournamentid = $16`,
     [name ?? null, tourneydate ?? null, tourneytime ?? null,
      buyin ?? null, rake ?? null, rebuyprice ?? null,
      rebuychips ?? null, rebuylastlevel !== undefined, normalizedRebuyLastLevel ?? null, genericrebuys ?? null, addonprice ?? null, addonchips ?? null, genericaddons ?? null, maxplayers ?? null,
      playerselftracking ?? null, req.params.id, groupid ?? null, payoutstructure ?? null,
      tvgreetingdisplayenabled ?? null, tvgreetingaudioenabled ?? null, tvshowknockoutqrenabled ?? null, normalizedTvDisplayMode,
-     seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination,
+     musicrequestsenabled ?? null, seatingmaxpertable ?? null, bountyenabled ?? null, normalizedBountyMode, normalizedBountyPrizepool, normalizedBountyPoolType, normalizedBountyDenomination,
      bountystartplace !== undefined || forceBountyStartPlace, effectiveStartPlace ?? null, normalizedBountyMinPayout]
   );
   await query(

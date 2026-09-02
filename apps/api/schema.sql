@@ -95,6 +95,9 @@ CREATE TABLE IF NOT EXISTS tournaments (
   addonchips        INT DEFAULT 0,
   maxplayers        INT DEFAULT 0,
   playerselftracking BOOL DEFAULT FALSE,
+  musicrequestsenabled BOOL DEFAULT FALSE,
+  musicrequestlimit INT DEFAULT 1,
+  musicrequestwindowminutes INT DEFAULT 5,
   active            BOOL DEFAULT TRUE,
   createdat         TIMESTAMPTZ DEFAULT now()
 );
@@ -152,3 +155,59 @@ CREATE TABLE IF NOT EXISTS tournamenttimer (
   running        BOOL DEFAULT FALSE,
   lastupdated    TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS spotifyoauthstates (
+  state      STRING(96) PRIMARY KEY,
+  userid     UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+  returnpath STRING(400),
+  expiresat  TIMESTAMPTZ NOT NULL,
+  createdat  TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_spotifyoauthstates_expires
+  ON spotifyoauthstates (expiresat);
+
+CREATE TABLE IF NOT EXISTS spotifyconnections (
+  userid                UUID PRIMARY KEY REFERENCES users(guid) ON DELETE CASCADE,
+  spotifyuserid         STRING(128),
+  displayname           STRING(160),
+  accesstokenencrypted  STRING NOT NULL,
+  refreshtokenencrypted STRING NOT NULL,
+  scope                 STRING(500),
+  expiresat             TIMESTAMPTZ NOT NULL,
+  product               STRING(40),
+  createdat             TIMESTAMPTZ DEFAULT now(),
+  updatedat             TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tournamentmusicrequests (
+  requestid          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournamentid       UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+  requestedbyuserid  UUID REFERENCES users(guid) ON DELETE SET NULL,
+  requestedbyname    STRING(160),
+  spotifyuri         STRING(180) NOT NULL,
+  trackname          STRING(200) NOT NULL,
+  artistname         STRING(200) NOT NULL,
+  albumimageurl      STRING(500),
+  status             STRING(24) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'queued', 'played', 'skipped', 'failed')),
+  prioritypoints     INT NOT NULL DEFAULT 0,
+  vipapplied         BOOL NOT NULL DEFAULT FALSE,
+  spotifyqueuedat    TIMESTAMPTZ,
+  failuremessage     STRING(240),
+  createdat          TIMESTAMPTZ DEFAULT now(),
+  updatedat          TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tournamentmusicrequests_queue
+  ON tournamentmusicrequests (tournamentid, status, prioritypoints DESC, createdat);
+
+CREATE TABLE IF NOT EXISTS tournamentmusicrequestblocks (
+  tournamentid    UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+  userid          UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+  blockedbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+  createdat       TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (tournamentid, userid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tournamentmusicrequestblocks_user
+  ON tournamentmusicrequestblocks (tournamentid, userid);

@@ -118,6 +118,13 @@ export default function MainPage() {
   }, [user]);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.has('spotify')) {
+      setView('profile');
+    }
+  }, [location.search]);
+
+  useEffect(() => {
     if (!currentProfile) return;
     updateUser({
       displayname: currentProfile.displayname,
@@ -540,6 +547,7 @@ function CommandCenterMenu({
 
 function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const { user, logout, updateUser } = useAuthStore();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -558,6 +566,10 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const { data: profile, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: api.me,
+  });
+  const { data: spotifyStatus, error: spotifyError } = useQuery({
+    queryKey: ['spotify-status'],
+    queryFn: api.getSpotifyStatus,
   });
 
   useEffect(() => {
@@ -612,6 +624,18 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
       } else {
         setMediaSuccess('Profile updated.');
       }
+    },
+  });
+  const spotifyConnectMutation = useMutation({
+    mutationFn: () => api.createSpotifyLoginUrl({ returnPath: `${location.pathname}${location.search || ''}` }),
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+  });
+  const spotifyDisconnectMutation = useMutation({
+    mutationFn: api.disconnectSpotify,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spotify-status'] });
     },
   });
 
@@ -867,6 +891,56 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
         </div>
 
         <div className="contents lg:block lg:space-y-4">
+          <ProfileDisclosure compact={compactProfileLayout} className="order-2" icon={<Music4 size={18} />} title="Spotify Host Music" summary={spotifyStatus?.connected ? `Connected${spotifyStatus.displayname ? ` as ${spotifyStatus.displayname}` : ''}` : 'Connect request queue'}>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Music4 size={18} className="text-pit-teal" />
+                <div>
+                  <h3 className="font-semibold text-white">Spotify Host Music</h3>
+                  <p className="text-sm text-pit-muted">Let player lobbies collect song requests for your connected player queue.</p>
+                </div>
+              </div>
+              {spotifyStatus?.connected ? (
+                <div className="rounded-lg border border-pit-teal/30 bg-pit-teal/10 px-3 py-2">
+                  <p className="text-sm font-semibold text-pit-teal">{spotifyStatus.displayname || 'Spotify connected'}</p>
+                  <p className="mt-1 text-xs text-pit-muted">
+                    {spotifyStatus.product === 'premium' ? 'Premium account detected.' : 'Spotify queue playback requires Premium.'}
+                  </p>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-pit-border bg-pit-bg/45 px-3 py-2 text-sm text-pit-text">
+                  Connect Spotify before a tournament and the player lobby can accept song requests.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-primary gap-2"
+                  onClick={() => spotifyConnectMutation.mutate()}
+                  disabled={spotifyConnectMutation.isPending}
+                >
+                  <Music4 size={15} />
+                  {spotifyStatus?.connected ? 'Reconnect Spotify' : 'Connect Spotify'}
+                </button>
+                {spotifyStatus?.connected && (
+                  <button
+                    type="button"
+                    className="btn-ghost text-red-300 hover:text-red-200"
+                    onClick={() => spotifyDisconnectMutation.mutate()}
+                    disabled={spotifyDisconnectMutation.isPending}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
+              {(spotifyError || spotifyConnectMutation.error || spotifyDisconnectMutation.error) && (
+                <p className="text-sm text-red-300">
+                  {(spotifyError || spotifyConnectMutation.error || spotifyDisconnectMutation.error)?.message}
+                </p>
+              )}
+            </div>
+          </ProfileDisclosure>
+
           <ProfileDisclosure compact={compactProfileLayout} className="order-2" icon={<Phone size={18} />} title="Notification Contact" summary="Email and SMS preferences">
             <div className="space-y-3">
               {!compactProfileLayout && <div className="flex items-center gap-3">

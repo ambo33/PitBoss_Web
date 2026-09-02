@@ -11,6 +11,10 @@ export default function TvBoardPage() {
     queryKey: ['public-tv-board', code],
     queryFn: () => api.getPublicTvBoard(code!),
     enabled: !!code,
+    refetchInterval: (query) => {
+      const musicState = query.state.data?.music;
+      return (musicState?.requestsOn || (musicState?.spotifyConnected && musicState?.isRunning)) ? 30_000 : false;
+    },
   });
 
   if (isLoading) {
@@ -72,6 +76,7 @@ export default function TvBoardPage() {
             players={data.players}
             mode="tv"
             queryKeysToRefresh={[['public-tv-board', code]]}
+            musicSnapshot={data.music}
           />
         </div>
       </div>

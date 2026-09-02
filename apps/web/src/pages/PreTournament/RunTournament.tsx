@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Share, Skull, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Settings2, Share, Skull, Star, Timer, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
+import { api, BlindLevel, PublicLobbyMusic, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BrandLockup from '../../components/BrandLockup';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import DemoCoachDialog from '../../components/DemoCoachDialog';
 import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
+import SpotifyArtwork from '../../components/SpotifyArtwork';
 import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, playAirhornHype, playCheckinGreetingClip, playGeneratedSpeech, playKachingSound, playLevelChangeTone, playMysteryBountyReveal, playMysteryBountySpin, playStoredSpeech, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
@@ -31,6 +32,8 @@ interface TimerState extends TimerTick {
 type PayoutMode = 'count' | 'percent';
 type TvDisplayMode = 'timer' | 'seating';
 type SidePanelView = 'bounties' | 'knockouts';
+
+const DEMO_BUBBLE_BOB_KNOCKOUT_AUDIO = '/sounds/announcer-static/demo-bubble-bob-knockout.mp3';
 
 interface PayoutStructureConfig {
   mode: PayoutMode;
@@ -128,6 +131,8 @@ export default function RunTournament({
   players,
   mode = 'admin',
   queryKeysToRefresh,
+  musicSnapshot,
+  onOpenBlinds,
   demoStartCoachActive = false,
   onDemoStartCoachDone,
 }: {
@@ -137,6 +142,8 @@ export default function RunTournament({
   players: TournamentPlayer[];
   mode?: 'admin' | 'display' | 'tv';
   queryKeysToRefresh?: unknown[][];
+  musicSnapshot?: PublicLobbyMusic;
+  onOpenBlinds?: () => void;
   demoStartCoachActive?: boolean;
   onDemoStartCoachDone?: () => void;
 }) {
@@ -151,10 +158,16 @@ export default function RunTournament({
   });
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [mobileStructureCollapsed, setMobileStructureCollapsed] = useState(true);
+  const [structureExpanded, setStructureExpanded] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [showPlayerActions, setShowPlayerActions] = useState(false);
   const [knockoutCreditOpen, setKnockoutCreditOpen] = useState(false);
   const [seatingMaxPerTable, setSeatingMaxPerTable] = useState(() => Math.max(2, Math.floor(Number(tournament.seatingmaxpertable ?? 9) || 9)));
+  const [musicRequestLimitInput, setMusicRequestLimitInput] = useState('1');
+  const [musicRequestWindowInput, setMusicRequestWindowInput] = useState('5');
+  const [musicRequestLimitEnabled, setMusicRequestLimitEnabled] = useState(true);
+  const [musicRequestSettingsReady, setMusicRequestSettingsReady] = useState(false);
+  const [musicSettingsMenuOpen, setMusicSettingsMenuOpen] = useState(false);
   const [activeGreeting, setActiveGreeting] = useState<GreetingQueueItem | null>(null);
   const [activeMoneyBurst, setActiveMoneyBurst] = useState<MoneyBurst | null>(null);
   const [activeMysteryBounty, setActiveMysteryBounty] = useState<MysteryBountyReveal | null>(null);
@@ -295,6 +308,50 @@ export default function RunTournament({
     mutationFn: () => api.clearSeating(tournamentId),
     onSuccess: () => refreshTournamentData(),
   });
+  const musicQueueQuery = useQuery({
+    queryKey: ['tournament-music', tournamentId],
+    queryFn: () => api.getTournamentMusicQueue(tournamentId),
+    enabled: showAdminControls,
+    refetchInterval: (query) => (query.state.data?.musicrequestsenabled || (query.state.data?.spotify.connected && query.state.data?.isRunning)) ? 30_000 : false,
+  });
+  const musicToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateTournament(tournamentId, { musicrequestsenabled: enabled }),
+    onSuccess: () => {
+      refreshTournamentData();
+      qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] });
+    },
+  });
+  const updateMusicRequestSettingsMutation = useMutation({
+    mutationFn: () => api.updateMusicRequestSettings(tournamentId, {
+      requestLimit: musicRequestLimitEnabled ? Number(musicRequestLimitInput) : null,
+      requestWindowMinutes: Number(musicRequestWindowInput),
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] }),
+  });
+  const blockMusicRequesterMutation = useMutation({
+    mutationFn: ({ userId, blocked }: { userId: string; blocked: boolean }) => api.setMusicRequesterBlocked(tournamentId, userId, blocked),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] }),
+  });
+
+  useEffect(() => {
+    if (!musicQueueQuery.data) return;
+    const limit = musicQueueQuery.data.musicrequestlimit;
+    setMusicRequestLimitEnabled(limit != null);
+    setMusicRequestLimitInput(limit == null ? '1' : String(limit));
+    setMusicRequestWindowInput(String(musicQueueQuery.data.musicrequestwindowminutes ?? 5));
+    setMusicRequestSettingsReady(true);
+  }, [musicQueueQuery.data?.musicrequestlimit, musicQueueQuery.data?.musicrequestwindowminutes]);
+
+  useEffect(() => {
+    if (!musicRequestSettingsReady) return;
+    const requestWindowMinutes = Number(musicRequestWindowInput);
+    const requestLimit = Number(musicRequestLimitInput);
+    if (!Number.isInteger(requestWindowMinutes) || requestWindowMinutes < 1 || requestWindowMinutes > 1440) return;
+    if (musicRequestLimitEnabled && (!Number.isInteger(requestLimit) || requestLimit < 1 || requestLimit > 100)) return;
+
+    const timeoutId = window.setTimeout(() => updateMusicRequestSettingsMutation.mutate(), 400);
+    return () => window.clearTimeout(timeoutId);
+  }, [musicRequestLimitEnabled, musicRequestLimitInput, musicRequestSettingsReady, musicRequestWindowInput]);
 
   function selectTvDisplayMode(nextMode: TvDisplayMode) {
     if (activeTvDisplayMode === nextMode && pendingTvDisplayModeRef.current !== nextMode) return;
@@ -370,6 +427,7 @@ export default function RunTournament({
     });
     socket.on('tournament-updated', () => {
       refreshTournamentData();
+      qc.invalidateQueries({ queryKey: ['tournament-music', tournamentId] });
     });
     socket.on('timer-error', (payload: { error?: string }) => {
       setTimerStartError(payload.error || 'The timer could not be started. Check tournament settings and try again.');
@@ -1052,12 +1110,18 @@ export default function RunTournament({
 
   function announceKnockout(player: TournamentPlayer) {
     void warmTimerAudio();
+    const playerName = player.displayname ?? player.emailaddress ?? 'Player';
+    const isDemoBubbleBobKnockout = demoMode && playerName.trim().toLowerCase() === 'bubble bob';
+    if (isDemoBubbleBobKnockout) {
+      playStoredSpeech(DEMO_BUBBLE_BOB_KNOCKOUT_AUDIO);
+      return;
+    }
+
     const bountyAmount = toNumber(player.bountyamount);
     const hasBounty = Boolean(tournament.bountyenabled)
       && isBountyPlacementEligible(tournament, player.placed)
       && bountyAmount > 0;
     const fallback = () => {
-      const playerName = player.displayname ?? player.emailaddress ?? 'Player';
       const placement = player.placed != null ? ` in ${ordinal(player.placed)} place` : '';
       const knockedOutBy = player.knockedoutbyname ? ` by ${player.knockedoutbyname}` : '';
       const prize = player.placed != null && player.placed <= payoutPlaces && toNumber(payouts[player.placed - 1]) > 0
@@ -1166,6 +1230,34 @@ export default function RunTournament({
     ? 'border-yellow-300/45 bg-[radial-gradient(circle_at_center,rgba(250,204,21,0.08),rgba(8,20,25,0.72)_68%)]'
     : timerTone;
   const playerLobbyUrl = `${window.location.origin}/lobby/${tournamentId}`;
+  const musicQueue = musicQueueQuery.data?.requests ?? [];
+  const musicRequesters = musicQueueQuery.data?.requesters ?? [];
+  const musicRequestsEnabled = musicQueueQuery.data?.musicrequestsenabled ?? Boolean(tournament.musicrequestsenabled);
+  const musicIsRunning = musicQueueQuery.data?.isRunning ?? Boolean(timerState?.running);
+  const spotifyConnected = Boolean(musicQueueQuery.data?.spotify.connected ?? musicSnapshot?.spotifyConnected);
+  const currentSpotifyTrack = musicQueueQuery.data?.currentTrack ?? musicSnapshot?.currentTrack ?? null;
+  const showCurrentSpotifyTrack = Boolean(currentSpotifyTrack && spotifyConnected && musicIsRunning);
+  const showMusicRequestQr = tournament.playerselftracking !== true && musicRequestsEnabled;
+  const nowPlayingHeader = showCurrentSpotifyTrack && currentSpotifyTrack ? (
+    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-pit-teal/35 bg-pit-teal/10 px-2.5 py-1.5 text-left">
+      <SpotifyArtwork src={currentSpotifyTrack.albumimageurl} className="h-9 w-9 shrink-0" iconSize={15} />
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-pit-teal">
+          {currentSpotifyTrack.isplaying ? 'Now Playing' : 'Spotify Paused'}
+        </p>
+        <p className="truncate text-xs font-semibold text-white">{currentSpotifyTrack.name}</p>
+        <p className="truncate text-[11px] text-pit-muted">{currentSpotifyTrack.artistname}</p>
+        {currentSpotifyTrack.requestedbyname && (
+          <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-pit-teal">
+            {currentSpotifyTrack.requestedbyavatarurl && (
+              <img src={currentSpotifyTrack.requestedbyavatarurl} alt="" className="h-4 w-4 shrink-0 rounded-full object-cover" />
+            )}
+            <p className="truncate">Requested by: {currentSpotifyTrack.requestedbyname}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   function handleManualLevelChange(targetBlind: BlindLevel | null | undefined) {
     if (!showAdminControls || !targetBlind) return;
@@ -1315,8 +1407,12 @@ export default function RunTournament({
     0,
     effectiveBlinds.findIndex((blind) => blind.level === effectiveLevel)
   );
-  const compactStructureStart = Math.max(0, structureFocusIndex - 1);
-  const compactStructureEnd = Math.min(effectiveBlinds.length, structureFocusIndex + 3);
+  const compactStructureStart = musicRequestsEnabled ? structureFocusIndex : Math.max(0, structureFocusIndex - 1);
+  const compactStructureEnd = musicRequestsEnabled
+    ? Math.min(effectiveBlinds.length, structureFocusIndex + 6)
+    : Math.min(effectiveBlinds.length, structureFocusIndex + 3);
+  const compactStructureActive = !displayMode && showAdminControls && musicRequestsEnabled && !structureExpanded;
+  const structureToggleExpanded = musicRequestsEnabled ? structureExpanded : !mobileStructureCollapsed;
   const seatedPlayers = useMemo(
     () => players
       .filter((player) => player.tablenumber != null && player.seat != null && player.placed == null)
@@ -1470,6 +1566,165 @@ export default function RunTournament({
       </div>
     </section>
   ) : null;
+  const musicQueuePanel = showAdminControls ? (
+    <div className="overflow-hidden rounded-xl border border-pit-border bg-pit-bg/60">
+      <div className="flex items-center justify-between gap-3 border-b border-pit-border px-3 py-2.5">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-white">Poker Jukebox</h3>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={musicRequestsEnabled}
+            aria-label="Allow player song requests"
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${musicRequestsEnabled ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`}
+            onClick={() => {
+              if (musicRequestsEnabled) setMusicSettingsMenuOpen(false);
+              musicToggleMutation.mutate(!musicRequestsEnabled);
+            }}
+            disabled={musicToggleMutation.isPending}
+            title="Allow player song requests"
+          >
+            <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${musicRequestsEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+          </button>
+          {musicRequestsEnabled && (
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-pit-border bg-pit-surface/60 text-pit-muted transition-colors hover:border-pit-teal/60 hover:text-pit-teal"
+              onClick={() => setMusicSettingsMenuOpen((current) => !current)}
+              aria-expanded={musicSettingsMenuOpen}
+              aria-controls={`music-settings-${tournamentId}`}
+              aria-label="Music request settings"
+              title="Music request settings"
+            >
+              <Settings2 size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+      {musicRequestsEnabled && musicSettingsMenuOpen && (
+        <div id={`music-settings-${tournamentId}`} className="border-b border-pit-border bg-pit-surface/30 px-3 py-2.5">
+          <div className="space-y-2">
+            <div className="border-b border-pit-border pb-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-pit-text">Request Limit</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={musicRequestLimitEnabled}
+                  aria-label="Enable request limit"
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${musicRequestLimitEnabled ? 'border-pit-teal bg-pit-teal' : 'border-pit-border bg-pit-surface'}`}
+                  onClick={() => setMusicRequestLimitEnabled((current) => !current)}
+                  title="Enable request limit"
+                >
+                  <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${musicRequestLimitEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              {musicRequestLimitEnabled && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    className="input min-w-0 flex-1 py-1 text-sm"
+                    value={musicRequestLimitInput}
+                    onChange={(event) => setMusicRequestLimitInput(event.target.value)}
+                    aria-label="Maximum requests per player"
+                  />
+                  <span className="text-xs text-pit-muted">per</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    className="input min-w-0 flex-1 py-1 text-sm"
+                    value={musicRequestWindowInput}
+                    onChange={(event) => setMusicRequestWindowInput(event.target.value)}
+                    aria-label="Request window in minutes"
+                  />
+                  <span className="text-xs text-pit-muted">min</span>
+                </div>
+              )}
+            </div>
+            {musicRequesters.length > 0 && (
+              <details className="border-b border-pit-border pb-2">
+                <summary className="cursor-pointer list-none text-sm text-pit-text">Block players</summary>
+                <div className="mt-2 max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                  {musicRequesters.map((requester) => (
+                    <label key={requester.userid} className="flex items-center justify-between gap-3 rounded-lg border border-pit-border bg-pit-bg/40 px-2.5 py-2 text-sm text-pit-text">
+                      <span className="min-w-0 truncate">{requester.displayname}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-pit-muted">
+                        Block
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-pit-border bg-pit-bg accent-red-400"
+                          checked={requester.blocked}
+                          disabled={blockMusicRequesterMutation.isPending}
+                          onChange={(event) => blockMusicRequesterMutation.mutate({ userId: requester.userid, blocked: event.target.checked })}
+                          aria-label={`Block song requests for ${requester.displayname}`}
+                        />
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+            {updateMusicRequestSettingsMutation.error && (
+              <p className="text-xs text-red-300">{updateMusicRequestSettingsMutation.error.message}</p>
+            )}
+            {blockMusicRequesterMutation.error && (
+              <p className="text-xs text-red-300">{blockMusicRequesterMutation.error.message}</p>
+            )}
+          </div>
+        </div>
+      )}
+      {musicRequestsEnabled && (
+        <div className="space-y-2 p-3">
+          {showMusicRequestQr && (
+            <div className="flex items-center gap-2 border-b border-pit-border pb-2">
+              <div className="shrink-0 rounded-md bg-white p-1">
+                <QRCodeSVG value={playerLobbyUrl} size={88} level="M" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-pit-teal">Scan to request</p>
+                <p className="mt-1 text-xs leading-4 text-pit-muted">Open the player lobby to choose a song.</p>
+              </div>
+            </div>
+          )}
+          {musicQueueQuery.isLoading ? (
+            <p className="text-sm text-pit-muted">Loading song requests...</p>
+          ) : musicQueue.length === 0 ? (
+            <p className="rounded-lg border border-pit-border bg-pit-surface/35 px-3 py-2 text-sm text-pit-muted">
+              No song requests yet.
+            </p>
+          ) : (
+            <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+              {musicQueue.map((request, index) => (
+                <div key={request.requestid} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-surface/40 px-2 py-2">
+                  <SpotifyArtwork src={request.albumimageurl} className="h-9 w-9" fallbackClassName="bg-pit-bg text-pit-muted" iconSize={15} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{index + 1}. {request.trackname}</p>
+                    <p className="truncate text-xs text-pit-muted">
+                      {request.artistname}{request.requestedbyname ? ` - ${request.requestedbyname}` : ''}
+                    </p>
+                    {request.status === 'failed' && request.failuremessage && (
+                      <p className="truncate text-[11px] text-red-300">{request.failuremessage}</p>
+                    )}
+                  </div>
+                  {request.status === 'queued' && (
+                    <span className="rounded-full border border-pit-teal/35 bg-pit-teal/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pit-teal">
+                      Queued
+                    </span>
+                  )}
+                  {request.vipapplied && <Star size={15} className="shrink-0 text-amber-200" />}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
   const runnerShellClass = `space-y-4 ${
     displayMode
       ? ''
@@ -1525,7 +1780,7 @@ export default function RunTournament({
         )}
         {showAdminControls ? (
           <section className="w-full border-y border-pit-border/80 bg-black/15 px-1 py-2 sm:px-2">
-              <div className="grid w-full grid-cols-2 items-center gap-2 min-[768px]:grid-cols-[minmax(0,1fr)_auto]">
+              <div className={`grid w-full grid-cols-2 items-center gap-2 ${nowPlayingHeader ? 'min-[768px]:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto]' : 'min-[768px]:grid-cols-[minmax(0,1fr)_auto]'}`}>
                 <div className="col-span-2 grid min-w-0 grid-cols-2 items-center gap-2 rounded-xl border border-pit-border bg-pit-bg/65 p-1.5 min-[768px]:col-span-1 min-[768px]:max-w-[420px]">
                   <select
                     className="input w-full min-w-0 py-1.5 pr-8 text-sm"
@@ -1653,6 +1908,12 @@ export default function RunTournament({
                   </div>
                 </div>
 
+                {nowPlayingHeader && (
+                  <div className="col-span-2 min-w-0 min-[768px]:col-span-1">
+                    {nowPlayingHeader}
+                  </div>
+                )}
+
                 <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 min-[768px]:col-span-1 min-[768px]:justify-end">
                   <div className="flex shrink-0 items-center rounded-xl border border-pit-border bg-pit-bg/65 p-1">
                     <button
@@ -1777,67 +2038,76 @@ export default function RunTournament({
               </div>
             ) : (
             <div className={`grid min-w-0 items-start ${tvMode ? 'grid-cols-[230px_minmax(0,1fr)_230px] gap-2 2xl:grid-cols-[242px_minmax(0,1fr)_242px]' : displayMode ? 'grid-cols-[315px_minmax(0,1fr)_315px] gap-4 2xl:grid-cols-[336px_minmax(0,1fr)_336px]' : 'gap-3 min-[1024px]:grid-cols-[minmax(0,1.9fr)_minmax(280px,.85fr)] min-[1280px]:grid-cols-[clamp(250px,19vw,300px)_minmax(0,1fr)_clamp(280px,21vw,340px)] min-[1440px]:gap-4'}`}>
-              <section className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'order-3 p-3 min-[1024px]:col-start-2 min-[1024px]:row-start-1 min-[1280px]:order-1 min-[1280px]:col-start-1 min-[1280px]:row-start-1'}`}>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
-                  <div className="flex items-center gap-2">
-                    <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
-                    {!tvMode && (
-                      <button
-                        type="button"
-                        className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold min-[1280px]:hidden"
-                        aria-expanded={!mobileStructureCollapsed}
-                        aria-controls={mobileStructurePanelId}
-                        onClick={() => setMobileStructureCollapsed((collapsed) => !collapsed)}
-                      >
-                        {mobileStructureCollapsed ? 'Expand' : 'Collapse'}
-                        {mobileStructureCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div
-                  id={mobileStructurePanelId}
-                  className="block"
-                >
-                <div className="overflow-hidden rounded-lg border border-pit-border">
-                  <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
-                    <span>Level</span>
-                    <span>Blinds</span>
-                    <span className="text-right">Time</span>
-                  </div>
-                  <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
-                    {effectiveBlinds.map((blind, blindIndex) => {
-                      const isCurrent = blind.level === effectiveLevel;
-                      const isNext = nextBlind?.level === blind.level;
-                      const hideInCompactStructure = !displayMode
-                        && mobileStructureCollapsed
-                        && (blindIndex < compactStructureStart || blindIndex >= compactStructureEnd);
-                      return (
+              <section className={`${tvMode ? '' : displayMode ? '' : 'order-3 flex min-w-0 flex-col gap-2.5 min-[1024px]:col-start-2 min-[1024px]:row-start-1 min-[1280px]:order-1 min-[1280px]:col-start-1 min-[1280px]:row-start-1'}`}>
+                <div className={`rounded-xl border border-pit-border bg-pit-bg/60 ${tvMode ? 'p-3' : displayMode ? 'p-4' : 'p-3'}`}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className={`${displayMode ? 'text-base' : 'text-sm'} font-semibold uppercase tracking-[0.2em] text-white`}>Structure</h3>
+                    <div className="flex items-center gap-2">
+                      <span className={`${displayMode ? 'text-sm' : 'text-xs'} text-pit-muted`}>{effectiveBlinds.length} levels</span>
+                      {!tvMode && (
                         <button
                           type="button"
-                          key={blind.id}
-                          disabled={!showAdminControls}
-                          onClick={() => handleManualLevelChange(blind)}
-                          className={`${hideInCompactStructure ? 'max-[1279px]:hidden' : ''} grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
-                            isCurrent
-                              ? 'border-l-4 border-l-pit-teal border-t-pit-teal/75 bg-gradient-to-r from-pit-teal/50 via-pit-teal/24 to-pit-teal/10 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.55),0_0_18px_rgba(20,184,166,0.18)]'
-                              : isNext
-                                ? 'border-pit-border bg-pit-surface/70 text-pit-text'
-                                : 'border-pit-border bg-pit-bg/30 text-pit-text'
-                          }`}
+                          className={`btn-ghost inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold ${musicRequestsEnabled ? '' : 'min-[1280px]:hidden'}`}
+                          aria-expanded={structureToggleExpanded}
+                          aria-controls={mobileStructurePanelId}
+                          onClick={() => {
+                            if (musicRequestsEnabled) {
+                              setStructureExpanded((expanded) => !expanded);
+                              return;
+                            }
+                            setMobileStructureCollapsed((collapsed) => !collapsed);
+                          }}
                         >
-                          <span className={`font-semibold ${isCurrent ? 'text-white' : ''}`}>{blind.level}</span>
-                          <span className={isCurrent ? 'font-black text-white' : ''}>
-                            {isBreakBlind(blind) ? formatBreakDisplayLabel(blind) : formatCompactStructureBlinds(blind)}
-                          </span>
-                          <span className={`text-right ${isCurrent ? 'font-black text-white' : ''}`}>{blind.minutes}m</span>
+                          {structureToggleExpanded ? 'Collapse' : 'Expand'}
+                          {structureToggleExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
-                      );
-                    })}
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    id={mobileStructurePanelId}
+                    className="block"
+                  >
+                  <div className="overflow-hidden rounded-lg border border-pit-border">
+                    <div className={`grid grid-cols-[42px_minmax(0,1fr)_38px] bg-pit-surface/70 px-2 py-1.5 font-semibold uppercase tracking-wide text-pit-muted ${displayMode ? 'text-xs' : 'text-[10px]'}`}>
+                      <span>Level</span>
+                      <span>Blinds</span>
+                      <span className="text-right">Time</span>
+                    </div>
+                    <div className={`${tvMode ? 'max-h-[40rem]' : displayMode ? 'max-h-[48rem]' : compactStructureActive ? 'max-h-[18rem]' : 'max-h-[34rem]'} overflow-y-auto`}>
+                      {effectiveBlinds.map((blind, blindIndex) => {
+                        const isCurrent = blind.level === effectiveLevel;
+                        const isNext = nextBlind?.level === blind.level;
+                        const outsideCompactWindow = blindIndex < compactStructureStart || blindIndex >= compactStructureEnd;
+                        const hideInMobileCompactStructure = !displayMode && !musicRequestsEnabled && mobileStructureCollapsed && outsideCompactWindow;
+                        const hideInMusicCompactStructure = compactStructureActive && outsideCompactWindow;
+                        return (
+                          <button
+                            type="button"
+                            key={blind.id}
+                            disabled={!showAdminControls}
+                            onClick={() => handleManualLevelChange(blind)}
+                            className={`${hideInMusicCompactStructure ? 'hidden' : hideInMobileCompactStructure ? 'max-[1279px]:hidden' : ''} grid w-full grid-cols-[42px_minmax(0,1fr)_38px] items-center border-t px-2 py-1.5 text-left leading-tight transition-colors disabled:cursor-default ${showAdminControls ? 'cursor-pointer hover:bg-pit-teal/10' : ''} ${tvMode ? 'text-xs' : displayMode ? 'text-sm' : 'text-xs'} ${
+                              isCurrent
+                                ? 'border-l-4 border-l-pit-teal border-t-pit-teal/75 bg-gradient-to-r from-pit-teal/50 via-pit-teal/24 to-pit-teal/10 text-white shadow-[inset_0_0_0_1px_rgba(20,184,166,0.55),0_0_18px_rgba(20,184,166,0.18)]'
+                                : isNext
+                                  ? 'border-pit-border bg-pit-surface/70 text-pit-text'
+                                  : 'border-pit-border bg-pit-bg/30 text-pit-text'
+                            }`}
+                          >
+                            <span className={`font-semibold ${isCurrent ? 'text-white' : ''}`}>{blind.level}</span>
+                            <span className={isCurrent ? 'font-black text-white' : ''}>
+                              {isBreakBlind(blind) ? formatBreakDisplayLabel(blind) : formatCompactStructureBlinds(blind)}
+                            </span>
+                            <span className={`text-right ${isCurrent ? 'font-black text-white' : ''}`}>{blind.minutes}m</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   </div>
                 </div>
-                </div>
+                {musicQueuePanel}
               </section>
 
               <section className={`min-w-0 ${displayMode ? 'space-y-3' : 'order-1 space-y-3 min-[1024px]:col-start-1 min-[1024px]:row-span-2 min-[1024px]:row-start-1 min-[1280px]:order-2 min-[1280px]:col-start-2 min-[1280px]:row-span-1 min-[1280px]:row-start-1'}`}>
@@ -2021,6 +2291,30 @@ export default function RunTournament({
                       )}
                     </div>
                   </div>
+                  {!showAdminControls && showCurrentSpotifyTrack && currentSpotifyTrack && (
+                    <div className={`mt-3 flex items-center gap-3 rounded-lg border border-pit-teal/35 bg-pit-teal/10 text-left ${tvMode ? 'px-3 py-2.5' : 'px-3 py-2'}`}>
+                      <SpotifyArtwork
+                        src={currentSpotifyTrack.albumimageurl}
+                        className={tvMode ? 'h-14 w-14' : 'h-11 w-11'}
+                        iconSize={18}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-teal">
+                          {currentSpotifyTrack.isplaying ? 'Now Playing' : 'Spotify Paused'}
+                        </p>
+                        <p className={`${tvMode ? 'text-lg' : 'text-sm'} truncate font-semibold text-white`}>{currentSpotifyTrack.name}</p>
+                        <p className={`${tvMode ? 'text-sm' : 'text-xs'} truncate text-pit-muted`}>{currentSpotifyTrack.artistname}</p>
+                        {currentSpotifyTrack.requestedbyname && (
+                          <div className={`${tvMode ? 'text-xs' : 'text-[10px]'} flex min-w-0 items-center gap-1.5 font-medium text-pit-teal`}>
+                            {currentSpotifyTrack.requestedbyavatarurl && (
+                              <img src={currentSpotifyTrack.requestedbyavatarurl} alt="" className="h-4 w-4 shrink-0 rounded-full object-cover" />
+                            )}
+                            <p className="truncate">Requested by: {currentSpotifyTrack.requestedbyname}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {showAdminControls && (
                     <div className="mt-3 grid grid-cols-3 gap-2">
                       <button
@@ -2252,7 +2546,15 @@ export default function RunTournament({
             )}
           </>
         ) : (
-          <p className="py-8 text-center text-pit-text">No blind structure yet.</p>
+          <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-pit-border bg-pit-bg/45 px-4 py-8 text-center">
+            <p className="text-sm text-pit-text">No blind structure yet.</p>
+            {showAdminControls && onOpenBlinds && (
+              <button type="button" className="btn-primary gap-2" onClick={onOpenBlinds}>
+                <Timer size={15} />
+                Build Structure
+              </button>
+            )}
+          </div>
         )}
 
         {finalRecapPanel}

@@ -1,0 +1,1591 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/PreTournament/BlindTimer.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=c5b53804"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$(), _s2 = $RefreshSig$(), _s3 = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=c5b53804"; const useMemo = __vite__cjsImport3_react["useMemo"]; const useState = __vite__cjsImport3_react["useState"];
+import { useMutation, useQuery, useQueryClient } from "/node_modules/.vite/deps/@tanstack_react-query.js?v=c5b53804";
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleGauge,
+  Clock3,
+  Coffee,
+  Coins,
+  GripVertical,
+  Layers3,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Users
+} from "/node_modules/.vite/deps/lucide-react.js?v=c5b53804";
+import { api } from "/src/api/client.ts";
+import {
+  calculateTotalChips,
+  defaultChipUpDenominations,
+  DEFAULT_CHIP_DENOMINATIONS,
+  DEFAULT_COLOR_UPS,
+  generateBlindStructure as buildBlindStructure,
+  parseChipDenominations
+} from "/src/utils/blindCalculator.ts";
+function createDefaultCalculatorSettings(tournament) {
+  const players = getDefaultCalculatorPlayers(tournament);
+  return {
+    players: String(players),
+    startingStack: toNumber(tournament.rebuychips) > 0 ? String(toNumber(tournament.rebuychips)) : "10000",
+    targetHours: "3",
+    levelMinutes: "20",
+    startingBigBlind: "50",
+    chipDenominations: DEFAULT_CHIP_DENOMINATIONS,
+    finishBigBlinds: "14",
+    breakCount: "0",
+    breakMinutes: "10",
+    anteStartLevel: "0",
+    colorUps: DEFAULT_COLOR_UPS,
+    expectedRebuys: tournament.rebuyprice > 0 ? String(Math.max(Math.round(players * 0.4), 0)) : "0",
+    expectedAddons: tournament.addonprice > 0 ? String(Math.max(Math.round(players * 0.5), 0)) : "0"
+  };
+}
+function toDraftLevel(level) {
+  return {
+    level: Number(level.level),
+    label: level.label ?? `Level ${level.level}`,
+    smallblind: Number(level.smallblind),
+    bigblind: Number(level.bigblind),
+    ante: Number(level.ante),
+    minutes: Number(level.minutes),
+    islastlevel: Boolean(level.islastlevel)
+  };
+}
+export default function BlindTimer({ tournamentId, isOwner, tournament }) {
+  _s();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [saveStructureName, setSaveStructureName] = useState("");
+  const { data: blinds = [], isLoading } = useQuery({
+    queryKey: ["blinds", tournamentId],
+    queryFn: () => api.getBlinds(tournamentId)
+  });
+  const saveMutation = useMutation({
+    mutationFn: (levels) => api.saveBlinds(tournamentId, levels),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["blinds", tournamentId] });
+      setEditing(false);
+    }
+  });
+  const saveGroupStructureMutation = useMutation({
+    mutationFn: ({ name, levels }) => api.createGroupBlindStructure(tournament.groupid, { name, levels }),
+    onSuccess: () => {
+      setSaveStructureName("");
+      qc.invalidateQueries({ queryKey: ["group", tournament.groupid, "blind-structures"] });
+    }
+  });
+  const visibleBlinds = blinds;
+  if (isLoading) return /* @__PURE__ */ jsxDEV("div", { className: "mt-8 text-center text-pit-text", children: "Loading..." }, void 0, false, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 166,
+    columnNumber: 25
+  }, this);
+  return /* @__PURE__ */ jsxDEV("div", { className: "space-y-6", children: [
+    isOwner && /* @__PURE__ */ jsxDEV(
+      BlindStructureCalculator,
+      {
+        tournament,
+        saving: saveMutation.isPending,
+        error: saveMutation.error?.message,
+        onSave: (levels) => saveMutation.mutate(levels)
+      },
+      void 0,
+      false,
+      {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 171,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV("div", { className: "card space-y-4", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between gap-3", children: [
+        /* @__PURE__ */ jsxDEV("h3", { className: "font-semibold text-white", children: "Blind Structure" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 181,
+          columnNumber: 11
+        }, this),
+        isOwner && /* @__PURE__ */ jsxDEV("button", { className: "btn-ghost text-sm", onClick: () => setEditing(!editing), children: editing ? "Cancel" : "Edit" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 183,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 180,
+        columnNumber: 9
+      }, this),
+      editing ? /* @__PURE__ */ jsxDEV(
+        BlindEditor,
+        {
+          initial: visibleBlinds,
+          onSave: (levels) => saveMutation.mutate(levels),
+          loading: saveMutation.isPending,
+          error: saveMutation.error?.message
+        },
+        void 0,
+        false,
+        {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 189,
+          columnNumber: 9
+        },
+        this
+      ) : /* @__PURE__ */ jsxDEV(BlindTable, { blinds: visibleBlinds }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 196,
+        columnNumber: 9
+      }, this),
+      isOwner && tournament.groupid && visibleBlinds.length > 0 && /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col gap-2 rounded-lg border border-pit-border bg-pit-bg/40 p-3 sm:flex-row sm:items-center", children: [
+        /* @__PURE__ */ jsxDEV(
+          "input",
+          {
+            className: "input flex-1",
+            placeholder: "Save this structure to group as...",
+            value: saveStructureName,
+            onChange: (event) => setSaveStructureName(event.target.value)
+          },
+          void 0,
+          false,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 200,
+            columnNumber: 13
+          },
+          this
+        ),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            className: "btn-ghost shrink-0",
+            onClick: () => saveGroupStructureMutation.mutate({
+              name: saveStructureName.trim(),
+              levels: visibleBlinds.map(toDraftLevel)
+            }),
+            disabled: saveGroupStructureMutation.isPending || !saveStructureName.trim(),
+            children: [
+              /* @__PURE__ */ jsxDEV(Save, { size: 14 }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 214,
+                columnNumber: 15
+              }, this),
+              "Save to Group"
+            ]
+          },
+          void 0,
+          true,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 206,
+            columnNumber: 13
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 199,
+        columnNumber: 9
+      }, this),
+      saveGroupStructureMutation.error && /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-red-400", children: saveGroupStructureMutation.error.message }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 220,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 179,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 169,
+    columnNumber: 5
+  }, this);
+}
+_s(BlindTimer, "A8NWzES5O+X/DuiSWdxfeJhk0KA=", false, function() {
+  return [useQueryClient, useQuery, useMutation, useMutation];
+});
+_c = BlindTimer;
+export function BlindStructureCalculator({
+  tournament,
+  saving,
+  error,
+  onSave,
+  initiallyExpanded = false,
+  title = "Blind Structure Calculator",
+  saveLabel = "Save Generated",
+  saveDisabled = false
+}) {
+  _s2();
+  const [expanded, setExpanded] = useState(initiallyExpanded);
+  const initialSettings = useMemo(() => createDefaultCalculatorSettings(tournament), [tournament]);
+  const [settings, setSettings] = useState(initialSettings);
+  const parsedSettings = useMemo(
+    () => parseCalculatorSettings(settings, tournament),
+    [settings, tournament]
+  );
+  const validationErrors = useMemo(() => validateCalculatorSettings(settings), [settings]);
+  const generatedLevels = useMemo(
+    () => Object.keys(validationErrors).length === 0 ? generateBlindStructure(parsedSettings) : [],
+    [parsedSettings, validationErrors]
+  );
+  const totalChips = useMemo(() => calculateTotalChips(parsedSettings), [parsedSettings]);
+  const rebuysEnabled = toNumber(tournament.rebuyprice) > 0 && toNumber(tournament.rebuychips) > 0;
+  const addonsEnabled = toNumber(tournament.addonprice) > 0 && toNumber(tournament.addonchips) > 0;
+  const chipDenominationOptions = useMemo(
+    () => parseChipDenominations(settings.chipDenominations),
+    [settings.chipDenominations]
+  );
+  const selectedChipUps = useMemo(
+    () => selectedChipUpDenominations(settings.colorUps, chipDenominationOptions),
+    [chipDenominationOptions, settings.colorUps]
+  );
+  const blindLevelCount = generatedLevels.filter((level) => !isBreakLevel(level)).length;
+  const estimatedMinutes = generatedLevels.reduce((total, level) => total + Number(level.minutes || 0), 0);
+  const hasChanges = JSON.stringify(settings) !== JSON.stringify(initialSettings);
+  const isValid = Object.keys(validationErrors).length === 0 && generatedLevels.length > 0;
+  function update(field, value) {
+    setSettings((current) => {
+      if (field !== "chipDenominations") return { ...current, [field]: value };
+      const currentChipOptions = parseChipDenominations(current.chipDenominations);
+      const currentDefault = defaultChipUpDenominations(current.chipDenominations);
+      const currentSelected = selectedChipUpDenominations(current.colorUps, currentChipOptions);
+      const defaultSelected = selectedChipUpDenominations(currentDefault, currentChipOptions);
+      const shouldUseNextDefault = currentSelected.join(",") === defaultSelected.join(",");
+      const nextChipOptions = parseChipDenominations(value);
+      return {
+        ...current,
+        chipDenominations: value,
+        colorUps: (shouldUseNextDefault ? nextChipOptions.slice(0, 2) : currentSelected.filter((denomination) => nextChipOptions.includes(denomination))).join(",")
+      };
+    });
+  }
+  function toggleChipUpDenomination(denomination) {
+    setSettings((current) => {
+      const available = parseChipDenominations(current.chipDenominations);
+      const selected = selectedChipUpDenominations(current.colorUps, available);
+      const next = selected.includes(denomination) ? selected.filter((value) => value !== denomination) : [...selected, denomination].sort((a, b) => a - b);
+      return { ...current, colorUps: next.join(",") };
+    });
+  }
+  function reset() {
+    setSettings(initialSettings);
+  }
+  function save() {
+    if (!isValid || saving || saveDisabled) return;
+    onSave(generatedLevels);
+  }
+  return /* @__PURE__ */ jsxDEV("div", { className: "space-y-4", children: [
+    /* @__PURE__ */ jsxDEV("section", { className: "card overflow-hidden !p-0", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex min-w-0 items-center gap-2 text-white", children: [
+          /* @__PURE__ */ jsxDEV(Layers3, { size: 19, className: "shrink-0 text-pit-teal" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 320,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("h3", { className: "truncate text-base font-semibold sm:text-lg", children: title }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 321,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 319,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            type: "button",
+            className: "btn-ghost min-h-11 gap-2 px-3 text-sm",
+            "aria-expanded": expanded,
+            onClick: () => setExpanded((value) => !value),
+            children: [
+              expanded ? "Collapse" : "Expand",
+              expanded ? /* @__PURE__ */ jsxDEV(ChevronUp, { size: 16 }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 330,
+                columnNumber: 25
+              }, this) : /* @__PURE__ */ jsxDEV(ChevronDown, { size: 16 }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 330,
+                columnNumber: 51
+              }, this)
+            ]
+          },
+          void 0,
+          true,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 323,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 318,
+        columnNumber: 9
+      }, this),
+      expanded && /* @__PURE__ */ jsxDEV("div", { className: "border-t border-pit-border px-3 py-4 sm:px-5 sm:py-5", children: [
+        error && /* @__PURE__ */ jsxDEV("p", { className: "mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-300", children: error }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 336,
+          columnNumber: 23
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]", children: [
+          /* @__PURE__ */ jsxDEV(WizardSection, { number: "1", title: "Tournament setup", icon: /* @__PURE__ */ jsxDEV(Users, { size: 16 }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 339,
+            columnNumber: 72
+          }, this), children: /* @__PURE__ */ jsxDEV("div", { className: "grid min-w-0 grid-cols-2 gap-3 max-[349px]:grid-cols-1", children: [
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "players", label: "Players", value: settings.players, min: 2, error: validationErrors.players, onChange: (value) => update("players", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 341,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "startingStack", label: "Starting stack", value: settings.startingStack, min: 100, step: 100, error: validationErrors.startingStack, onChange: (value) => update("startingStack", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 342,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "targetHours", label: "Target hours", value: settings.targetHours, min: 0.5, step: 0.5, error: validationErrors.targetHours, onChange: (value) => update("targetHours", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 343,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "levelMinutes", label: "Level minutes", value: settings.levelMinutes, min: 1, error: validationErrors.levelMinutes, onChange: (value) => update("levelMinutes", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 344,
+              columnNumber: 19
+            }, this),
+            rebuysEnabled && /* @__PURE__ */ jsxDEV(NumberField, { field: "expectedRebuys", label: "Expected rebuys", value: settings.expectedRebuys, min: 0, error: validationErrors.expectedRebuys, onChange: (value) => update("expectedRebuys", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 346,
+              columnNumber: 17
+            }, this),
+            addonsEnabled && /* @__PURE__ */ jsxDEV(NumberField, { field: "expectedAddons", label: "Expected add-ons", value: settings.expectedAddons, min: 0, error: validationErrors.expectedAddons, onChange: (value) => update("expectedAddons", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 349,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 340,
+            columnNumber: 17
+          }, this) }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 339,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV(WizardSection, { number: "2", title: "Breaks & antes", icon: /* @__PURE__ */ jsxDEV(Coffee, { size: 16 }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 354,
+            columnNumber: 70
+          }, this), children: /* @__PURE__ */ jsxDEV("div", { className: "grid min-w-0 grid-cols-2 gap-3 max-[349px]:grid-cols-1", children: [
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "breakCount", label: "Breaks", value: settings.breakCount, min: 0, error: validationErrors.breakCount, onChange: (value) => update("breakCount", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 356,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "breakMinutes", label: "Break minutes", value: settings.breakMinutes, min: 1, error: validationErrors.breakMinutes, onChange: (value) => update("breakMinutes", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 357,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "startingBigBlind", label: "Starting BB", value: settings.startingBigBlind, min: 1, error: validationErrors.startingBigBlind, onChange: (value) => update("startingBigBlind", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 358,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV(NumberField, { field: "anteStartLevel", label: "Ante starts at level", value: settings.anteStartLevel, min: 0, error: validationErrors.anteStartLevel, onChange: (value) => update("anteStartLevel", value) }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 359,
+              columnNumber: 19
+            }, this)
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 355,
+            columnNumber: 17
+          }, this) }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 354,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV(WizardSection, { number: "3", title: "Chips", icon: /* @__PURE__ */ jsxDEV(Coins, { size: 16 }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 363,
+            columnNumber: 61
+          }, this), className: "lg:col-span-2 xl:col-span-1", children: [
+            /* @__PURE__ */ jsxDEV(
+              TextField,
+              {
+                field: "chipDenominations",
+                label: "Chip denominations",
+                value: settings.chipDenominations,
+                placeholder: "25, 50, 100, 500, 1000",
+                error: validationErrors.chipDenominations,
+                helper: "Enter the chip values in play, separated by commas.",
+                onChange: (value) => update("chipDenominations", value)
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 364,
+                columnNumber: 17
+              },
+              this
+            ),
+            /* @__PURE__ */ jsxDEV("div", { className: "min-w-0 space-y-2", children: [
+              /* @__PURE__ */ jsxDEV("span", { className: "block text-xs font-medium text-pit-text", children: "Chip-up denominations" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 374,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("div", { className: "flex min-h-11 flex-wrap items-center gap-2", children: chipDenominationOptions.map((denomination) => {
+                const selected = selectedChipUps.includes(denomination);
+                return /* @__PURE__ */ jsxDEV(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-pressed": selected,
+                    onClick: () => toggleChipUpDenomination(denomination),
+                    className: `min-h-10 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selected ? "border-pit-teal bg-pit-teal/12 text-pit-teal shadow-[0_0_14px_rgba(20,184,166,0.08)]" : "border-pit-border bg-pit-bg text-pit-text hover:border-pit-teal/40 hover:text-white"}`,
+                    children: denomination.toLocaleString()
+                  },
+                  denomination,
+                  false,
+                  {
+                    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                    lineNumber: 379,
+                    columnNumber: 23
+                  },
+                  this
+                );
+              }) }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 375,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-[11px] leading-4 text-pit-muted", children: "Selected chips are removed at natural pause points in the generated schedule." }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 395,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 373,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 363,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 338,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 335,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 317,
+      columnNumber: 7
+    }, this),
+    expanded && /* @__PURE__ */ jsxDEV("section", { className: "card !p-0", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col gap-4 border-b border-pit-border p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ jsxDEV("h4", { className: "text-base font-semibold text-white", children: "Blind schedule" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 407,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            StructureSummary,
+            {
+              totalChips,
+              levelCount: blindLevelCount,
+              minutes: estimatedMinutes,
+              valid: isValid
+            },
+            void 0,
+            false,
+            {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 408,
+              columnNumber: 15
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 406,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "hidden shrink-0 gap-2 md:flex", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-ghost min-h-11 gap-2", onClick: reset, disabled: !hasChanges || saving, children: [
+            /* @__PURE__ */ jsxDEV(RotateCcw, { size: 16 }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 417,
+              columnNumber: 17
+            }, this),
+            " Reset"
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 416,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-primary min-h-11 min-w-40 gap-2", onClick: save, disabled: !isValid || saving || saveDisabled, children: [
+            /* @__PURE__ */ jsxDEV(Save, { size: 16 }, void 0, false, {
+              fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+              lineNumber: 420,
+              columnNumber: 17
+            }, this),
+            " ",
+            saving ? "Saving..." : saveLabel
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 419,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 415,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 405,
+        columnNumber: 11
+      }, this),
+      !isValid ? /* @__PURE__ */ jsxDEV("div", { className: "p-4 sm:p-5", children: /* @__PURE__ */ jsxDEV("div", { className: "rounded-xl border border-amber-300/20 bg-amber-300/5 px-4 py-3 text-sm text-amber-100", children: "Fix the highlighted settings to generate a blind schedule." }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 427,
+        columnNumber: 15
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 426,
+        columnNumber: 9
+      }, this) : /* @__PURE__ */ jsxDEV(GeneratedBlindSchedule, { levels: generatedLevels }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 432,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 404,
+      columnNumber: 7
+    }, this),
+    expanded && /* @__PURE__ */ jsxDEV("div", { className: "sticky bottom-0 z-20 -mx-1 mt-3 border-t border-pit-border bg-pit-surface/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:hidden", children: /* @__PURE__ */ jsxDEV("div", { className: "mx-auto flex max-w-screen-sm gap-2", children: [
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-ghost min-h-11 w-12 shrink-0 px-0", "aria-label": "Reset blind structure", onClick: reset, disabled: !hasChanges || saving, children: /* @__PURE__ */ jsxDEV(RotateCcw, { size: 18 }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 441,
+        columnNumber: 15
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 440,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-primary min-h-11 min-w-0 flex-1 gap-2 whitespace-nowrap", onClick: save, disabled: !isValid || saving || saveDisabled, children: [
+        /* @__PURE__ */ jsxDEV(Save, { size: 17 }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 444,
+          columnNumber: 15
+        }, this),
+        " ",
+        saving ? "Saving..." : saveLabel
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 443,
+        columnNumber: 13
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 439,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 438,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 316,
+    columnNumber: 5
+  }, this);
+}
+_s2(BlindStructureCalculator, "MZAxuBx3zebNoScPqvyxG+eFHzc=");
+_c2 = BlindStructureCalculator;
+function WizardSection({
+  number,
+  title,
+  icon,
+  className = "",
+  children
+}) {
+  return /* @__PURE__ */ jsxDEV("section", { className: `min-w-0 space-y-4 rounded-xl border border-pit-border bg-pit-bg/45 p-3.5 sm:p-4 ${className}`, children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 text-sm font-semibold text-white", children: [
+      /* @__PURE__ */ jsxDEV("span", { className: "flex h-6 w-6 items-center justify-center rounded-full border border-pit-teal/30 bg-pit-teal/10 text-xs text-pit-teal", children: number }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 469,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { className: "text-pit-teal", children: icon }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 470,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("h4", { children: title }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 471,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 468,
+      columnNumber: 7
+    }, this),
+    children
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 467,
+    columnNumber: 5
+  }, this);
+}
+_c3 = WizardSection;
+function TextField({
+  field,
+  label,
+  value,
+  placeholder,
+  helper,
+  error,
+  onChange
+}) {
+  const errorId = error ? `${field}-error` : void 0;
+  return /* @__PURE__ */ jsxDEV("label", { className: "block min-w-0 space-y-1.5", children: [
+    /* @__PURE__ */ jsxDEV("span", { className: "text-xs font-medium text-pit-text", children: label }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 498,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV(
+      "input",
+      {
+        className: `input min-h-11 w-full min-w-0 ${error ? "border-red-400/60 focus:border-red-400" : ""}`,
+        type: "text",
+        placeholder,
+        value,
+        "aria-invalid": Boolean(error),
+        "aria-describedby": errorId,
+        onChange: (event) => onChange(event.target.value)
+      },
+      void 0,
+      false,
+      {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 499,
+        columnNumber: 7
+      },
+      this
+    ),
+    error ? /* @__PURE__ */ jsxDEV("p", { id: errorId, className: "text-[11px] leading-4 text-red-300", children: error }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 509,
+      columnNumber: 7
+    }, this) : helper && /* @__PURE__ */ jsxDEV("p", { className: "text-[11px] leading-4 text-pit-muted", children: helper }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 510,
+      columnNumber: 17
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 497,
+    columnNumber: 5
+  }, this);
+}
+_c4 = TextField;
+function NumberField({
+  field,
+  label,
+  value,
+  min,
+  step = 1,
+  error,
+  onChange
+}) {
+  const errorId = error ? `${field}-error` : void 0;
+  return /* @__PURE__ */ jsxDEV("label", { className: "block min-w-0 space-y-1.5", children: [
+    /* @__PURE__ */ jsxDEV("span", { className: "block min-h-4 text-xs font-medium leading-4 text-pit-text", children: label }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 535,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV(
+      "input",
+      {
+        className: `input min-h-11 w-full min-w-0 tabular-nums ${error ? "border-red-400/60 focus:border-red-400" : ""}`,
+        type: "text",
+        inputMode: step % 1 === 0 ? "numeric" : "decimal",
+        "aria-valuemin": min,
+        "aria-invalid": Boolean(error),
+        "aria-describedby": errorId,
+        value,
+        onChange: (event) => onChange(event.target.value)
+      },
+      void 0,
+      false,
+      {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 536,
+        columnNumber: 7
+      },
+      this
+    ),
+    error && /* @__PURE__ */ jsxDEV("p", { id: errorId, className: "text-[11px] leading-4 text-red-300", children: error }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 546,
+      columnNumber: 17
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 534,
+    columnNumber: 5
+  }, this);
+}
+_c5 = NumberField;
+function StructureSummary({
+  totalChips,
+  levelCount,
+  minutes,
+  valid
+}) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const duration = hours > 0 ? `${hours}h${remainder ? ` ${remainder}m` : ""}` : `${remainder}m`;
+  const metrics = [
+    { label: "Total chips", value: totalChips.toLocaleString(), icon: /* @__PURE__ */ jsxDEV(Coins, { size: 18 }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 566,
+      columnNumber: 69
+    }, this) },
+    { label: "Blind levels", value: valid ? levelCount.toLocaleString() : "-", icon: /* @__PURE__ */ jsxDEV(Layers3, { size: 18 }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 567,
+      columnNumber: 84
+    }, this) },
+    { label: "Est. duration", value: valid ? duration : "-", icon: /* @__PURE__ */ jsxDEV(Clock3, { size: 18 }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 568,
+      columnNumber: 66
+    }, this) },
+    { label: "Status", value: valid ? "Ready" : "Needs attention", icon: valid ? /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 18 }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 569,
+      columnNumber: 80
+    }, this) : /* @__PURE__ */ jsxDEV(CircleGauge, { size: 18 }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 569,
+      columnNumber: 108
+    }, this), warning: !valid }
+  ];
+  return /* @__PURE__ */ jsxDEV("div", { className: "mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4", children: metrics.map(
+    (metric) => /* @__PURE__ */ jsxDEV("div", { className: "min-w-0 rounded-xl border border-pit-border bg-pit-bg/55 p-3", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: `mb-2 ${metric.warning ? "text-amber-300" : "text-pit-teal"}`, children: metric.icon }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 576,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "text-[10px] font-semibold uppercase tracking-[0.12em] text-pit-muted", children: metric.label }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 577,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: `mt-1 truncate text-sm font-semibold tabular-nums sm:text-base ${metric.warning ? "text-amber-200" : "text-white"}`, children: metric.value }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 578,
+        columnNumber: 11
+      }, this)
+    ] }, metric.label, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 575,
+      columnNumber: 7
+    }, this)
+  ) }, void 0, false, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 573,
+    columnNumber: 5
+  }, this);
+}
+_c6 = StructureSummary;
+function GeneratedBlindSchedule({ levels }) {
+  return /* @__PURE__ */ jsxDEV("div", { children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "hidden max-h-[34rem] overflow-y-auto md:block", children: /* @__PURE__ */ jsxDEV("table", { className: "w-full table-fixed text-sm", children: [
+      /* @__PURE__ */ jsxDEV("thead", { className: "sticky top-0 z-10 bg-pit-surface text-xs uppercase tracking-[0.1em] text-pit-muted", children: /* @__PURE__ */ jsxDEV("tr", { className: "border-b border-pit-border", children: [
+        /* @__PURE__ */ jsxDEV("th", { className: "w-[24%] px-5 py-3 text-left", children: "Level" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 592,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("th", { className: "px-3 py-3 text-right", children: "Small blind" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 593,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("th", { className: "px-3 py-3 text-right", children: "Big blind" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 594,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("th", { className: "px-3 py-3 text-right", children: "Ante" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 595,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("th", { className: "px-3 py-3 text-right", children: "Duration" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 596,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("th", { className: "w-[18%] px-5 py-3 text-left", children: "Notes" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 597,
+          columnNumber: 15
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 591,
+        columnNumber: 13
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 590,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("tbody", { children: levels.map((level, index) => {
+        const chipUp = isChipUpLevel(level);
+        const breakRow = isBreakLevel(level);
+        return /* @__PURE__ */ jsxDEV(
+          "tr",
+          {
+            className: `border-b border-pit-border/45 transition-colors hover:bg-white/[0.025] ${chipUp ? "bg-pit-teal/[0.07]" : breakRow ? "bg-amber-300/[0.06]" : ""}`,
+            children: [
+              /* @__PURE__ */ jsxDEV("td", { className: `px-5 py-3 font-semibold ${chipUp ? "text-pit-teal" : breakRow ? "text-amber-200" : "text-white"}`, children: level.label }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 609,
+                columnNumber: 19
+              }, this),
+              breakRow ? /* @__PURE__ */ jsxDEV(Fragment, { children: [
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right text-pit-muted", children: "-" }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 612,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right text-pit-muted", children: "-" }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 613,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right text-pit-muted", children: "-" }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 614,
+                  columnNumber: 23
+                }, this)
+              ] }, void 0, true, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 611,
+                columnNumber: 19
+              }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right tabular-nums text-pit-text", children: level.smallblind.toLocaleString() }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 618,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right tabular-nums text-white", children: level.bigblind.toLocaleString() }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 619,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right tabular-nums text-pit-text", children: level.ante > 0 ? level.ante.toLocaleString() : "-" }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 620,
+                  columnNumber: 23
+                }, this)
+              ] }, void 0, true, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 617,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("td", { className: "px-3 py-3 text-right tabular-nums text-pit-text", children: level.minutes > 0 ? `${level.minutes} min` : "-" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 623,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("td", { className: `px-5 py-3 text-xs ${chipUp ? "text-pit-teal" : breakRow ? "text-amber-200" : "text-pit-muted"}`, children: chipUp ? "Chip up" : breakRow ? "Break" : "" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 624,
+                columnNumber: 19
+              }, this)
+            ]
+          },
+          `${level.level}-${level.label}-${index}`,
+          true,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 605,
+            columnNumber: 17
+          },
+          this
+        );
+      }) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 600,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 589,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 588,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "space-y-2 p-3 md:hidden", children: levels.map((level, index) => {
+      const chipUp = isChipUpLevel(level);
+      const breakRow = isBreakLevel(level);
+      if (breakRow) {
+        return /* @__PURE__ */ jsxDEV(
+          "div",
+          {
+            className: `flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${chipUp ? "border-pit-teal/35 bg-pit-teal/[0.08] text-pit-teal" : "border-amber-300/30 bg-amber-300/[0.07] text-amber-100"}`,
+            children: [
+              /* @__PURE__ */ jsxDEV("div", { className: "min-w-0", children: [
+                /* @__PURE__ */ jsxDEV("p", { className: "truncate text-sm font-semibold", children: level.label }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 643,
+                  columnNumber: 19
+                }, this),
+                /* @__PURE__ */ jsxDEV("p", { className: "mt-0.5 text-[11px] opacity-75", children: chipUp ? "Chip-up pause" : "Scheduled break" }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 644,
+                  columnNumber: 19
+                }, this)
+              ] }, void 0, true, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 642,
+                columnNumber: 17
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { className: "shrink-0 text-xs font-medium tabular-nums", children: level.minutes > 0 ? `${level.minutes} min` : "Pause" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 646,
+                columnNumber: 17
+              }, this)
+            ]
+          },
+          `${level.level}-${level.label}-${index}`,
+          true,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 638,
+            columnNumber: 15
+          },
+          this
+        );
+      }
+      return /* @__PURE__ */ jsxDEV("div", { className: "min-h-14 rounded-xl border border-pit-border bg-pit-bg/45 px-3 py-2.5", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between gap-3", children: [
+          /* @__PURE__ */ jsxDEV("p", { className: "text-sm font-semibold text-white", children: level.label }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 653,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "text-xs tabular-nums text-pit-muted", children: [
+            level.minutes,
+            " min"
+          ] }, void 0, true, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 654,
+            columnNumber: 17
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 652,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "mt-1 truncate text-xs tabular-nums text-pit-text", children: [
+          "SB ",
+          level.smallblind.toLocaleString(),
+          " ",
+          /* @__PURE__ */ jsxDEV("span", { className: "px-1 text-pit-muted", children: "·" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 657,
+            columnNumber: 56
+          }, this),
+          "BB ",
+          level.bigblind.toLocaleString(),
+          " ",
+          /* @__PURE__ */ jsxDEV("span", { className: "px-1 text-pit-muted", children: "·" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 658,
+            columnNumber: 54
+          }, this),
+          "Ante ",
+          level.ante > 0 ? level.ante.toLocaleString() : "-"
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 656,
+          columnNumber: 15
+        }, this)
+      ] }, `${level.level}-${level.label}-${index}`, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 651,
+        columnNumber: 13
+      }, this);
+    }) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 632,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 587,
+    columnNumber: 5
+  }, this);
+}
+_c7 = GeneratedBlindSchedule;
+function BlindTable({ blinds, currentLevel }) {
+  if (blinds.length === 0) return /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-pit-text", children: "No levels defined." }, void 0, false, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 670,
+    columnNumber: 35
+  }, this);
+  return /* @__PURE__ */ jsxDEV("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxDEV("table", { className: "w-full text-sm", children: [
+    /* @__PURE__ */ jsxDEV("thead", { children: /* @__PURE__ */ jsxDEV("tr", { className: "border-b border-pit-border text-pit-text", children: [
+      /* @__PURE__ */ jsxDEV("th", { className: "pb-2 text-left", children: "Level" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 676,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("th", { className: "pb-2 text-right", children: "SB" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 677,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("th", { className: "pb-2 text-right", children: "BB" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 678,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("th", { className: "pb-2 text-right", children: "Ante" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 679,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("th", { className: "pb-2 text-right", children: "Min" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 680,
+        columnNumber: 13
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 675,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 674,
+      columnNumber: 9
+    }, this),
+    /* @__PURE__ */ jsxDEV("tbody", { children: blinds.map((blind) => {
+      const breakRow = isBreakLevel(blind);
+      const breakLabel = formatBreakLabel(blind);
+      return /* @__PURE__ */ jsxDEV("tr", { className: `border-b border-pit-border/40 ${blind.level === currentLevel ? "bg-pit-teal/10" : ""} ${breakRow ? "bg-yellow-300/5 text-yellow-100" : ""}`, children: [
+        /* @__PURE__ */ jsxDEV("td", { className: "py-1.5", children: [
+          breakRow ? breakLabel : `Level ${blind.level}`,
+          blind.islastlevel && /* @__PURE__ */ jsxDEV("span", { className: "ml-1 text-xs text-pit-muted", children: "(last)" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 691,
+            columnNumber: 41
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 689,
+          columnNumber: 17
+        }, this),
+        breakRow ? /* @__PURE__ */ jsxDEV("td", { colSpan: 3, className: "text-right text-xs uppercase tracking-wide text-yellow-100/80", children: "Break" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 694,
+          columnNumber: 17
+        }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+          /* @__PURE__ */ jsxDEV("td", { className: "text-right", children: blind.smallblind.toLocaleString() }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 697,
+            columnNumber: 21
+          }, this),
+          /* @__PURE__ */ jsxDEV("td", { className: "text-right", children: blind.bigblind.toLocaleString() }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 698,
+            columnNumber: 21
+          }, this),
+          /* @__PURE__ */ jsxDEV("td", { className: "text-right", children: blind.ante > 0 ? blind.ante.toLocaleString() : "-" }, void 0, false, {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 699,
+            columnNumber: 21
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 696,
+          columnNumber: 17
+        }, this),
+        /* @__PURE__ */ jsxDEV("td", { className: "text-right", children: blind.minutes }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 702,
+          columnNumber: 17
+        }, this)
+      ] }, blind.id, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 688,
+        columnNumber: 15
+      }, this);
+    }) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 683,
+      columnNumber: 9
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 673,
+    columnNumber: 7
+  }, this) }, void 0, false, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 672,
+    columnNumber: 5
+  }, this);
+}
+_c8 = BlindTable;
+function BlindEditor({
+  initial,
+  onSave,
+  loading,
+  error
+}) {
+  _s3();
+  const [levels, setLevels] = useState(
+    initial.length > 0 ? initial.map(({ id: _id, smallblind, bigblind, ante, minutes, ...rest }) => ({
+      level: rest.level,
+      label: rest.label ?? `Level ${rest.level}`,
+      smallblind: String(smallblind),
+      bigblind: String(bigblind),
+      ante: String(ante),
+      minutes: String(minutes),
+      islastlevel: Boolean(rest.islastlevel)
+    })) : [{ level: 1, label: "Level 1", smallblind: "25", bigblind: "50", ante: "0", minutes: "20", islastlevel: false }]
+  );
+  const [dragIndex, setDragIndex] = useState(null);
+  const editorGridClass = "grid grid-cols-[26px_150px_minmax(7rem,1fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_90px_minmax(11rem,1.25fr)_30px] items-center gap-2";
+  function update(index, field, value) {
+    setLevels((current) => current.map((level, levelIndex) => levelIndex === index ? { ...level, [field]: value } : level));
+  }
+  function addLevel() {
+    const last = levels[levels.length - 1];
+    const lastBigBlind = parseSetting(last?.bigblind ?? "", 50);
+    setLevels((current) => [...current, {
+      level: current.length + 1,
+      label: `Level ${current.length + 1}`,
+      smallblind: String(lastBigBlind),
+      bigblind: String(lastBigBlind * 2),
+      ante: last?.ante ?? "0",
+      minutes: last?.minutes ?? "20",
+      islastlevel: false
+    }]);
+  }
+  function addBreak() {
+    setLevels((current) => [...current, {
+      level: current.length + 1,
+      label: `Break ${current.filter((level) => isBreakEditableLevel(level)).length + 1}`,
+      smallblind: "0",
+      bigblind: "0",
+      ante: "0",
+      minutes: "10",
+      islastlevel: false
+    }]);
+  }
+  function removeLevel(index) {
+    setLevels((current) => current.filter((_level, levelIndex) => levelIndex !== index).map((level, levelIndex) => ({ ...level, level: levelIndex + 1 })));
+  }
+  function moveLevel(fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setLevels((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      if (!moved) return current;
+      next.splice(toIndex, 0, moved);
+      return next.map((level, levelIndex) => ({ ...level, level: levelIndex + 1 }));
+    });
+  }
+  function save() {
+    onSave(levels.map((level, index) => ({
+      ...level,
+      label: isBreakEditableLevel(level) ? normalizeEditableBreakLabel(level.label, index) : `Level ${index + 1}`,
+      smallblind: parseSetting(level.smallblind, 0),
+      bigblind: parseSetting(level.bigblind, 0),
+      ante: parseSetting(level.ante, 0),
+      minutes: parseSetting(level.minutes, 1),
+      islastlevel: index === levels.length - 1
+    })));
+  }
+  return /* @__PURE__ */ jsxDEV("div", { className: "space-y-3", children: [
+    error && /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-red-400", children: error }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 800,
+      columnNumber: 17
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxDEV("div", { className: "min-w-[50rem]", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: `${editorGridClass} border-b border-pit-border px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-pit-muted`, children: [
+        /* @__PURE__ */ jsxDEV("span", { "aria-hidden": "true" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 804,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-2 pb-1", children: "Level" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 805,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-3 pb-1", children: "SB" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 806,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-3 pb-1", children: "BB" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 807,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-3 pb-1", children: "Ante" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 808,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-3 pb-1", children: "Min" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 809,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "px-3 pb-1", children: "Break note" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 810,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { "aria-hidden": "true" }, void 0, false, {
+          fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+          lineNumber: 811,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 803,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "space-y-2 pt-2", children: levels.map((level, index) => {
+        const breakRow = isBreakEditableLevel(level);
+        const rowLabel = breakRow ? getBreakBaseLabel(level.label, index) : `Level ${index + 1}`;
+        return /* @__PURE__ */ jsxDEV(
+          "div",
+          {
+            draggable: true,
+            onDragStart: () => setDragIndex(index),
+            onDragOver: (event) => event.preventDefault(),
+            onDrop: () => {
+              if (dragIndex != null) moveLevel(dragIndex, index);
+              setDragIndex(null);
+            },
+            onDragEnd: () => setDragIndex(null),
+            className: `${editorGridClass} rounded-lg text-sm ${dragIndex === index ? "bg-pit-teal/10" : ""}`,
+            children: [
+              /* @__PURE__ */ jsxDEV("div", { className: "flex h-full cursor-grab items-center justify-center text-pit-muted active:cursor-grabbing", children: /* @__PURE__ */ jsxDEV(GripVertical, { size: 15 }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 831,
+                columnNumber: 21
+              }, this) }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 830,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("div", { className: `px-2 text-xs font-medium ${breakRow ? "text-yellow-100" : "text-pit-text"}`, children: rowLabel }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 833,
+                columnNumber: 19
+              }, this),
+              breakRow ? /* @__PURE__ */ jsxDEV("div", { className: "col-span-3 rounded-lg border border-yellow-300/15 bg-yellow-300/5 px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100", children: "Break" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 835,
+                columnNumber: 19
+              }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+                /* @__PURE__ */ jsxDEV("input", { className: "input text-xs", type: "text", inputMode: "numeric", placeholder: "SB", "aria-label": `Level ${index + 1} small blind`, value: level.smallblind, onChange: (event) => update(index, "smallblind", event.target.value) }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 840,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("input", { className: "input text-xs", type: "text", inputMode: "numeric", placeholder: "BB", "aria-label": `Level ${index + 1} big blind`, value: level.bigblind, onChange: (event) => update(index, "bigblind", event.target.value) }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 841,
+                  columnNumber: 23
+                }, this),
+                /* @__PURE__ */ jsxDEV("input", { className: "input text-xs", type: "text", inputMode: "numeric", placeholder: "Ante", "aria-label": `Level ${index + 1} ante`, value: level.ante, onChange: (event) => update(index, "ante", event.target.value) }, void 0, false, {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 842,
+                  columnNumber: 23
+                }, this)
+              ] }, void 0, true, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 839,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { className: "input text-xs", type: "text", inputMode: "numeric", placeholder: "Min", "aria-label": `Level ${index + 1} minutes`, value: level.minutes, onChange: (event) => update(index, "minutes", event.target.value) }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 845,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV(
+                "input",
+                {
+                  className: "input text-xs",
+                  type: "text",
+                  placeholder: breakRow ? "Optional break note" : "-",
+                  "aria-label": `Level ${index + 1} break note`,
+                  value: breakRow ? getBreakNote(level.label) : "",
+                  disabled: !breakRow,
+                  onChange: (event) => update(index, "label", buildBreakLabel(level.label, index, event.target.value))
+                },
+                void 0,
+                false,
+                {
+                  fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                  lineNumber: 846,
+                  columnNumber: 19
+                },
+                this
+              ),
+              /* @__PURE__ */ jsxDEV("button", { type: "button", onClick: () => removeLevel(index), className: "text-lg leading-none text-red-400 hover:text-red-300", children: "x" }, void 0, false, {
+                fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+                lineNumber: 855,
+                columnNumber: 19
+              }, this)
+            ]
+          },
+          index,
+          true,
+          {
+            fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+            lineNumber: 818,
+            columnNumber: 17
+          },
+          this
+        );
+      }) }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 813,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 802,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 801,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "flex gap-2 pt-2", children: [
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-ghost text-sm", onClick: addLevel, children: "Add Level" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 863,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-ghost text-sm", onClick: addBreak, children: "Add Break" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 864,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "btn-primary text-sm", onClick: save, disabled: loading, children: loading ? "Saving..." : "Save Structure" }, void 0, false, {
+        fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+        lineNumber: 865,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+      lineNumber: 862,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx",
+    lineNumber: 799,
+    columnNumber: 5
+  }, this);
+}
+_s3(BlindEditor, "OV/7rzXvGBqCK0scweMmcG+mE9k=");
+_c9 = BlindEditor;
+function parseCalculatorSettings(settings, tournament) {
+  return {
+    players: parseSetting(settings.players, 2),
+    startingStack: parseSetting(settings.startingStack, 100),
+    targetHours: parseSetting(settings.targetHours, 0.5),
+    levelMinutes: parseSetting(settings.levelMinutes, 1),
+    startingBigBlind: parseSetting(settings.startingBigBlind, 1),
+    chipDenominations: settings.chipDenominations,
+    finishBigBlinds: parseSetting(settings.finishBigBlinds, 14),
+    breakCount: Math.max(0, Math.floor(parseSetting(settings.breakCount, 0))),
+    breakMinutes: parseSetting(settings.breakMinutes, 1),
+    anteStartLevel: parseSetting(settings.anteStartLevel, 0),
+    colorUps: settings.colorUps,
+    expectedRebuys: parseSetting(settings.expectedRebuys, 0),
+    expectedAddons: parseSetting(settings.expectedAddons, 0),
+    rebuyChips: toNumber(tournament.rebuychips),
+    addonChips: toNumber(tournament.addonchips)
+  };
+}
+function validateCalculatorSettings(settings) {
+  const errors = {};
+  const validateNumber = (field, label, minimum, options = {}) => {
+    const raw = settings[field].trim();
+    const value = Number(raw);
+    if (!raw || !Number.isFinite(value)) {
+      errors[field] = `${label} is required.`;
+      return;
+    }
+    if (value < minimum) {
+      errors[field] = `${label} must be at least ${minimum}.`;
+      return;
+    }
+    if (options.maximum !== void 0 && value > options.maximum) {
+      errors[field] = `${label} cannot exceed ${options.maximum}.`;
+      return;
+    }
+    if (options.integer && !Number.isInteger(value)) errors[field] = `${label} must be a whole number.`;
+  };
+  validateNumber("players", "Players", 2, { integer: true });
+  validateNumber("startingStack", "Starting stack", 100);
+  validateNumber("targetHours", "Target hours", 0.5);
+  validateNumber("levelMinutes", "Level minutes", 1, { integer: true });
+  validateNumber("breakCount", "Breaks", 0, { integer: true, maximum: 10 });
+  validateNumber("breakMinutes", "Break minutes", 1, { integer: true });
+  validateNumber("startingBigBlind", "Starting BB", 1);
+  validateNumber("anteStartLevel", "Ante start level", 0, { integer: true });
+  validateNumber("expectedRebuys", "Expected rebuys", 0, { integer: true });
+  validateNumber("expectedAddons", "Expected add-ons", 0, { integer: true });
+  const denominationPieces = settings.chipDenominations.split(/[,;\s]+/).map((piece) => piece.trim()).filter(Boolean);
+  const denominationsAreValid = denominationPieces.length > 0 && denominationPieces.every((piece) => /^\d+(?:\.\d+)?$/.test(piece) && Number(piece) > 0);
+  if (!denominationsAreValid) {
+    errors.chipDenominations = "Use positive chip values separated by commas.";
+  }
+  return errors;
+}
+function parseSetting(value, fallback) {
+  if (value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function selectedChipUpDenominations(value, allowedDenominations) {
+  const allowed = new Set(allowedDenominations);
+  const selected = value.split(/[,;\s]+/).map((piece) => Math.round(Number(piece.trim()))).filter((denomination) => Number.isFinite(denomination) && allowed.has(denomination));
+  return Array.from(new Set(selected)).sort((a, b) => a - b);
+}
+function generateBlindStructure(settings) {
+  return buildBlindStructure(settings);
+}
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function getDefaultCalculatorPlayers(tournament) {
+  const maxPlayers = Math.floor(toNumber(tournament.maxplayers));
+  return maxPlayers > 0 ? maxPlayers : 10;
+}
+function isBreakLevel(level) {
+  return /^break\b/i.test(String(level.label ?? "")) || Number(level.smallblind) === 0 && Number(level.bigblind) === 0;
+}
+function isChipUpLevel(level) {
+  return /^chip\s*up\b/i.test(String(level.label ?? ""));
+}
+function isBreakEditableLevel(level) {
+  return /^break\b/i.test(String(level.label ?? "")) || parseSetting(level.smallblind, 0) === 0 && parseSetting(level.bigblind, 0) === 0;
+}
+function formatBreakLabel(level) {
+  const label = String(level.label ?? "").trim();
+  if (/^chip\s*up\b/i.test(label)) return label;
+  if (/^break\b/i.test(label)) return label;
+  return label ? `Break ${label}` : `Break ${level.level}`;
+}
+function getBreakBaseLabel(label, index) {
+  const fallback = `Break ${index + 1}`;
+  const trimmed = String(label ?? "").trim();
+  if (!trimmed) return fallback;
+  const breakMatch = trimmed.match(/^(Break\s+\d+)(?:\s*[-:]\s*.+)?$/i);
+  if (breakMatch?.[1]) return breakMatch[1];
+  const noteSplit = trimmed.split(/\s[-:]\s/)[0]?.trim();
+  return noteSplit || trimmed;
+}
+function getBreakNote(label) {
+  const trimmed = String(label ?? "").trim();
+  const noteMatch = trimmed.match(/^Break\s+\d+\s*[-:]\s*(.+)$/i);
+  return noteMatch?.[1]?.trim() ?? "";
+}
+function buildBreakLabel(label, index, note) {
+  const baseLabel = getBreakBaseLabel(label, index);
+  const cleanNote = note.trim();
+  return cleanNote ? `${baseLabel} - ${cleanNote}` : baseLabel;
+}
+function normalizeEditableBreakLabel(label, index) {
+  return buildBreakLabel(label, index, getBreakNote(label));
+}
+var _c, _c2, _c3, _c4, _c5, _c6, _c7, _c8, _c9;
+$RefreshReg$(_c, "BlindTimer");
+$RefreshReg$(_c2, "BlindStructureCalculator");
+$RefreshReg$(_c3, "WizardSection");
+$RefreshReg$(_c4, "TextField");
+$RefreshReg$(_c5, "NumberField");
+$RefreshReg$(_c6, "StructureSummary");
+$RefreshReg$(_c7, "GeneratedBlindSchedule");
+$RefreshReg$(_c8, "BlindTable");
+$RefreshReg$(_c9, "BlindEditor");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/EricA/Projects/PokerPlanner/apps/web/src/pages/PreTournament/BlindTimer.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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S0FBSztBQUN6QyxNQUFJLENBQUNnSyxRQUFTLFFBQU9WO0FBQ3JCLFFBQU1XLGFBQWFELFFBQVFFLE1BQU0sbUNBQW1DO0FBQ3BFLE1BQUlELGFBQWEsQ0FBQyxFQUFHLFFBQU9BLFdBQVcsQ0FBQztBQUN4QyxRQUFNRSxZQUFZSCxRQUFRZixNQUFNLFVBQVUsRUFBRSxDQUFDLEdBQUdqSixLQUFLO0FBQ3JELFNBQU9tSyxhQUFhSDtBQUN0QjtBQUVBLFNBQVM3QixhQUFhNUssT0FBbUM7QUFDdkQsUUFBTXlNLFVBQVVoTyxPQUFPdUIsU0FBUyxFQUFFLEVBQUV5QyxLQUFLO0FBQ3pDLFFBQU1vSyxZQUFZSixRQUFRRSxNQUFNLDhCQUE4QjtBQUM5RCxTQUFPRSxZQUFZLENBQUMsR0FBR3BLLEtBQUssS0FBSztBQUNuQztBQUVBLFNBQVNvSSxnQkFBZ0I3SyxPQUEyQm9JLE9BQWUwRSxNQUFzQjtBQUN2RixRQUFNQyxZQUFZckMsa0JBQWtCMUssT0FBT29JLEtBQUs7QUFDaEQsUUFBTTRFLFlBQVlGLEtBQUtySyxLQUFLO0FBQzVCLFNBQU91SyxZQUFZLEdBQUdELFNBQVMsTUFBTUMsU0FBUyxLQUFLRDtBQUNyRDtBQUVBLFNBQVN2Qyw0QkFBNEJ4SyxPQUEyQm9JLE9BQXVCO0FBQ3JGLFNBQU95QyxnQkFBZ0I3SyxPQUFPb0ksT0FBT3dDLGFBQWE1SyxLQUFLLENBQUM7QUFDMUQ7QUFBQyxJQUFBaU4sSUFBQUMsS0FBQXRHLEtBQUFPLEtBQUFJLEtBQUFXLEtBQUFNLEtBQUFPLEtBQUFvRTtBQUFBLGFBQUFGLElBQUE7QUFBQSxhQUFBQyxLQUFBO0FBQUEsYUFBQXRHLEtBQUE7QUFBQSxhQUFBTyxLQUFBO0FBQUEsYUFBQUksS0FBQTtBQUFBLGFBQUFXLEtBQUE7QUFBQSxhQUFBTSxLQUFBO0FBQUEsYUFBQU8sS0FBQTtBQUFBLGFBQUFvRSxLQUFBIiwibmFtZXMiOlsidXNlTWVtbyIsInVzZVN0YXRlIiwidXNlTXV0YXRpb24iLCJ1c2VRdWVyeSIsInVzZVF1ZXJ5Q2xpZW50IiwiQ2hldnJvbkRvd24iLCJDaGV2cm9uVXAiLCJDaXJjbGVHYXVnZSIsIkNsb2NrMyIsIkNvZmZlZSIsIkNvaW5zIiwiR3JpcFZlcnRpY2FsIiwiTGF5ZXJzMyIsIlJvdGF0ZUNjdyIsIlNhdmUiLCJTaGllbGRDaGVjayIsIlVzZXJzIiwiYXBpIiwiY2FsY3VsYXRlVG90YWxDaGlwcyIsImRlZmF1bHRDaGlwVXBEZW5vbWluYXRpb25zIiwiREVGQVVMVF9DSElQX0RFTk9NSU5BVElPTlMiLCJERUZBVUxUX0NPTE9SX1VQUyIsImdlbmVyYXRlQmxpbmRTdHJ1Y3R1cmUiLCJidWlsZEJsaW5kU3RydWN0dXJlIiwicGFyc2VDaGlwRGVub21pbmF0aW9ucyIsImNyZWF0ZURlZmF1bHRDYWxjdWxhdG9yU2V0dGluZ3MiLCJ0b3VybmFtZW50IiwicGxheWVycyIsImdldERlZmF1bHRDYWxjdWxhdG9yUGxheWVycyIsIlN0cmluZyIsInN0YXJ0aW5nU3RhY2siLCJ0b051bWJlciIsInJlYnV5Y2hpcHMiLCJ0YXJnZXRIb3VycyIsImxldmVsTWludXRlcyIsInN0YXJ0aW5nQmlnQmxpbmQiLCJjaGlwRGVub21pbmF0aW9ucyIsImZpbmlzaEJpZ0JsaW5kcyIsImJyZWFrQ291bnQiLCJicmVha01pbnV0ZXMiLCJhbnRlU3RhcnRMZXZlbCIsImNvbG9yVXBzIiwiZXhwZWN0ZWRSZWJ1eXMiLCJyZWJ1eXByaWNlIiwiTWF0aCIsIm1heCIsInJvdW5kIiwiZXhwZWN0ZWRBZGRvbnMiLCJhZGRvbnByaWNlIiwidG9EcmFmdExldmVsIiwibGV2ZWwiLCJOdW1iZXIiLCJsYWJlbCIsInNtYWxsYmxpbmQiLCJiaWdibGluZCIsImFudGUiLCJtaW51dGVzIiwiaXNsYXN0bGV2ZWwiLCJCb29sZWFuIiwiQmxpbmRUaW1lciIsInRvdXJuYW1lbnRJZCIsImlzT3duZXIiLCJfcyIsInFjIiwiZWRpdGluZyIsInNldEVkaXRpbmciLCJzYXZlU3RydWN0dXJlTmFtZSIsInNldFNhdmVTdHJ1Y3R1cmVOYW1lIiwiZGF0YSIsImJsaW5kcyIsImlzTG9hZGluZyIsInF1ZXJ5S2V5IiwicXVlcnlGbiIsImdldEJsaW5kcyIsInNhdmVNdXRhdGlvbiIsIm11dGF0aW9uRm4iLCJsZXZlbHMiLCJzYXZlQmxpbmRzIiwib25TdWNjZXNzIiwiaW52YWxpZGF0ZVF1ZXJpZXMiLCJzYXZlR3JvdXBTdHJ1Y3R1cmVNdXRhdGlvbiIsIm5hbWUiLCJjcmVhdGVHcm91cEJsaW5kU3RydWN0dXJlIiwiZ3JvdXBpZCIsInZpc2libGVCbGluZHMiLCJpc1BlbmRpbmciLCJlcnJvciIsIm1lc3NhZ2UiLCJtdXRhdGUiLCJsZW5ndGgiLCJldmVudCIsInRhcmdldCIsInZhbHVlIiwidHJpbSIsIm1hcCIsIkJsaW5kU3RydWN0dXJlQ2FsY3VsYXRvciIsInNhdmluZyIsIm9uU2F2ZSIsImluaXRpYWxseUV4cGFuZGVkIiwidGl0bGUiLCJzYXZlTGFiZWwiLCJzYXZlRGlzYWJsZWQiLCJfczIiLCJleHBhbmRlZCIsInNldEV4cGFuZGVkIiwiaW5pdGlhbFNldHRpbmdzIiwic2V0dGluZ3MiLCJzZXRTZXR0aW5ncyIsInBhcnNlZFNldHRpbmdzIiwicGFyc2VDYWxjdWxhdG9yU2V0dGluZ3MiLCJ2YWxpZGF0aW9uRXJyb3JzIiwidmFsaWRhdGVDYWxjdWxhdG9yU2V0dGluZ3MiLCJnZW5lcmF0ZWRMZXZlbHMiLCJPYmplY3QiLCJrZXlzIiwidG90YWxDaGlwcyIsInJlYnV5c0VuYWJsZWQiLCJhZGRvbnNFbmFibGVkIiwiYWRkb25jaGlwcyIsImNoaXBEZW5vbWluYXRpb25PcHRpb25zIiwic2VsZWN0ZWRDaGlwVXBzIiwic2VsZWN0ZWRDaGlwVXBEZW5vbWluYXRpb25zIiwiYmxpbmRMZXZlbENvdW50IiwiZmlsdGVyIiwiaXNCcmVha0xldmVsIiwiZXN0aW1hdGVkTWludXRlcyIsInJlZHVjZSIsInRvdGFsIiwiaGFzQ2hhbmdlcyIsIkpTT04iLCJzdHJpbmdpZnkiLCJpc1ZhbGlkIiwidXBkYXRlIiwiZmllbGQiLCJjdXJyZW50IiwiY3VycmVudENoaXBPcHRpb25zIiwiY3VycmVudERlZmF1bHQiLCJjdXJyZW50U2VsZWN0ZWQiLCJkZWZhdWx0U2VsZWN0ZWQiLCJzaG91bGRVc2VOZXh0RGVmYXVsdCIsImpvaW4iLCJuZXh0Q2hpcE9wdGlvbnMiLCJzbGljZSIsImRlbm9taW5hdGlvbiIsImluY2x1ZGVzIiwidG9nZ2xlQ2hpcFVwRGVub21pbmF0aW9uIiwiYXZhaWxhYmxlIiwic2VsZWN0ZWQiLCJuZXh0Iiwic29ydCIsImEiLCJiIiwicmVzZXQiLCJzYXZlIiwidG9Mb2NhbGVTdHJpbmciLCJXaXphcmRTZWN0aW9uIiwibnVtYmVyIiwiaWNvbiIsImNsYXNzTmFtZSIsImNoaWxkcmVuIiwiX2MzIiwiVGV4dEZpZWxkIiwicGxhY2Vob2xkZXIiLCJoZWxwZXIiLCJvbkNoYW5nZSIsImVycm9ySWQiLCJ1bmRlZmluZWQiLCJfYzQiLCJOdW1iZXJGaWVsZCIsIm1pbiIsInN0ZXAiLCJfYzUiLCJTdHJ1Y3R1cmVTdW1tYXJ5IiwibGV2ZWxDb3VudCIsInZhbGlkIiwiaG91cnMiLCJmbG9vciIsInJlbWFpbmRlciIsImR1cmF0aW9uIiwibWV0cmljcyIsIndhcm5pbmciLCJtZXRyaWMiLCJfYzYiLCJHZW5lcmF0ZWRCbGluZFNjaGVkdWxlIiwiaW5kZXgiLCJjaGlwVXAiLCJpc0NoaXBVcExldmVsIiwiYnJlYWtSb3ciLCJfYzciLCJCbGluZFRhYmxlIiwiY3VycmVudExldmVsIiwiYmxpbmQiLCJicmVha0xhYmVsIiwiZm9ybWF0QnJlYWtMYWJlbCIsImlkIiwiX2M4IiwiQmxpbmRFZGl0b3IiLCJpbml0aWFsIiwibG9hZGluZyIsIl9zMyIsInNldExldmVscyIsIl9pZCIsInJlc3QiLCJkcmFnSW5kZXgiLCJzZXREcmFnSW5kZXgiLCJlZGl0b3JHcmlkQ2xhc3MiLCJsZXZlbEluZGV4IiwiYWRkTGV2ZWwiLCJsYXN0IiwibGFzdEJpZ0JsaW5kIiwicGFyc2VTZXR0aW5nIiwiYWRkQnJlYWsiLCJpc0JyZWFrRWRpdGFibGVMZXZlbCIsInJlbW92ZUxldmVsIiwiX2xldmVsIiwibW92ZUxldmVsIiwiZnJvbUluZGV4IiwidG9JbmRleCIsIm1vdmVkIiwic3BsaWNlIiwibm9ybWFsaXplRWRpdGFibGVCcmVha0xhYmVsIiwicm93TGFiZWwiLCJnZXRCcmVha0Jhc2VMYWJlbCIsInByZXZlbnREZWZhdWx0IiwiZ2V0QnJlYWtOb3RlIiwiYnVpbGRCcmVha0xhYmVsIiwicmVidXlDaGlwcyIsImFkZG9uQ2hpcHMiLCJlcnJvcnMiLCJ2YWxpZGF0ZU51bWJlciIsIm1pbmltdW0iLCJvcHRpb25zIiwicmF3IiwiaXNGaW5pdGUiLCJtYXhpbXVtIiwiaW50ZWdlciIsImlzSW50ZWdlciIsImRlbm9taW5hdGlvblBpZWNlcyIsInNwbGl0IiwicGllY2UiLCJkZW5vbWluYXRpb25zQXJlVmFsaWQiLCJldmVyeSIsInRlc3QiLCJmYWxsYmFjayIsInBhcnNlZCIsImFsbG93ZWREZW5vbWluYXRpb25zIiwiYWxsb3dlZCIsIlNldCIsImhhcyIsIkFycmF5IiwiZnJvbSIsIm1heFBsYXllcnMiLCJtYXhwbGF5ZXJzIiwidHJpbW1lZCIsImJyZWFrTWF0Y2giLCJtYXRjaCIsIm5vdGVTcGxpdCIsIm5vdGVNYXRjaCIsIm5vdGUiLCJiYXNlTGFiZWwiLCJjbGVhbk5vdGUiLCJfYyIsIl9jMiIsIl9jOSJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJCbGluZFRpbWVyLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VNZW1vLCB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCB7IHVzZU11dGF0aW9uLCB1c2VRdWVyeSwgdXNlUXVlcnlDbGllbnQgfSBmcm9tICdAdGFuc3RhY2svcmVhY3QtcXVlcnknO1xuaW1wb3J0IHtcbiAgQ2hldnJvbkRvd24sXG4gIENoZXZyb25VcCxcbiAgQ2lyY2xlR2F1Z2UsXG4gIENsb2NrMyxcbiAgQ29mZmVlLFxuICBDb2lucyxcbiAgR3JpcFZlcnRpY2FsLFxuICBMYXllcnMzLFxuICBSb3RhdGVDY3csXG4gIFNhdmUsXG4gIFNoaWVsZENoZWNrLFxuICBVc2Vycyxcbn0gZnJvbSAnbHVjaWRlLXJlYWN0JztcbmltcG9ydCB7IGFwaSwgQmxpbmRMZXZlbCwgVG91cm5hbWVudCB9IGZyb20gJy4uLy4uL2FwaS9jbGllbnQnO1xuaW1wb3J0IHtcbiAgY2FsY3VsYXRlVG90YWxDaGlwcyxcbiAgZGVmYXVsdENoaXBVcERlbm9taW5hdGlvbnMsXG4gIERFRkFVTFRfQ0hJUF9ERU5PTUlOQVRJT05TLFxuICBERUZBVUxUX0NPTE9SX1VQUyxcbiAgZ2VuZXJhdGVCbGluZFN0cnVjdHVyZSBhcyBidWlsZEJsaW5kU3RydWN0dXJlLFxuICBwYXJzZUNoaXBEZW5vbWluYXRpb25zLFxufSBmcm9tICcuLi8uLi91dGlscy9ibGluZENhbGN1bGF0b3InO1xuXHJcbmludGVyZmFjZSBCbGluZFRpbWVyUHJvcHMge1xuICB0b3VybmFtZW50SWQ6IHN0cmluZztcclxuICBpc093bmVyOiBib29sZWFuO1xyXG4gIHBsYXllckNvdW50OiBudW1iZXI7XHJcbiAgdG91cm5hbWVudDogVG91cm5hbWVudDtcclxufVxyXG5cclxuZXhwb3J0IHR5cGUgQmxpbmRTdHJ1Y3R1cmVEcmFmdExldmVsID0gT21pdDxCbGluZExldmVsLCAnaWQnPjtcbmV4cG9ydCB0eXBlIEJsaW5kU3RydWN0dXJlQ2FsY3VsYXRvckNvbnRleHQgPSBQaWNrPFxuICBUb3VybmFtZW50LFxuICAnbWF4cGxheWVycycgfCAncmVidXljaGlwcycgfCAnYWRkb25jaGlwcycgfCAncmVidXlwcmljZScgfCAnYWRkb25wcmljZSdcbj47XG5cclxuaW50ZXJmYWNlIEVkaXRhYmxlQmxpbmRMZXZlbCB7XHJcbiAgbGV2ZWw6IG51bWJlcjtcclxuICBsYWJlbDogc3RyaW5nO1xyXG4gIHNtYWxsYmxpbmQ6IHN0cmluZztcclxuICBiaWdibGluZDogc3RyaW5nO1xyXG4gIGFudGU6IHN0cmluZztcclxuICBtaW51dGVzOiBzdHJpbmc7XHJcbiAgaXNsYXN0bGV2ZWw6IGJvb2xlYW47XHJcbn1cclxuXHJcbmludGVyZmFjZSBDYWxjdWxhdG9yU2V0dGluZ3Mge1xyXG4gIHBsYXllcnM6IHN0cmluZztcclxuICBzdGFydGluZ1N0YWNrOiBzdHJpbmc7XHJcbiAgdGFyZ2V0SG91cnM6IHN0cmluZztcbiAgbGV2ZWxNaW51dGVzOiBzdHJpbmc7XG4gIHN0YXJ0aW5nQmlnQmxpbmQ6IHN0cmluZztcbiAgY2hpcERlbm9taW5hdGlvbnM6IHN0cmluZztcbiAgZmluaXNoQmlnQmxpbmRzOiBzdHJpbmc7XG4gIGJyZWFrQ291bnQ6IHN0cmluZztcbiAgYnJlYWtNaW51dGVzOiBzdHJpbmc7XG4gIGFudGVTdGFydExldmVsOiBzdHJpbmc7XG4gIGNvbG9yVXBzOiBzdHJpbmc7XG4gIGV4cGVjdGVkUmVidXlzOiBzdHJpbmc7XG4gIGV4cGVjdGVkQWRkb25zOiBzdHJpbmc7XG59XG5cclxuaW50ZXJmYWNlIFBhcnNlZENhbGN1bGF0b3JTZXR0aW5ncyB7XG4gIHBsYXllcnM6IG51bWJlcjtcclxuICBzdGFydGluZ1N0YWNrOiBudW1iZXI7XHJcbiAgdGFyZ2V0SG91cnM6IG51bWJlcjtcbiAgbGV2ZWxNaW51dGVzOiBudW1iZXI7XG4gIHN0YXJ0aW5nQmlnQmxpbmQ6IG51bWJlcjtcbiAgY2hpcERlbm9taW5hdGlvbnM6IHN0cmluZztcbiAgZmluaXNoQmlnQmxpbmRzOiBudW1iZXI7XG4gIGJyZWFrQ291bnQ6IG51bWJlcjtcbiAgYnJlYWtNaW51dGVzOiBudW1iZXI7XG4gIGFudGVTdGFydExldmVsOiBudW1iZXI7XG4gIGNvbG9yVXBzOiBzdHJpbmc7XG4gIGV4cGVjdGVkUmVidXlzOiBudW1iZXI7XG4gIGV4cGVjdGVkQWRkb25zOiBudW1iZXI7XG4gIHJlYnV5Q2hpcHM6IG51bWJlcjtcbiAgYWRkb25DaGlwczogbnVtYmVyO1xufVxuXG50eXBlIENhbGN1bGF0b3JGaWVsZCA9IGtleW9mIENhbGN1bGF0b3JTZXR0aW5ncztcbnR5cGUgQ2FsY3VsYXRvckVycm9ycyA9IFBhcnRpYWw8UmVjb3JkPENhbGN1bGF0b3JGaWVsZCwgc3RyaW5nPj47XG5cbmZ1bmN0aW9uIGNyZWF0ZURlZmF1bHRDYWxjdWxhdG9yU2V0dGluZ3ModG91cm5hbWVudDogQmxpbmRTdHJ1Y3R1cmVDYWxjdWxhdG9yQ29udGV4dCk6IENhbGN1bGF0b3JTZXR0aW5ncyB7XG4gIGNvbnN0IHBsYXllcnMgPSBnZXREZWZhdWx0Q2FsY3VsYXRvclBsYXllcnModG91cm5hbWVudCk7XG4gIHJldHVybiB7XG4gICAgcGxheWVyczogU3RyaW5nKHBsYXllcnMpLFxuICAgIHN0YXJ0aW5nU3RhY2s6IHRvTnVtYmVyKHRvdXJuYW1lbnQucmVidXljaGlwcykgPiAwID8gU3RyaW5nKHRvTnVtYmVyKHRvdXJuYW1lbnQucmVidXljaGlwcykpIDogJzEwMDAwJyxcbiAgICB0YXJnZXRIb3VyczogJzMnLFxuICAgIGxldmVsTWludXRlczogJzIwJyxcbiAgICBzdGFydGluZ0JpZ0JsaW5kOiAnNTAnLFxuICAgIGNoaXBEZW5vbWluYXRpb25zOiBERUZBVUxUX0NISVBfREVOT01JTkFUSU9OUyxcbiAgICBmaW5pc2hCaWdCbGluZHM6ICcxNCcsXG4gICAgYnJlYWtDb3VudDogJzAnLFxuICAgIGJyZWFrTWludXRlczogJzEwJyxcbiAgICBhbnRlU3RhcnRMZXZlbDogJzAnLFxuICAgIGNvbG9yVXBzOiBERUZBVUxUX0NPTE9SX1VQUyxcbiAgICBleHBlY3RlZFJlYnV5czogdG91cm5hbWVudC5yZWJ1eXByaWNlID4gMCA/IFN0cmluZyhNYXRoLm1heChNYXRoLnJvdW5kKHBsYXllcnMgKiAwLjQpLCAwKSkgOiAnMCcsXG4gICAgZXhwZWN0ZWRBZGRvbnM6IHRvdXJuYW1lbnQuYWRkb25wcmljZSA+IDAgPyBTdHJpbmcoTWF0aC5tYXgoTWF0aC5yb3VuZChwbGF5ZXJzICogMC41KSwgMCkpIDogJzAnLFxuICB9O1xufVxuXHJcbmZ1bmN0aW9uIHRvRHJhZnRMZXZlbChsZXZlbDogQmxpbmRMZXZlbCk6IEJsaW5kU3RydWN0dXJlRHJhZnRMZXZlbCB7XG4gIHJldHVybiB7XHJcbiAgICBsZXZlbDogTnVtYmVyKGxldmVsLmxldmVsKSxcclxuICAgIGxhYmVsOiBsZXZlbC5sYWJlbCA/PyBgTGV2ZWwgJHtsZXZlbC5sZXZlbH1gLFxyXG4gICAgc21hbGxibGluZDogTnVtYmVyKGxldmVsLnNtYWxsYmxpbmQpLFxyXG4gICAgYmlnYmxpbmQ6IE51bWJlcihsZXZlbC5iaWdibGluZCksXHJcbiAgICBhbnRlOiBOdW1iZXIobGV2ZWwuYW50ZSksXHJcbiAgICBtaW51dGVzOiBOdW1iZXIobGV2ZWwubWludXRlcyksXHJcbiAgICBpc2xhc3RsZXZlbDogQm9vbGVhbihsZXZlbC5pc2xhc3RsZXZlbCksXHJcbiAgfTtcclxufVxyXG5cclxuZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gQmxpbmRUaW1lcih7IHRvdXJuYW1lbnRJZCwgaXNPd25lciwgdG91cm5hbWVudCB9OiBCbGluZFRpbWVyUHJvcHMpIHtcbiAgY29uc3QgcWMgPSB1c2VRdWVyeUNsaWVudCgpO1xyXG4gIGNvbnN0IFtlZGl0aW5nLCBzZXRFZGl0aW5nXSA9IHVzZVN0YXRlKGZhbHNlKTtcclxuICBjb25zdCBbc2F2ZVN0cnVjdHVyZU5hbWUsIHNldFNhdmVTdHJ1Y3R1cmVOYW1lXSA9IHVzZVN0YXRlKCcnKTtcclxuXHJcbiAgY29uc3QgeyBkYXRhOiBibGluZHMgPSBbXSwgaXNMb2FkaW5nIH0gPSB1c2VRdWVyeSh7XHJcbiAgICBxdWVyeUtleTogWydibGluZHMnLCB0b3VybmFtZW50SWRdLFxyXG4gICAgcXVlcnlGbjogKCkgPT4gYXBpLmdldEJsaW5kcyh0b3VybmFtZW50SWQpLFxyXG4gIH0pO1xyXG5cclxuICBjb25zdCBzYXZlTXV0YXRpb24gPSB1c2VNdXRhdGlvbih7XHJcbiAgICBtdXRhdGlvbkZuOiAobGV2ZWxzOiBCbGluZFN0cnVjdHVyZURyYWZ0TGV2ZWxbXSkgPT4gYXBpLnNhdmVCbGluZHModG91cm5hbWVudElkLCBsZXZlbHMpLFxuICAgIG9uU3VjY2VzczogKCkgPT4ge1xyXG4gICAgICBxYy5pbnZhbGlkYXRlUXVlcmllcyh7IHF1ZXJ5S2V5OiBbJ2JsaW5kcycsIHRvdXJuYW1lbnRJZF0gfSk7XHJcbiAgICAgIHNldEVkaXRpbmcoZmFsc2UpO1xyXG4gICAgfSxcclxuICB9KTtcclxuXHJcbiAgY29uc3Qgc2F2ZUdyb3VwU3RydWN0dXJlTXV0YXRpb24gPSB1c2VNdXRhdGlvbih7XHJcbiAgICBtdXRhdGlvbkZuOiAoeyBuYW1lLCBsZXZlbHMgfTogeyBuYW1lOiBzdHJpbmc7IGxldmVsczogQmxpbmRTdHJ1Y3R1cmVEcmFmdExldmVsW10gfSkgPT5cbiAgICAgIGFwaS5jcmVhdGVHcm91cEJsaW5kU3RydWN0dXJlKHRvdXJuYW1lbnQuZ3JvdXBpZCEsIHsgbmFtZSwgbGV2ZWxzIH0pLFxyXG4gICAgb25TdWNjZXNzOiAoKSA9PiB7XHJcbiAgICAgIHNldFNhdmVTdHJ1Y3R1cmVOYW1lKCcnKTtcclxuICAgICAgcWMuaW52YWxpZGF0ZVF1ZXJpZXMoeyBxdWVyeUtleTogWydncm91cCcsIHRvdXJuYW1lbnQuZ3JvdXBpZCwgJ2JsaW5kLXN0cnVjdHVyZXMnXSB9KTtcclxuICAgIH0sXHJcbiAgfSk7XHJcblxyXG4gIGNvbnN0IHZpc2libGVCbGluZHMgPSBibGluZHM7XHJcblxyXG4gIGlmIChpc0xvYWRpbmcpIHJldHVybiA8ZGl2IGNsYXNzTmFtZT1cIm10LTggdGV4dC1jZW50ZXIgdGV4dC1waXQtdGV4dFwiPkxvYWRpbmcuLi48L2Rpdj47XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cInNwYWNlLXktNlwiPlxyXG4gICAgICB7aXNPd25lciAmJiAoXHJcbiAgICAgICAgPEJsaW5kU3RydWN0dXJlQ2FsY3VsYXRvclxuICAgICAgICAgIHRvdXJuYW1lbnQ9e3RvdXJuYW1lbnR9XG4gICAgICAgICAgc2F2aW5nPXtzYXZlTXV0YXRpb24uaXNQZW5kaW5nfVxuICAgICAgICAgIGVycm9yPXtzYXZlTXV0YXRpb24uZXJyb3I/Lm1lc3NhZ2V9XG4gICAgICAgICAgb25TYXZlPXsobGV2ZWxzKSA9PiBzYXZlTXV0YXRpb24ubXV0YXRlKGxldmVscyl9XHJcbiAgICAgICAgLz5cclxuICAgICAgKX1cclxuXHJcbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2FyZCBzcGFjZS15LTRcIj5cclxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlbiBnYXAtM1wiPlxyXG4gICAgICAgICAgPGgzIGNsYXNzTmFtZT1cImZvbnQtc2VtaWJvbGQgdGV4dC13aGl0ZVwiPkJsaW5kIFN0cnVjdHVyZTwvaDM+XHJcbiAgICAgICAgICB7aXNPd25lciAmJiAoXHJcbiAgICAgICAgICAgIDxidXR0b24gY2xhc3NOYW1lPVwiYnRuLWdob3N0IHRleHQtc21cIiBvbkNsaWNrPXsoKSA9PiBzZXRFZGl0aW5nKCFlZGl0aW5nKX0+XHJcbiAgICAgICAgICAgICAge2VkaXRpbmcgPyAnQ2FuY2VsJyA6ICdFZGl0J31cclxuICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICApfVxyXG4gICAgICAgIDwvZGl2PlxyXG4gICAgICAgIHtlZGl0aW5nID8gKFxyXG4gICAgICAgICAgPEJsaW5kRWRpdG9yXHJcbiAgICAgICAgICAgIGluaXRpYWw9e3Zpc2libGVCbGluZHN9XHJcbiAgICAgICAgICAgIG9uU2F2ZT17KGxldmVscykgPT4gc2F2ZU11dGF0aW9uLm11dGF0ZShsZXZlbHMpfVxyXG4gICAgICAgICAgICBsb2FkaW5nPXtzYXZlTXV0YXRpb24uaXNQZW5kaW5nfVxyXG4gICAgICAgICAgICBlcnJvcj17c2F2ZU11dGF0aW9uLmVycm9yPy5tZXNzYWdlfVxyXG4gICAgICAgICAgLz5cclxuICAgICAgICApIDogKFxyXG4gICAgICAgICAgPEJsaW5kVGFibGUgYmxpbmRzPXt2aXNpYmxlQmxpbmRzfSAvPlxyXG4gICAgICAgICl9XHJcbiAgICAgICAge2lzT3duZXIgJiYgdG91cm5hbWVudC5ncm91cGlkICYmIHZpc2libGVCbGluZHMubGVuZ3RoID4gMCAmJiAoXHJcbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggZmxleC1jb2wgZ2FwLTIgcm91bmRlZC1sZyBib3JkZXIgYm9yZGVyLXBpdC1ib3JkZXIgYmctcGl0LWJnLzQwIHAtMyBzbTpmbGV4LXJvdyBzbTppdGVtcy1jZW50ZXJcIj5cclxuICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgY2xhc3NOYW1lPVwiaW5wdXQgZmxleC0xXCJcclxuICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIlNhdmUgdGhpcyBzdHJ1Y3R1cmUgdG8gZ3JvdXAgYXMuLi5cIlxyXG4gICAgICAgICAgICAgIHZhbHVlPXtzYXZlU3RydWN0dXJlTmFtZX1cclxuICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBzZXRTYXZlU3RydWN0dXJlTmFtZShldmVudC50YXJnZXQudmFsdWUpfVxyXG4gICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICAgICAgY2xhc3NOYW1lPVwiYnRuLWdob3N0IHNocmluay0wXCJcclxuICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzYXZlR3JvdXBTdHJ1Y3R1cmVNdXRhdGlvbi5tdXRhdGUoe1xyXG4gICAgICAgICAgICAgICAgbmFtZTogc2F2ZVN0cnVjdHVyZU5hbWUudHJpbSgpLFxyXG4gICAgICAgICAgICAgICAgbGV2ZWxzOiB2aXNpYmxlQmxpbmRzLm1hcCh0b0RyYWZ0TGV2ZWwpLFxyXG4gICAgICAgICAgICAgIH0pfVxyXG4gICAgICAgICAgICAgIGRpc2FibGVkPXtzYXZlR3JvdXBTdHJ1Y3R1cmVNdXRhdGlvbi5pc1BlbmRpbmcgfHwgIXNhdmVTdHJ1Y3R1cmVOYW1lLnRyaW0oKX1cclxuICAgICAgICAgICAgPlxyXG4gICAgICAgICAgICAgIDxTYXZlIHNpemU9ezE0fSAvPlxyXG4gICAgICAgICAgICAgIFNhdmUgdG8gR3JvdXBcclxuICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICApfVxyXG4gICAgICAgIHtzYXZlR3JvdXBTdHJ1Y3R1cmVNdXRhdGlvbi5lcnJvciAmJiAoXHJcbiAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LXNtIHRleHQtcmVkLTQwMFwiPntzYXZlR3JvdXBTdHJ1Y3R1cmVNdXRhdGlvbi5lcnJvci5tZXNzYWdlfTwvcD5cclxuICAgICAgICApfVxyXG4gICAgICA8L2Rpdj5cclxuICAgIDwvZGl2PlxyXG4gICk7XHJcbn1cclxuXHJcbmV4cG9ydCBmdW5jdGlvbiBCbGluZFN0cnVjdHVyZUNhbGN1bGF0b3Ioe1xuICB0b3VybmFtZW50LFxuICBzYXZpbmcsXG4gIGVycm9yLFxuICBvblNhdmUsXG4gIGluaXRpYWxseUV4cGFuZGVkID0gZmFsc2UsXG4gIHRpdGxlID0gJ0JsaW5kIFN0cnVjdHVyZSBDYWxjdWxhdG9yJyxcbiAgc2F2ZUxhYmVsID0gJ1NhdmUgR2VuZXJhdGVkJyxcbiAgc2F2ZURpc2FibGVkID0gZmFsc2UsXG59OiB7XG4gIHRvdXJuYW1lbnQ6IEJsaW5kU3RydWN0dXJlQ2FsY3VsYXRvckNvbnRleHQ7XG4gIHNhdmluZzogYm9vbGVhbjtcbiAgZXJyb3I/OiBzdHJpbmc7XG4gIG9uU2F2ZTogKGxldmVsczogQmxpbmRTdHJ1Y3R1cmVEcmFmdExldmVsW10pID0+IHZvaWQ7XG4gIGluaXRpYWxseUV4cGFuZGVkPzogYm9vbGVhbjtcbiAgdGl0bGU/OiBzdHJpbmc7XG4gIHNhdmVMYWJlbD86IHN0cmluZztcbiAgc2F2ZURpc2FibGVkPzogYm9vbGVhbjtcbn0pIHtcbiAgY29uc3QgW2V4cGFuZGVkLCBzZXRFeHBhbmRlZF0gPSB1c2VTdGF0ZShpbml0aWFsbHlFeHBhbmRlZCk7XG4gIGNvbnN0IGluaXRpYWxTZXR0aW5ncyA9IHVzZU1lbW8oKCkgPT4gY3JlYXRlRGVmYXVsdENhbGN1bGF0b3JTZXR0aW5ncyh0b3VybmFtZW50KSwgW3RvdXJuYW1lbnRdKTtcbiAgY29uc3QgW3NldHRpbmdzLCBzZXRTZXR0aW5nc10gPSB1c2VTdGF0ZTxDYWxjdWxhdG9yU2V0dGluZ3M+KGluaXRpYWxTZXR0aW5ncyk7XG5cbiAgY29uc3QgcGFyc2VkU2V0dGluZ3MgPSB1c2VNZW1vKFxuICAgICgpID0+IHBhcnNlQ2FsY3VsYXRvclNldHRpbmdzKHNldHRpbmdzLCB0b3VybmFtZW50KSxcbiAgICBbc2V0dGluZ3MsIHRvdXJuYW1lbnRdXG4gICk7XG4gIGNvbnN0IHZhbGlkYXRpb25FcnJvcnMgPSB1c2VNZW1vKCgpID0+IHZhbGlkYXRlQ2FsY3VsYXRvclNldHRpbmdzKHNldHRpbmdzKSwgW3NldHRpbmdzXSk7XG4gIGNvbnN0IGdlbmVyYXRlZExldmVscyA9IHVzZU1lbW8oXG4gICAgKCkgPT4gT2JqZWN0LmtleXModmFsaWRhdGlvbkVycm9ycykubGVuZ3RoID09PSAwID8gZ2VuZXJhdGVCbGluZFN0cnVjdHVyZShwYXJzZWRTZXR0aW5ncykgOiBbXSxcbiAgICBbcGFyc2VkU2V0dGluZ3MsIHZhbGlkYXRpb25FcnJvcnNdXG4gICk7XG4gIGNvbnN0IHRvdGFsQ2hpcHMgPSB1c2VNZW1vKCgpID0+IGNhbGN1bGF0ZVRvdGFsQ2hpcHMocGFyc2VkU2V0dGluZ3MpLCBbcGFyc2VkU2V0dGluZ3NdKTtcbiAgY29uc3QgcmVidXlzRW5hYmxlZCA9IHRvTnVtYmVyKHRvdXJuYW1lbnQucmVidXlwcmljZSkgPiAwICYmIHRvTnVtYmVyKHRvdXJuYW1lbnQucmVidXljaGlwcykgPiAwO1xuICBjb25zdCBhZGRvbnNFbmFibGVkID0gdG9OdW1iZXIodG91cm5hbWVudC5hZGRvbnByaWNlKSA+IDAgJiYgdG9OdW1iZXIodG91cm5hbWVudC5hZGRvbmNoaXBzKSA+IDA7XG4gIGNvbnN0IGNoaXBEZW5vbWluYXRpb25PcHRpb25zID0gdXNlTWVtbyhcbiAgICAoKSA9PiBwYXJzZUNoaXBEZW5vbWluYXRpb25zKHNldHRpbmdzLmNoaXBEZW5vbWluYXRpb25zKSxcbiAgICBbc2V0dGluZ3MuY2hpcERlbm9taW5hdGlvbnNdXG4gICk7XG4gIGNvbnN0IHNlbGVjdGVkQ2hpcFVwcyA9IHVzZU1lbW8oXG4gICAgKCkgPT4gc2VsZWN0ZWRDaGlwVXBEZW5vbWluYXRpb25zKHNldHRpbmdzLmNvbG9yVXBzLCBjaGlwRGVub21pbmF0aW9uT3B0aW9ucyksXG4gICAgW2NoaXBEZW5vbWluYXRpb25PcHRpb25zLCBzZXR0aW5ncy5jb2xvclVwc11cbiAgKTtcbiAgY29uc3QgYmxpbmRMZXZlbENvdW50ID0gZ2VuZXJhdGVkTGV2ZWxzLmZpbHRlcigobGV2ZWwpID0+ICFpc0JyZWFrTGV2ZWwobGV2ZWwpKS5sZW5ndGg7XG4gIGNvbnN0IGVzdGltYXRlZE1pbnV0ZXMgPSBnZW5lcmF0ZWRMZXZlbHMucmVkdWNlKCh0b3RhbCwgbGV2ZWwpID0+IHRvdGFsICsgTnVtYmVyKGxldmVsLm1pbnV0ZXMgfHwgMCksIDApO1xuICBjb25zdCBoYXNDaGFuZ2VzID0gSlNPTi5zdHJpbmdpZnkoc2V0dGluZ3MpICE9PSBKU09OLnN0cmluZ2lmeShpbml0aWFsU2V0dGluZ3MpO1xuICBjb25zdCBpc1ZhbGlkID0gT2JqZWN0LmtleXModmFsaWRhdGlvbkVycm9ycykubGVuZ3RoID09PSAwICYmIGdlbmVyYXRlZExldmVscy5sZW5ndGggPiAwO1xuXG4gIGZ1bmN0aW9uIHVwZGF0ZShmaWVsZDoga2V5b2YgQ2FsY3VsYXRvclNldHRpbmdzLCB2YWx1ZTogc3RyaW5nKSB7XG4gICAgc2V0U2V0dGluZ3MoKGN1cnJlbnQpID0+IHtcbiAgICAgIGlmIChmaWVsZCAhPT0gJ2NoaXBEZW5vbWluYXRpb25zJykgcmV0dXJuIHsgLi4uY3VycmVudCwgW2ZpZWxkXTogdmFsdWUgfTtcbiAgICAgIGNvbnN0IGN1cnJlbnRDaGlwT3B0aW9ucyA9IHBhcnNlQ2hpcERlbm9taW5hdGlvbnMoY3VycmVudC5jaGlwRGVub21pbmF0aW9ucyk7XG4gICAgICBjb25zdCBjdXJyZW50RGVmYXVsdCA9IGRlZmF1bHRDaGlwVXBEZW5vbWluYXRpb25zKGN1cnJlbnQuY2hpcERlbm9taW5hdGlvbnMpO1xuICAgICAgY29uc3QgY3VycmVudFNlbGVjdGVkID0gc2VsZWN0ZWRDaGlwVXBEZW5vbWluYXRpb25zKGN1cnJlbnQuY29sb3JVcHMsIGN1cnJlbnRDaGlwT3B0aW9ucyk7XG4gICAgICBjb25zdCBkZWZhdWx0U2VsZWN0ZWQgPSBzZWxlY3RlZENoaXBVcERlbm9taW5hdGlvbnMoY3VycmVudERlZmF1bHQsIGN1cnJlbnRDaGlwT3B0aW9ucyk7XG4gICAgICBjb25zdCBzaG91bGRVc2VOZXh0RGVmYXVsdCA9IGN1cnJlbnRTZWxlY3RlZC5qb2luKCcsJykgPT09IGRlZmF1bHRTZWxlY3RlZC5qb2luKCcsJyk7XG4gICAgICBjb25zdCBuZXh0Q2hpcE9wdGlvbnMgPSBwYXJzZUNoaXBEZW5vbWluYXRpb25zKHZhbHVlKTtcbiAgICAgIHJldHVybiB7XG4gICAgICAgIC4uLmN1cnJlbnQsXG4gICAgICAgIGNoaXBEZW5vbWluYXRpb25zOiB2YWx1ZSxcbiAgICAgICAgY29sb3JVcHM6IChzaG91bGRVc2VOZXh0RGVmYXVsdFxuICAgICAgICAgID8gbmV4dENoaXBPcHRpb25zLnNsaWNlKDAsIDIpXG4gICAgICAgICAgOiBjdXJyZW50U2VsZWN0ZWQuZmlsdGVyKChkZW5vbWluYXRpb24pID0+IG5leHRDaGlwT3B0aW9ucy5pbmNsdWRlcyhkZW5vbWluYXRpb24pKSlcbiAgICAgICAgICAuam9pbignLCcpLFxuICAgICAgfTtcbiAgICB9KTtcbiAgfVxuXG4gIGZ1bmN0aW9uIHRvZ2dsZUNoaXBVcERlbm9taW5hdGlvbihkZW5vbWluYXRpb246IG51bWJlcikge1xuICAgIHNldFNldHRpbmdzKChjdXJyZW50KSA9PiB7XG4gICAgICBjb25zdCBhdmFpbGFibGUgPSBwYXJzZUNoaXBEZW5vbWluYXRpb25zKGN1cnJlbnQuY2hpcERlbm9taW5hdGlvbnMpO1xuICAgICAgY29uc3Qgc2VsZWN0ZWQgPSBzZWxlY3RlZENoaXBVcERlbm9taW5hdGlvbnMoY3VycmVudC5jb2xvclVwcywgYXZhaWxhYmxlKTtcbiAgICAgIGNvbnN0IG5leHQgPSBzZWxlY3RlZC5pbmNsdWRlcyhkZW5vbWluYXRpb24pXG4gICAgICAgID8gc2VsZWN0ZWQuZmlsdGVyKCh2YWx1ZSkgPT4gdmFsdWUgIT09IGRlbm9taW5hdGlvbilcbiAgICAgICAgOiBbLi4uc2VsZWN0ZWQsIGRlbm9taW5hdGlvbl0uc29ydCgoYSwgYikgPT4gYSAtIGIpO1xuICAgICAgcmV0dXJuIHsgLi4uY3VycmVudCwgY29sb3JVcHM6IG5leHQuam9pbignLCcpIH07XG4gICAgfSk7XG4gIH1cblxuICBmdW5jdGlvbiByZXNldCgpIHtcbiAgICBzZXRTZXR0aW5ncyhpbml0aWFsU2V0dGluZ3MpO1xuICB9XG5cbiAgZnVuY3Rpb24gc2F2ZSgpIHtcbiAgICBpZiAoIWlzVmFsaWQgfHwgc2F2aW5nIHx8IHNhdmVEaXNhYmxlZCkgcmV0dXJuO1xuICAgIG9uU2F2ZShnZW5lcmF0ZWRMZXZlbHMpO1xuICB9XG5cbiAgcmV0dXJuIChcbiAgICA8ZGl2IGNsYXNzTmFtZT1cInNwYWNlLXktNFwiPlxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwiY2FyZCBvdmVyZmxvdy1oaWRkZW4gIXAtMFwiPlxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggbWluLWgtMTQgZmxleC13cmFwIGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gZ2FwLTMgcHgtNCBweS0zIHNtOnB4LTVcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggbWluLXctMCBpdGVtcy1jZW50ZXIgZ2FwLTIgdGV4dC13aGl0ZVwiPlxuICAgICAgICAgICAgPExheWVyczMgc2l6ZT17MTl9IGNsYXNzTmFtZT1cInNocmluay0wIHRleHQtcGl0LXRlYWxcIiAvPlxuICAgICAgICAgICAgPGgzIGNsYXNzTmFtZT1cInRydW5jYXRlIHRleHQtYmFzZSBmb250LXNlbWlib2xkIHNtOnRleHQtbGdcIj57dGl0bGV9PC9oMz5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcbiAgICAgICAgICAgIGNsYXNzTmFtZT1cImJ0bi1naG9zdCBtaW4taC0xMSBnYXAtMiBweC0zIHRleHQtc21cIlxuICAgICAgICAgICAgYXJpYS1leHBhbmRlZD17ZXhwYW5kZWR9XG4gICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzZXRFeHBhbmRlZCgodmFsdWUpID0+ICF2YWx1ZSl9XG4gICAgICAgICAgPlxuICAgICAgICAgICAge2V4cGFuZGVkID8gJ0NvbGxhcHNlJyA6ICdFeHBhbmQnfVxuICAgICAgICAgICAge2V4cGFuZGVkID8gPENoZXZyb25VcCBzaXplPXsxNn0gLz4gOiA8Q2hldnJvbkRvd24gc2l6ZT17MTZ9IC8+fVxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8L2Rpdj5cblxuICAgICAgICB7ZXhwYW5kZWQgJiYgKFxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYm9yZGVyLXQgYm9yZGVyLXBpdC1ib3JkZXIgcHgtMyBweS00IHNtOnB4LTUgc206cHktNVwiPlxuICAgICAgICAgICAge2Vycm9yICYmIDxwIGNsYXNzTmFtZT1cIm1iLTQgcm91bmRlZC1sZyBib3JkZXIgYm9yZGVyLXJlZC00MDAvMjUgYmctcmVkLTQwMC8xMCBweC0zIHB5LTIgdGV4dC1zbSB0ZXh0LXJlZC0zMDBcIj57ZXJyb3J9PC9wPn1cblxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJncmlkIG1pbi13LTAgZ2FwLTMgbGc6Z3JpZC1jb2xzLVttaW5tYXgoMCwxZnIpX21pbm1heCgwLDFmcildIHhsOmdyaWQtY29scy1bbWlubWF4KDAsMWZyKV9taW5tYXgoMCwxZnIpX21pbm1heCgwLDEuMjVmcildXCI+XG4gICAgICAgICAgICAgIDxXaXphcmRTZWN0aW9uIG51bWJlcj1cIjFcIiB0aXRsZT1cIlRvdXJuYW1lbnQgc2V0dXBcIiBpY29uPXs8VXNlcnMgc2l6ZT17MTZ9IC8+fT5cbiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImdyaWQgbWluLXctMCBncmlkLWNvbHMtMiBnYXAtMyBtYXgtWzM0OXB4XTpncmlkLWNvbHMtMVwiPlxuICAgICAgICAgICAgICAgICAgPE51bWJlckZpZWxkIGZpZWxkPVwicGxheWVyc1wiIGxhYmVsPVwiUGxheWVyc1wiIHZhbHVlPXtzZXR0aW5ncy5wbGF5ZXJzfSBtaW49ezJ9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLnBsYXllcnN9IG9uQ2hhbmdlPXsodmFsdWUpID0+IHVwZGF0ZSgncGxheWVycycsIHZhbHVlKX0gLz5cbiAgICAgICAgICAgICAgICAgIDxOdW1iZXJGaWVsZCBmaWVsZD1cInN0YXJ0aW5nU3RhY2tcIiBsYWJlbD1cIlN0YXJ0aW5nIHN0YWNrXCIgdmFsdWU9e3NldHRpbmdzLnN0YXJ0aW5nU3RhY2t9IG1pbj17MTAwfSBzdGVwPXsxMDB9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLnN0YXJ0aW5nU3RhY2t9IG9uQ2hhbmdlPXsodmFsdWUpID0+IHVwZGF0ZSgnc3RhcnRpbmdTdGFjaycsIHZhbHVlKX0gLz5cbiAgICAgICAgICAgICAgICAgIDxOdW1iZXJGaWVsZCBmaWVsZD1cInRhcmdldEhvdXJzXCIgbGFiZWw9XCJUYXJnZXQgaG91cnNcIiB2YWx1ZT17c2V0dGluZ3MudGFyZ2V0SG91cnN9IG1pbj17MC41fSBzdGVwPXswLjV9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLnRhcmdldEhvdXJzfSBvbkNoYW5nZT17KHZhbHVlKSA9PiB1cGRhdGUoJ3RhcmdldEhvdXJzJywgdmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgPE51bWJlckZpZWxkIGZpZWxkPVwibGV2ZWxNaW51dGVzXCIgbGFiZWw9XCJMZXZlbCBtaW51dGVzXCIgdmFsdWU9e3NldHRpbmdzLmxldmVsTWludXRlc30gbWluPXsxfSBlcnJvcj17dmFsaWRhdGlvbkVycm9ycy5sZXZlbE1pbnV0ZXN9IG9uQ2hhbmdlPXsodmFsdWUpID0+IHVwZGF0ZSgnbGV2ZWxNaW51dGVzJywgdmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAge3JlYnV5c0VuYWJsZWQgJiYgKFxuICAgICAgICAgICAgICAgICAgICA8TnVtYmVyRmllbGQgZmllbGQ9XCJleHBlY3RlZFJlYnV5c1wiIGxhYmVsPVwiRXhwZWN0ZWQgcmVidXlzXCIgdmFsdWU9e3NldHRpbmdzLmV4cGVjdGVkUmVidXlzfSBtaW49ezB9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLmV4cGVjdGVkUmVidXlzfSBvbkNoYW5nZT17KHZhbHVlKSA9PiB1cGRhdGUoJ2V4cGVjdGVkUmVidXlzJywgdmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgKX1cbiAgICAgICAgICAgICAgICAgIHthZGRvbnNFbmFibGVkICYmIChcbiAgICAgICAgICAgICAgICAgICAgPE51bWJlckZpZWxkIGZpZWxkPVwiZXhwZWN0ZWRBZGRvbnNcIiBsYWJlbD1cIkV4cGVjdGVkIGFkZC1vbnNcIiB2YWx1ZT17c2V0dGluZ3MuZXhwZWN0ZWRBZGRvbnN9IG1pbj17MH0gZXJyb3I9e3ZhbGlkYXRpb25FcnJvcnMuZXhwZWN0ZWRBZGRvbnN9IG9uQ2hhbmdlPXsodmFsdWUpID0+IHVwZGF0ZSgnZXhwZWN0ZWRBZGRvbnMnLCB2YWx1ZSl9IC8+XG4gICAgICAgICAgICAgICAgICApfVxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICA8L1dpemFyZFNlY3Rpb24+XG5cbiAgICAgICAgICAgICAgPFdpemFyZFNlY3Rpb24gbnVtYmVyPVwiMlwiIHRpdGxlPVwiQnJlYWtzICYgYW50ZXNcIiBpY29uPXs8Q29mZmVlIHNpemU9ezE2fSAvPn0+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJncmlkIG1pbi13LTAgZ3JpZC1jb2xzLTIgZ2FwLTMgbWF4LVszNDlweF06Z3JpZC1jb2xzLTFcIj5cbiAgICAgICAgICAgICAgICAgIDxOdW1iZXJGaWVsZCBmaWVsZD1cImJyZWFrQ291bnRcIiBsYWJlbD1cIkJyZWFrc1wiIHZhbHVlPXtzZXR0aW5ncy5icmVha0NvdW50fSBtaW49ezB9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLmJyZWFrQ291bnR9IG9uQ2hhbmdlPXsodmFsdWUpID0+IHVwZGF0ZSgnYnJlYWtDb3VudCcsIHZhbHVlKX0gLz5cbiAgICAgICAgICAgICAgICAgIDxOdW1iZXJGaWVsZCBmaWVsZD1cImJyZWFrTWludXRlc1wiIGxhYmVsPVwiQnJlYWsgbWludXRlc1wiIHZhbHVlPXtzZXR0aW5ncy5icmVha01pbnV0ZXN9IG1pbj17MX0gZXJyb3I9e3ZhbGlkYXRpb25FcnJvcnMuYnJlYWtNaW51dGVzfSBvbkNoYW5nZT17KHZhbHVlKSA9PiB1cGRhdGUoJ2JyZWFrTWludXRlcycsIHZhbHVlKX0gLz5cbiAgICAgICAgICAgICAgICAgIDxOdW1iZXJGaWVsZCBmaWVsZD1cInN0YXJ0aW5nQmlnQmxpbmRcIiBsYWJlbD1cIlN0YXJ0aW5nIEJCXCIgdmFsdWU9e3NldHRpbmdzLnN0YXJ0aW5nQmlnQmxpbmR9IG1pbj17MX0gZXJyb3I9e3ZhbGlkYXRpb25FcnJvcnMuc3RhcnRpbmdCaWdCbGluZH0gb25DaGFuZ2U9eyh2YWx1ZSkgPT4gdXBkYXRlKCdzdGFydGluZ0JpZ0JsaW5kJywgdmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgPE51bWJlckZpZWxkIGZpZWxkPVwiYW50ZVN0YXJ0TGV2ZWxcIiBsYWJlbD1cIkFudGUgc3RhcnRzIGF0IGxldmVsXCIgdmFsdWU9e3NldHRpbmdzLmFudGVTdGFydExldmVsfSBtaW49ezB9IGVycm9yPXt2YWxpZGF0aW9uRXJyb3JzLmFudGVTdGFydExldmVsfSBvbkNoYW5nZT17KHZhbHVlKSA9PiB1cGRhdGUoJ2FudGVTdGFydExldmVsJywgdmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICA8L1dpemFyZFNlY3Rpb24+XG5cbiAgICAgICAgICAgICAgPFdpemFyZFNlY3Rpb24gbnVtYmVyPVwiM1wiIHRpdGxlPVwiQ2hpcHNcIiBpY29uPXs8Q29pbnMgc2l6ZT17MTZ9IC8+fSBjbGFzc05hbWU9XCJsZzpjb2wtc3Bhbi0yIHhsOmNvbC1zcGFuLTFcIj5cbiAgICAgICAgICAgICAgICA8VGV4dEZpZWxkXG4gICAgICAgICAgICAgICAgICBmaWVsZD1cImNoaXBEZW5vbWluYXRpb25zXCJcbiAgICAgICAgICAgICAgICAgIGxhYmVsPVwiQ2hpcCBkZW5vbWluYXRpb25zXCJcbiAgICAgICAgICAgICAgICAgIHZhbHVlPXtzZXR0aW5ncy5jaGlwRGVub21pbmF0aW9uc31cbiAgICAgICAgICAgICAgICAgIHBsYWNlaG9sZGVyPVwiMjUsIDUwLCAxMDAsIDUwMCwgMTAwMFwiXG4gICAgICAgICAgICAgICAgICBlcnJvcj17dmFsaWRhdGlvbkVycm9ycy5jaGlwRGVub21pbmF0aW9uc31cbiAgICAgICAgICAgICAgICAgIGhlbHBlcj1cIkVudGVyIHRoZSBjaGlwIHZhbHVlcyBpbiBwbGF5LCBzZXBhcmF0ZWQgYnkgY29tbWFzLlwiXG4gICAgICAgICAgICAgICAgICBvbkNoYW5nZT17KHZhbHVlKSA9PiB1cGRhdGUoJ2NoaXBEZW5vbWluYXRpb25zJywgdmFsdWUpfVxuICAgICAgICAgICAgICAgIC8+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtaW4tdy0wIHNwYWNlLXktMlwiPlxuICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiYmxvY2sgdGV4dC14cyBmb250LW1lZGl1bSB0ZXh0LXBpdC10ZXh0XCI+Q2hpcC11cCBkZW5vbWluYXRpb25zPC9zcGFuPlxuICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IG1pbi1oLTExIGZsZXgtd3JhcCBpdGVtcy1jZW50ZXIgZ2FwLTJcIj5cbiAgICAgICAgICAgICAgICAgICAge2NoaXBEZW5vbWluYXRpb25PcHRpb25zLm1hcCgoZGVub21pbmF0aW9uKSA9PiB7XG4gICAgICAgICAgICAgICAgICAgICAgY29uc3Qgc2VsZWN0ZWQgPSBzZWxlY3RlZENoaXBVcHMuaW5jbHVkZXMoZGVub21pbmF0aW9uKTtcbiAgICAgICAgICAgICAgICAgICAgICByZXR1cm4gKFxuICAgICAgICAgICAgICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICAgICAgICAgICAgICBrZXk9e2Rlbm9taW5hdGlvbn1cbiAgICAgICAgICAgICAgICAgICAgICAgICAgdHlwZT1cImJ1dHRvblwiXG4gICAgICAgICAgICAgICAgICAgICAgICAgIGFyaWEtcHJlc3NlZD17c2VsZWN0ZWR9XG4gICAgICAgICAgICAgICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHRvZ2dsZUNoaXBVcERlbm9taW5hdGlvbihkZW5vbWluYXRpb24pfVxuICAgICAgICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9e2BtaW4taC0xMCByb3VuZGVkLWZ1bGwgYm9yZGVyIHB4LTMgcHktMS41IHRleHQteHMgZm9udC1zZW1pYm9sZCB0cmFuc2l0aW9uLWNvbG9ycyAke1xuICAgICAgICAgICAgICAgICAgICAgICAgICAgIHNlbGVjdGVkXG4gICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/ICdib3JkZXItcGl0LXRlYWwgYmctcGl0LXRlYWwvMTIgdGV4dC1waXQtdGVhbCBzaGFkb3ctWzBfMF8xNHB4X3JnYmEoMjAsMTg0LDE2NiwwLjA4KV0nXG4gICAgICAgICAgICAgICAgICAgICAgICAgICAgICA6ICdib3JkZXItcGl0LWJvcmRlciBiZy1waXQtYmcgdGV4dC1waXQtdGV4dCBob3Zlcjpib3JkZXItcGl0LXRlYWwvNDAgaG92ZXI6dGV4dC13aGl0ZSdcbiAgICAgICAgICAgICAgICAgICAgICAgICAgfWB9XG4gICAgICAgICAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICAgICAgICAgIHtkZW5vbWluYXRpb24udG9Mb2NhbGVTdHJpbmcoKX1cbiAgICAgICAgICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgICAgICAgICAgICk7XG4gICAgICAgICAgICAgICAgICAgIH0pfVxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LVsxMXB4XSBsZWFkaW5nLTQgdGV4dC1waXQtbXV0ZWRcIj5TZWxlY3RlZCBjaGlwcyBhcmUgcmVtb3ZlZCBhdCBuYXR1cmFsIHBhdXNlIHBvaW50cyBpbiB0aGUgZ2VuZXJhdGVkIHNjaGVkdWxlLjwvcD5cbiAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgPC9XaXphcmRTZWN0aW9uPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICl9XG4gICAgICA8L3NlY3Rpb24+XG5cbiAgICAgIHtleHBhbmRlZCAmJiAoXG4gICAgICAgIDxzZWN0aW9uIGNsYXNzTmFtZT1cImNhcmQgIXAtMFwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBmbGV4LWNvbCBnYXAtNCBib3JkZXItYiBib3JkZXItcGl0LWJvcmRlciBwLTQgc206cC01IGxnOmZsZXgtcm93IGxnOml0ZW1zLXN0YXJ0IGxnOmp1c3RpZnktYmV0d2VlblwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtaW4tdy0wIGZsZXgtMVwiPlxuICAgICAgICAgICAgICA8aDQgY2xhc3NOYW1lPVwidGV4dC1iYXNlIGZvbnQtc2VtaWJvbGQgdGV4dC13aGl0ZVwiPkJsaW5kIHNjaGVkdWxlPC9oND5cbiAgICAgICAgICAgICAgPFN0cnVjdHVyZVN1bW1hcnlcbiAgICAgICAgICAgICAgICB0b3RhbENoaXBzPXt0b3RhbENoaXBzfVxuICAgICAgICAgICAgICAgIGxldmVsQ291bnQ9e2JsaW5kTGV2ZWxDb3VudH1cbiAgICAgICAgICAgICAgICBtaW51dGVzPXtlc3RpbWF0ZWRNaW51dGVzfVxuICAgICAgICAgICAgICAgIHZhbGlkPXtpc1ZhbGlkfVxuICAgICAgICAgICAgICAvPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImhpZGRlbiBzaHJpbmstMCBnYXAtMiBtZDpmbGV4XCI+XG4gICAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cImJ0bi1naG9zdCBtaW4taC0xMSBnYXAtMlwiIG9uQ2xpY2s9e3Jlc2V0fSBkaXNhYmxlZD17IWhhc0NoYW5nZXMgfHwgc2F2aW5nfT5cbiAgICAgICAgICAgICAgICA8Um90YXRlQ2N3IHNpemU9ezE2fSAvPiBSZXNldFxuICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiYnRuLXByaW1hcnkgbWluLWgtMTEgbWluLXctNDAgZ2FwLTJcIiBvbkNsaWNrPXtzYXZlfSBkaXNhYmxlZD17IWlzVmFsaWQgfHwgc2F2aW5nIHx8IHNhdmVEaXNhYmxlZH0+XG4gICAgICAgICAgICAgICAgPFNhdmUgc2l6ZT17MTZ9IC8+IHtzYXZpbmcgPyAnU2F2aW5nLi4uJyA6IHNhdmVMYWJlbH1cbiAgICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgIHshaXNWYWxpZCA/IChcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicC00IHNtOnAtNVwiPlxuICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInJvdW5kZWQteGwgYm9yZGVyIGJvcmRlci1hbWJlci0zMDAvMjAgYmctYW1iZXItMzAwLzUgcHgtNCBweS0zIHRleHQtc20gdGV4dC1hbWJlci0xMDBcIj5cbiAgICAgICAgICAgICAgICBGaXggdGhlIGhpZ2hsaWdodGVkIHNldHRpbmdzIHRvIGdlbmVyYXRlIGEgYmxpbmQgc2NoZWR1bGUuXG4gICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgKSA6IChcbiAgICAgICAgICAgIDxHZW5lcmF0ZWRCbGluZFNjaGVkdWxlIGxldmVscz17Z2VuZXJhdGVkTGV2ZWxzfSAvPlxuICAgICAgICAgICl9XG4gICAgICAgIDwvc2VjdGlvbj5cbiAgICAgICl9XG5cbiAgICAgIHtleHBhbmRlZCAmJiAoXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3RpY2t5IGJvdHRvbS0wIHotMjAgLW14LTEgbXQtMyBib3JkZXItdCBib3JkZXItcGl0LWJvcmRlciBiZy1waXQtc3VyZmFjZS85NSBweC0zIHBiLVttYXgoMC43NXJlbSxlbnYoc2FmZS1hcmVhLWluc2V0LWJvdHRvbSkpXSBwdC0zIGJhY2tkcm9wLWJsdXIgbWQ6aGlkZGVuXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJteC1hdXRvIGZsZXggbWF4LXctc2NyZWVuLXNtIGdhcC0yXCI+XG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJidG4tZ2hvc3QgbWluLWgtMTEgdy0xMiBzaHJpbmstMCBweC0wXCIgYXJpYS1sYWJlbD1cIlJlc2V0IGJsaW5kIHN0cnVjdHVyZVwiIG9uQ2xpY2s9e3Jlc2V0fSBkaXNhYmxlZD17IWhhc0NoYW5nZXMgfHwgc2F2aW5nfT5cbiAgICAgICAgICAgICAgPFJvdGF0ZUNjdyBzaXplPXsxOH0gLz5cbiAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiYnRuLXByaW1hcnkgbWluLWgtMTEgbWluLXctMCBmbGV4LTEgZ2FwLTIgd2hpdGVzcGFjZS1ub3dyYXBcIiBvbkNsaWNrPXtzYXZlfSBkaXNhYmxlZD17IWlzVmFsaWQgfHwgc2F2aW5nIHx8IHNhdmVEaXNhYmxlZH0+XG4gICAgICAgICAgICAgIDxTYXZlIHNpemU9ezE3fSAvPiB7c2F2aW5nID8gJ1NhdmluZy4uLicgOiBzYXZlTGFiZWx9XG4gICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICApfVxuICAgIDwvZGl2PlxuICApO1xufVxuXG5mdW5jdGlvbiBXaXphcmRTZWN0aW9uKHtcbiAgbnVtYmVyLFxuICB0aXRsZSxcbiAgaWNvbixcbiAgY2xhc3NOYW1lID0gJycsXG4gIGNoaWxkcmVuLFxufToge1xuICBudW1iZXI6IHN0cmluZztcbiAgdGl0bGU6IHN0cmluZztcbiAgaWNvbjogUmVhY3QuUmVhY3ROb2RlO1xuICBjbGFzc05hbWU/OiBzdHJpbmc7XG4gIGNoaWxkcmVuOiBSZWFjdC5SZWFjdE5vZGU7XG59KSB7XG4gIHJldHVybiAoXG4gICAgPHNlY3Rpb24gY2xhc3NOYW1lPXtgbWluLXctMCBzcGFjZS15LTQgcm91bmRlZC14bCBib3JkZXIgYm9yZGVyLXBpdC1ib3JkZXIgYmctcGl0LWJnLzQ1IHAtMy41IHNtOnAtNCAke2NsYXNzTmFtZX1gfT5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIgdGV4dC1zbSBmb250LXNlbWlib2xkIHRleHQtd2hpdGVcIj5cbiAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiZmxleCBoLTYgdy02IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciByb3VuZGVkLWZ1bGwgYm9yZGVyIGJvcmRlci1waXQtdGVhbC8zMCBiZy1waXQtdGVhbC8xMCB0ZXh0LXhzIHRleHQtcGl0LXRlYWxcIj57bnVtYmVyfTwvc3Bhbj5cbiAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidGV4dC1waXQtdGVhbFwiPntpY29ufTwvc3Bhbj5cbiAgICAgICAgPGg0Pnt0aXRsZX08L2g0PlxuICAgICAgPC9kaXY+XG4gICAgICB7Y2hpbGRyZW59XG4gICAgPC9zZWN0aW9uPlxuICApO1xufVxuXG5mdW5jdGlvbiBUZXh0RmllbGQoe1xuICBmaWVsZCxcbiAgbGFiZWwsXG4gIHZhbHVlLFxuICBwbGFjZWhvbGRlcixcbiAgaGVscGVyLFxuICBlcnJvcixcbiAgb25DaGFuZ2UsXG59OiB7XG4gIGZpZWxkOiBDYWxjdWxhdG9yRmllbGQ7XG4gIGxhYmVsOiBzdHJpbmc7XG4gIHZhbHVlOiBzdHJpbmc7XG4gIHBsYWNlaG9sZGVyPzogc3RyaW5nO1xuICBoZWxwZXI/OiBzdHJpbmc7XG4gIGVycm9yPzogc3RyaW5nO1xuICBvbkNoYW5nZTogKHZhbHVlOiBzdHJpbmcpID0+IHZvaWQ7XG59KSB7XG4gIGNvbnN0IGVycm9ySWQgPSBlcnJvciA/IGAke2ZpZWxkfS1lcnJvcmAgOiB1bmRlZmluZWQ7XG4gIHJldHVybiAoXG4gICAgPGxhYmVsIGNsYXNzTmFtZT1cImJsb2NrIG1pbi13LTAgc3BhY2UteS0xLjVcIj5cbiAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInRleHQteHMgZm9udC1tZWRpdW0gdGV4dC1waXQtdGV4dFwiPntsYWJlbH08L3NwYW4+XG4gICAgICA8aW5wdXRcbiAgICAgICAgY2xhc3NOYW1lPXtgaW5wdXQgbWluLWgtMTEgdy1mdWxsIG1pbi13LTAgJHtlcnJvciA/ICdib3JkZXItcmVkLTQwMC82MCBmb2N1czpib3JkZXItcmVkLTQwMCcgOiAnJ31gfVxuICAgICAgICB0eXBlPVwidGV4dFwiXG4gICAgICAgIHBsYWNlaG9sZGVyPXtwbGFjZWhvbGRlcn1cbiAgICAgICAgdmFsdWU9e3ZhbHVlfVxuICAgICAgICBhcmlhLWludmFsaWQ9e0Jvb2xlYW4oZXJyb3IpfVxuICAgICAgICBhcmlhLWRlc2NyaWJlZGJ5PXtlcnJvcklkfVxuICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkNoYW5nZShldmVudC50YXJnZXQudmFsdWUpfVxuICAgICAgLz5cbiAgICAgIHtlcnJvclxuICAgICAgICA/IDxwIGlkPXtlcnJvcklkfSBjbGFzc05hbWU9XCJ0ZXh0LVsxMXB4XSBsZWFkaW5nLTQgdGV4dC1yZWQtMzAwXCI+e2Vycm9yfTwvcD5cbiAgICAgICAgOiBoZWxwZXIgJiYgPHAgY2xhc3NOYW1lPVwidGV4dC1bMTFweF0gbGVhZGluZy00IHRleHQtcGl0LW11dGVkXCI+e2hlbHBlcn08L3A+fVxuICAgIDwvbGFiZWw+XG4gICk7XG59XG5cbmZ1bmN0aW9uIE51bWJlckZpZWxkKHtcbiAgZmllbGQsXG4gIGxhYmVsLFxuICB2YWx1ZSxcbiAgbWluLFxuICBzdGVwID0gMSxcbiAgZXJyb3IsXG4gIG9uQ2hhbmdlLFxufToge1xuICBmaWVsZDogQ2FsY3VsYXRvckZpZWxkO1xuICBsYWJlbDogc3RyaW5nO1xuICB2YWx1ZTogc3RyaW5nO1xuICBtaW46IG51bWJlcjtcbiAgc3RlcD86IG51bWJlcjtcbiAgZXJyb3I/OiBzdHJpbmc7XG4gIG9uQ2hhbmdlOiAodmFsdWU6IHN0cmluZykgPT4gdm9pZDtcbn0pIHtcbiAgY29uc3QgZXJyb3JJZCA9IGVycm9yID8gYCR7ZmllbGR9LWVycm9yYCA6IHVuZGVmaW5lZDtcbiAgcmV0dXJuIChcbiAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYmxvY2sgbWluLXctMCBzcGFjZS15LTEuNVwiPlxuICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiYmxvY2sgbWluLWgtNCB0ZXh0LXhzIGZvbnQtbWVkaXVtIGxlYWRpbmctNCB0ZXh0LXBpdC10ZXh0XCI+e2xhYmVsfTwvc3Bhbj5cbiAgICAgIDxpbnB1dFxuICAgICAgICBjbGFzc05hbWU9e2BpbnB1dCBtaW4taC0xMSB3LWZ1bGwgbWluLXctMCB0YWJ1bGFyLW51bXMgJHtlcnJvciA/ICdib3JkZXItcmVkLTQwMC82MCBmb2N1czpib3JkZXItcmVkLTQwMCcgOiAnJ31gfVxuICAgICAgICB0eXBlPVwidGV4dFwiXG4gICAgICAgIGlucHV0TW9kZT17c3RlcCAlIDEgPT09IDAgPyAnbnVtZXJpYycgOiAnZGVjaW1hbCd9XG4gICAgICAgIGFyaWEtdmFsdWVtaW49e21pbn1cbiAgICAgICAgYXJpYS1pbnZhbGlkPXtCb29sZWFuKGVycm9yKX1cbiAgICAgICAgYXJpYS1kZXNjcmliZWRieT17ZXJyb3JJZH1cbiAgICAgICAgdmFsdWU9e3ZhbHVlfVxuICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkNoYW5nZShldmVudC50YXJnZXQudmFsdWUpfVxuICAgICAgLz5cbiAgICAgIHtlcnJvciAmJiA8cCBpZD17ZXJyb3JJZH0gY2xhc3NOYW1lPVwidGV4dC1bMTFweF0gbGVhZGluZy00IHRleHQtcmVkLTMwMFwiPntlcnJvcn08L3A+fVxuICAgIDwvbGFiZWw+XG4gICk7XG59XG5cbmZ1bmN0aW9uIFN0cnVjdHVyZVN1bW1hcnkoe1xuICB0b3RhbENoaXBzLFxuICBsZXZlbENvdW50LFxuICBtaW51dGVzLFxuICB2YWxpZCxcbn06IHtcbiAgdG90YWxDaGlwczogbnVtYmVyO1xuICBsZXZlbENvdW50OiBudW1iZXI7XG4gIG1pbnV0ZXM6IG51bWJlcjtcbiAgdmFsaWQ6IGJvb2xlYW47XG59KSB7XG4gIGNvbnN0IGhvdXJzID0gTWF0aC5mbG9vcihtaW51dGVzIC8gNjApO1xuICBjb25zdCByZW1haW5kZXIgPSBtaW51dGVzICUgNjA7XG4gIGNvbnN0IGR1cmF0aW9uID0gaG91cnMgPiAwID8gYCR7aG91cnN9aCR7cmVtYWluZGVyID8gYCAke3JlbWFpbmRlcn1tYCA6ICcnfWAgOiBgJHtyZW1haW5kZXJ9bWA7XG4gIGNvbnN0IG1ldHJpY3MgPSBbXG4gICAgeyBsYWJlbDogJ1RvdGFsIGNoaXBzJywgdmFsdWU6IHRvdGFsQ2hpcHMudG9Mb2NhbGVTdHJpbmcoKSwgaWNvbjogPENvaW5zIHNpemU9ezE4fSAvPiB9LFxuICAgIHsgbGFiZWw6ICdCbGluZCBsZXZlbHMnLCB2YWx1ZTogdmFsaWQgPyBsZXZlbENvdW50LnRvTG9jYWxlU3RyaW5nKCkgOiAnLScsIGljb246IDxMYXllcnMzIHNpemU9ezE4fSAvPiB9LFxuICAgIHsgbGFiZWw6ICdFc3QuIGR1cmF0aW9uJywgdmFsdWU6IHZhbGlkID8gZHVyYXRpb24gOiAnLScsIGljb246IDxDbG9jazMgc2l6ZT17MTh9IC8+IH0sXG4gICAgeyBsYWJlbDogJ1N0YXR1cycsIHZhbHVlOiB2YWxpZCA/ICdSZWFkeScgOiAnTmVlZHMgYXR0ZW50aW9uJywgaWNvbjogdmFsaWQgPyA8U2hpZWxkQ2hlY2sgc2l6ZT17MTh9IC8+IDogPENpcmNsZUdhdWdlIHNpemU9ezE4fSAvPiwgd2FybmluZzogIXZhbGlkIH0sXG4gIF07XG5cbiAgcmV0dXJuIChcbiAgICA8ZGl2IGNsYXNzTmFtZT1cIm10LTQgZ3JpZCBncmlkLWNvbHMtMiBnYXAtMiBzbTpncmlkLWNvbHMtNFwiPlxuICAgICAge21ldHJpY3MubWFwKChtZXRyaWMpID0+IChcbiAgICAgICAgPGRpdiBrZXk9e21ldHJpYy5sYWJlbH0gY2xhc3NOYW1lPVwibWluLXctMCByb3VuZGVkLXhsIGJvcmRlciBib3JkZXItcGl0LWJvcmRlciBiZy1waXQtYmcvNTUgcC0zXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9e2BtYi0yICR7bWV0cmljLndhcm5pbmcgPyAndGV4dC1hbWJlci0zMDAnIDogJ3RleHQtcGl0LXRlYWwnfWB9PnttZXRyaWMuaWNvbn08L2Rpdj5cbiAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LVsxMHB4XSBmb250LXNlbWlib2xkIHVwcGVyY2FzZSB0cmFja2luZy1bMC4xMmVtXSB0ZXh0LXBpdC1tdXRlZFwiPnttZXRyaWMubGFiZWx9PC9wPlxuICAgICAgICAgIDxwIGNsYXNzTmFtZT17YG10LTEgdHJ1bmNhdGUgdGV4dC1zbSBmb250LXNlbWlib2xkIHRhYnVsYXItbnVtcyBzbTp0ZXh0LWJhc2UgJHttZXRyaWMud2FybmluZyA/ICd0ZXh0LWFtYmVyLTIwMCcgOiAndGV4dC13aGl0ZSd9YH0+e21ldHJpYy52YWx1ZX08L3A+XG4gICAgICAgIDwvZGl2PlxuICAgICAgKSl9XG4gICAgPC9kaXY+XG4gICk7XG59XG5cbmZ1bmN0aW9uIEdlbmVyYXRlZEJsaW5kU2NoZWR1bGUoeyBsZXZlbHMgfTogeyBsZXZlbHM6IEJsaW5kU3RydWN0dXJlRHJhZnRMZXZlbFtdIH0pIHtcbiAgcmV0dXJuIChcbiAgICA8ZGl2PlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJoaWRkZW4gbWF4LWgtWzM0cmVtXSBvdmVyZmxvdy15LWF1dG8gbWQ6YmxvY2tcIj5cbiAgICAgICAgPHRhYmxlIGNsYXNzTmFtZT1cInctZnVsbCB0YWJsZS1maXhlZCB0ZXh0LXNtXCI+XG4gICAgICAgICAgPHRoZWFkIGNsYXNzTmFtZT1cInN0aWNreSB0b3AtMCB6LTEwIGJnLXBpdC1zdXJmYWNlIHRleHQteHMgdXBwZXJjYXNlIHRyYWNraW5nLVswLjFlbV0gdGV4dC1waXQtbXV0ZWRcIj5cbiAgICAgICAgICAgIDx0ciBjbGFzc05hbWU9XCJib3JkZXItYiBib3JkZXItcGl0LWJvcmRlclwiPlxuICAgICAgICAgICAgICA8dGggY2xhc3NOYW1lPVwidy1bMjQlXSBweC01IHB5LTMgdGV4dC1sZWZ0XCI+TGV2ZWw8L3RoPlxuICAgICAgICAgICAgICA8dGggY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHRcIj5TbWFsbCBibGluZDwvdGg+XG4gICAgICAgICAgICAgIDx0aCBjbGFzc05hbWU9XCJweC0zIHB5LTMgdGV4dC1yaWdodFwiPkJpZyBibGluZDwvdGg+XG4gICAgICAgICAgICAgIDx0aCBjbGFzc05hbWU9XCJweC0zIHB5LTMgdGV4dC1yaWdodFwiPkFudGU8L3RoPlxuICAgICAgICAgICAgICA8dGggY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHRcIj5EdXJhdGlvbjwvdGg+XG4gICAgICAgICAgICAgIDx0aCBjbGFzc05hbWU9XCJ3LVsxOCVdIHB4LTUgcHktMyB0ZXh0LWxlZnRcIj5Ob3RlczwvdGg+XG4gICAgICAgICAgICA8L3RyPlxuICAgICAgICAgIDwvdGhlYWQ+XG4gICAgICAgICAgPHRib2R5PlxuICAgICAgICAgICAge2xldmVscy5tYXAoKGxldmVsLCBpbmRleCkgPT4ge1xuICAgICAgICAgICAgICBjb25zdCBjaGlwVXAgPSBpc0NoaXBVcExldmVsKGxldmVsKTtcbiAgICAgICAgICAgICAgY29uc3QgYnJlYWtSb3cgPSBpc0JyZWFrTGV2ZWwobGV2ZWwpO1xuICAgICAgICAgICAgICByZXR1cm4gKFxuICAgICAgICAgICAgICAgIDx0clxuICAgICAgICAgICAgICAgICAga2V5PXtgJHtsZXZlbC5sZXZlbH0tJHtsZXZlbC5sYWJlbH0tJHtpbmRleH1gfVxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPXtgYm9yZGVyLWIgYm9yZGVyLXBpdC1ib3JkZXIvNDUgdHJhbnNpdGlvbi1jb2xvcnMgaG92ZXI6Ymctd2hpdGUvWzAuMDI1XSAke2NoaXBVcCA/ICdiZy1waXQtdGVhbC9bMC4wN10nIDogYnJlYWtSb3cgPyAnYmctYW1iZXItMzAwL1swLjA2XScgOiAnJ31gfVxuICAgICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICAgIDx0ZCBjbGFzc05hbWU9e2BweC01IHB5LTMgZm9udC1zZW1pYm9sZCAke2NoaXBVcCA/ICd0ZXh0LXBpdC10ZWFsJyA6IGJyZWFrUm93ID8gJ3RleHQtYW1iZXItMjAwJyA6ICd0ZXh0LXdoaXRlJ31gfT57bGV2ZWwubGFiZWx9PC90ZD5cbiAgICAgICAgICAgICAgICAgIHticmVha1JvdyA/IChcbiAgICAgICAgICAgICAgICAgICAgPD5cbiAgICAgICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHQgdGV4dC1waXQtbXV0ZWRcIj4tPC90ZD5cbiAgICAgICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHQgdGV4dC1waXQtbXV0ZWRcIj4tPC90ZD5cbiAgICAgICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHQgdGV4dC1waXQtbXV0ZWRcIj4tPC90ZD5cbiAgICAgICAgICAgICAgICAgICAgPC8+XG4gICAgICAgICAgICAgICAgICApIDogKFxuICAgICAgICAgICAgICAgICAgICA8PlxuICAgICAgICAgICAgICAgICAgICAgIDx0ZCBjbGFzc05hbWU9XCJweC0zIHB5LTMgdGV4dC1yaWdodCB0YWJ1bGFyLW51bXMgdGV4dC1waXQtdGV4dFwiPntsZXZlbC5zbWFsbGJsaW5kLnRvTG9jYWxlU3RyaW5nKCl9PC90ZD5cbiAgICAgICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHQgdGFidWxhci1udW1zIHRleHQtd2hpdGVcIj57bGV2ZWwuYmlnYmxpbmQudG9Mb2NhbGVTdHJpbmcoKX08L3RkPlxuICAgICAgICAgICAgICAgICAgICAgIDx0ZCBjbGFzc05hbWU9XCJweC0zIHB5LTMgdGV4dC1yaWdodCB0YWJ1bGFyLW51bXMgdGV4dC1waXQtdGV4dFwiPntsZXZlbC5hbnRlID4gMCA/IGxldmVsLmFudGUudG9Mb2NhbGVTdHJpbmcoKSA6ICctJ308L3RkPlxuICAgICAgICAgICAgICAgICAgICA8Lz5cbiAgICAgICAgICAgICAgICAgICl9XG4gICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHgtMyBweS0zIHRleHQtcmlnaHQgdGFidWxhci1udW1zIHRleHQtcGl0LXRleHRcIj57bGV2ZWwubWludXRlcyA+IDAgPyBgJHtsZXZlbC5taW51dGVzfSBtaW5gIDogJy0nfTwvdGQ+XG4gICAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPXtgcHgtNSBweS0zIHRleHQteHMgJHtjaGlwVXAgPyAndGV4dC1waXQtdGVhbCcgOiBicmVha1JvdyA/ICd0ZXh0LWFtYmVyLTIwMCcgOiAndGV4dC1waXQtbXV0ZWQnfWB9PntjaGlwVXAgPyAnQ2hpcCB1cCcgOiBicmVha1JvdyA/ICdCcmVhaycgOiAnJ308L3RkPlxuICAgICAgICAgICAgICAgIDwvdHI+XG4gICAgICAgICAgICAgICk7XG4gICAgICAgICAgICB9KX1cbiAgICAgICAgICA8L3Rib2R5PlxuICAgICAgICA8L3RhYmxlPlxuICAgICAgPC9kaXY+XG5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3BhY2UteS0yIHAtMyBtZDpoaWRkZW5cIj5cbiAgICAgICAge2xldmVscy5tYXAoKGxldmVsLCBpbmRleCkgPT4ge1xuICAgICAgICAgIGNvbnN0IGNoaXBVcCA9IGlzQ2hpcFVwTGV2ZWwobGV2ZWwpO1xuICAgICAgICAgIGNvbnN0IGJyZWFrUm93ID0gaXNCcmVha0xldmVsKGxldmVsKTtcbiAgICAgICAgICBpZiAoYnJlYWtSb3cpIHtcbiAgICAgICAgICAgIHJldHVybiAoXG4gICAgICAgICAgICAgIDxkaXZcbiAgICAgICAgICAgICAgICBrZXk9e2Ake2xldmVsLmxldmVsfS0ke2xldmVsLmxhYmVsfS0ke2luZGV4fWB9XG4gICAgICAgICAgICAgICAgY2xhc3NOYW1lPXtgZmxleCBtaW4taC0xNCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIGdhcC0zIHJvdW5kZWQteGwgYm9yZGVyIHB4LTMgcHktMi41ICR7Y2hpcFVwID8gJ2JvcmRlci1waXQtdGVhbC8zNSBiZy1waXQtdGVhbC9bMC4wOF0gdGV4dC1waXQtdGVhbCcgOiAnYm9yZGVyLWFtYmVyLTMwMC8zMCBiZy1hbWJlci0zMDAvWzAuMDddIHRleHQtYW1iZXItMTAwJ31gfVxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtaW4tdy0wXCI+XG4gICAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0cnVuY2F0ZSB0ZXh0LXNtIGZvbnQtc2VtaWJvbGRcIj57bGV2ZWwubGFiZWx9PC9wPlxuICAgICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwibXQtMC41IHRleHQtWzExcHhdIG9wYWNpdHktNzVcIj57Y2hpcFVwID8gJ0NoaXAtdXAgcGF1c2UnIDogJ1NjaGVkdWxlZCBicmVhayd9PC9wPlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInNocmluay0wIHRleHQteHMgZm9udC1tZWRpdW0gdGFidWxhci1udW1zXCI+e2xldmVsLm1pbnV0ZXMgPiAwID8gYCR7bGV2ZWwubWludXRlc30gbWluYCA6ICdQYXVzZSd9PC9zcGFuPlxuICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICk7XG4gICAgICAgICAgfVxuICAgICAgICAgIHJldHVybiAoXG4gICAgICAgICAgICA8ZGl2IGtleT17YCR7bGV2ZWwubGV2ZWx9LSR7bGV2ZWwubGFiZWx9LSR7aW5kZXh9YH0gY2xhc3NOYW1lPVwibWluLWgtMTQgcm91bmRlZC14bCBib3JkZXIgYm9yZGVyLXBpdC1ib3JkZXIgYmctcGl0LWJnLzQ1IHB4LTMgcHktMi41XCI+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIGdhcC0zXCI+XG4gICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1zbSBmb250LXNlbWlib2xkIHRleHQtd2hpdGVcIj57bGV2ZWwubGFiZWx9PC9wPlxuICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInRleHQteHMgdGFidWxhci1udW1zIHRleHQtcGl0LW11dGVkXCI+e2xldmVsLm1pbnV0ZXN9IG1pbjwvc3Bhbj5cbiAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cIm10LTEgdHJ1bmNhdGUgdGV4dC14cyB0YWJ1bGFyLW51bXMgdGV4dC1waXQtdGV4dFwiPlxuICAgICAgICAgICAgICAgIFNCIHtsZXZlbC5zbWFsbGJsaW5kLnRvTG9jYWxlU3RyaW5nKCl9IDxzcGFuIGNsYXNzTmFtZT1cInB4LTEgdGV4dC1waXQtbXV0ZWRcIj7Ctzwvc3Bhbj5cbiAgICAgICAgICAgICAgICBCQiB7bGV2ZWwuYmlnYmxpbmQudG9Mb2NhbGVTdHJpbmcoKX0gPHNwYW4gY2xhc3NOYW1lPVwicHgtMSB0ZXh0LXBpdC1tdXRlZFwiPsK3PC9zcGFuPlxuICAgICAgICAgICAgICAgIEFudGUge2xldmVsLmFudGUgPiAwID8gbGV2ZWwuYW50ZS50b0xvY2FsZVN0cmluZygpIDogJy0nfVxuICAgICAgICAgICAgICA8L3A+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICApO1xuICAgICAgICB9KX1cbiAgICAgIDwvZGl2PlxuICAgIDwvZGl2PlxuICApO1xufVxuXHJcbmZ1bmN0aW9uIEJsaW5kVGFibGUoeyBibGluZHMsIGN1cnJlbnRMZXZlbCB9OiB7IGJsaW5kczogQmxpbmRMZXZlbFtdOyBjdXJyZW50TGV2ZWw/OiBudW1iZXIgfSkge1xuICBpZiAoYmxpbmRzLmxlbmd0aCA9PT0gMCkgcmV0dXJuIDxwIGNsYXNzTmFtZT1cInRleHQtc20gdGV4dC1waXQtdGV4dFwiPk5vIGxldmVscyBkZWZpbmVkLjwvcD47XHJcbiAgcmV0dXJuIChcclxuICAgIDxkaXYgY2xhc3NOYW1lPVwib3ZlcmZsb3cteC1hdXRvXCI+XHJcbiAgICAgIDx0YWJsZSBjbGFzc05hbWU9XCJ3LWZ1bGwgdGV4dC1zbVwiPlxyXG4gICAgICAgIDx0aGVhZD5cclxuICAgICAgICAgIDx0ciBjbGFzc05hbWU9XCJib3JkZXItYiBib3JkZXItcGl0LWJvcmRlciB0ZXh0LXBpdC10ZXh0XCI+XHJcbiAgICAgICAgICAgIDx0aCBjbGFzc05hbWU9XCJwYi0yIHRleHQtbGVmdFwiPkxldmVsPC90aD5cclxuICAgICAgICAgICAgPHRoIGNsYXNzTmFtZT1cInBiLTIgdGV4dC1yaWdodFwiPlNCPC90aD5cclxuICAgICAgICAgICAgPHRoIGNsYXNzTmFtZT1cInBiLTIgdGV4dC1yaWdodFwiPkJCPC90aD5cclxuICAgICAgICAgICAgPHRoIGNsYXNzTmFtZT1cInBiLTIgdGV4dC1yaWdodFwiPkFudGU8L3RoPlxyXG4gICAgICAgICAgICA8dGggY2xhc3NOYW1lPVwicGItMiB0ZXh0LXJpZ2h0XCI+TWluPC90aD5cclxuICAgICAgICAgIDwvdHI+XHJcbiAgICAgICAgPC90aGVhZD5cclxuICAgICAgICA8dGJvZHk+XHJcbiAgICAgICAgICB7YmxpbmRzLm1hcCgoYmxpbmQpID0+IHtcbiAgICAgICAgICAgIGNvbnN0IGJyZWFrUm93ID0gaXNCcmVha0xldmVsKGJsaW5kKTtcbiAgICAgICAgICAgIGNvbnN0IGJyZWFrTGFiZWwgPSBmb3JtYXRCcmVha0xhYmVsKGJsaW5kKTtcbiAgICAgICAgICAgIHJldHVybiAoXG4gICAgICAgICAgICAgIDx0ciBrZXk9e2JsaW5kLmlkfSBjbGFzc05hbWU9e2Bib3JkZXItYiBib3JkZXItcGl0LWJvcmRlci80MCAke2JsaW5kLmxldmVsID09PSBjdXJyZW50TGV2ZWwgPyAnYmctcGl0LXRlYWwvMTAnIDogJyd9ICR7YnJlYWtSb3cgPyAnYmcteWVsbG93LTMwMC81IHRleHQteWVsbG93LTEwMCcgOiAnJ31gfT5cbiAgICAgICAgICAgICAgICA8dGQgY2xhc3NOYW1lPVwicHktMS41XCI+XG4gICAgICAgICAgICAgICAgICB7YnJlYWtSb3cgPyBicmVha0xhYmVsIDogYExldmVsICR7YmxpbmQubGV2ZWx9YH1cbiAgICAgICAgICAgICAgICAgIHtibGluZC5pc2xhc3RsZXZlbCAmJiA8c3BhbiBjbGFzc05hbWU9XCJtbC0xIHRleHQteHMgdGV4dC1waXQtbXV0ZWRcIj4obGFzdCk8L3NwYW4+fVxuICAgICAgICAgICAgICAgIDwvdGQ+XG4gICAgICAgICAgICAgICAge2JyZWFrUm93ID8gKFxyXG4gICAgICAgICAgICAgICAgICA8dGQgY29sU3Bhbj17M30gY2xhc3NOYW1lPVwidGV4dC1yaWdodCB0ZXh0LXhzIHVwcGVyY2FzZSB0cmFja2luZy13aWRlIHRleHQteWVsbG93LTEwMC84MFwiPkJyZWFrPC90ZD5cclxuICAgICAgICAgICAgICAgICkgOiAoXHJcbiAgICAgICAgICAgICAgICAgIDw+XHJcbiAgICAgICAgICAgICAgICAgICAgPHRkIGNsYXNzTmFtZT1cInRleHQtcmlnaHRcIj57YmxpbmQuc21hbGxibGluZC50b0xvY2FsZVN0cmluZygpfTwvdGQ+XHJcbiAgICAgICAgICAgICAgICAgICAgPHRkIGNsYXNzTmFtZT1cInRleHQtcmlnaHRcIj57YmxpbmQuYmlnYmxpbmQudG9Mb2NhbGVTdHJpbmcoKX08L3RkPlxyXG4gICAgICAgICAgICAgICAgICAgIDx0ZCBjbGFzc05hbWU9XCJ0ZXh0LXJpZ2h0XCI+e2JsaW5kLmFudGUgPiAwID8gYmxpbmQuYW50ZS50b0xvY2FsZVN0cmluZygpIDogJy0nfTwvdGQ+XHJcbiAgICAgICAgICAgICAgICAgIDwvPlxyXG4gICAgICAgICAgICAgICAgKX1cclxuICAgICAgICAgICAgICAgIDx0ZCBjbGFzc05hbWU9XCJ0ZXh0LXJpZ2h0XCI+e2JsaW5kLm1pbnV0ZXN9PC90ZD5cclxuICAgICAgICAgICAgICA8L3RyPlxyXG4gICAgICAgICAgICApO1xyXG4gICAgICAgICAgfSl9XHJcbiAgICAgICAgPC90Ym9keT5cclxuICAgICAgPC90YWJsZT5cclxuICAgIDwvZGl2PlxyXG4gICk7XHJcbn1cclxuXHJcbmZ1bmN0aW9uIEJsaW5kRWRpdG9yKHtcclxuICBpbml0aWFsLFxyXG4gIG9uU2F2ZSxcclxuICBsb2FkaW5nLFxyXG4gIGVycm9yLFxyXG59OiB7XHJcbiAgaW5pdGlhbDogQmxpbmRMZXZlbFtdO1xuICBvblNhdmU6IChsZXZlbHM6IEJsaW5kU3RydWN0dXJlRHJhZnRMZXZlbFtdKSA9PiB2b2lkO1xuICBsb2FkaW5nOiBib29sZWFuO1xyXG4gIGVycm9yPzogc3RyaW5nO1xyXG59KSB7XHJcbiAgY29uc3QgW2xldmVscywgc2V0TGV2ZWxzXSA9IHVzZVN0YXRlPEVkaXRhYmxlQmxpbmRMZXZlbFtdPihcbiAgICBpbml0aWFsLmxlbmd0aCA+IDBcclxuICAgICAgPyBpbml0aWFsLm1hcCgoeyBpZDogX2lkLCBzbWFsbGJsaW5kLCBiaWdibGluZCwgYW50ZSwgbWludXRlcywgLi4ucmVzdCB9KSA9PiAoe1xyXG4gICAgICAgIGxldmVsOiByZXN0LmxldmVsLFxyXG4gICAgICAgIGxhYmVsOiByZXN0LmxhYmVsID8/IGBMZXZlbCAke3Jlc3QubGV2ZWx9YCxcclxuICAgICAgICBzbWFsbGJsaW5kOiBTdHJpbmcoc21hbGxibGluZCksXHJcbiAgICAgICAgYmlnYmxpbmQ6IFN0cmluZyhiaWdibGluZCksXHJcbiAgICAgICAgYW50ZTogU3RyaW5nKGFudGUpLFxyXG4gICAgICAgIG1pbnV0ZXM6IFN0cmluZyhtaW51dGVzKSxcclxuICAgICAgICBpc2xhc3RsZXZlbDogQm9vbGVhbihyZXN0LmlzbGFzdGxldmVsKSxcclxuICAgICAgfSkpXHJcbiAgICAgIDogW3sgbGV2ZWw6IDEsIGxhYmVsOiAnTGV2ZWwgMScsIHNtYWxsYmxpbmQ6ICcyNScsIGJpZ2JsaW5kOiAnNTAnLCBhbnRlOiAnMCcsIG1pbnV0ZXM6ICcyMCcsIGlzbGFzdGxldmVsOiBmYWxzZSB9XVxyXG4gICk7XG4gIGNvbnN0IFtkcmFnSW5kZXgsIHNldERyYWdJbmRleF0gPSB1c2VTdGF0ZTxudW1iZXIgfCBudWxsPihudWxsKTtcbiAgY29uc3QgZWRpdG9yR3JpZENsYXNzID0gJ2dyaWQgZ3JpZC1jb2xzLVsyNnB4XzE1MHB4X21pbm1heCg3cmVtLDFmcilfbWlubWF4KDdyZW0sMWZyKV9taW5tYXgoN3JlbSwxZnIpXzkwcHhfbWlubWF4KDExcmVtLDEuMjVmcilfMzBweF0gaXRlbXMtY2VudGVyIGdhcC0yJztcblxyXG4gIGZ1bmN0aW9uIHVwZGF0ZShpbmRleDogbnVtYmVyLCBmaWVsZDoga2V5b2YgRWRpdGFibGVCbGluZExldmVsLCB2YWx1ZTogc3RyaW5nIHwgbnVtYmVyIHwgYm9vbGVhbikge1xyXG4gICAgc2V0TGV2ZWxzKChjdXJyZW50KSA9PiBjdXJyZW50Lm1hcCgobGV2ZWwsIGxldmVsSW5kZXgpID0+IGxldmVsSW5kZXggPT09IGluZGV4ID8geyAuLi5sZXZlbCwgW2ZpZWxkXTogdmFsdWUgfSA6IGxldmVsKSk7XHJcbiAgfVxyXG5cclxuICBmdW5jdGlvbiBhZGRMZXZlbCgpIHtcclxuICAgIGNvbnN0IGxhc3QgPSBsZXZlbHNbbGV2ZWxzLmxlbmd0aCAtIDFdO1xyXG4gICAgY29uc3QgbGFzdEJpZ0JsaW5kID0gcGFyc2VTZXR0aW5nKGxhc3Q/LmJpZ2JsaW5kID8/ICcnLCA1MCk7XHJcbiAgICBzZXRMZXZlbHMoKGN1cnJlbnQpID0+IFsuLi5jdXJyZW50LCB7XHJcbiAgICAgIGxldmVsOiBjdXJyZW50Lmxlbmd0aCArIDEsXHJcbiAgICAgIGxhYmVsOiBgTGV2ZWwgJHtjdXJyZW50Lmxlbmd0aCArIDF9YCxcclxuICAgICAgc21hbGxibGluZDogU3RyaW5nKGxhc3RCaWdCbGluZCksXHJcbiAgICAgIGJpZ2JsaW5kOiBTdHJpbmcobGFzdEJpZ0JsaW5kICogMiksXHJcbiAgICAgIGFudGU6IGxhc3Q/LmFudGUgPz8gJzAnLFxyXG4gICAgICBtaW51dGVzOiBsYXN0Py5taW51dGVzID8/ICcyMCcsXHJcbiAgICAgIGlzbGFzdGxldmVsOiBmYWxzZSxcclxuICAgIH1dKTtcclxuICB9XHJcblxyXG4gIGZ1bmN0aW9uIGFkZEJyZWFrKCkge1xyXG4gICAgc2V0TGV2ZWxzKChjdXJyZW50KSA9PiBbLi4uY3VycmVudCwge1xyXG4gICAgICBsZXZlbDogY3VycmVudC5sZW5ndGggKyAxLFxyXG4gICAgICBsYWJlbDogYEJyZWFrICR7Y3VycmVudC5maWx0ZXIoKGxldmVsKSA9PiBpc0JyZWFrRWRpdGFibGVMZXZlbChsZXZlbCkpLmxlbmd0aCArIDF9YCxcclxuICAgICAgc21hbGxibGluZDogJzAnLFxyXG4gICAgICBiaWdibGluZDogJzAnLFxyXG4gICAgICBhbnRlOiAnMCcsXHJcbiAgICAgIG1pbnV0ZXM6ICcxMCcsXHJcbiAgICAgIGlzbGFzdGxldmVsOiBmYWxzZSxcclxuICAgIH1dKTtcclxuICB9XHJcblxyXG4gIGZ1bmN0aW9uIHJlbW92ZUxldmVsKGluZGV4OiBudW1iZXIpIHtcclxuICAgIHNldExldmVscygoY3VycmVudCkgPT4gY3VycmVudFxyXG4gICAgICAuZmlsdGVyKChfbGV2ZWwsIGxldmVsSW5kZXgpID0+IGxldmVsSW5kZXggIT09IGluZGV4KVxyXG4gICAgICAubWFwKChsZXZlbCwgbGV2ZWxJbmRleCkgPT4gKHsgLi4ubGV2ZWwsIGxldmVsOiBsZXZlbEluZGV4ICsgMSB9KSkpO1xyXG4gIH1cclxuXHJcbiAgZnVuY3Rpb24gbW92ZUxldmVsKGZyb21JbmRleDogbnVtYmVyLCB0b0luZGV4OiBudW1iZXIpIHtcclxuICAgIGlmIChmcm9tSW5kZXggPT09IHRvSW5kZXggfHwgZnJvbUluZGV4IDwgMCB8fCB0b0luZGV4IDwgMCkgcmV0dXJuO1xyXG4gICAgc2V0TGV2ZWxzKChjdXJyZW50KSA9PiB7XHJcbiAgICAgIGNvbnN0IG5leHQgPSBbLi4uY3VycmVudF07XHJcbiAgICAgIGNvbnN0IFttb3ZlZF0gPSBuZXh0LnNwbGljZShmcm9tSW5kZXgsIDEpO1xyXG4gICAgICBpZiAoIW1vdmVkKSByZXR1cm4gY3VycmVudDtcclxuICAgICAgbmV4dC5zcGxpY2UodG9JbmRleCwgMCwgbW92ZWQpO1xyXG4gICAgICByZXR1cm4gbmV4dC5tYXAoKGxldmVsLCBsZXZlbEluZGV4KSA9PiAoeyAuLi5sZXZlbCwgbGV2ZWw6IGxldmVsSW5kZXggKyAxIH0pKTtcclxuICAgIH0pO1xyXG4gIH1cclxuXHJcbiAgZnVuY3Rpb24gc2F2ZSgpIHtcbiAgICBvblNhdmUobGV2ZWxzLm1hcCgobGV2ZWwsIGluZGV4KSA9PiAoe1xuICAgICAgLi4ubGV2ZWwsXG4gICAgICBsYWJlbDogaXNCcmVha0VkaXRhYmxlTGV2ZWwobGV2ZWwpID8gbm9ybWFsaXplRWRpdGFibGVCcmVha0xhYmVsKGxldmVsLmxhYmVsLCBpbmRleCkgOiBgTGV2ZWwgJHtpbmRleCArIDF9YCxcbiAgICAgIHNtYWxsYmxpbmQ6IHBhcnNlU2V0dGluZyhsZXZlbC5zbWFsbGJsaW5kLCAwKSxcbiAgICAgIGJpZ2JsaW5kOiBwYXJzZVNldHRpbmcobGV2ZWwuYmlnYmxpbmQsIDApLFxuICAgICAgYW50ZTogcGFyc2VTZXR0aW5nKGxldmVsLmFudGUsIDApLFxuICAgICAgbWludXRlczogcGFyc2VTZXR0aW5nKGxldmVsLm1pbnV0ZXMsIDEpLFxyXG4gICAgICBpc2xhc3RsZXZlbDogaW5kZXggPT09IGxldmVscy5sZW5ndGggLSAxLFxyXG4gICAgfSkpKTtcclxuICB9XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cInNwYWNlLXktM1wiPlxuICAgICAge2Vycm9yICYmIDxwIGNsYXNzTmFtZT1cInRleHQtc20gdGV4dC1yZWQtNDAwXCI+e2Vycm9yfTwvcD59XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cIm92ZXJmbG93LXgtYXV0b1wiPlxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm1pbi13LVs1MHJlbV1cIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT17YCR7ZWRpdG9yR3JpZENsYXNzfSBib3JkZXItYiBib3JkZXItcGl0LWJvcmRlciBweC0yIHBiLTEgdGV4dC1bMTBweF0gZm9udC1zZW1pYm9sZCB1cHBlcmNhc2UgdHJhY2tpbmctWzAuMTZlbV0gdGV4dC1waXQtbXV0ZWRgfT5cbiAgICAgICAgICAgIDxzcGFuIGFyaWEtaGlkZGVuPVwidHJ1ZVwiIC8+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJweC0yIHBiLTFcIj5MZXZlbDwvc3Bhbj5cbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInB4LTMgcGItMVwiPlNCPC9zcGFuPlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwicHgtMyBwYi0xXCI+QkI8L3NwYW4+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJweC0zIHBiLTFcIj5BbnRlPC9zcGFuPlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwicHgtMyBwYi0xXCI+TWluPC9zcGFuPlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwicHgtMyBwYi0xXCI+QnJlYWsgbm90ZTwvc3Bhbj5cbiAgICAgICAgICAgIDxzcGFuIGFyaWEtaGlkZGVuPVwidHJ1ZVwiIC8+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzcGFjZS15LTIgcHQtMlwiPlxuICAgICAgICAgICAge2xldmVscy5tYXAoKGxldmVsLCBpbmRleCkgPT4ge1xuICAgICAgICAgICAgICBjb25zdCBicmVha1JvdyA9IGlzQnJlYWtFZGl0YWJsZUxldmVsKGxldmVsKTtcbiAgICAgICAgICAgICAgY29uc3Qgcm93TGFiZWwgPSBicmVha1JvdyA/IGdldEJyZWFrQmFzZUxhYmVsKGxldmVsLmxhYmVsLCBpbmRleCkgOiBgTGV2ZWwgJHtpbmRleCArIDF9YDtcbiAgICAgICAgICAgICAgcmV0dXJuIChcbiAgICAgICAgICAgICAgICA8ZGl2XG4gICAgICAgICAgICAgICAgICBrZXk9e2luZGV4fVxuICAgICAgICAgICAgICAgICAgZHJhZ2dhYmxlXG4gICAgICAgICAgICAgICAgICBvbkRyYWdTdGFydD17KCkgPT4gc2V0RHJhZ0luZGV4KGluZGV4KX1cbiAgICAgICAgICAgICAgICAgIG9uRHJhZ092ZXI9eyhldmVudCkgPT4gZXZlbnQucHJldmVudERlZmF1bHQoKX1cbiAgICAgICAgICAgICAgICAgIG9uRHJvcD17KCkgPT4ge1xuICAgICAgICAgICAgICAgICAgICBpZiAoZHJhZ0luZGV4ICE9IG51bGwpIG1vdmVMZXZlbChkcmFnSW5kZXgsIGluZGV4KTtcbiAgICAgICAgICAgICAgICAgICAgc2V0RHJhZ0luZGV4KG51bGwpO1xuICAgICAgICAgICAgICAgICAgfX1cbiAgICAgICAgICAgICAgICAgIG9uRHJhZ0VuZD17KCkgPT4gc2V0RHJhZ0luZGV4KG51bGwpfVxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPXtgJHtlZGl0b3JHcmlkQ2xhc3N9IHJvdW5kZWQtbGcgdGV4dC1zbSAke2RyYWdJbmRleCA9PT0gaW5kZXggPyAnYmctcGl0LXRlYWwvMTAnIDogJyd9YH1cbiAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaC1mdWxsIGN1cnNvci1ncmFiIGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciB0ZXh0LXBpdC1tdXRlZCBhY3RpdmU6Y3Vyc29yLWdyYWJiaW5nXCI+XG4gICAgICAgICAgICAgICAgICAgIDxHcmlwVmVydGljYWwgc2l6ZT17MTV9IC8+XG4gICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPXtgcHgtMiB0ZXh0LXhzIGZvbnQtbWVkaXVtICR7YnJlYWtSb3cgPyAndGV4dC15ZWxsb3ctMTAwJyA6ICd0ZXh0LXBpdC10ZXh0J31gfT57cm93TGFiZWx9PC9kaXY+XG4gICAgICAgICAgICAgICAgICB7YnJlYWtSb3cgPyAoXG4gICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY29sLXNwYW4tMyByb3VuZGVkLWxnIGJvcmRlciBib3JkZXIteWVsbG93LTMwMC8xNSBiZy15ZWxsb3ctMzAwLzUgcHgtMyBweS0yLjUgdGV4dC1jZW50ZXIgdGV4dC14cyBmb250LXNlbWlib2xkIHVwcGVyY2FzZSB0cmFja2luZy1bMC4xOGVtXSB0ZXh0LXllbGxvdy0xMDBcIj5cbiAgICAgICAgICAgICAgICAgICAgICBCcmVha1xuICAgICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICAgICkgOiAoXG4gICAgICAgICAgICAgICAgICAgIDw+XG4gICAgICAgICAgICAgICAgICAgICAgPGlucHV0IGNsYXNzTmFtZT1cImlucHV0IHRleHQteHNcIiB0eXBlPVwidGV4dFwiIGlucHV0TW9kZT1cIm51bWVyaWNcIiBwbGFjZWhvbGRlcj1cIlNCXCIgYXJpYS1sYWJlbD17YExldmVsICR7aW5kZXggKyAxfSBzbWFsbCBibGluZGB9IHZhbHVlPXtsZXZlbC5zbWFsbGJsaW5kfSBvbkNoYW5nZT17KGV2ZW50KSA9PiB1cGRhdGUoaW5kZXgsICdzbWFsbGJsaW5kJywgZXZlbnQudGFyZ2V0LnZhbHVlKX0gLz5cbiAgICAgICAgICAgICAgICAgICAgICA8aW5wdXQgY2xhc3NOYW1lPVwiaW5wdXQgdGV4dC14c1wiIHR5cGU9XCJ0ZXh0XCIgaW5wdXRNb2RlPVwibnVtZXJpY1wiIHBsYWNlaG9sZGVyPVwiQkJcIiBhcmlhLWxhYmVsPXtgTGV2ZWwgJHtpbmRleCArIDF9IGJpZyBibGluZGB9IHZhbHVlPXtsZXZlbC5iaWdibGluZH0gb25DaGFuZ2U9eyhldmVudCkgPT4gdXBkYXRlKGluZGV4LCAnYmlnYmxpbmQnLCBldmVudC50YXJnZXQudmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgICAgIDxpbnB1dCBjbGFzc05hbWU9XCJpbnB1dCB0ZXh0LXhzXCIgdHlwZT1cInRleHRcIiBpbnB1dE1vZGU9XCJudW1lcmljXCIgcGxhY2Vob2xkZXI9XCJBbnRlXCIgYXJpYS1sYWJlbD17YExldmVsICR7aW5kZXggKyAxfSBhbnRlYH0gdmFsdWU9e2xldmVsLmFudGV9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IHVwZGF0ZShpbmRleCwgJ2FudGUnLCBldmVudC50YXJnZXQudmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgICA8Lz5cbiAgICAgICAgICAgICAgICAgICl9XG4gICAgICAgICAgICAgICAgICA8aW5wdXQgY2xhc3NOYW1lPVwiaW5wdXQgdGV4dC14c1wiIHR5cGU9XCJ0ZXh0XCIgaW5wdXRNb2RlPVwibnVtZXJpY1wiIHBsYWNlaG9sZGVyPVwiTWluXCIgYXJpYS1sYWJlbD17YExldmVsICR7aW5kZXggKyAxfSBtaW51dGVzYH0gdmFsdWU9e2xldmVsLm1pbnV0ZXN9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IHVwZGF0ZShpbmRleCwgJ21pbnV0ZXMnLCBldmVudC50YXJnZXQudmFsdWUpfSAvPlxuICAgICAgICAgICAgICAgICAgPGlucHV0XG4gICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cImlucHV0IHRleHQteHNcIlxuICAgICAgICAgICAgICAgICAgICB0eXBlPVwidGV4dFwiXG4gICAgICAgICAgICAgICAgICAgIHBsYWNlaG9sZGVyPXticmVha1JvdyA/ICdPcHRpb25hbCBicmVhayBub3RlJyA6ICctJ31cbiAgICAgICAgICAgICAgICAgICAgYXJpYS1sYWJlbD17YExldmVsICR7aW5kZXggKyAxfSBicmVhayBub3RlYH1cbiAgICAgICAgICAgICAgICAgICAgdmFsdWU9e2JyZWFrUm93ID8gZ2V0QnJlYWtOb3RlKGxldmVsLmxhYmVsKSA6ICcnfVxuICAgICAgICAgICAgICAgICAgICBkaXNhYmxlZD17IWJyZWFrUm93fVxuICAgICAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiB1cGRhdGUoaW5kZXgsICdsYWJlbCcsIGJ1aWxkQnJlYWtMYWJlbChsZXZlbC5sYWJlbCwgaW5kZXgsIGV2ZW50LnRhcmdldC52YWx1ZSkpfVxuICAgICAgICAgICAgICAgICAgLz5cbiAgICAgICAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIG9uQ2xpY2s9eygpID0+IHJlbW92ZUxldmVsKGluZGV4KX0gY2xhc3NOYW1lPVwidGV4dC1sZyBsZWFkaW5nLW5vbmUgdGV4dC1yZWQtNDAwIGhvdmVyOnRleHQtcmVkLTMwMFwiPng8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgKTtcbiAgICAgICAgICAgIH0pfVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvZGl2PlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGdhcC0yIHB0LTJcIj5cbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiYnRuLWdob3N0IHRleHQtc21cIiBvbkNsaWNrPXthZGRMZXZlbH0+QWRkIExldmVsPC9idXR0b24+XHJcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiYnRuLWdob3N0IHRleHQtc21cIiBvbkNsaWNrPXthZGRCcmVha30+QWRkIEJyZWFrPC9idXR0b24+XHJcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiYnRuLXByaW1hcnkgdGV4dC1zbVwiIG9uQ2xpY2s9e3NhdmV9IGRpc2FibGVkPXtsb2FkaW5nfT5cclxuICAgICAgICAgIHtsb2FkaW5nID8gJ1NhdmluZy4uLicgOiAnU2F2ZSBTdHJ1Y3R1cmUnfVxyXG4gICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICA8L2Rpdj5cclxuICAgIDwvZGl2PlxyXG4gICk7XHJcbn1cclxuXHJcbmZ1bmN0aW9uIHBhcnNlQ2FsY3VsYXRvclNldHRpbmdzKHNldHRpbmdzOiBDYWxjdWxhdG9yU2V0dGluZ3MsIHRvdXJuYW1lbnQ6IEJsaW5kU3RydWN0dXJlQ2FsY3VsYXRvckNvbnRleHQpOiBQYXJzZWRDYWxjdWxhdG9yU2V0dGluZ3Mge1xuICByZXR1cm4ge1xyXG4gICAgcGxheWVyczogcGFyc2VTZXR0aW5nKHNldHRpbmdzLnBsYXllcnMsIDIpLFxyXG4gICAgc3RhcnRpbmdTdGFjazogcGFyc2VTZXR0aW5nKHNldHRpbmdzLnN0YXJ0aW5nU3RhY2ssIDEwMCksXHJcbiAgICB0YXJnZXRIb3VyczogcGFyc2VTZXR0aW5nKHNldHRpbmdzLnRhcmdldEhvdXJzLCAwLjUpLFxuICAgIGxldmVsTWludXRlczogcGFyc2VTZXR0aW5nKHNldHRpbmdzLmxldmVsTWludXRlcywgMSksXG4gICAgc3RhcnRpbmdCaWdCbGluZDogcGFyc2VTZXR0aW5nKHNldHRpbmdzLnN0YXJ0aW5nQmlnQmxpbmQsIDEpLFxuICAgIGNoaXBEZW5vbWluYXRpb25zOiBzZXR0aW5ncy5jaGlwRGVub21pbmF0aW9ucyxcbiAgICBmaW5pc2hCaWdCbGluZHM6IHBhcnNlU2V0dGluZyhzZXR0aW5ncy5maW5pc2hCaWdCbGluZHMsIDE0KSxcbiAgICBicmVha0NvdW50OiBNYXRoLm1heCgwLCBNYXRoLmZsb29yKHBhcnNlU2V0dGluZyhzZXR0aW5ncy5icmVha0NvdW50LCAwKSkpLFxuICAgIGJyZWFrTWludXRlczogcGFyc2VTZXR0aW5nKHNldHRpbmdzLmJyZWFrTWludXRlcywgMSksXG4gICAgYW50ZVN0YXJ0TGV2ZWw6IHBhcnNlU2V0dGluZyhzZXR0aW5ncy5hbnRlU3RhcnRMZXZlbCwgMCksXG4gICAgY29sb3JVcHM6IHNldHRpbmdzLmNvbG9yVXBzLFxuICAgIGV4cGVjdGVkUmVidXlzOiBwYXJzZVNldHRpbmcoc2V0dGluZ3MuZXhwZWN0ZWRSZWJ1eXMsIDApLFxuICAgIGV4cGVjdGVkQWRkb25zOiBwYXJzZVNldHRpbmcoc2V0dGluZ3MuZXhwZWN0ZWRBZGRvbnMsIDApLFxuICAgIHJlYnV5Q2hpcHM6IHRvTnVtYmVyKHRvdXJuYW1lbnQucmVidXljaGlwcyksXG4gICAgYWRkb25DaGlwczogdG9OdW1iZXIodG91cm5hbWVudC5hZGRvbmNoaXBzKSxcclxuICB9O1xufVxuXG5mdW5jdGlvbiB2YWxpZGF0ZUNhbGN1bGF0b3JTZXR0aW5ncyhzZXR0aW5nczogQ2FsY3VsYXRvclNldHRpbmdzKTogQ2FsY3VsYXRvckVycm9ycyB7XG4gIGNvbnN0IGVycm9yczogQ2FsY3VsYXRvckVycm9ycyA9IHt9O1xuICBjb25zdCB2YWxpZGF0ZU51bWJlciA9IChcbiAgICBmaWVsZDogQ2FsY3VsYXRvckZpZWxkLFxuICAgIGxhYmVsOiBzdHJpbmcsXG4gICAgbWluaW11bTogbnVtYmVyLFxuICAgIG9wdGlvbnM6IHsgaW50ZWdlcj86IGJvb2xlYW47IG1heGltdW0/OiBudW1iZXIgfSA9IHt9XG4gICkgPT4ge1xuICAgIGNvbnN0IHJhdyA9IHNldHRpbmdzW2ZpZWxkXS50cmltKCk7XG4gICAgY29uc3QgdmFsdWUgPSBOdW1iZXIocmF3KTtcbiAgICBpZiAoIXJhdyB8fCAhTnVtYmVyLmlzRmluaXRlKHZhbHVlKSkge1xuICAgICAgZXJyb3JzW2ZpZWxkXSA9IGAke2xhYmVsfSBpcyByZXF1aXJlZC5gO1xuICAgICAgcmV0dXJuO1xuICAgIH1cbiAgICBpZiAodmFsdWUgPCBtaW5pbXVtKSB7XG4gICAgICBlcnJvcnNbZmllbGRdID0gYCR7bGFiZWx9IG11c3QgYmUgYXQgbGVhc3QgJHttaW5pbXVtfS5gO1xuICAgICAgcmV0dXJuO1xuICAgIH1cbiAgICBpZiAob3B0aW9ucy5tYXhpbXVtICE9PSB1bmRlZmluZWQgJiYgdmFsdWUgPiBvcHRpb25zLm1heGltdW0pIHtcbiAgICAgIGVycm9yc1tmaWVsZF0gPSBgJHtsYWJlbH0gY2Fubm90IGV4Y2VlZCAke29wdGlvbnMubWF4aW11bX0uYDtcbiAgICAgIHJldHVybjtcbiAgICB9XG4gICAgaWYgKG9wdGlvbnMuaW50ZWdlciAmJiAhTnVtYmVyLmlzSW50ZWdlcih2YWx1ZSkpIGVycm9yc1tmaWVsZF0gPSBgJHtsYWJlbH0gbXVzdCBiZSBhIHdob2xlIG51bWJlci5gO1xuICB9O1xuXG4gIHZhbGlkYXRlTnVtYmVyKCdwbGF5ZXJzJywgJ1BsYXllcnMnLCAyLCB7IGludGVnZXI6IHRydWUgfSk7XG4gIHZhbGlkYXRlTnVtYmVyKCdzdGFydGluZ1N0YWNrJywgJ1N0YXJ0aW5nIHN0YWNrJywgMTAwKTtcbiAgdmFsaWRhdGVOdW1iZXIoJ3RhcmdldEhvdXJzJywgJ1RhcmdldCBob3VycycsIDAuNSk7XG4gIHZhbGlkYXRlTnVtYmVyKCdsZXZlbE1pbnV0ZXMnLCAnTGV2ZWwgbWludXRlcycsIDEsIHsgaW50ZWdlcjogdHJ1ZSB9KTtcbiAgdmFsaWRhdGVOdW1iZXIoJ2JyZWFrQ291bnQnLCAnQnJlYWtzJywgMCwgeyBpbnRlZ2VyOiB0cnVlLCBtYXhpbXVtOiAxMCB9KTtcbiAgdmFsaWRhdGVOdW1iZXIoJ2JyZWFrTWludXRlcycsICdCcmVhayBtaW51dGVzJywgMSwgeyBpbnRlZ2VyOiB0cnVlIH0pO1xuICB2YWxpZGF0ZU51bWJlcignc3RhcnRpbmdCaWdCbGluZCcsICdTdGFydGluZyBCQicsIDEpO1xuICB2YWxpZGF0ZU51bWJlcignYW50ZVN0YXJ0TGV2ZWwnLCAnQW50ZSBzdGFydCBsZXZlbCcsIDAsIHsgaW50ZWdlcjogdHJ1ZSB9KTtcbiAgdmFsaWRhdGVOdW1iZXIoJ2V4cGVjdGVkUmVidXlzJywgJ0V4cGVjdGVkIHJlYnV5cycsIDAsIHsgaW50ZWdlcjogdHJ1ZSB9KTtcbiAgdmFsaWRhdGVOdW1iZXIoJ2V4cGVjdGVkQWRkb25zJywgJ0V4cGVjdGVkIGFkZC1vbnMnLCAwLCB7IGludGVnZXI6IHRydWUgfSk7XG5cbiAgY29uc3QgZGVub21pbmF0aW9uUGllY2VzID0gc2V0dGluZ3MuY2hpcERlbm9taW5hdGlvbnNcbiAgICAuc3BsaXQoL1ssO1xcc10rLylcbiAgICAubWFwKChwaWVjZSkgPT4gcGllY2UudHJpbSgpKVxuICAgIC5maWx0ZXIoQm9vbGVhbik7XG4gIGNvbnN0IGRlbm9taW5hdGlvbnNBcmVWYWxpZCA9IGRlbm9taW5hdGlvblBpZWNlcy5sZW5ndGggPiAwXG4gICAgJiYgZGVub21pbmF0aW9uUGllY2VzLmV2ZXJ5KChwaWVjZSkgPT4gL15cXGQrKD86XFwuXFxkKyk/JC8udGVzdChwaWVjZSkgJiYgTnVtYmVyKHBpZWNlKSA+IDApO1xuICBpZiAoIWRlbm9taW5hdGlvbnNBcmVWYWxpZCkge1xuICAgIGVycm9ycy5jaGlwRGVub21pbmF0aW9ucyA9ICdVc2UgcG9zaXRpdmUgY2hpcCB2YWx1ZXMgc2VwYXJhdGVkIGJ5IGNvbW1hcy4nO1xuICB9XG5cbiAgcmV0dXJuIGVycm9ycztcbn1cblxyXG5mdW5jdGlvbiBwYXJzZVNldHRpbmcodmFsdWU6IHN0cmluZywgZmFsbGJhY2s6IG51bWJlcikge1xuICBpZiAodmFsdWUudHJpbSgpID09PSAnJykgcmV0dXJuIGZhbGxiYWNrO1xyXG4gIGNvbnN0IHBhcnNlZCA9IE51bWJlcih2YWx1ZSk7XHJcbiAgcmV0dXJuIE51bWJlci5pc0Zpbml0ZShwYXJzZWQpID8gcGFyc2VkIDogZmFsbGJhY2s7XHJcbn1cblxuZnVuY3Rpb24gc2VsZWN0ZWRDaGlwVXBEZW5vbWluYXRpb25zKHZhbHVlOiBzdHJpbmcsIGFsbG93ZWREZW5vbWluYXRpb25zOiBudW1iZXJbXSk6IG51bWJlcltdIHtcbiAgY29uc3QgYWxsb3dlZCA9IG5ldyBTZXQoYWxsb3dlZERlbm9taW5hdGlvbnMpO1xuICBjb25zdCBzZWxlY3RlZCA9IHZhbHVlXG4gICAgLnNwbGl0KC9bLDtcXHNdKy8pXG4gICAgLm1hcCgocGllY2UpID0+IE1hdGgucm91bmQoTnVtYmVyKHBpZWNlLnRyaW0oKSkpKVxuICAgIC5maWx0ZXIoKGRlbm9taW5hdGlvbikgPT4gTnVtYmVyLmlzRmluaXRlKGRlbm9taW5hdGlvbikgJiYgYWxsb3dlZC5oYXMoZGVub21pbmF0aW9uKSk7XG4gIHJldHVybiBBcnJheS5mcm9tKG5ldyBTZXQoc2VsZWN0ZWQpKS5zb3J0KChhLCBiKSA9PiBhIC0gYik7XG59XG5cbmZ1bmN0aW9uIGdlbmVyYXRlQmxpbmRTdHJ1Y3R1cmUoc2V0dGluZ3M6IFBhcnNlZENhbGN1bGF0b3JTZXR0aW5ncyk6IEJsaW5kU3RydWN0dXJlRHJhZnRMZXZlbFtdIHtcbiAgcmV0dXJuIGJ1aWxkQmxpbmRTdHJ1Y3R1cmUoc2V0dGluZ3MpO1xufVxuXHJcbmZ1bmN0aW9uIHRvTnVtYmVyKHZhbHVlOiB1bmtub3duKSB7XG4gIGNvbnN0IHBhcnNlZCA9IE51bWJlcih2YWx1ZSk7XG4gIHJldHVybiBOdW1iZXIuaXNGaW5pdGUocGFyc2VkKSA/IHBhcnNlZCA6IDA7XG59XG5cbmZ1bmN0aW9uIGdldERlZmF1bHRDYWxjdWxhdG9yUGxheWVycyh0b3VybmFtZW50OiBCbGluZFN0cnVjdHVyZUNhbGN1bGF0b3JDb250ZXh0KTogbnVtYmVyIHtcbiAgY29uc3QgbWF4UGxheWVycyA9IE1hdGguZmxvb3IodG9OdW1iZXIodG91cm5hbWVudC5tYXhwbGF5ZXJzKSk7XG4gIHJldHVybiBtYXhQbGF5ZXJzID4gMCA/IG1heFBsYXllcnMgOiAxMDtcbn1cblxuZnVuY3Rpb24gaXNCcmVha0xldmVsKGxldmVsOiBQaWNrPEJsaW5kTGV2ZWwsICdsYWJlbCcgfCAnc21hbGxibGluZCcgfCAnYmlnYmxpbmQnPik6IGJvb2xlYW4ge1xuICByZXR1cm4gL15icmVha1xcYi9pLnRlc3QoU3RyaW5nKGxldmVsLmxhYmVsID8/ICcnKSkgfHwgKE51bWJlcihsZXZlbC5zbWFsbGJsaW5kKSA9PT0gMCAmJiBOdW1iZXIobGV2ZWwuYmlnYmxpbmQpID09PSAwKTtcbn1cblxuZnVuY3Rpb24gaXNDaGlwVXBMZXZlbChsZXZlbDogUGljazxCbGluZExldmVsLCAnbGFiZWwnPik6IGJvb2xlYW4ge1xuICByZXR1cm4gL15jaGlwXFxzKnVwXFxiL2kudGVzdChTdHJpbmcobGV2ZWwubGFiZWwgPz8gJycpKTtcbn1cblxuZnVuY3Rpb24gaXNCcmVha0VkaXRhYmxlTGV2ZWwobGV2ZWw6IEVkaXRhYmxlQmxpbmRMZXZlbCk6IGJvb2xlYW4ge1xuICByZXR1cm4gL15icmVha1xcYi9pLnRlc3QoU3RyaW5nKGxldmVsLmxhYmVsID8/ICcnKSkgfHwgKHBhcnNlU2V0dGluZyhsZXZlbC5zbWFsbGJsaW5kLCAwKSA9PT0gMCAmJiBwYXJzZVNldHRpbmcobGV2ZWwuYmlnYmxpbmQsIDApID09PSAwKTtcbn1cblxuZnVuY3Rpb24gZm9ybWF0QnJlYWtMYWJlbChsZXZlbDogUGljazxCbGluZExldmVsLCAnbGFiZWwnIHwgJ2xldmVsJz4pOiBzdHJpbmcge1xuICBjb25zdCBsYWJlbCA9IFN0cmluZyhsZXZlbC5sYWJlbCA/PyAnJykudHJpbSgpO1xuICBpZiAoL15jaGlwXFxzKnVwXFxiL2kudGVzdChsYWJlbCkpIHJldHVybiBsYWJlbDtcbiAgaWYgKC9eYnJlYWtcXGIvaS50ZXN0KGxhYmVsKSkgcmV0dXJuIGxhYmVsO1xuICByZXR1cm4gbGFiZWwgPyBgQnJlYWsgJHtsYWJlbH1gIDogYEJyZWFrICR7bGV2ZWwubGV2ZWx9YDtcbn1cblxuZnVuY3Rpb24gZ2V0QnJlYWtCYXNlTGFiZWwobGFiZWw6IHN0cmluZyB8IHVuZGVmaW5lZCwgaW5kZXg6IG51bWJlcik6IHN0cmluZyB7XG4gIGNvbnN0IGZhbGxiYWNrID0gYEJyZWFrICR7aW5kZXggKyAxfWA7XG4gIGNvbnN0IHRyaW1tZWQgPSBTdHJpbmcobGFiZWwgPz8gJycpLnRyaW0oKTtcbiAgaWYgKCF0cmltbWVkKSByZXR1cm4gZmFsbGJhY2s7XG4gIGNvbnN0IGJyZWFrTWF0Y2ggPSB0cmltbWVkLm1hdGNoKC9eKEJyZWFrXFxzK1xcZCspKD86XFxzKlstOl1cXHMqLispPyQvaSk7XG4gIGlmIChicmVha01hdGNoPy5bMV0pIHJldHVybiBicmVha01hdGNoWzFdO1xuICBjb25zdCBub3RlU3BsaXQgPSB0cmltbWVkLnNwbGl0KC9cXHNbLTpdXFxzLylbMF0/LnRyaW0oKTtcbiAgcmV0dXJuIG5vdGVTcGxpdCB8fCB0cmltbWVkO1xufVxuXG5mdW5jdGlvbiBnZXRCcmVha05vdGUobGFiZWw6IHN0cmluZyB8IHVuZGVmaW5lZCk6IHN0cmluZyB7XG4gIGNvbnN0IHRyaW1tZWQgPSBTdHJpbmcobGFiZWwgPz8gJycpLnRyaW0oKTtcbiAgY29uc3Qgbm90ZU1hdGNoID0gdHJpbW1lZC5tYXRjaCgvXkJyZWFrXFxzK1xcZCtcXHMqWy06XVxccyooLispJC9pKTtcbiAgcmV0dXJuIG5vdGVNYXRjaD8uWzFdPy50cmltKCkgPz8gJyc7XG59XG5cbmZ1bmN0aW9uIGJ1aWxkQnJlYWtMYWJlbChsYWJlbDogc3RyaW5nIHwgdW5kZWZpbmVkLCBpbmRleDogbnVtYmVyLCBub3RlOiBzdHJpbmcpOiBzdHJpbmcge1xuICBjb25zdCBiYXNlTGFiZWwgPSBnZXRCcmVha0Jhc2VMYWJlbChsYWJlbCwgaW5kZXgpO1xuICBjb25zdCBjbGVhbk5vdGUgPSBub3RlLnRyaW0oKTtcbiAgcmV0dXJuIGNsZWFuTm90ZSA/IGAke2Jhc2VMYWJlbH0gLSAke2NsZWFuTm90ZX1gIDogYmFzZUxhYmVsO1xufVxuXG5mdW5jdGlvbiBub3JtYWxpemVFZGl0YWJsZUJyZWFrTGFiZWwobGFiZWw6IHN0cmluZyB8IHVuZGVmaW5lZCwgaW5kZXg6IG51bWJlcik6IHN0cmluZyB7XG4gIHJldHVybiBidWlsZEJyZWFrTGFiZWwobGFiZWwsIGluZGV4LCBnZXRCcmVha05vdGUobGFiZWwpKTtcbn1cbiJdLCJmaWxlIjoiQzovVXNlcnMvRXJpY0EvUHJvamVjdHMvUG9rZXJQbGFubmVyL2FwcHMvd2ViL3NyYy9wYWdlcy9QcmVUb3VybmFtZW50L0JsaW5kVGltZXIudHN4In0=

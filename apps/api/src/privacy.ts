@@ -18,15 +18,15 @@ export function hashEmail(email: string): string {
   return crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex');
 }
 
-export function encryptEmail(email: string): string {
+export function encryptSecret(value: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(normalizeEmail(email), 'utf8'), cipher.final()]);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `v1:${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
 }
 
-export function decryptEmail(value: string | null | undefined): string | null {
+export function decryptSecret(value: string | null | undefined): string | null {
   if (!value) return null;
   const parts = value.split(':');
   if (parts.length !== 4 || parts[0] !== 'v1') return null;
@@ -41,6 +41,14 @@ export function decryptEmail(value: string | null | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+export function encryptEmail(email: string): string {
+  return encryptSecret(normalizeEmail(email));
+}
+
+export function decryptEmail(value: string | null | undefined): string | null {
+  return decryptSecret(value);
 }
 
 export function privateEmailPlaceholder(userId: string): string {

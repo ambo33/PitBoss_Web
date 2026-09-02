@@ -38,6 +38,8 @@ export interface Group {
   aiannouncerpreset?: 'all_in_alex' | 'royal_rumble_riley' | 'velvet_dealer' | 'chipstorm' | 'queen_of_spades' | 'the_pit_boss' | 'british_high_roller' | 'turbo_tony' | 'midnight_mayhem' | 'sunny_stacks';
   aiannouncercustomprompt?: string | null;
   aiannouncerclassicmode?: boolean;
+  musicrequestlimit?: number | null;
+  musicrequestwindowminutes?: number;
   postapprovalrequired?: boolean;
   communityimagedata?: string | null;
   communityimagefilename?: string | null;
@@ -121,6 +123,7 @@ export interface Tournament {
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
+  musicrequestsenabled?: boolean;
   seatingmaxpertable?: number;
   bountyenabled?: boolean;
   bountymode?: 'manual' | 'mystery';

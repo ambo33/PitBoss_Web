@@ -25,6 +25,7 @@ import { gamesRouter } from './routes/games';
 import { demoRouter, startDemoMaintenance } from './routes/demo';
 import { tournamentDraftsRouter } from './routes/tournamentDrafts';
 import { joinCodesRouter } from './routes/joinCodes';
+import { spotifyRouter } from './routes/spotify';
 import { isAllowedClientOrigin } from './config';
 import { errorHandler } from './middleware/error';
 import { ensureDatabaseSchema } from './schema';
@@ -67,7 +68,7 @@ initSocket(httpServer);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://i.scdn.co', 'https://mosaic.scdn.co'],
       mediaSrc: ["'self'", 'data:', 'blob:'],
     },
   },
@@ -100,6 +101,7 @@ app.use('/api/games', gamesRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/tournament-drafts', tournamentDraftsRouter);
 app.use('/api/join-codes', joinCodesRouter);
+app.use('/api/spotify', spotifyRouter);
 app.use('/api/groups', groupsRouter);
 app.use('/api/leagues', leaguesRouter);
 app.use('/api/league-public', publicLeaguesRouter);

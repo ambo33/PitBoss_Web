@@ -1,263 +1,187 @@
-import { useEffect, useRef, useState, type ComponentType, type SVGProps } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type SVGProps,
+} from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CalendarDays,
-  Check,
+  ArrowRight,
   ChevronRight,
   Clock3,
-  Layers3,
   Menu,
+  Music4,
   Play,
-  ShieldCheck,
+  Sparkles,
   Trophy,
-  Users,
+  UsersRound,
+  WandSparkles,
   X,
-  Zap,
 } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import { featureFlags } from '../../features';
+import {
+  HeroProductTheater,
+  MusicIntegrationVisual,
+  StoryVisual,
+  type StoryVisualVariant,
+} from './components/ProductMockups';
+import ScrollReveal from './components/ScrollReveal';
 import './marketing.css';
 
-type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
-type MarketingArtName = 'calendar' | 'players' | 'timer' | 'blinds' | 'trophy' | 'medallion';
+const CinematicDemo = lazy(() => import('./components/CinematicDemo'));
+const RecordedCinematicDemo = lazy(() => import('./components/RecordedCinematicDemo'));
 
-type FeatureSplash = {
+type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
+
+type Story = {
   id: string;
   eyebrow: string;
   title: string;
   description: string;
-  benefits: string[];
-  art: MarketingArtName;
-  icon: IconComponent;
+  details: string[];
+  visual: StoryVisualVariant;
 };
 
-const FEATURE_CARDS: FeatureSplash[] = [
+const HERO_FEATURES: Array<{ label: string; detail: string; icon: IconComponent }> = [
+  { label: 'Wizard', detail: 'in Minutes', icon: WandSparkles },
+  { label: 'Live Timer', detail: 'with Breaks', icon: Clock3 },
+  { label: 'Manage', detail: 'Players', icon: UsersRound },
+  { label: 'Payouts', detail: 'Made Easy', icon: Trophy },
+  { label: 'Music', detail: 'Requests', icon: Music4 },
+];
+
+const PRODUCT_STORIES: Story[] = [
   {
-    id: 'schedule',
-    eyebrow: 'Set the night',
-    title: 'Schedule tournaments',
-    description: 'Create the game, share it with your group, and keep every RSVP in one place.',
-    benefits: ['Shared game calendar', 'Group and league RSVPs', 'Automatic reminders'],
-    art: 'calendar',
-    icon: CalendarDays,
+    id: 'build-it',
+    eyebrow: 'Build it',
+    title: 'A complete tournament, minus the spreadsheet.',
+    description: 'Start with the game details. Set the field, buy-in, and options, then shape the blind structure and payouts before the first hand.',
+    details: ['Guided setup', 'Smart blind structures', 'Payout planning'],
+    visual: 'build',
   },
   {
-    id: 'players',
-    eyebrow: 'Run the room',
-    title: 'Manage players',
-    description: 'Track arrivals, seating, rebuys, add-ons, knockouts, and results without a side spreadsheet.',
-    benefits: ['QR check-in', 'Live seat assignments', 'Player history'],
-    art: 'players',
-    icon: Users,
+    id: 'run-it',
+    eyebrow: 'Run it',
+    title: 'One clock keeps the whole room moving.',
+    description: 'Blinds, breaks, rebuys, add-ons, and eliminations stay organized while you focus on the table—not on tournament admin.',
+    details: ['Live blind timer', 'Break reminders', 'Player actions'],
+    visual: 'run',
   },
   {
-    id: 'clock',
-    eyebrow: 'Keep it moving',
-    title: 'Run the clock',
-    description: 'A synchronized tournament timer keeps the host, players, and TV board on the same level.',
-    benefits: ['Blind-level timer', 'Break and chip-up markers', 'Room announcements'],
-    art: 'timer',
-    icon: Clock3,
+    id: 'bring-everyone-in',
+    eyebrow: 'Bring everyone in',
+    title: 'Every player gets a front-row seat.',
+    description: 'The Player Lobby puts tournament details, the live clock, payouts, and interaction on the phone already in every player’s pocket.',
+    details: ['Live tournament details', 'Clock and payouts', 'Mobile-first lobby'],
+    visual: 'lobby',
   },
   {
-    id: 'payouts',
-    eyebrow: 'Finish cleanly',
-    title: 'Payouts made easy',
-    description: 'Set the paid places up front and let the prize pool update as the field checks in.',
-    benefits: ['Flexible payout splits', 'Bounty tracking', 'Shareable recaps'],
-    art: 'trophy',
-    icon: Trophy,
+    id: 'control-the-vibe',
+    eyebrow: 'Control the vibe',
+    title: 'Run the tournament. Let the table pick the soundtrack.',
+    description: 'When the host connects Spotify and enables requests, players can search from their lobby and send songs straight into the tournament queue.',
+    details: ['Player song search', 'Host-controlled requests', 'Now playing'],
+    visual: 'music',
+  },
+  {
+    id: 'finish-strong',
+    eyebrow: 'Finish strong',
+    title: 'When the final card falls, the finish is ready.',
+    description: 'The prize pool, paid places, winner, and final results stay connected from first buy-in through the last hand.',
+    details: ['Live prize pool', 'Clear payouts', 'Final results'],
+    visual: 'win',
   },
 ];
 
-const SPLASHES: FeatureSplash[] = [
-  FEATURE_CARDS[0],
-  FEATURE_CARDS[1],
-  FEATURE_CARDS[2],
-  {
-    id: 'blinds',
-    eyebrow: 'Build the structure',
-    title: 'Blinds that fit the night',
-    description: 'Create a blind schedule around your field, chip set, target duration, and break plan.',
-    benefits: ['Guided blind calculator', 'Saved group structures', 'Chip-up planning'],
-    art: 'blinds',
-    icon: Layers3,
-  },
-  FEATURE_CARDS[3],
-  {
-    id: 'command-center',
-    eyebrow: 'See the whole season',
-    title: 'One command center',
-    description: 'Upcoming games, groups, leagues, player stories, and results stay connected after the cards are put away.',
-    benefits: ['Groups and leagues', 'Standings and history', 'Device alerts'],
-    art: 'medallion',
-    icon: ShieldCheck,
-  },
-];
-
-function MarketingArt({
-  name,
-  alt,
-  className = '',
-  eager = false,
-}: {
-  name: MarketingArtName;
-  alt: string;
-  className?: string;
-  eager?: boolean;
-}) {
-  return (
-    <img
-      src={`/marketing/${name}-512.webp`}
-      srcSet={`/marketing/${name}-256.webp 256w, /marketing/${name}-512.webp 512w, /marketing/${name}-768.webp 768w`}
-      sizes="(max-width: 767px) 220px, (max-width: 1023px) 320px, 420px"
-      width="768"
-      height="768"
-      loading={eager ? 'eager' : 'lazy'}
-      decoding="async"
-      className={className}
-      alt={alt}
-    />
-  );
-}
-
-function TournamentPreview() {
-  const blindLevels = [
-    ['1', '100 / 200'],
-    ['2', '150 / 300'],
-    ['3', '200 / 400'],
-    ['4', '300 / 600'],
-    ['5', '400 / 800'],
-  ];
-  const payouts = [
-    ['1st', '$1,250'],
-    ['2nd', '$750'],
-    ['3rd', '$450'],
-    ['4th', '$300'],
-    ['5th', '$200'],
-  ];
-
-  return (
-    <div className="marketing-preview-wrap" aria-label="Example tournament control board">
-      <div className="marketing-preview">
-        <header className="marketing-preview__header">
-          <div>
-            <span>TOURNAMENT DISPLAY</span>
-            <strong>Saturday Championship</strong>
-          </div>
-          <span className="marketing-preview__code">TV 478381</span>
-        </header>
-
-        <div className="marketing-preview__body">
-          <section className="marketing-preview__rail" aria-label="Blind structure preview">
-            <div className="marketing-preview__section-title">BLIND STRUCTURE</div>
-            {blindLevels.map(([level, blinds]) => (
-              <div className={`marketing-preview__row${level === '4' ? ' is-active' : ''}`} key={level}>
-                <span>{level}</span>
-                <span>{blinds}</span>
-              </div>
-            ))}
-          </section>
-
-          <section className="marketing-preview__clock" aria-label="Tournament timer preview">
-            <span className="marketing-preview__running">RUNNING</span>
-            <strong className="marketing-preview__time">18:42</strong>
-            <div className="marketing-preview__clock-stats">
-              <div><span>CURRENT BLINDS</span><strong>300 / 600</strong></div>
-              <div><span>PLAYERS LEFT</span><strong>18 / 54</strong></div>
-            </div>
-            <div className="marketing-preview__controls" aria-hidden="true">
-              <span>Pause</span><span>Next level</span><span>Adjust timer</span>
-            </div>
-          </section>
-
-          <section className="marketing-preview__rail marketing-preview__payouts" aria-label="Payout preview">
-            <div className="marketing-preview__section-title">PAYOUTS</div>
-            {payouts.map(([place, amount]) => (
-              <div className="marketing-preview__row" key={place}>
-                <strong>{place}</strong><span>{amount}</span>
-              </div>
-            ))}
-          </section>
-        </div>
-
-        <div className="marketing-preview__metrics" aria-label="Tournament status preview">
-          <div><strong>18</strong><span>Players left</span></div>
-          <div><strong>5</strong><span>Rebuys</span></div>
-          <div><strong>2</strong><span>Add-ons</span></div>
-          <div><strong>24.5K</strong><span>Avg stack</span></div>
-        </div>
-      </div>
-      <MarketingArt name="trophy" alt="" className="marketing-preview__trophy" eager />
-      <MarketingArt name="medallion" alt="" className="marketing-preview__chip" eager />
-    </div>
-  );
-}
-
-function FeatureSplashSection({ feature, index }: { feature: FeatureSplash; index: number }) {
-  const Icon = feature.icon;
-  return (
-    <article id={feature.id} className={`marketing-splash${index % 2 ? ' marketing-splash--reverse' : ''}`}>
-      <div className="marketing-splash__art" aria-hidden="true">
-        <MarketingArt name={feature.art} alt="" />
-      </div>
-      <div className="marketing-splash__copy">
-        <span className="marketing-eyebrow">{feature.eyebrow}</span>
-        <h3>{feature.title}</h3>
-        <p>{feature.description}</p>
-        <ul>
-          {feature.benefits.map((benefit) => (
-            <li key={benefit}><Check aria-hidden="true" />{benefit}</li>
-          ))}
-        </ul>
-        <div className="marketing-splash__icon" aria-hidden="true"><Icon /></div>
-      </div>
-    </article>
-  );
-}
-
-export default function LandingPage() {
+function MarketingHeader({ startPath }: { startPath: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const startPath = featureFlags.deferredAuthQuickStart ? '/quick-start' : '/login?mode=register';
-  const startLabel = featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Get started';
 
   useEffect(() => {
     if (!menuOpen) return;
-    closeButtonRef.current?.focus();
+
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const backgroundElements = Array.from(document.querySelectorAll<HTMLElement>(
+      '.marketing-page > .marketing-skip-link, .marketing-page > .marketing-header, .marketing-page > main, .marketing-page > footer',
+    ));
+    const originalBackgroundState = backgroundElements.map((element) => ({
+      inert: element.hasAttribute('inert'),
+      ariaHidden: element.getAttribute('aria-hidden'),
+    }));
+    backgroundElements.forEach((element) => {
+      element.setAttribute('inert', '');
+      element.setAttribute('aria-hidden', 'true');
+    });
+    closeButtonRef.current?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || !menuPanelRef.current) return;
+      const focusable = Array.from(
+        menuPanelRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = originalOverflow;
       document.removeEventListener('keydown', onKeyDown);
+      backgroundElements.forEach((element, index) => {
+        const originalState = originalBackgroundState[index];
+        if (!originalState?.inert) element.removeAttribute('inert');
+        if (originalState?.ariaHidden == null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', originalState.ariaHidden);
+      });
+      menuButtonRef.current?.focus();
     };
   }, [menuOpen]);
 
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <div className="marketing-page">
+    <>
       <header className="marketing-header">
         <Link to="/landing" className="marketing-header__brand" aria-label="ThePokerPlanner home">
           <BrandLockup compact showSlogan={false} />
         </Link>
-        <nav className="marketing-header__nav" aria-label="Marketing navigation">
+        <nav className="marketing-header__nav" aria-label="Main navigation">
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
-          <a href="#capabilities">Product</a>
+          <a href="#product">Product</a>
         </nav>
         <div className="marketing-header__actions">
           <Link to="/login" className="marketing-button marketing-button--quiet">Log in</Link>
-          <Link to={startPath} className="marketing-button marketing-button--primary">{startLabel}</Link>
+          <Link to={startPath} className="marketing-button marketing-button--primary">Get started</Link>
         </div>
+        <Link to={startPath} className="marketing-header__mobile-cta">Get started</Link>
         <button
+          ref={menuButtonRef}
           type="button"
           className="marketing-header__menu"
           aria-label="Open navigation"
+          aria-controls="marketing-mobile-menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen(true)}
         >
@@ -265,9 +189,11 @@ export default function LandingPage() {
         </button>
       </header>
 
-      {menuOpen && (
+      {menuOpen ? (
         <div className="marketing-menu-backdrop" role="presentation" onMouseDown={closeMenu}>
-          <aside
+          <nav
+            ref={menuPanelRef}
+            id="marketing-mobile-menu"
             className="marketing-menu"
             role="dialog"
             aria-modal="true"
@@ -276,114 +202,276 @@ export default function LandingPage() {
           >
             <div className="marketing-menu__top">
               <BrandLockup compact showSlogan={false} />
-              <button ref={closeButtonRef} type="button" aria-label="Close navigation" onClick={closeMenu}><X aria-hidden="true" /></button>
+              <button ref={closeButtonRef} type="button" aria-label="Close navigation" onClick={closeMenu}>
+                <X aria-hidden="true" />
+              </button>
             </div>
             <a href="#features" onClick={closeMenu}>Features<ChevronRight aria-hidden="true" /></a>
             <a href="#how-it-works" onClick={closeMenu}>How it works<ChevronRight aria-hidden="true" /></a>
-            <a href="#capabilities" onClick={closeMenu}>Product<ChevronRight aria-hidden="true" /></a>
+            <a href="#product" onClick={closeMenu}>Product<ChevronRight aria-hidden="true" /></a>
             <Link to="/login" onClick={closeMenu}>Log in<ChevronRight aria-hidden="true" /></Link>
-            <Link to={startPath} className="marketing-button marketing-button--primary" onClick={closeMenu}>{startLabel}</Link>
-          </aside>
+            <Link to={startPath} className="marketing-button marketing-button--primary" onClick={closeMenu}>
+              Create Tournament<ArrowRight aria-hidden="true" />
+            </Link>
+          </nav>
         </div>
-      )}
+      ) : null}
+    </>
+  );
+}
 
-      <main>
-        <section className="marketing-hero">
+function FeatureStrip() {
+  return (
+    <div className="marketing-feature-strip" role="list" aria-label="Product highlights">
+      {HERO_FEATURES.map(({ label, detail, icon: Icon }) => (
+        <div key={label} role="listitem">
+          <Icon aria-hidden="true" />
+          <span><strong>{label}</strong>{detail}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+  titleId,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  titleId?: string;
+}) {
+  return (
+    <div className="marketing-section-heading">
+      <span className="marketing-eyebrow">{eyebrow}</span>
+      <h2 id={titleId}>{title}</h2>
+      <p>{description}</p>
+    </div>
+  );
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(query).matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const onChange = () => setMatches(mediaQuery.matches);
+    onChange();
+    mediaQuery.addEventListener('change', onChange);
+    return () => mediaQuery.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
+}
+
+function LazyCinematicDemo() {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
+  const [recordingFailed, setRecordingFailed] = useState(false);
+  const useRecording = useMediaQuery('(min-width: 701px)') && !recordingFailed;
+
+  useEffect(() => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    if (!('IntersectionObserver' in window)) {
+      setReady(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || entry.intersectionRatio <= 0) return;
+      setReady(true);
+      observer.disconnect();
+    }, {
+      rootMargin: useRecording ? '0px 0px -8% 0px' : '650px 0px',
+      threshold: useRecording ? 0.01 : 0,
+    });
+    observer.observe(slot);
+    return () => observer.disconnect();
+  }, [useRecording]);
+
+  return (
+    <div
+      ref={slotRef}
+      className={`marketing-cinema__demo-slot${useRecording ? ' marketing-cinema__demo-slot--recorded' : ''}`}
+    >
+      {ready ? (
+        <Suspense fallback={<div className="marketing-cinema__demo-placeholder" aria-hidden="true" />}>
+          {useRecording ? (
+            <RecordedCinematicDemo onPlaybackError={() => setRecordingFailed(true)} />
+          ) : (
+            <CinematicDemo variant="embedded" autoplay controls />
+          )}
+        </Suspense>
+      ) : <div className="marketing-cinema__demo-placeholder" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function ProductStory({ story, index }: { story: Story; index: number }) {
+  return (
+    <ScrollReveal
+      as="article"
+      className={`marketing-story${index % 2 === 1 ? ' marketing-story--reverse' : ''}`}
+    >
+      <div className="marketing-story__copy">
+        <span className="marketing-story__number" aria-hidden="true">0{index + 1}</span>
+        <span className="marketing-eyebrow">{story.eyebrow}</span>
+        <h3>{story.title}</h3>
+        <p>{story.description}</p>
+        <ul aria-label={`${story.eyebrow} highlights`}>
+          {story.details.map((detail) => <li key={detail}>{detail}</li>)}
+        </ul>
+      </div>
+      <div className="marketing-story__visual">
+        <StoryVisual variant={story.visual} />
+      </div>
+    </ScrollReveal>
+  );
+}
+
+function MarketingFooter({ startPath }: { startPath: string }) {
+  return (
+    <footer className="marketing-footer">
+      <div className="marketing-footer__brand">
+        <BrandLockup compact showSlogan={false} />
+        <p>Your poker night. Completely organized.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <Link to="/login">Log in</Link>
+        <Link to={startPath}>Create Tournament</Link>
+        <Link to="/demo">Full Demo</Link>
+        <Link to="/pricing">Pricing</Link>
+        <Link to="/terms">Terms</Link>
+      </nav>
+    </footer>
+  );
+}
+
+export default function LandingPage() {
+  const startPath = featureFlags.deferredAuthQuickStart ? '/quick-start' : '/login?mode=register';
+
+  return (
+    <div className="marketing-page">
+      <a className="marketing-skip-link" href="#marketing-main">Skip to content</a>
+      <MarketingHeader startPath={startPath} />
+
+      <main id="marketing-main" tabIndex={-1}>
+        <section className="marketing-hero" aria-labelledby="marketing-hero-title">
           <div className="marketing-hero__copy">
-            <span className="marketing-eyebrow">POKER NIGHTS, ORGANIZED</span>
-            <h1>
-              <span className="marketing-hero__line marketing-hero__line--light">Build.</span>
-              <span className="marketing-hero__line marketing-hero__line--light">Run.</span>
-              <span className="marketing-hero__line">Win.</span>
-            </h1>
-            <p>Create tournaments in minutes, run the clock with confidence, and pay out winners <strong>stress free.</strong></p>
-            {featureFlags.deferredAuthQuickStart && (
-              <p className="marketing-hero__subcopy">No account needed to start. Ready in under a minute.</p>
-            )}
+            <span className="marketing-eyebrow">Poker nights, organized</span>
+            <h1 id="marketing-hero-title"><span>Build.</span><span>Run.</span><span>Win.</span></h1>
+            <p>
+              Create tournaments in minutes, run the clock with confidence, and keep the table energized with{' '}
+              <strong>music requests from players.</strong>
+            </p>
             <div className="marketing-hero__actions">
               <Link to={startPath} className="marketing-button marketing-button--primary marketing-button--hero">
-                <Zap aria-hidden="true" />{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create Tournament'}
+                Create Tournament<ArrowRight aria-hidden="true" />
               </Link>
               <Link to="/demo" className="marketing-button marketing-button--secondary marketing-button--hero">
-                <Play aria-hidden="true" />Demo Full Experience<ChevronRight aria-hidden="true" />
+                <Play aria-hidden="true" />Demo Full Experience
               </Link>
             </div>
-            <div className="marketing-highlight-rail" aria-label="Product highlights">
-              <div><CalendarDays aria-hidden="true" /><span>Wizard<strong>in Minutes</strong></span></div>
-              <div><Clock3 aria-hidden="true" /><span>Live Timer<strong>with Breaks</strong></span></div>
-              <div><Users aria-hidden="true" /><span>Manage<strong>Players</strong></span></div>
-              <div><Trophy aria-hidden="true" /><span>Payouts<strong>Made Easy</strong></span></div>
-            </div>
           </div>
-          <TournamentPreview />
+
+          <div className="marketing-hero__theater">
+            <HeroProductTheater />
+          </div>
+
+          <FeatureStrip />
         </section>
 
-        <section id="features" className="marketing-feature-grid" aria-labelledby="features-heading">
-          <div className="marketing-section-heading">
-            <span className="marketing-eyebrow">One connected night</span>
-            <h2 id="features-heading">Everything a host needs at the table</h2>
-          </div>
-          <div className="marketing-feature-grid__items">
-            {FEATURE_CARDS.map((feature) => {
-              const Icon = feature.icon;
-              return (
-                <a href={`#${feature.id}`} className="marketing-feature-card" key={feature.id}>
-                  <MarketingArt name={feature.art} alt="" />
-                  <div>
-                    <span className="marketing-feature-card__icon"><Icon aria-hidden="true" /></span>
-                    <h3>{feature.title}</h3>
-                    <p>{feature.description}</p>
-                  </div>
-                  <ChevronRight aria-hidden="true" />
-                </a>
-              );
-            })}
+        <section id="how-it-works" className="marketing-cinema" aria-labelledby="cinema-title">
+          <ScrollReveal>
+            <SectionHeading
+              eyebrow="The full night, in motion"
+              title="See your poker night come alive."
+              description="From setup to final table, ThePokerPlanner keeps everything moving—and keeps everyone in the moment."
+              titleId="cinema-title"
+            />
+          </ScrollReveal>
+          <LazyCinematicDemo />
+          <div className="marketing-cinema__footer">
+            <span>A complete product walkthrough, recorded from the live showcase.</span>
+            <Link to="/demo-showcase?autoplay=true">Open live showcase<ArrowRight aria-hidden="true" /></Link>
           </div>
         </section>
 
-        <section id="how-it-works" className="marketing-steps" aria-labelledby="steps-heading">
-          <div className="marketing-section-heading">
-            <span className="marketing-eyebrow">From invite to winner</span>
-            <h2 id="steps-heading">Run the night in three moves</h2>
-          </div>
-          <div className="marketing-steps__grid">
-            <article><span>1</span><CalendarDays aria-hidden="true" /><h3>Set the game</h3><p>Choose the group, date, buy-in, field, and blind structure.</p></article>
-            <article><span>2</span><Users aria-hidden="true" /><h3>Check in and seat</h3><p>Confirm the field, settle entries, and create the seating chart.</p></article>
-            <article><span>3</span><Trophy aria-hidden="true" /><h3>Run and recap</h3><p>Advance the clock, track results, and share the final finish.</p></article>
-          </div>
-        </section>
-
-        <section id="capabilities" className="marketing-splashes" aria-labelledby="capabilities-heading">
-          <div className="marketing-section-heading">
-            <span className="marketing-eyebrow">Made for live poker</span>
-            <h2 id="capabilities-heading">The room stays in sync</h2>
-          </div>
-          {SPLASHES.map((feature, index) => <FeatureSplashSection key={feature.id} feature={feature} index={index} />)}
-        </section>
-
-        <section className="marketing-final-cta">
-          <MarketingArt name="medallion" alt="" />
+        <ScrollReveal as="section" className="marketing-maturity">
+          <div className="marketing-maturity__mark" aria-hidden="true"><span>10</span><small>years</small></div>
           <div>
-            <span className="marketing-eyebrow">Your next game starts here</span>
-            <h2>Run the night. Enjoy the table.</h2>
-            <p>Try a complete tournament without creating an account, or set up your first group when you are ready.</p>
+            <span className="marketing-eyebrow">10 years in the making</span>
+            <h2>Built from years of running real poker nights.</h2>
+            <p>Not from a weekend feature list.</p>
           </div>
-          <div className="marketing-final-cta__actions">
-            <Link to={startPath} className="marketing-button marketing-button--primary"><Zap aria-hidden="true" />{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create account'}</Link>
-            <Link to="/demo" className="marketing-button marketing-button--secondary"><Play aria-hidden="true" />Run the demo<ChevronRight aria-hidden="true" /></Link>
+        </ScrollReveal>
+
+        <section id="features" className="marketing-stories" aria-labelledby="stories-title">
+          <ScrollReveal>
+            <SectionHeading
+              eyebrow="One connected tournament"
+              title="From first chip to final payout."
+              description="The host, the table, and the TV stay connected through every phase of the night."
+              titleId="stories-title"
+            />
+          </ScrollReveal>
+          <div className="marketing-stories__list">
+            {PRODUCT_STORIES.map((story, index) => <ProductStory key={story.id} story={story} index={index} />)}
           </div>
+        </section>
+
+        <section id="product" className="marketing-music" aria-labelledby="music-title">
+          <ScrollReveal className="marketing-music__copy">
+            <span className="marketing-eyebrow marketing-eyebrow--music"><Music4 aria-hidden="true" />Player Lobby music</span>
+            <h2 id="music-title">The table picks the soundtrack.</h2>
+            <p>Connect Spotify and give players access to music requests directly from their Player Lobby.</p>
+            <p className="marketing-music__support">You stay in control. Players make requests. The tournament keeps moving.</p>
+            <ul>
+              <li><span>01</span>Host connects Spotify and enables requests</li>
+              <li><span>02</span>Players search and request from their lobby</li>
+              <li><span>03</span>The queue and Now Playing stay visible</li>
+            </ul>
+          </ScrollReveal>
+          <ScrollReveal className="marketing-music__visual" delay={120}>
+            <MusicIntegrationVisual />
+          </ScrollReveal>
+        </section>
+
+        <section className="marketing-final-cta" aria-labelledby="final-cta-title">
+          <div className="marketing-final-cta__glow" aria-hidden="true" />
+          <img
+            src="/marketing/medallion-512.webp"
+            srcSet="/marketing/medallion-256.webp 256w, /marketing/medallion-512.webp 512w, /marketing/medallion-768.webp 768w"
+            sizes="(max-width: 699px) 180px, 320px"
+            width="768"
+            height="768"
+            loading="lazy"
+            decoding="async"
+            alt=""
+          />
+          <ScrollReveal className="marketing-final-cta__copy">
+            <span className="marketing-eyebrow"><Sparkles aria-hidden="true" />Your next poker night</span>
+            <h2 id="final-cta-title">Your next poker night starts here.</h2>
+            <p>Build your tournament in minutes. Run the whole night with confidence.</p>
+            <div className="marketing-final-cta__actions">
+              <Link to={startPath} className="marketing-button marketing-button--primary marketing-button--hero">
+                Create Tournament<ArrowRight aria-hidden="true" />
+              </Link>
+              <Link to="/demo" className="marketing-button marketing-button--secondary marketing-button--hero">
+                <Play aria-hidden="true" />Try the Demo
+              </Link>
+            </div>
+          </ScrollReveal>
         </section>
       </main>
 
-      <footer className="marketing-footer">
-        <BrandLockup compact showSlogan={false} />
-        <p>Run better poker nights.</p>
-        <nav aria-label="Footer navigation">
-          <Link to="/login">Log in</Link>
-          <Link to={startPath}>{featureFlags.deferredAuthQuickStart ? 'Quick Tournament' : 'Create account'}</Link>
-          <a href="/terms/">Terms</a>
-        </nav>
-      </footer>
+      <MarketingFooter startPath={startPath} />
     </div>
   );
 }

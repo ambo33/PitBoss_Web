@@ -11,6 +11,7 @@ import { assignSeatIfSeatingStarted } from '../services/seating';
 import { assignMysteryBountyForKnockout, redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
+import { attachMusicRequesterToCurrentTrack, getCurrentlyPlayingTrackForHost, getSpotifyConnectionSummary, getTournamentMusicQueue, syncTournamentMusicQueue } from '../services/spotify';
 import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
@@ -23,6 +24,13 @@ function createGuestEmail() {
 
 function truthySql(column: string) {
   return `LOWER(COALESCE(CAST(${column} AS STRING), '0')) IN ('1', 'true', 't')`;
+}
+
+async function getSyncedTournamentMusicRequests(tournamentId: string, ownerId: string, isRunning: boolean, spotifyConnected: boolean) {
+  if (isRunning && spotifyConnected) {
+    await syncTournamentMusicQueue(tournamentId, ownerId).catch(() => null);
+  }
+  return getTournamentMusicQueue(tournamentId);
 }
 
 function ordinalSuffix(value: number): string {
@@ -236,6 +244,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
             COALESCE(t.tvgreetingaudioenabled, TRUE) AS tvgreetingaudioenabled,
             COALESCE(t.tvshowknockoutqrenabled, TRUE) AS tvshowknockoutqrenabled,
             COALESCE(t.tvdisplaymode, 'timer') AS tvdisplaymode,
+            COALESCE(t.musicrequestsenabled, FALSE) AS musicrequestsenabled,
             COALESCE(t.seatingmaxpertable, 9) AS seatingmaxpertable,
             COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
             COALESCE(t.bountymode, 'manual') AS bountymode,
@@ -310,7 +319,34 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
 
   const playersWithAchievements = await attachPlayerAchievementCounts(players, tournament.groupid);
   const playersWithCoins = await attachPlayerCoinBadges(playersWithAchievements, tournament.groupid);
-  res.json({ tournament, players: playersWithCoins });
+  const spotifySummary = await getSpotifyConnectionSummary(tournament.ownerid);
+  const timerStatus = await queryOne<{ running: boolean | null }>(
+    `SELECT running FROM tournamenttimer WHERE tournamentid = $1`,
+    [tournament.tournamentid]
+  );
+  const musicRequestsOn = Boolean(tournament.musicrequestsenabled);
+  const musicRunning = Boolean(timerStatus?.running);
+  const musicEnabled = spotifySummary.connected && musicRequestsOn && musicRunning;
+  const currentTrack = spotifySummary.connected && musicRunning
+    ? await getCurrentlyPlayingTrackForHost(tournament.ownerid).catch(() => null)
+    : null;
+  const currentTrackWithRequester = await attachMusicRequesterToCurrentTrack(tournament.tournamentid, currentTrack).catch(() => currentTrack);
+  res.json({
+    tournament,
+    players: playersWithCoins,
+    music: {
+      enabled: musicEnabled,
+      requestsOn: musicRequestsOn,
+      isRunning: musicRunning,
+      spotifyConnected: spotifySummary.connected,
+      spotifyDisplayName: spotifySummary.displayname,
+      currentTrack: currentTrackWithRequester,
+      vipQueueAvailable: false,
+      vipPointsBalance: 0,
+      vipActive: false,
+      requests: await getSyncedTournamentMusicRequests(tournament.tournamentid, tournament.ownerid, musicRunning, spotifySummary.connected),
+    },
+  });
 });
 
 publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, res: Response) => {
@@ -320,6 +356,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
+            COALESCE(t.musicrequestsenabled, FALSE) AS musicrequestsenabled,
             COALESCE(t.bountyenabled, FALSE) AS bountyenabled,
             COALESCE(t.bountymode, 'manual') AS bountymode,
             COALESCE(CAST(t.bountyprizepool AS DECIMAL), 0) AS bountyprizepool,
@@ -443,6 +480,30 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     [req.params.id, entryUserId]
   );
   const activePlayersWithCoins = await attachPlayerCoinBadges(activePlayers, tournament.groupid);
+  const spotifySummary = await getSpotifyConnectionSummary(tournament.ownerid);
+  const timerStatus = await queryOne<{ running: boolean | null }>(
+    `SELECT running FROM tournamenttimer WHERE tournamentid = $1`,
+    [req.params.id]
+  );
+  const musicRequestsOn = Boolean(tournament.musicrequestsenabled);
+  const musicRunning = Boolean(timerStatus?.running);
+  const musicEnabled = spotifySummary.connected && musicRequestsOn && musicRunning;
+  const currentTrack = spotifySummary.connected && musicRunning
+    ? await getCurrentlyPlayingTrackForHost(tournament.ownerid).catch(() => null)
+    : null;
+  const currentTrackWithRequester = await attachMusicRequesterToCurrentTrack(req.params.id, currentTrack).catch(() => currentTrack);
+  const linkedLeague = await queryOne<{ leagueid: string }>(
+    `SELECT leagueid FROM leagueevents WHERE tournamentid = $1 LIMIT 1`,
+    [req.params.id]
+  );
+  const vipPoints = entryUserId && linkedLeague
+    ? await queryOne<{ pointsbalance: number | string | null; vipactive: boolean | null }>(
+        `SELECT pointsbalance, vipactive
+         FROM leaguevippoints
+         WHERE leagueid = $1 AND userid = $2`,
+        [linkedLeague.leagueid, entryUserId]
+      )
+    : null;
 
   res.json({
     tournament,
@@ -462,6 +523,18 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     entry,
     isdeclined,
     activePlayers: activePlayersWithCoins,
+    music: {
+      enabled: musicEnabled,
+      requestsOn: musicRequestsOn,
+      isRunning: musicRunning,
+      spotifyConnected: spotifySummary.connected,
+      spotifyDisplayName: spotifySummary.displayname,
+      currentTrack: currentTrackWithRequester,
+      vipQueueAvailable: Boolean(linkedLeague),
+      vipPointsBalance: Number(vipPoints?.pointsbalance ?? 0),
+      vipActive: Boolean(vipPoints?.vipactive),
+      requests: await getSyncedTournamentMusicRequests(req.params.id, tournament.ownerid, musicRunning, spotifySummary.connected),
+    },
   });
 });
 

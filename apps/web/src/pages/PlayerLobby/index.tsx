@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Home, Share, Skull, Volume2 } from 'lucide-react';
-import { api, BlindLevel, PlayerCoinBadge } from '../../api/client';
+import { Download, Home, ListMusic, Search, Share, Skull, Star, Volume2 } from 'lucide-react';
+import { api, BlindLevel, PlayerCoinBadge, SpotifyTrackSearchResult } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
+import SpotifyArtwork from '../../components/SpotifyArtwork';
 import { useAuthStore } from '../../store/auth';
 import { announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPoolFromAssigned } from '../../utils/bountyMath';
@@ -68,16 +69,24 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
   });
   const [soundEnabled, setSoundEnabled] = useState(() => isTimerAudioUnlocked());
   const [showBlindStructure, setShowBlindStructure] = useState(false);
+  const [songSearch, setSongSearch] = useState('');
+  const [selectedTrack, setSelectedTrack] = useState<SpotifyTrackSearchResult | null>(null);
+  const [spendVipPoints, setSpendVipPoints] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['public-lobby', id, guestUserId, user?.guid],
     queryFn: () => api.getPublicLobby(id!, guestUserId || undefined),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const musicState = query.state.data?.music;
+      return (musicState?.requestsOn || (musicState?.spotifyConnected && musicState?.isRunning)) ? 30_000 : false;
+    },
   });
 
   const tournament = data?.tournament;
   const field = data?.field;
   const entry = data?.entry;
+  const music = data?.music;
   const isDeclined = Boolean(data?.isdeclined);
   const activePlayers = data?.activePlayers ?? [];
   const checkInMode = mode === 'checkin';
@@ -173,6 +182,29 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['public-lobby', id] });
       setKnockedOutByUserId('');
+    },
+  });
+
+  const songSearchQuery = useQuery({
+    queryKey: ['spotify-search', id, songSearch.trim(), guestUserId, user?.guid],
+    queryFn: () => api.searchSpotifyTracks(id!, songSearch.trim(), guestUserId || undefined),
+    enabled: Boolean(id && music?.enabled && songSearch.trim().length >= 2),
+  });
+
+  const songRequestMutation = useMutation({
+    mutationFn: (track: SpotifyTrackSearchResult) => api.requestSong(id!, {
+      spotifyuri: track.uri,
+      trackname: track.name,
+      artistname: track.artistname,
+      albumimageurl: track.albumimageurl ?? null,
+      guestUserId: guestUserId || undefined,
+      spendVipPoints: spendVipPoints && Boolean(music?.vipQueueAvailable && (music?.vipPointsBalance ?? 0) > 0),
+    }),
+    onSuccess: () => {
+      setSelectedTrack(null);
+      setSongSearch('');
+      setSpendVipPoints(false);
+      qc.invalidateQueries({ queryKey: ['public-lobby', id] });
     },
   });
 
@@ -393,6 +425,18 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
       ],
     });
   })();
+  const showMusicPanel = Boolean(music?.spotifyConnected && (music?.requestsOn || music?.currentTrack));
+  const canRequestMusic = Boolean(music?.enabled && entry && entry.placed == null);
+  const requestedSongs = music?.requests ?? [];
+  const musicUnavailableMessage = !entry
+    ? 'Register for this tournament to request songs.'
+    : entry.placed != null
+      ? 'Song requests are for active players.'
+      : !music?.requestsOn
+        ? 'Song requests are turned off for this tournament.'
+      : !music?.isRunning
+        ? 'Song requests open when the tournament timer is running.'
+        : 'Song requests are unavailable right now.';
 
   async function handleSharePersonalRecap(downloadOnly = false) {
     if (!entry || !personalRecapSvg) return;
@@ -539,6 +583,144 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {showMusicPanel && (
+          <section className="card space-y-3 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white">{music?.requestsOn ? 'Song Requests' : 'Host Music'}</h2>
+                <p className="text-xs text-pit-muted">
+                  {music?.spotifyDisplayName ? `Host connected: ${music.spotifyDisplayName}` : 'Host Spotify is connected'}
+                </p>
+              </div>
+              <ListMusic size={18} className="shrink-0 text-pit-teal" />
+            </div>
+
+            {music?.currentTrack && (
+              <div className="flex items-center gap-3 rounded-lg border border-pit-teal/30 bg-pit-teal/10 px-3 py-2">
+                <SpotifyArtwork src={music.currentTrack.albumimageurl} className="h-11 w-11" iconSize={16} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pit-teal">
+                    {music.currentTrack.isplaying ? 'Now Playing' : 'Spotify Paused'}
+                  </p>
+                  <p className="truncate text-sm font-semibold text-white">{music.currentTrack.name}</p>
+                  <p className="truncate text-xs text-pit-muted">{music.currentTrack.artistname}</p>
+                  {music.currentTrack.requestedbyname && (
+                    <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-pit-teal">
+                      {music.currentTrack.requestedbyavatarurl && (
+                        <img src={music.currentTrack.requestedbyavatarurl} alt="" className="h-4 w-4 shrink-0 rounded-full object-cover" />
+                      )}
+                      <p className="truncate">Requested by: {music.currentTrack.requestedbyname}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {canRequestMusic ? (
+              <div className="space-y-3">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-pit-muted">Find a track</span>
+                  <div className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/60 px-3 py-2">
+                    <Search size={15} className="shrink-0 text-pit-muted" />
+                    <input
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-pit-muted"
+                      placeholder="Song or artist"
+                      value={songSearch}
+                      onChange={(event) => {
+                        setSongSearch(event.target.value);
+                        setSelectedTrack(null);
+                      }}
+                    />
+                  </div>
+                </label>
+
+                {songSearch.trim().length >= 2 && (
+                  <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                    {(songSearchQuery.data?.tracks ?? []).map((track) => {
+                      const selected = selectedTrack?.uri === track.uri;
+                      return (
+                        <button
+                          key={track.uri}
+                          type="button"
+                          className={`flex w-full items-center gap-2 rounded-lg border px-2 py-2 text-left transition ${
+                            selected ? 'border-pit-teal bg-pit-teal/12' : 'border-pit-border bg-pit-bg/45 hover:border-pit-teal/50'
+                          }`}
+                          onClick={() => setSelectedTrack(track)}
+                        >
+                          <SpotifyArtwork src={track.albumimageurl} className="h-10 w-10" fallbackClassName="bg-pit-surface text-pit-muted" iconSize={16} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-white">{track.name}</span>
+                            <span className="block truncate text-xs text-pit-muted">{track.artistname}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {songSearchQuery.isFetching && <p className="text-xs text-pit-muted">Searching Spotify...</p>}
+                    {!songSearchQuery.isFetching && songSearchQuery.data && songSearchQuery.data.tracks.length === 0 && (
+                      <p className="text-xs text-pit-muted">No Spotify tracks found.</p>
+                    )}
+                  </div>
+                )}
+
+                {music?.vipQueueAvailable && (
+                  <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    (music?.vipPointsBalance ?? 0) > 0
+                      ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+                      : 'border-pit-border bg-pit-bg/45 text-pit-muted'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-pit-border bg-pit-bg accent-pit-teal"
+                      checked={spendVipPoints}
+                      disabled={(music?.vipPointsBalance ?? 0) <= 0}
+                      onChange={(event) => setSpendVipPoints(event.target.checked)}
+                    />
+                    <Star size={15} className="shrink-0" />
+                    Use 1 VIP point to jump the app queue ({music?.vipPointsBalance ?? 0} left)
+                  </label>
+                )}
+
+                <button
+                  type="button"
+                  className="btn-primary w-full"
+                  disabled={!selectedTrack || songRequestMutation.isPending}
+                  onClick={() => selectedTrack && songRequestMutation.mutate(selectedTrack)}
+                >
+                  {songRequestMutation.isPending ? 'Requesting...' : 'Request Song'}
+                </button>
+                {songRequestMutation.error && <p className="text-sm text-red-400">{songRequestMutation.error.message}</p>}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-pit-border bg-pit-bg/45 px-3 py-2 text-sm text-pit-text">
+                {musicUnavailableMessage}
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              {requestedSongs.length === 0 ? (
+                <p className="text-sm text-pit-muted">No requests yet.</p>
+              ) : requestedSongs.map((request, index) => (
+                <div key={request.requestid} className="flex items-center gap-2 rounded-lg border border-pit-border bg-pit-bg/45 px-2 py-2">
+                  <SpotifyArtwork src={request.albumimageurl} className="h-9 w-9" fallbackClassName="bg-pit-surface text-pit-muted" iconSize={15} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{index + 1}. {request.trackname}</p>
+                    <p className="truncate text-xs text-pit-muted">{request.artistname}{request.requestedbyname ? ` - ${request.requestedbyname}` : ''}</p>
+                    {request.status === 'failed' && request.failuremessage && (
+                      <p className="truncate text-[11px] text-red-300">{request.failuremessage}</p>
+                    )}
+                  </div>
+                  {request.status === 'queued' && (
+                    <span className="rounded-full border border-pit-teal/35 bg-pit-teal/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pit-teal">
+                      Queued
+                    </span>
+                  )}
+                  {request.vipapplied && <Star size={15} className="shrink-0 text-amber-200" />}
+                </div>
+              ))}
+            </div>
           </section>
         )}
 

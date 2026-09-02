@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth';
 import LoginPage from './pages/Login';
@@ -28,6 +29,8 @@ import JoinLeaguePage from './pages/JoinLeague';
 import JoinCodePage from './pages/JoinCode';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
 import { featureFlags } from './features';
+
+const DemoShowcasePage = lazy(() => import('./pages/DemoShowcase'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -87,6 +90,14 @@ export default function App() {
         <Route path="/quick-start" element={featureFlags.deferredAuthQuickStart ? <QuickStartTournamentPage /> : <Navigate to="/" replace />} />
         <Route path="/quick-start/run" element={featureFlags.deferredAuthQuickStart ? <QuickStartRunPage /> : <Navigate to="/" replace />} />
         <Route path="/demo" element={<DemoPage />} />
+        <Route
+          path="/demo-showcase"
+          element={(
+            <Suspense fallback={<div className="min-h-screen bg-pit-bg" role="status"><span className="sr-only">Loading showcase</span></div>}>
+              <DemoShowcasePage />
+            </Suspense>
+          )}
+        />
         <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />

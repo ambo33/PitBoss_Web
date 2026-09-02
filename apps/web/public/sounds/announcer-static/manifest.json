@@ -358,5 +358,14 @@
     "url": "/sounds/announcer-static/sunny-stacks-one-minute-warning.mp3",
     "bytes": 36096,
     "updatedAt": "2026-05-18T21:23:51.106Z"
+  },
+  {
+    "style": "all_in_alex",
+    "event": "demo_bubble_bob_knockout",
+    "text": "Bubble Bob hits the rail. Knockout logged, and the field keeps marching toward the money.",
+    "filename": "demo-bubble-bob-knockout.mp3",
+    "url": "/sounds/announcer-static/demo-bubble-bob-knockout.mp3",
+    "bytes": 94464,
+    "updatedAt": "2026-08-28T17:54:45.283Z"
   }
 ]

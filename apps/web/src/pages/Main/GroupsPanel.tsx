@@ -1127,12 +1127,12 @@ function GroupDetailView({
                   <p className="text-sm font-semibold text-white">Announcer</p>
                   <p className="mt-1 text-xs leading-5 text-pit-muted">
                     {demoMode
-                      ? 'Demo mode uses browser speech only, so generated voice clips stay off.'
+                      ? 'Demo mode uses a locked showcase voice, so generated voice settings stay off.'
                       : "Level changes can generate smart announcer audio using the tournament field, rebuys, add-ons, and this group's style."}
                   </p>
                 </div>
                 {!canUseClubFeatures && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Club</span>}
-                {demoMode && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Demo TTS</span>}
+                {demoMode && <span className="badge border-yellow-300/25 bg-yellow-300/10 text-yellow-100">Demo Voice</span>}
                 <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-pit-text">
                   <span>{aiAnnouncerEnabled ? 'Enabled' : 'Disabled'}</span>
                   <span className={`flex h-6 w-11 rounded-full p-0.5 transition-colors ${aiAnnouncerEnabled ? 'bg-pit-teal' : 'bg-pit-border'}`}>

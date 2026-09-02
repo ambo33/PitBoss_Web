@@ -150,6 +150,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     `);
     await client.query(`
       ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS musicrequestsenabled BOOL DEFAULT FALSE
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS musicrequestlimit INT DEFAULT 1
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS musicrequestwindowminutes INT DEFAULT 5
+    `);
+    await client.query(`
+      ALTER TABLE tournaments
       ADD COLUMN IF NOT EXISTS seatingmaxpertable INT DEFAULT 9
     `);
     await client.query(`
@@ -612,6 +624,69 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
       )
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS spotifyoauthstates (
+        state STRING(96) PRIMARY KEY,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        returnpath STRING(400),
+        expiresat TIMESTAMPTZ NOT NULL,
+        createdat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_spotifyoauthstates_expires
+      ON spotifyoauthstates (expiresat)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS spotifyconnections (
+        userid UUID PRIMARY KEY REFERENCES users(guid) ON DELETE CASCADE,
+        spotifyuserid STRING(128),
+        displayname STRING(160),
+        accesstokenencrypted STRING NOT NULL,
+        refreshtokenencrypted STRING NOT NULL,
+        scope STRING(500),
+        expiresat TIMESTAMPTZ NOT NULL,
+        product STRING(40),
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tournamentmusicrequests (
+        requestid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tournamentid UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+        requestedbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        requestedbyname STRING(160),
+        spotifyuri STRING(180) NOT NULL,
+        trackname STRING(200) NOT NULL,
+        artistname STRING(200) NOT NULL,
+        albumimageurl STRING(500),
+        status STRING(24) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'queued', 'played', 'skipped', 'failed')),
+        prioritypoints INT NOT NULL DEFAULT 0,
+        vipapplied BOOL NOT NULL DEFAULT FALSE,
+        spotifyqueuedat TIMESTAMPTZ,
+        failuremessage STRING(240),
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_tournamentmusicrequests_queue
+      ON tournamentmusicrequests (tournamentid, status, prioritypoints DESC, createdat)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tournamentmusicrequestblocks (
+        tournamentid UUID NOT NULL REFERENCES tournaments(tournamentid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        blockedbyuserid UUID REFERENCES users(guid) ON DELETE SET NULL,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (tournamentid, userid)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_tournamentmusicrequestblocks_user
+      ON tournamentmusicrequestblocks (tournamentid, userid)
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS publicblindtimers (
         code STRING(6) PRIMARY KEY,
         name STRING(120) NOT NULL DEFAULT 'Poker Timer',
@@ -701,6 +776,18 @@ export async function ensureDatabaseSchema(options: { closePool?: boolean } = {}
     await client.query(`UPDATE leagues SET finalchiprounding = 100 WHERE finalchiprounding IS NULL`);
     await client.query(`UPDATE leagues SET finalstartingbigblind = 100 WHERE finalstartingbigblind IS NULL`);
     await client.query(`UPDATE leagues SET memberledgervisible = FALSE WHERE memberledgervisible IS NULL`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaguevippoints (
+        leagueid UUID NOT NULL REFERENCES leagues(leagueid) ON DELETE CASCADE,
+        userid UUID NOT NULL REFERENCES users(guid) ON DELETE CASCADE,
+        pointsbalance INT NOT NULL DEFAULT 0,
+        vipactive BOOL NOT NULL DEFAULT FALSE,
+        vipuntil TIMESTAMPTZ,
+        createdat TIMESTAMPTZ DEFAULT now(),
+        updatedat TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (leagueid, userid)
+      )
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS joincodes (
         code STRING(10) PRIMARY KEY,

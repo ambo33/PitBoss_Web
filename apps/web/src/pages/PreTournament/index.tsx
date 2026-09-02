@@ -223,6 +223,7 @@ export default function PreTournamentPage() {
           isOwner={canManage}
           tournament={tournament}
           players={players}
+          onOpenBlinds={() => setTab('blinds')}
           demoStartCoachActive={demoCoachStep === 'start'}
           onDemoStartCoachDone={handleDemoStartCoachDone}
         />
@@ -275,14 +276,13 @@ function TournamentAccountMenu() {
     <div ref={menuRef} className="relative">
       <button
         type="button"
-        className={`group relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border bg-gradient-to-br shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition ${open ? 'border-pit-teal/70 from-pit-teal/25 to-[#122E30] text-white ring-2 ring-pit-teal/15' : 'border-pit-border from-pit-card to-[#151f22] text-pit-text hover:border-pit-teal/50 hover:text-white'}`}
+        className={`flex h-9 w-9 items-center justify-center rounded-lg border bg-pit-bg/55 text-pit-muted transition ${open ? 'border-pit-teal/70 bg-pit-teal/10 text-white' : 'border-pit-border/80 hover:border-pit-teal/50 hover:bg-pit-surface/70 hover:text-white'}`}
         onClick={() => setOpen((value) => !value)}
         aria-label={open ? 'Close account menu' : 'Open account menu'}
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span className="absolute inset-x-2 top-0 h-px bg-gradient-to-r from-transparent via-pit-teal/70 to-transparent" aria-hidden="true" />
-        {open ? <X size={19} /> : <Menu size={20} />}
+        {open ? <X size={18} /> : <Menu size={18} />}
       </button>
       {open && (
         <div className="absolute right-0 top-[3.25rem] z-50 w-56 overflow-hidden rounded-2xl border border-pit-border bg-[#15171d]/[0.98] p-1.5 shadow-[0_22px_55px_rgba(0,0,0,0.48)] backdrop-blur-xl" role="menu">
@@ -555,7 +555,17 @@ function BlindStructureCard({ blinds, totalLevels, currentLevel, onEdit }: { bli
               );
             })}
           </div>
-        ) : <p className="rounded-lg border border-dashed border-pit-border px-3 py-6 text-center text-sm text-pit-muted">No blind structure saved yet.</p>}
+        ) : (
+          <div className="rounded-lg border border-dashed border-pit-border px-3 py-5 text-center">
+            <p className="text-sm text-pit-muted">No blind structure saved yet.</p>
+            {onEdit && (
+              <button type="button" className="btn-primary mx-auto mt-3 min-h-10 gap-2 px-3 py-2 text-sm" onClick={onEdit}>
+                <Timer size={15} />
+                Build Structure
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </DashboardCard>
   );

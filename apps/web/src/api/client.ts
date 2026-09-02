@@ -105,6 +105,12 @@ export const api = {
     get<{ preferences: NotificationPreference[] }>('/push/preferences'),
   updateNotificationPreference: (category: NotificationCategory, data: { enabled: boolean; digestOnly?: boolean }) =>
     put<{ success: boolean; preferences: NotificationPreference[] }>(`/push/preferences/${category}`, data),
+  getSpotifyStatus: () =>
+    get<SpotifyConnectionSummary>('/spotify/status'),
+  createSpotifyLoginUrl: (data: { returnPath?: string }) =>
+    post<{ url: string }>('/spotify/login-url', data),
+  disconnectSpotify: () =>
+    del<{ success: boolean }>('/spotify/connection'),
 
   // Groups
   resolveJoinCode: (code: string) =>
@@ -284,6 +290,18 @@ export const api = {
     del<{ success: boolean; notified: number; pushSent?: number }>(`/tournaments/${id}`, data),
   getPublicLobby: (id: string, guestUserId?: string) =>
     get<PublicLobbyResponse>(`/public/tournaments/${id}/lobby${guestUserId ? `?guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  searchSpotifyTracks: (id: string, q: string, guestUserId?: string) =>
+    get<{ tracks: SpotifyTrackSearchResult[] }>(`/spotify/tournaments/${id}/music/search?q=${encodeURIComponent(q)}${guestUserId ? `&guestUserId=${encodeURIComponent(guestUserId)}` : ''}`),
+  requestSong: (id: string, data: { spotifyuri: string; trackname: string; artistname: string; albumimageurl?: string | null; guestUserId?: string; spendVipPoints?: boolean }) =>
+    post<{ success: boolean; requestid: string; vipapplied: boolean; spotifyqueued: boolean; spotifyqueueerror?: string | null; requests: TournamentMusicRequest[] }>(`/spotify/tournaments/${id}/music/requests`, data),
+  getTournamentMusicQueue: (id: string) =>
+    get<TournamentMusicResponse>(`/spotify/tournaments/${id}/music`),
+  updateMusicRequestSettings: (id: string, data: { requestLimit: number | null; requestWindowMinutes: number }) =>
+    put<{ success: boolean; musicrequestlimit: number | null; musicrequestwindowminutes: number }>(`/spotify/tournaments/${id}/music/settings`, data),
+  setMusicRequesterBlocked: (id: string, userId: string, blocked: boolean) =>
+    put<{ success: boolean; blocked: boolean }>(`/spotify/tournaments/${id}/music/blocks/${encodeURIComponent(userId)}`, { blocked }),
+  playNextMusicRequest: (id: string) =>
+    post<{ success: boolean; requestid: string; requests: TournamentMusicRequest[] }>(`/spotify/tournaments/${id}/music/play-next`),
   getPublicTvBoard: (code: string) =>
     get<PublicTvBoardResponse>(`/public/tv/${encodeURIComponent(code)}`),
   generatePublicTvAnnouncerMoment: (code: string, data: AnnouncerMomentRequest) =>
@@ -400,6 +418,8 @@ export interface Group {
   aiannouncerpreset?: AnnouncerPreset;
   aiannouncercustomprompt?: string | null;
   aiannouncerclassicmode?: boolean;
+  musicrequestlimit?: number | null;
+  musicrequestwindowminutes?: number;
   postapprovalrequired?: boolean;
   membercount?: number; isadmin?: boolean; approved?: boolean;
   pendingpostcount?: number;
@@ -446,6 +466,7 @@ export interface Tournament {
   tvgreetingaudioenabled?: boolean;
   tvshowknockoutqrenabled?: boolean;
   tvdisplaymode?: 'timer' | 'seating';
+  musicrequestsenabled?: boolean;
   seatingmaxpertable?: number;
   bountyenabled?: boolean;
   bountymode?: 'manual' | 'mystery';
@@ -977,6 +998,7 @@ export interface PublicAddonResponse {
 export interface PublicTvBoardResponse {
   tournament: Tournament;
   players: TournamentPlayer[];
+  music?: PublicLobbyMusic;
 }
 export interface PublicLobbyResponse {
   tournament: Tournament;
@@ -985,10 +1007,80 @@ export interface PublicLobbyResponse {
   entry: LobbyEntry | null;
   isdeclined?: boolean;
   activePlayers?: KnockoutOption[];
+  music?: PublicLobbyMusic;
 }
 export interface KnockoutOption {
   userid: string; emailaddress: string; displayname?: string;
   awardedcoins?: PlayerCoinBadge[];
+}
+export interface SpotifyConnectionSummary {
+  connected: boolean;
+  displayname?: string | null;
+  spotifyuserid?: string | null;
+  product?: string | null;
+  scope?: string | null;
+  expiresat?: string | null;
+}
+export interface SpotifyTrackSearchResult {
+  uri: string;
+  name: string;
+  artistname: string;
+  albumname?: string | null;
+  albumimageurl?: string | null;
+  durationms?: number | null;
+}
+export interface SpotifyCurrentTrack extends SpotifyTrackSearchResult {
+  isplaying: boolean;
+  progressms?: number | null;
+  externalurl?: string | null;
+  requestedbyname?: string | null;
+  requestedbyavatarurl?: string | null;
+}
+export interface TournamentMusicResponse {
+  enabled: boolean;
+  isRunning: boolean;
+  musicrequestsenabled: boolean;
+  musicrequestlimit?: number | null;
+  musicrequestwindowminutes: number;
+  spotify: SpotifyConnectionSummary;
+  currentTrack?: SpotifyCurrentTrack | null;
+  spotifyqueue?: SpotifyTrackSearchResult[] | null;
+  requesters: TournamentMusicRequester[];
+  requests: TournamentMusicRequest[];
+}
+export interface TournamentMusicRequester {
+  userid: string;
+  displayname: string;
+  blocked: boolean;
+}
+export interface TournamentMusicRequest {
+  requestid: string;
+  tournamentid: string;
+  requestedbyuserid?: string | null;
+  requestedbyname?: string | null;
+  spotifyuri: string;
+  trackname: string;
+  artistname: string;
+  albumimageurl?: string | null;
+  status: 'requested' | 'queued' | 'played' | 'skipped' | 'failed' | string;
+  prioritypoints: number;
+  vipapplied: boolean;
+  spotifyqueuedat?: string | null;
+  failuremessage?: string | null;
+  createdat: string;
+  updatedat: string;
+}
+export interface PublicLobbyMusic {
+  enabled: boolean;
+  requestsOn: boolean;
+  isRunning: boolean;
+  spotifyConnected: boolean;
+  spotifyDisplayName?: string | null;
+  currentTrack?: SpotifyCurrentTrack | null;
+  vipQueueAvailable: boolean;
+  vipPointsBalance: number;
+  vipActive: boolean;
+  requests: TournamentMusicRequest[];
 }
 export interface PublicKnockoutResponse {
   tournament: Tournament;
