@@ -237,6 +237,71 @@ export async function getSpotifyConnectionSummary(userId: string): Promise<Spoti
   };
 }
 
+export async function getSpotifyHostForTournament(
+  tournamentId: string,
+  preferredUserId?: string | null
+): Promise<{ userid: string; summary: SpotifyConnectionSummary } | null> {
+  const candidates = await query<{ userid: string; priority: number }>(
+    `SELECT userid, priority
+     FROM (
+       SELECT t.userid, 0 AS priority
+       FROM tournaments t
+       WHERE t.tournamentid = $1
+       UNION ALL
+       SELECT gm.userid, 1 AS priority
+       FROM tournaments t
+       JOIN groupmembers gm ON gm.groupid = t.groupid
+       WHERE t.tournamentid = $1
+         AND gm.approved = TRUE
+         AND gm.admin = TRUE
+       UNION ALL
+       SELECT lm.userid, 2 AS priority
+       FROM tournaments t
+       JOIN leagueevents le ON le.tournamentid = t.tournamentid
+       JOIN leaguemembers lm ON lm.leagueid = le.leagueid
+       WHERE t.tournamentid = $1
+         AND lm.approved = TRUE
+         AND lm.admin = TRUE
+       UNION ALL
+       SELECT $2::UUID AS userid, -1 AS priority
+       FROM tournaments t
+       WHERE t.tournamentid = $1
+         AND $2::UUID IS NOT NULL
+         AND (
+           t.userid = $2::UUID
+           OR EXISTS (
+             SELECT 1
+             FROM groupmembers gm
+             WHERE gm.groupid = t.groupid
+               AND gm.userid = $2::UUID
+               AND gm.approved = TRUE
+               AND gm.admin = TRUE
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM leagueevents le
+             JOIN leaguemembers lm ON lm.leagueid = le.leagueid
+             WHERE le.tournamentid = t.tournamentid
+               AND lm.userid = $2::UUID
+               AND lm.approved = TRUE
+               AND lm.admin = TRUE
+           )
+         )
+     ) candidates
+     ORDER BY priority ASC, userid ASC`,
+    [tournamentId, preferredUserId ?? null]
+  );
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate.userid)) continue;
+    seen.add(candidate.userid);
+    const summary = await getSpotifyConnectionSummary(candidate.userid);
+    if (summary.connected) return { userid: candidate.userid, summary };
+  }
+  return null;
+}
+
 export async function createSpotifyLoginUrl(userId: string, returnPath?: string): Promise<string> {
   const { clientId } = requireSpotifyConfig();
   const state = crypto.randomBytes(24).toString('base64url');

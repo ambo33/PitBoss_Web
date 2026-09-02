@@ -488,8 +488,21 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
 
       <div className="mx-auto max-w-md space-y-4">
         <section className="card grid grid-cols-2 gap-2 p-3">
-          <LobbyStat label="Registration" value={registeredStatus} />
-          <LobbyStat label="Check-In" value={checkInStatus} accent={Boolean(entry?.checkedin)} />
+          <LobbyStat label="Registration" value={entry?.checkedin ? 'Checked in' : registeredStatus} accent={Boolean(entry?.checkedin)} />
+          {entry?.checkedin && entry.placed == null ? (
+            <button
+              type="button"
+              className="flex min-h-[76px] flex-col items-center justify-center rounded-lg border border-red-300/30 bg-red-400/10 px-3 py-2 text-center transition hover:border-red-300/55 hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => knockoutMutation.mutate()}
+              disabled={knockoutMutation.isPending}
+              aria-label="Report that you have been knocked out"
+            >
+              <span className="text-lg font-semibold text-red-200">{knockoutMutation.isPending ? 'Reporting...' : 'Knock Out'}</span>
+              <span className="mt-1 text-[11px] uppercase tracking-wide text-pit-muted">Knockout</span>
+            </button>
+          ) : (
+            <LobbyStat label="Check-In" value={checkInStatus} accent={Boolean(entry?.checkedin)} />
+          )}
         </section>
 
         {currentBlind && (
@@ -639,6 +652,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
 
                 {songSearch.trim().length >= 2 && (
                   <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                    {songSearchQuery.error && <p className="text-xs text-red-300">{songSearchQuery.error.message}</p>}
                     {(songSearchQuery.data?.tracks ?? []).map((track) => {
                       const selected = selectedTrack?.uri === track.uri;
                       return (

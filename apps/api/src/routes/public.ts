@@ -11,7 +11,7 @@ import { assignSeatIfSeatingStarted } from '../services/seating';
 import { assignMysteryBountyForKnockout, redistributeMysteryBountiesForTournament } from '../services/bounties';
 import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
-import { attachMusicRequesterToCurrentTrack, getCurrentlyPlayingTrackForHost, getSpotifyConnectionSummary, getTournamentMusicQueue, syncTournamentMusicQueue } from '../services/spotify';
+import { attachMusicRequesterToCurrentTrack, getCurrentlyPlayingTrackForHost, getSpotifyHostForTournament, getTournamentMusicQueue, syncTournamentMusicQueue } from '../services/spotify';
 import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
@@ -319,7 +319,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
 
   const playersWithAchievements = await attachPlayerAchievementCounts(players, tournament.groupid);
   const playersWithCoins = await attachPlayerCoinBadges(playersWithAchievements, tournament.groupid);
-  const spotifySummary = await getSpotifyConnectionSummary(tournament.ownerid);
+  const spotifyHost = await getSpotifyHostForTournament(tournament.tournamentid);
+  const spotifySummary = spotifyHost?.summary ?? { connected: false };
   const timerStatus = await queryOne<{ running: boolean | null }>(
     `SELECT running FROM tournamenttimer WHERE tournamentid = $1`,
     [tournament.tournamentid]
@@ -327,8 +328,8 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
   const musicRequestsOn = Boolean(tournament.musicrequestsenabled);
   const musicRunning = Boolean(timerStatus?.running);
   const musicEnabled = spotifySummary.connected && musicRequestsOn && musicRunning;
-  const currentTrack = spotifySummary.connected && musicRunning
-    ? await getCurrentlyPlayingTrackForHost(tournament.ownerid).catch(() => null)
+  const currentTrack = spotifyHost && musicRunning
+    ? await getCurrentlyPlayingTrackForHost(spotifyHost.userid).catch(() => null)
     : null;
   const currentTrackWithRequester = await attachMusicRequesterToCurrentTrack(tournament.tournamentid, currentTrack).catch(() => currentTrack);
   res.json({
@@ -344,7 +345,7 @@ publicRouter.get('/tv/:code', async (req: Request, res: Response) => {
       vipQueueAvailable: false,
       vipPointsBalance: 0,
       vipActive: false,
-      requests: await getSyncedTournamentMusicRequests(tournament.tournamentid, tournament.ownerid, musicRunning, spotifySummary.connected),
+      requests: await getSyncedTournamentMusicRequests(tournament.tournamentid, spotifyHost?.userid ?? tournament.ownerid, musicRunning, spotifySummary.connected),
     },
   });
 });
@@ -480,7 +481,8 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
     [req.params.id, entryUserId]
   );
   const activePlayersWithCoins = await attachPlayerCoinBadges(activePlayers, tournament.groupid);
-  const spotifySummary = await getSpotifyConnectionSummary(tournament.ownerid);
+  const spotifyHost = await getSpotifyHostForTournament(req.params.id);
+  const spotifySummary = spotifyHost?.summary ?? { connected: false };
   const timerStatus = await queryOne<{ running: boolean | null }>(
     `SELECT running FROM tournamenttimer WHERE tournamentid = $1`,
     [req.params.id]
@@ -488,8 +490,8 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
   const musicRequestsOn = Boolean(tournament.musicrequestsenabled);
   const musicRunning = Boolean(timerStatus?.running);
   const musicEnabled = spotifySummary.connected && musicRequestsOn && musicRunning;
-  const currentTrack = spotifySummary.connected && musicRunning
-    ? await getCurrentlyPlayingTrackForHost(tournament.ownerid).catch(() => null)
+  const currentTrack = spotifyHost && musicRunning
+    ? await getCurrentlyPlayingTrackForHost(spotifyHost.userid).catch(() => null)
     : null;
   const currentTrackWithRequester = await attachMusicRequesterToCurrentTrack(req.params.id, currentTrack).catch(() => currentTrack);
   const linkedLeague = await queryOne<{ leagueid: string }>(
@@ -533,7 +535,7 @@ publicRouter.get('/tournaments/:id/lobby', optionalAuth, async (req: Request, re
       vipQueueAvailable: Boolean(linkedLeague),
       vipPointsBalance: Number(vipPoints?.pointsbalance ?? 0),
       vipActive: Boolean(vipPoints?.vipactive),
-      requests: await getSyncedTournamentMusicRequests(req.params.id, tournament.ownerid, musicRunning, spotifySummary.connected),
+      requests: await getSyncedTournamentMusicRequests(req.params.id, spotifyHost?.userid ?? tournament.ownerid, musicRunning, spotifySummary.connected),
     },
   });
 });

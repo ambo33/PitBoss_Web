@@ -13,6 +13,7 @@ import {
   disconnectSpotify,
   getCurrentlyPlayingTrackForHost,
   getSpotifyConnectionSummary,
+  getSpotifyHostForTournament,
   getTournamentMusicQueue,
   searchSpotifyTracksForHost,
   syncTournamentMusicQueue,
@@ -64,7 +65,7 @@ async function canManageTournament(tournamentId: string, userId: string): Promis
   return isDatabaseTrue(row?.canmanage);
 }
 
-async function getTournamentMusicAvailability(tournamentId: string) {
+async function getTournamentMusicAvailability(tournamentId: string, preferredUserId?: string | null) {
   const tournament = await queryOne<{
     ownerid: string;
     musicrequestsenabled: boolean | null;
@@ -83,15 +84,17 @@ async function getTournamentMusicAvailability(tournamentId: string) {
     [tournamentId]
   );
   if (!tournament) return null;
-  const spotify = await getSpotifyConnectionSummary(tournament.ownerid);
+  const spotifyHost = await getSpotifyHostForTournament(tournamentId, preferredUserId);
+  const spotify = spotifyHost?.summary ?? { connected: false };
   const isRunning = Boolean(tournament.timerrunning);
   const enabled = Boolean(tournament.musicrequestsenabled) && isRunning && spotify.connected;
-  const currentTrack = spotify.connected && isRunning
-    ? await getCurrentlyPlayingTrackForHost(tournament.ownerid).catch(() => null)
+  const currentTrack = spotifyHost && isRunning
+    ? await getCurrentlyPlayingTrackForHost(spotifyHost.userid).catch(() => null)
     : null;
   const currentTrackWithRequester = await attachMusicRequesterToCurrentTrack(tournamentId, currentTrack).catch(() => currentTrack);
   return {
     ownerid: tournament.ownerid,
+    spotifyhostuserid: spotifyHost?.userid ?? null,
     musicrequestsenabled: Boolean(tournament.musicrequestsenabled),
     musicrequestlimit: tournament.musicrequestlimit == null ? null : Math.max(1, Number(tournament.musicrequestlimit)),
     musicrequestwindowminutes: Math.min(1440, Math.max(1, Number(tournament.musicrequestwindowminutes ?? 5))),
@@ -204,7 +207,7 @@ spotifyRouter.get('/tournaments/:id/music', requireAuth, async (req: Request, re
     return;
   }
 
-  const availability = await getTournamentMusicAvailability(req.params.id);
+  const availability = await getTournamentMusicAvailability(req.params.id, req.userId);
   if (!availability) {
     res.status(404).json({ error: 'Tournament not found.' });
     return;
@@ -213,7 +216,7 @@ spotifyRouter.get('/tournaments/:id/music', requireAuth, async (req: Request, re
   let spotifyQueue: Awaited<ReturnType<typeof syncTournamentMusicQueue>> | null = null;
   if (availability.isRunning && availability.spotify.connected) {
     try {
-      spotifyQueue = await syncTournamentMusicQueue(req.params.id, availability.ownerid);
+      spotifyQueue = await syncTournamentMusicQueue(req.params.id, availability.spotifyhostuserid ?? availability.ownerid);
     } catch {
       spotifyQueue = null;
     }
@@ -312,7 +315,7 @@ spotifyRouter.post('/tournaments/:id/music/play-next', requireAuth, async (req: 
     return;
   }
 
-  const availability = await getTournamentMusicAvailability(req.params.id);
+  const availability = await getTournamentMusicAvailability(req.params.id, req.userId);
   if (!availability) {
     res.status(404).json({ error: 'Tournament not found.' });
     return;
@@ -335,7 +338,7 @@ spotifyRouter.post('/tournaments/:id/music/play-next', requireAuth, async (req: 
     return;
   }
 
-  const queueResult = await queueMusicRequestOnSpotify(availability.ownerid, next);
+  const queueResult = await queueMusicRequestOnSpotify(availability.spotifyhostuserid ?? availability.ownerid, next);
   if (!queueResult.queued) {
     broadcastTournamentUpdate(req.params.id, { music: true, source: 'spotify-queue-failed' });
     res.status(queueResult.status && queueResult.status < 500 ? 409 : 502).json({
@@ -353,7 +356,7 @@ spotifyRouter.post('/tournaments/:id/music/play-next', requireAuth, async (req: 
 spotifyRouter.get('/tournaments/:id/music/search', optionalAuth, async (req: Request, res: Response) => {
   const term = typeof req.query.q === 'string' ? req.query.q : '';
   const requesterUserId = req.userId ?? (typeof req.query.guestUserId === 'string' ? req.query.guestUserId : '');
-  const availability = await getTournamentMusicAvailability(req.params.id);
+  const availability = await getTournamentMusicAvailability(req.params.id, req.userId);
   if (!availability) {
     res.status(404).json({ error: 'Tournament not found.' });
     return;
@@ -382,7 +385,7 @@ spotifyRouter.get('/tournaments/:id/music/search', optionalAuth, async (req: Req
     res.status(403).json({ error: 'Register for this tournament before searching songs.' });
     return;
   }
-  res.json({ tracks: await searchSpotifyTracksForHost(availability.ownerid, term) });
+  res.json({ tracks: await searchSpotifyTracksForHost(availability.spotifyhostuserid ?? availability.ownerid, term) });
 });
 
 spotifyRouter.post('/tournaments/:id/music/requests', optionalAuth, async (req: Request, res: Response) => {
@@ -402,7 +405,7 @@ spotifyRouter.post('/tournaments/:id/music/requests', optionalAuth, async (req: 
     return;
   }
 
-  const availability = await getTournamentMusicAvailability(req.params.id);
+  const availability = await getTournamentMusicAvailability(req.params.id, req.userId);
   const tournament = await queryOne<{ leagueid: string | null }>(
     `SELECT le.leagueid
      FROM tournaments t
@@ -526,7 +529,7 @@ spotifyRouter.post('/tournaments/:id/music/requests', optionalAuth, async (req: 
   }
 
   const queueResult = requestid
-    ? await queueMusicRequestOnSpotify(availability.ownerid, { requestid, spotifyuri: spotifyUri })
+    ? await queueMusicRequestOnSpotify(availability.spotifyhostuserid ?? availability.ownerid, { requestid, spotifyuri: spotifyUri })
     : null;
 
   broadcastTournamentUpdate(req.params.id, {
