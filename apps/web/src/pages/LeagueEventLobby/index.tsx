@@ -1,12 +1,12 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
 import { CalendarCheck, CalendarClock, CheckCircle2, Home, Radio, RefreshCw, Trophy, UserMinus, XCircle } from 'lucide-react';
 import BrandLockup from '../../components/BrandLockup';
 import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api, type LeagueResult } from '../../api/client';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 export default function LeagueEventLobbyPage() {
   const { leagueId, eventId } = useParams();
@@ -48,7 +48,7 @@ export default function LeagueEventLobbyPage() {
 
   useEffect(() => {
     if (!eventId) return;
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('league-event-lobby');
     const refreshLobby = () => {
       void qc.invalidateQueries({ queryKey });
     };

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { isEnabledFlag } from '../../utils/flags';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 export default function PaymentTrackerPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +31,7 @@ export default function PaymentTrackerPage() {
 
   useEffect(() => {
     if (!id) return;
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('payment-tracker');
     socketRef.current = socket;
     socket.emit('join-tournament', id);
     socket.on('tournament-updated', () => {

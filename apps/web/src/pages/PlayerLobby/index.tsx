@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Download, Home, ListMusic, Search, Share, Skull, Star, Volume2 } from 'lucide-react';
 import { api, BlindLevel, PlayerCoinBadge, SpotifyTrackSearchResult } from '../../api/client';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/auth';
 import { announceFiveMinuteWarning, announceLevel, announceMessage, announceOneMinuteWarning, announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { getConfiguredBountyPoolFromAssigned } from '../../utils/bountyMath';
 import { buildTournamentRecapSvg, saveTournamentRecapImage, shareTournamentRecapImage } from '../../utils/tournamentRecapShare';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 interface TimerTick {
   remainingsecs: number;
@@ -245,7 +246,7 @@ export default function PlayerLobbyPage({ mode = 'lobby' }: { mode?: 'lobby' | '
     const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
     window.addEventListener('pb-audio-unlocked', syncSoundState);
 
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('player-lobby');
     socketRef.current = socket;
     const joinTournament = () => {
       socket.emit('join-tournament', id);

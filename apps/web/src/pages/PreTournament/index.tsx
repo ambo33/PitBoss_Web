@@ -24,7 +24,6 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
 import Layout from '../../components/Layout';
@@ -35,6 +34,7 @@ import { featureFlags } from '../../features';
 import { useAuthStore } from '../../store/auth';
 import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
 import { isEnabledFlag } from '../../utils/flags';
+import { createDebugSocket } from '../../utils/socketDebug';
 import type { BlindLevel, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
 import BlindTimer from './BlindTimer';
 import CheckIn from './CheckIn';
@@ -62,7 +62,6 @@ export default function PreTournamentPage() {
   const handleDemoStartCoachDone = useCallback(() => setDemoCoachStep(null), []);
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
-  const socketRef = useRef<Socket | null>(null);
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
@@ -76,9 +75,8 @@ export default function PreTournamentPage() {
   });
 
   useEffect(() => {
-    if (!id) return;
-    const socket = io('/', { path: '/socket.io' });
-    socketRef.current = socket;
+    if (!id || tab === 'run') return;
+    const socket = createDebugSocket('pre-tournament');
     const joinTournament = () => {
       socket.emit('join-tournament', id);
     };
@@ -101,7 +99,7 @@ export default function PreTournamentPage() {
     return () => {
       socket.disconnect();
     };
-  }, [id, qc]);
+  }, [id, qc, tab]);
 
   const updateTournamentMutation = useMutation({
     mutationFn: (data: Partial<Awaited<ReturnType<typeof api.getTournament>>>) => api.updateTournament(id!, data),

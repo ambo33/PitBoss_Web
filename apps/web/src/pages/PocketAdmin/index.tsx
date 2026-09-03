@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, RefreshCw } from 'lucide-react';
 import { api, BlindLevel, TournamentPlayer } from '../../api/client';
@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/auth';
 import { announceTimerPaused, announceTimerStarted, isTimerAudioUnlocked, primeTimerAudio, unlockTimerAudio } from '../../utils/timerAudio';
 import { isEnabledFlag } from '../../utils/flags';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 interface TimerTick {
   remainingsecs: number;
@@ -112,8 +113,7 @@ export default function PocketAdminPage() {
     primeTimerAudio();
     const syncSoundState = () => setSoundEnabled(isTimerAudioUnlocked());
     window.addEventListener('pb-audio-unlocked', syncSoundState);
-    const socket = io('/', {
-      path: '/socket.io',
+    const socket = createDebugSocket('pocket-admin', {
       auth: { token: localStorage.getItem('pb_token') ?? '' },
     });
     socketRef.current = socket;

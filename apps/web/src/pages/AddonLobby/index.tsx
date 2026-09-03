@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 function guestStorageKey(tournamentId: string) {
   return `pb_guest_lobby_${tournamentId}`;
@@ -38,7 +39,7 @@ export default function AddonLobbyPage() {
 
   useEffect(() => {
     if (!id) return;
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('addon-lobby');
     socketRef.current = socket;
     socket.emit('join-tournament', id);
     socket.on('tournament-updated', () => {

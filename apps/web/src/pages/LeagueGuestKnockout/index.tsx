@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
 import { CalendarClock, RefreshCw, Trophy, UserMinus, Users } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BrandLockup from '../../components/BrandLockup';
 import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { api } from '../../api/client';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 export default function LeagueGuestKnockoutPage() {
   const { token } = useParams();
@@ -29,7 +29,7 @@ export default function LeagueGuestKnockoutPage() {
 
   useEffect(() => {
     if (!data?.event.eventid) return;
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('league-guest-knockout');
     const refresh = () => void qc.invalidateQueries({ queryKey });
     const joinRoom = () => socket.emit('join-league-event', data.event.eventid);
     socket.on('connect', joinRoom);

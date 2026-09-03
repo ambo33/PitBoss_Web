@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
 import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Copy, Crown, Download, DollarSign, Ghost, Hash, ListOrdered, Mail, MessageSquare, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Save, ScrollText, Search, Send, Settings, Share, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvp, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule, LeagueSeason } from '../../api/client';
@@ -11,6 +10,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import JoinShareDialog from '../../components/JoinShareDialog';
 import LeagueLiveResultsTable from '../../components/LeagueLiveResultsTable';
 import { useAuthStore } from '../../store/auth';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 const BASE_POINTS_LOOKUP: LeaguePointRule[] = [
   { place: 'DNF', points: 0 },
@@ -609,7 +609,7 @@ function LeagueDetailView({
   const currentEvent = selectedEventFromDetail || detail?.events[0] || null;
   useEffect(() => {
     if (!detail?.league.isadmin || !currentEvent?.eventid) return;
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('league-panel');
     const refreshEvent = () => {
       void qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       void qc.invalidateQueries({ queryKey: ['leagues'] });

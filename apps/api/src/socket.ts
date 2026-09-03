@@ -10,8 +10,23 @@ import { validateCurrentBountyBudget } from './services/bounties';
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 const timerState = new Map<string, TimerState>();
+const socketDebugEnabled = process.env.SOCKET_DEBUG === 'true' && process.env.NODE_ENV === 'development';
+let activeSocketCount = 0;
+let totalSocketCount = 0;
 
 let io: Server;
+
+function logSocketDebug(event: string, socket: Socket, details: Record<string, unknown> = {}): void {
+  if (!socketDebugEnabled) return;
+  console.info('[SOCKET DEBUG]', event, {
+    socketId: socket.id,
+    transport: socket.conn.transport.name,
+    rooms: Array.from(socket.rooms),
+    activeSocketCount,
+    totalSocketCount,
+    ...details,
+  });
+}
 
 export function initSocket(httpServer: HttpServer): void {
   io = new Server(httpServer, {
@@ -27,15 +42,32 @@ export function initSocket(httpServer: HttpServer): void {
   });
 
   io.on('connection', (socket) => {
+    if (socketDebugEnabled) {
+      totalSocketCount += 1;
+      activeSocketCount += 1;
+      logSocketDebug('connected', socket);
+      socket.conn.on('upgrade', (transport) => {
+        logSocketDebug('transport-upgraded', socket, { transport: transport.name });
+      });
+      socket.on('disconnect', (reason) => {
+        activeSocketCount = Math.max(0, activeSocketCount - 1);
+        logSocketDebug('disconnected', socket, { reason });
+      });
+    }
+
     socket.on('join-tournament', async (tournamentId: string) => {
-      socket.join(`t:${tournamentId}`);
+      const room = `t:${tournamentId}`;
+      socket.join(room);
+      logSocketDebug('joined-room', socket, { room });
       const state = await loadTimerState(tournamentId);
       socket.emit('timer-state', state);
     });
 
     socket.on('join-league-event', (eventId: string) => {
       if (typeof eventId === 'string' && eventId.length > 0) {
-        socket.join(`le:${eventId}`);
+        const room = `le:${eventId}`;
+        socket.join(room);
+        logSocketDebug('joined-room', socket, { room });
       }
     });
 

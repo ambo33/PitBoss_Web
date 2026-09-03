@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { ArrowUpRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Menu, RotateCcw, Settings2, Share, Skull, Star, Timer, XCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, BlindLevel, PublicLobbyMusic, TimerSnapshot, Tournament, TournamentPlayer } from '../../api/client';
@@ -17,6 +17,7 @@ import { announceCheckinGreeting, announceFiveMinuteWarning, announceLevel, anno
 import { getConfiguredBountyPool, isBountyPlacementEligible } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
 import { buildTournamentRecapSvg, saveTournamentRecapImage, shareTournamentRecapImage } from '../../utils/tournamentRecapShare';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 interface TimerTick {
   remainingsecs: number;
@@ -411,8 +412,7 @@ export default function RunTournament({
     primeTimerAudio();
     receivedInitialTimerStateRef.current = false;
 
-    const socket = io('/', {
-      path: '/socket.io',
+    const socket = createDebugSocket('run-tournament', {
       auth: { token: localStorage.getItem('pb_token') ?? '' },
     });
     socketRef.current = socket;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { type Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, GroupMember, Tournament, TournamentPlayer } from '../../api/client';
 import CoinBadgeStrip from '../../components/CoinBadgeStrip';
@@ -10,6 +10,7 @@ import PlayerTrophyStrip from '../../components/PlayerTrophyStrip';
 import { useAuthStore } from '../../store/auth';
 import { getConfiguredBountyPool } from '../../utils/bountyMath';
 import { playerNameWithMedals } from '../../utils/playerAchievements';
+import { createDebugSocket } from '../../utils/socketDebug';
 
 interface Props {
   tournamentId: string;
@@ -43,7 +44,7 @@ export default function CheckIn({ tournamentId, isOwner, tournament }: Props) {
   }
 
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io' });
+    const socket = createDebugSocket('pre-tournament-checkin');
     socketRef.current = socket;
     socket.emit('join-tournament', tournamentId);
     socket.on('tournament-updated', () => {
