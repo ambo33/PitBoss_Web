@@ -113,7 +113,7 @@ export default function AdminPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div id="admin-overview" className="scroll-mt-[94px] space-y-4" data-workspace-page="admin">
       <section className="flex flex-col justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-4 sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase text-red-200">Superadmin tools</p>
@@ -137,7 +137,7 @@ export default function AdminPanel() {
 
       <DemoSummaryPanel summary={demoSummary} />
 
-      <section className="rounded-xl border border-pit-border bg-pit-card p-3">
+      <section id="admin-credits" className="scroll-mt-[94px] rounded-xl border border-pit-border bg-pit-card p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">Voice Credits</p>
@@ -175,7 +175,7 @@ export default function AdminPanel() {
         onStatusChange={(id, status) => feedbackMutation.mutate({ id, status })}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <div id="admin-users" className="grid scroll-mt-[94px] gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
         <section className="card flex min-h-[620px] flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-white">Users</h2>
@@ -437,7 +437,7 @@ function DemoSummaryPanel({ summary }: { summary?: AdminDemoSummary }) {
   const readyCount = summary?.readycount ?? 0;
   const readyTarget = summary?.readytarget ?? 5;
   return (
-    <section className="rounded-xl border border-pit-border bg-pit-card p-3">
+    <section id="admin-demos" className="scroll-mt-[94px] rounded-xl border border-pit-border bg-pit-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-pit-muted">Demo Pool</p>
@@ -504,7 +504,7 @@ function FeedbackPanel({
   const showingLabel = unreadOnly ? `${visibleFeedback.length} unread shown` : `${visibleFeedback.length} shown`;
 
   return (
-    <section className="rounded-lg border border-pit-border bg-pit-card p-3">
+    <section id="admin-feedback" className="scroll-mt-[94px] rounded-lg border border-pit-border bg-pit-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <MessageSquare size={17} className={newCount > 0 ? 'text-red-300' : 'text-pit-teal'} />

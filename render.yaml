@@ -39,7 +39,7 @@ services:
     runtime: node
     plan: starter
     region: ohio
-    schedule: "*/15 * * * *"
+    schedule: "*/5 * * * *"
     buildCommand: npm ci && npm run build
     startCommand: npm run send:hourly-event-notifications
     envVars:

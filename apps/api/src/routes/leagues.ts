@@ -21,6 +21,7 @@ import { shouldJoinCurrentSeason } from '../leagues/membership';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder, publicEmail } from '../privacy';
 import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers } from '../lib/server/notifications/notificationService';
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
+import { notifyLeagueKnockout } from '../services/leagueKnockoutNotifications';
 import { hasTournamentStarted } from '../schedule';
 import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../leagues/placements';
 import { getLeagueRsvpResultMutation } from '../leagues/rsvp-results';
@@ -812,6 +813,10 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
   const rows = await query<{
     leagueid: string;
     leaguename: string;
+    seasonid: string;
+    seasonname: string;
+    running: boolean;
+    hasstarted: boolean;
     eventid: string;
     name: string;
     eventdate: string | null;
@@ -828,6 +833,11 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
   }>(
     `SELECT l.leagueid,
             l.name AS leaguename,
+            s.seasonid,
+            s.name AS seasonname,
+            COALESCE(home_timer.running, FALSE) AS running,
+            COALESCE(home_timer.running OR home_timer.currentlevel > home_first_blind.level
+              OR (home_timer.remainingsecs > 0 AND home_timer.remainingsecs < home_first_blind.minutes * 60), FALSE) AS hasstarted,
             e.eventid,
             e.name,
             e.eventdate,
@@ -905,6 +915,10 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
        AND self_lsp.leagueid = l.leagueid
        AND self_lsp.userid = lm.userid
      JOIN leagueevents e ON e.leagueid = l.leagueid AND e.seasonid = s.seasonid
+     LEFT JOIN tournamenttimer home_timer ON home_timer.tournamentid = e.tournamentid
+     LEFT JOIN LATERAL (
+       SELECT level, minutes FROM blindstructure WHERE tournamentid = e.tournamentid ORDER BY level LIMIT 1
+     ) home_first_blind ON TRUE
      LEFT JOIN leagueeventrsvps rsvp ON rsvp.eventid = e.eventid
        AND rsvp.leagueid = l.leagueid
        AND rsvp.userid = lm.userid
@@ -1636,6 +1650,7 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
   }
   const body = req.body as {
     name?: string;
+    leaguefee?: number;
     pereventfee?: number;
     eventsasgames?: boolean;
     expectedplayercount?: number;
@@ -1662,6 +1677,7 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     return;
   }
   const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
+  const hasLeagueFee = Object.prototype.hasOwnProperty.call(body, 'leaguefee');
   const hasPerEventFee = Object.prototype.hasOwnProperty.call(body, 'pereventfee');
   const hasEventsAsGames = Object.prototype.hasOwnProperty.call(body, 'eventsasgames');
   const hasExpectedPlayerCount = Object.prototype.hasOwnProperty.call(body, 'expectedplayercount');
@@ -1674,6 +1690,9 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
     res.status(400).json({ error: 'Season name required.' });
     return;
   }
+  const leagueFee = hasLeagueFee
+    ? Math.max(0, Math.round(Number(body.leaguefee ?? 0) * 100) / 100)
+    : existing.leaguefee;
   const perEventFee = hasPerEventFee ? Math.max(0, Math.round(Number(body.pereventfee ?? 0) * 100) / 100) : Number(existing.pereventfee || 0);
   const eventsAsGames = hasEventsAsGames ? Boolean(body.eventsasgames) : Boolean(existing.eventsasgames);
   const expectedPlayerCount = hasExpectedPlayerCount
@@ -1715,12 +1734,13 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
            expectedplayercount = $6,
            showupbonuspoints = $7,
            bestfinishcount = $8,
-           pointslookup = $9
+           pointslookup = $9,
+           leaguefee = $10
        WHERE leagueid = $1 AND seasonid = $2 AND COALESCE(active, TRUE) = TRUE
        RETURNING seasonid, leagueid, name, begindate, enddate, CAST(pereventfee AS DECIMAL) AS pereventfee,
                  expectedplayercount, CAST(leaguefee AS DECIMAL) AS leaguefee, showupbonuspoints, bestfinishcount, pointslookup,
                  COALESCE(eventsasgames, FALSE) AS eventsasgames, active, createdat`,
-      [req.params.id, req.params.seasonId, name, perEventFee, eventsAsGames, expectedPlayerCount, showupBonus, bestFinishCount, JSON.stringify(pointsLookup)]
+      [req.params.id, req.params.seasonId, name, perEventFee, eventsAsGames, expectedPlayerCount, showupBonus, bestFinishCount, JSON.stringify(pointsLookup), leagueFee]
     );
     const row = updated.rows[0];
     let recalculatedResults = 0;
@@ -1773,13 +1793,14 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
       leagueId: req.params.id,
       seasonId: req.params.seasonId,
       actorId: req.userId,
-      action: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'season_scoring_updated' : hasPerEventFee ? 'season_fee_updated' : 'season_updated',
-      summary: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'Season scoring was updated.' : hasPerEventFee ? 'Season event fee was updated.' : 'Season settings were updated.',
+      action: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'season_scoring_updated' : hasLeagueFee || hasPerEventFee ? 'season_fee_updated' : 'season_updated',
+      summary: hasExpectedPlayerCount || hasPointsLookup || hasShowupBonus ? 'Season scoring was updated.' : hasLeagueFee || hasPerEventFee ? 'Season fee rules were updated.' : 'Season settings were updated.',
       details: {
         previous: {
           name: existing.name,
           begindate: existing.begindate,
           enddate: existing.enddate,
+          leaguefee: Number(existing.leaguefee ?? league.leaguefee ?? 0),
           pereventfee: Number(existing.pereventfee || 0),
           eventsasgames: Boolean(existing.eventsasgames),
           expectedplayercount: Number(existing.expectedplayercount ?? league.expectedplayercount ?? 36),
@@ -1791,6 +1812,7 @@ leaguesRouter.patch('/:id/seasons/:seasonId', async (req: Request, res: Response
           name: row.name,
           begindate: row.begindate,
           enddate: row.enddate,
+          leaguefee: Number(row.leaguefee ?? league.leaguefee ?? 0),
           pereventfee: Number(row.pereventfee || 0),
           eventsasgames: Boolean(row.eventsasgames),
           expectedplayercount: Number(row.expectedplayercount ?? expectedPlayerCount),
@@ -4893,6 +4915,19 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
     }).catch((err) => {
       console.error('League result push failed', err instanceof Error ? err.message : err);
     });
+    if (!row.dnf && row.placed != null && Number(row.placed) > 1) {
+      void notifyLeagueKnockout({
+        leagueId: req.params.id,
+        seasonId: event.seasonid,
+        eventId: event.eventid,
+        eventName: event.name,
+        playerId: targetUserId,
+        placed: row.placed == null ? null : Number(row.placed),
+        dnf: Boolean(row.dnf),
+      }).catch((err) => {
+        console.error('League knockout push failed', err instanceof Error ? err.message : err);
+      });
+    }
     if (automaticWinner) {
       void sendLeagueResultLoggedPush({
         leagueId: req.params.id,

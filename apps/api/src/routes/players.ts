@@ -11,6 +11,7 @@ import { attachPlayerCoinBadges } from '../services/groupCoins';
 import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { notifyLinkedLeagueKnockout } from '../services/leagueKnockoutNotifications';
 import { normalizePointsLookup, pointsForPlace, type LeaguePointRule } from '../leagues/scoring';
 
 export const playersRouter = Router();
@@ -866,6 +867,11 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
   await syncLinkedLeagueEvent(req.params.tid, req.userId!);
   broadcastTournamentUpdate(req.params.tid, { players: true, source: 'knockout' });
   if (nextPlaced != null) {
+    const linkedLeagueEvent = await notifyLinkedLeagueKnockout(req.params.tid, req.params.uid, nextPlaced)
+      .catch((err) => {
+        console.error('Linked league knockout push failed', err instanceof Error ? err.message : err);
+        return false;
+      });
     const knockedOutPlayer = await queryOne<{
       playername: string;
       bountyamount: number;
@@ -880,7 +886,7 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.tid, req.params.uid]
     );
-    void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
+    if (!linkedLeagueEvent) void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
       playerName: knockedOutPlayer?.playername ?? 'a player',
       body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated${nextPlaced ? ` in ${nextPlaced}${ordinalSuffix(nextPlaced)} place` : ''}.`,
       entityId: `${req.params.tid}:knockout:${req.params.uid}`,

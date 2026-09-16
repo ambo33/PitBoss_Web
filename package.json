@@ -6,6 +6,7 @@
     "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "test:league-payments": "npm exec -w apps/api -- tsx ../web/src/pages/Main/leaguePaymentViewModel.test.ts",
     "test:league-workflows": "npm run test:league-workflows -w apps/api",
     "generate:ai-demo-clips": "node scripts/generate-ai-demo-clips.mjs",
     "generate:demo-intro-clip": "node scripts/generate-demo-intro-clip.mjs",

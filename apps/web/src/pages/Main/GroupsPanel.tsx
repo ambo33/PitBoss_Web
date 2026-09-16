@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, Calendar, Check, ChevronRight, Clock, Copy, FileText, Home, Info, Layers3, MoreHorizontal, Pencil, Settings2, ShieldCheck, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Award, Calendar, Check, ChevronDown, ChevronRight, Clock, Copy, FileText, Home, Info, Layers3, MoreHorizontal, Pencil, Settings2, ShieldCheck, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote, type LucideIcon } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -21,7 +21,14 @@ import {
 } from '../../utils/timerAudio';
 import { prepareAvatarImage } from '../../utils/avatarImage';
 
-type GroupOpenRequest = { groupId: string; tab?: 'posts'; postId?: string; token: number } | null;
+export type GroupDetailTab = 'info' | 'members' | 'posts' | 'coins' | 'voice' | 'structures' | 'history';
+type GroupOpenRequest = { groupId: string; tab?: GroupDetailTab; postId?: string; token: number } | null;
+
+function readGroupTab(value: string | null, isAdmin: boolean): GroupDetailTab {
+  if (value === 'voice') return isAdmin ? 'voice' : 'info';
+  if (value === 'members' || value === 'posts' || value === 'structures' || value === 'history') return value;
+  return 'info';
+}
 
 export default function GroupsPanel({
   onDetailStateChange,
@@ -35,6 +42,7 @@ export default function GroupsPanel({
   openGroupRequest?: GroupOpenRequest;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const lastCreateRequestRef = useRef(createRequestId);
   const lastOpenRequestRef = useRef(0);
@@ -61,6 +69,7 @@ export default function GroupsPanel({
       setShowCreate(false);
       if (createdGroup) {
         setSelected(createdGroup);
+        navigate({ pathname: location.pathname, search: `?section=groups&group=${encodeURIComponent(createdGroup.groupid)}` });
       }
     },
   });
@@ -81,8 +90,25 @@ export default function GroupsPanel({
     if (requestedGroup) {
       setShowCreate(false);
       setSelected(requestedGroup);
+      const params = new URLSearchParams(location.search);
+      if (params.get('group') !== requestedGroup.groupid) {
+        const next = new URLSearchParams({ section: 'groups', group: requestedGroup.groupid });
+        if (openGroupRequest.tab) next.set('groupTab', openGroupRequest.tab);
+        if (openGroupRequest.postId) next.set('post', openGroupRequest.postId);
+        navigate({ pathname: location.pathname, search: `?${next.toString()}` });
+      }
     }
-  }, [groups, openGroupRequest]);
+  }, [groups, location.pathname, location.search, navigate, openGroupRequest]);
+
+  useEffect(() => {
+    const groupId = new URLSearchParams(location.search).get('group');
+    if (!groupId) {
+      setSelected(null);
+      return;
+    }
+    const requestedGroup = groups.find((group) => group.groupid === groupId);
+    setSelected(requestedGroup ?? null);
+  }, [groups, location.search]);
 
   useEffect(() => {
     onDetailStateChange?.(Boolean(selected));
@@ -94,12 +120,14 @@ export default function GroupsPanel({
   if (selected) {
     return (
       <GroupDetailView
+        key={selected.groupid}
         group={selected}
         initialTab={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.tab : undefined}
         focusPostId={openGroupRequest?.groupId === selected.groupid ? openGroupRequest.postId : undefined}
         onBack={() => {
           setSelected(null);
-          onBackToCommunities?.();
+          if (onBackToCommunities) onBackToCommunities();
+          else navigate({ pathname: location.pathname, search: '?section=groups' });
         }}
       />
     );
@@ -132,7 +160,10 @@ export default function GroupsPanel({
 
       <div>
         {groups.length > 0 && (
-          <GroupList groups={groups} onSelect={setSelected} />
+          <GroupList groups={groups} onSelect={(group) => {
+            setSelected(group);
+            navigate({ pathname: location.pathname, search: `?section=groups&group=${encodeURIComponent(group.groupid)}` });
+          }} />
         )}
         {groups.length === 0 && <GroupEmptyState onJoin={() => setShowJoin(true)} onCreate={() => setShowCreate(true)} />}
       </div>
@@ -420,7 +451,7 @@ const ANNOUNCER_PRESETS: Array<{ value: AnnouncerPreset; label: string; descript
   { value: 'sunny_stacks', label: 'Sunny Stacks', description: 'Friendly upbeat female host' },
 ];
 
-type DetailTab = 'info' | 'members' | 'posts' | 'coins' | 'voice' | 'structures' | 'history';
+type DetailTab = GroupDetailTab;
 
 function normalizeAnnouncerPreset(value: string | null | undefined): AnnouncerPreset {
   if (ANNOUNCER_PRESETS.some((preset) => preset.value === value)) return value as AnnouncerPreset;
@@ -443,14 +474,26 @@ function GroupDetailView({
   onBack,
 }: {
   group: Group;
-  initialTab?: 'posts';
+  initialTab?: GroupDetailTab;
   focusPostId?: string;
   onBack: () => void;
 }) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [detailTab, setDetailTab] = useState<DetailTab>(initialTab ?? 'info');
+  const location = useLocation();
+  const [detailTab, setDetailTabState] = useState<DetailTab>(() => readGroupTab(new URLSearchParams(location.search).get('groupTab') ?? initialTab ?? null, Boolean(group.isadmin)));
+  function setDetailTab(tab: DetailTab) {
+    setDetailTabState(tab);
+    setOpenMenu(null);
+    const params = new URLSearchParams(location.search);
+    params.set('section', 'groups');
+    params.set('group', group.groupid);
+    params.set('groupTab', tab);
+    params.delete('post');
+    const search = `?${params.toString()}`;
+    if (search !== location.search) navigate({ pathname: location.pathname, search });
+  }
   const [inviteCode, setInviteCode] = useState(group.invitecode);
   const [defaultTrackingMode, setDefaultTrackingMode] = useState(group.defaulttrackingmode ?? 'standard');
   const [tvSeatingMessage, setTvSeatingMessage] = useState(group.tvseatingwelcomemessage ?? 'Welcome! Please see host to check-in!');
@@ -490,8 +533,10 @@ function GroupDetailView({
   const [communityImageError, setCommunityImageError] = useState('');
 
   useEffect(() => {
-    if (initialTab) setDetailTab(initialTab);
-  }, [initialTab, focusPostId]);
+    const params = new URLSearchParams(location.search);
+    setDetailTabState(readGroupTab(params.get('groupTab') ?? initialTab ?? null, Boolean(group.isadmin)));
+    setOpenMenu(null);
+  }, [group.isadmin, initialTab, location.search, focusPostId]);
 
   const { data } = useQuery({
     queryKey: ['group', group.groupid],
@@ -914,8 +959,63 @@ function GroupDetailView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] space-y-3 sm:space-y-4">
-      <section className="relative overflow-visible rounded-2xl border border-pit-border bg-[radial-gradient(circle_at_top_right,rgba(20,184,181,0.15),transparent_30%),linear-gradient(135deg,rgba(18,28,34,0.98),rgba(18,46,48,0.72))] px-3 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.25)] sm:px-5 sm:py-4">
+    <div data-group-workspace className="mx-auto w-full min-w-0 max-w-[1280px] min-[1200px]:grid min-[1200px]:min-h-[calc(100dvh-70px)] min-[1200px]:max-w-none min-[1200px]:grid-cols-[224px_minmax(0,1fr)] min-[1440px]:grid-cols-[244px_minmax(0,1fr)]">
+      <aside data-group-sidebar className="hidden border-r border-[#22303c] bg-[#080f13] min-[1200px]:sticky min-[1200px]:top-[70px] min-[1200px]:flex min-[1200px]:h-[calc(100dvh-70px)] min-[1200px]:min-h-0 min-[1200px]:flex-col min-[1200px]:self-start min-[1200px]:overflow-y-auto" aria-label="Group navigation">
+        <button type="button" className="mx-4 mb-3 mt-4 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-[#00d4df] transition hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal" onClick={onBack}>
+          <ArrowLeft size={16} aria-hidden="true" /> Back to Groups
+        </button>
+        <div className="mx-4 rounded-xl border border-[#1c2932] bg-[#0b1319] p-3.5">
+          {effectiveGroup.communityimagedata ? (
+            <img src={effectiveGroup.communityimagedata} alt="" className="mb-3 h-[82px] max-w-full rounded-lg object-contain object-left" />
+          ) : (
+            <div className="mb-3 flex h-[74px] w-[66px] items-center justify-center rounded-xl border border-[#315260] bg-gradient-to-b from-[#10343c] to-[#0b1521] text-3xl font-bold text-[#00d4df]" aria-hidden="true">{groupInitial}</div>
+          )}
+          <h2 className="break-words text-lg font-bold leading-6 tracking-tight text-white">{effectiveGroup.name}</h2>
+          <p className="mt-2.5 flex items-center gap-2 text-xs text-slate-300"><Users size={14} aria-hidden="true" /> {approved.length} member{approved.length === 1 ? '' : 's'}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] leading-5 text-slate-400">
+            <span>{effectiveGroup.approvalneeded ? 'Approval required' : 'Open group'}</span>
+            {group.isadmin && <span className="inline-flex items-center gap-1 rounded-md border border-pit-gold/25 bg-pit-gold/10 px-1.5 text-[10px] font-semibold text-pit-gold"><Crown size={10} aria-hidden="true" /> Admin</span>}
+          </div>
+        </div>
+        <nav className="mt-5 space-y-1 px-3" aria-label="Group sections">
+          {detailTabs.map((tab) => {
+            const Icon = groupTabIcon(tab);
+            return (
+              <button key={tab} type="button" aria-current={detailTab === tab ? 'page' : undefined} onClick={() => setDetailTab(tab)} className={`flex min-h-11 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal ${detailTab === tab ? 'border-[#008f9d] bg-[#002c33]/60 text-[#00e1eb] shadow-[inset_0_0_20px_rgba(0,211,224,0.03)]' : 'border-transparent text-slate-300 hover:border-[#273742] hover:bg-white/[0.035] hover:text-white'}`}>
+                <Icon size={19} strokeWidth={1.6} className="shrink-0" aria-hidden="true" /> <span>{groupTabLabel(tab, approved.length)}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="px-3 pb-6 pt-1">
+          {group.isadmin && (
+            <button type="button" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal" onClick={() => setSettingEditor('group')}>
+              <Pencil size={19} aria-hidden="true" /> Edit group
+            </button>
+          )}
+          <details className="group mt-3 border-t border-[#22303c] pt-3">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-xs text-slate-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal [&::-webkit-details-marker]:hidden">
+              Group actions <ChevronDown size={14} className="transition group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <div className="mt-1 space-y-1">
+              {!demoMode && group.isadmin && (
+                <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs text-slate-300 hover:bg-white/5 hover:text-white" onClick={() => setShareInviteOpen(true)}><Share size={15} aria-hidden="true" /> Share invite</button>
+              )}
+              {group.isadmin ? (
+                <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs text-red-300 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40" disabled={deleteGroupMutation.isPending} onClick={() => setDeleteGroupConfirmOpen(true)}><Trash2 size={15} aria-hidden="true" /> Delete group</button>
+              ) : (
+                <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs text-red-300 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40" disabled={leaveMutation.isPending} onClick={() => leaveMutation.mutate()}><LogOut size={15} aria-hidden="true" /> {leaveMutation.isPending ? 'Leaving...' : 'Leave group'}</button>
+              )}
+            </div>
+          </details>
+        </div>
+      </aside>
+      <div className="min-w-0 space-y-3 sm:space-y-4 min-[1200px]:space-y-5 min-[1200px]:p-6">
+      <header className="hidden min-[1200px]:block">
+        <h1 className="text-[30px] font-bold tracking-tight text-white">{groupTabLabel(detailTab, approved.length).replace(/ \(.*\)$/, '')}</h1>
+        <p className="mt-1 text-sm text-slate-400">{effectiveGroup.name} · {approved.length} member{approved.length === 1 ? '' : 's'}</p>
+      </header>
+      <section className="relative !mt-0 overflow-visible rounded-2xl border border-pit-border bg-[radial-gradient(circle_at_top_right,rgba(20,184,181,0.15),transparent_30%),linear-gradient(135deg,rgba(18,28,34,0.98),rgba(18,46,48,0.72))] px-3 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.25)] sm:px-5 sm:py-4 min-[1200px]:hidden">
         {openMenu === 'group' && (
           <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="Close group menu" onClick={() => setOpenMenu(null)} />
         )}
@@ -993,7 +1093,7 @@ function GroupDetailView({
       </section>
 
       <div className="space-y-3 sm:space-y-4">
-        <nav className="hidden grid-cols-6 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:grid" aria-label="Group sections">
+        <nav className="hidden grid-cols-6 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:grid min-[1200px]:hidden" aria-label="Group sections">
           {detailTabs.map((tab) => {
             const Icon = groupTabIcon(tab);
             return (
@@ -2006,6 +2106,7 @@ function GroupDetailView({
           if (deletePostTarget) deletePostMutation.mutate(deletePostTarget.id);
         }}
       />
+      </div>
     </div>
   );
 }

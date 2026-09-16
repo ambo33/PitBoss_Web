@@ -225,6 +225,7 @@ export const api = {
     post<{ season: LeagueSeason; events: LeagueEvent[] }>(`/leagues/${id}/seasons`, data),
   updateLeagueSeason: (id: string, seasonId: string, data: {
     name?: string;
+    leaguefee?: number;
     pereventfee?: number;
     eventsasgames?: boolean;
     expectedplayercount?: number;
@@ -451,6 +452,8 @@ export interface GroupMember {
 }
 export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
+  running?: boolean;
+  hasstarted?: boolean;
   tourneydate: string | null; tourneytime: string | null;
   buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number; rebuylastlevel?: number | null;
   genericrebuys?: number;
@@ -682,6 +685,7 @@ export interface League {
 export interface LeagueMember {
   userid: string;
   displayname?: string | null;
+  avatarimagedata?: string | null;
   isadmin: boolean;
   approved: boolean;
   participating: boolean;
@@ -749,6 +753,10 @@ export interface LeagueEventRsvp {
 export interface LeagueScheduleEvent {
   leagueid: string;
   leaguename: string;
+  seasonid?: string | null;
+  seasonname?: string | null;
+  running?: boolean;
+  hasstarted?: boolean;
   eventid: string;
   name: string;
   eventdate?: string | null;
@@ -1152,6 +1160,7 @@ export type NotificationCategory =
   | 'tournament_play'
   | 'bounties_achievements'
   | 'league'
+  | 'league_knockouts'
   | 'social';
 
 export interface NotificationPreference {

@@ -153,6 +153,9 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             t.buyin, COALESCE(CAST(t.adjustment AS DECIMAL), 0) AS rake, t.payoutstructure, t.rebuycost AS rebuyprice, t.rebuychips, CAST(t.rebuylastlevel AS INT) AS rebuylastlevel,
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
+            COALESCE(home_timer.running, FALSE) AS running,
+            COALESCE(home_timer.running OR home_timer.currentlevel > home_first_blind.level
+              OR (home_timer.remainingsecs > 0 AND home_timer.remainingsecs < home_first_blind.minutes * 60), FALSE) AS hasstarted,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
             t.tvdisplaycode,
@@ -195,6 +198,10 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid) AS playercount,
             (SELECT count(*) FROM tournamentplayers WHERE tournamentid = t.tournamentid AND checkedin = TRUE) AS checkedincount
      FROM tournaments t
+     LEFT JOIN tournamenttimer home_timer ON home_timer.tournamentid = t.tournamentid
+     LEFT JOIN LATERAL (
+       SELECT level, minutes FROM blindstructure WHERE tournamentid = t.tournamentid ORDER BY level LIMIT 1
+     ) home_first_blind ON TRUE
      LEFT JOIN groups g ON g.groupid = t.groupid
      LEFT JOIN groupmembers gm
        ON gm.groupid = t.groupid

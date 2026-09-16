@@ -1,27 +1,74 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trophy, Users, User, LogOut, ChevronLeft, Shield, MessageSquare, Send, ListOrdered, Home, Calendar, Gamepad2, Settings } from 'lucide-react';
-import { useAuthStore } from '../store/auth';
-import BrandLockup from './BrandLockup';
-import Modal from './Modal';
-import PwaInstallPrompt from './PwaInstallPrompt';
-import { api } from '../api/client';
-import { cleanupDemoSessionIfNeeded } from '../utils/demoSession';
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { createContext, useContext, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ChevronDown,
+  ChevronLeft,
+  Gamepad2,
+  Home,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Plus,
+  Send,
+  Settings,
+  Shield,
+  Trophy,
+  Users,
+} from "lucide-react";
+import { useAuthStore } from "../store/auth";
+import Modal from "./Modal";
+import PwaInstallPrompt from "./PwaInstallPrompt";
+import { api } from "../api/client";
+import { cleanupDemoSessionIfNeeded } from "../utils/demoSession";
+import {
+  APP_PRIMARY_NAVIGATION,
+  resolvePrimaryDestination,
+  type PrimaryDestination,
+} from "./appNavigation";
+import "./appNavigation.css";
 
-export type NavTab = 'tournaments' | 'groups' | 'leagues' | 'profile' | 'admin';
-export type HomeShellDestination = 'home' | 'games' | 'communities' | 'history' | 'profile' | 'admin';
+export type NavTab = "tournaments" | "groups" | "leagues" | "profile" | "admin";
+export type HomeShellDestination =
+  | "home"
+  | "games"
+  | "communities"
+  | "history"
+  | "profile"
+  | "admin";
 
-export interface ResponsiveHomeShellProps {
+/** Legacy callers may still supply action configuration while they migrate. No global rail is rendered. */
+export interface DesktopSidebarConfig {
   active: HomeShellDestination;
   canHost: boolean;
-  onHome: () => void;
-  onGames: () => void;
-  onCommunities: () => void;
-  onHistory: () => void;
+  onHome?: () => void;
+  onGames?: () => void;
+  onCommunities?: () => void;
+  onHistory?: () => void;
+  onHostGame?: () => void;
+  onProfile?: () => void;
+  onAdmin?: () => void;
+}
+
+export type ResponsiveHomeShellProps = DesktopSidebarConfig;
+
+export interface DesktopContextNavItem {
+  id: string;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}
+
+export interface DesktopSectionSidebarConfig {
+  title: string;
+  description?: string;
+  hideIntro?: boolean;
+  items: Array<DesktopContextNavItem & { Icon: React.ElementType }>;
+}
+
+export interface AppNavigationConfig {
+  canHost: boolean;
   onHostGame: () => void;
-  onProfile: () => void;
-  onAdmin: () => void;
 }
 
 interface Props {
@@ -38,18 +85,36 @@ interface Props {
   hideMobileNav?: boolean;
   hideFeedback?: boolean;
   hideHeader?: boolean;
-  headerRight?: React.ReactNode | ((actions: { openFeedback: () => void }) => React.ReactNode);
+  headerRight?:
+    | React.ReactNode
+    | ((actions: { openFeedback: () => void }) => React.ReactNode);
   mainWidthClassName?: string;
+  mainPaddingClassName?: string;
+  contentElement?: "main" | "div";
+  desktopSidebar?: DesktopSidebarConfig;
   responsiveHomeShell?: ResponsiveHomeShellProps;
+  desktopContextNavigation?: DesktopContextNavItem[];
+  desktopGlobalNavigation?: DesktopContextNavItem[];
+  desktopSectionSidebar?: DesktopSectionSidebarConfig;
+  navigation?: AppNavigationConfig;
+  shellMode?: "standard" | "focused";
+  mobileFocused?: boolean;
 }
 
-const NAV_ITEMS: { id: NavTab; label: string; Icon: React.ElementType }[] = [
-  { id: 'tournaments', label: 'Tournaments', Icon: Trophy },
-  { id: 'groups', label: 'Groups', Icon: Users },
-  { id: 'leagues', label: 'Leagues', Icon: ListOrdered },
-  { id: 'profile', label: 'Profile', Icon: User },
-  { id: 'admin', label: 'Admin', Icon: Shield },
-];
+const PRIMARY_ICONS = {
+  home: Home,
+  games: Gamepad2,
+  leagues: Trophy,
+  groups: Users,
+};
+const AppShellActionsContext = createContext<{
+  openFeedback: (returnFocus?: HTMLElement) => void;
+} | null>(null);
+
+/** Focused workspaces can place shared utilities in their own account menu. */
+export function useAppShellActions() {
+  return useContext(AppShellActionsContext);
+}
 
 export default function Layout({
   children,
@@ -58,405 +123,406 @@ export default function Layout({
   backLabel,
   backIcon,
   backAriaLabel,
-  tab,
-  onTabChange,
   compactSidebar = false,
-  hideSidebar = false,
   hideMobileNav = false,
-  hideFeedback = false,
   hideHeader = false,
-  headerRight,
-  mainWidthClassName = 'max-w-5xl',
+  mainWidthClassName = "max-w-7xl",
+  mainPaddingClassName = "p-4 md:p-6",
+  contentElement = "main",
+  desktopSidebar,
   responsiveHomeShell,
+  desktopSectionSidebar,
+  navigation,
+  shellMode,
+  mobileFocused = false,
 }: Props) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const feedbackReturnFocusRef = useRef<HTMLElement | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<'issue' | 'idea' | 'question'>('issue');
-  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackType, setFeedbackType] = useState<
+    "issue" | "idea" | "question"
+  >("issue");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
-  const sidebarWidthClass = compactSidebar ? 'w-20' : 'w-56';
-  const contentMarginClass = responsiveHomeShell
-    ? 'min-[1100px]:ml-60'
-    : hideSidebar ? '' : compactSidebar ? 'md:ml-20' : 'md:ml-56';
-  const headerPaddingClass = compactSidebar ? 'px-3 py-2.5 md:px-4' : 'px-4 py-3';
-  const mainPaddingClass = responsiveHomeShell
-    ? 'px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5 min-[768px]:px-6 min-[768px]:pb-8 min-[768px]:pt-6 min-[1100px]:px-8'
-    : compactSidebar ? 'p-3 pb-24 md:p-4 md:pb-6' : 'p-4 pb-24 md:p-6 md:pb-8';
+  const focused = shellMode
+    ? shellMode === "focused"
+    : hideHeader || compactSidebar;
+  const showMobileNavigation = !focused && !hideMobileNav && !mobileFocused;
+  const legacyActions = desktopSidebar ?? responsiveHomeShell;
+  const { data: hostGroups } = useQuery({
+    queryKey: ["groups"],
+    queryFn: api.getGroups,
+    enabled: Boolean(user) && !navigation && !focused,
+  });
+  const hostAction =
+    navigation?.onHostGame ??
+    legacyActions?.onHostGame ??
+    (() => navigate("/?section=upcoming&schedule=games&create=game"));
+  const canHost =
+    navigation?.canHost ??
+    hostGroups?.some((group) => group.isadmin && group.approved) ??
+    false;
+  const activeDestination = resolvePrimaryDestination(
+    location.pathname,
+    location.search,
+  );
+  const ContentElement = contentElement;
 
   const { data: feedbackSummary } = useQuery({
-    queryKey: ['admin', 'feedback', 'summary'],
+    queryKey: ["admin", "feedback", "summary"],
     queryFn: api.getAdminFeedbackSummary,
     enabled: Boolean(user?.issuperadmin),
     refetchInterval: 60_000,
   });
-  const feedbackNewCount = feedbackSummary?.newcount ?? 0;
-
-  function handleLogout() {
-    const token = localStorage.getItem('pb_token');
-    void cleanupDemoSessionIfNeeded(user, token);
-    queryClient.clear();
-    logout();
-    navigate('/landing', { replace: true });
-  }
-
-  function handleNavClick(nextTab: NavTab) {
-    if (onTabChange) {
-      onTabChange(nextTab);
-      return;
-    }
-    navigate('/', { state: { tab: nextTab } });
-  }
 
   const feedbackMutation = useMutation({
-    mutationFn: () => api.submitFeedback({
-      type: feedbackType,
-      message: feedbackMessage,
-      pageurl: window.location.href,
-      useragent: navigator.userAgent,
-    }),
+    mutationFn: () =>
+      api.submitFeedback({
+        type: feedbackType,
+        message: feedbackMessage,
+        pageurl: window.location.href,
+        useragent: navigator.userAgent,
+      }),
     onSuccess: () => {
-      setFeedbackMessage('');
+      setFeedbackMessage("");
       setFeedbackSent(true);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'feedback'] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "feedback"] });
     },
   });
 
-  function openFeedback() {
+  function handleLogout() {
+    const token = localStorage.getItem("pb_token");
+    void cleanupDemoSessionIfNeeded(user, token);
+    queryClient.clear();
+    logout();
+    navigate("/landing", { replace: true });
+  }
+
+  function openFeedback(returnFocus?: HTMLElement) {
+    feedbackReturnFocusRef.current = returnFocus ?? accountTriggerRef.current;
+    setAccountOpen(false);
     setFeedbackSent(false);
     setFeedbackOpen(true);
   }
 
-  const initials = user?.displayname
-    ?.split(' ')
-    .map((word) => word[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() ?? '?';
+  function closeFeedback() {
+    setFeedbackOpen(false);
+    window.requestAnimationFrame(() => feedbackReturnFocusRef.current?.focus());
+  }
 
-  const navItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || user?.issuperadmin);
-  const homeShellNavItems = responsiveHomeShell ? [
-    { id: 'home' as const, label: 'Home', Icon: Home, onClick: responsiveHomeShell.onHome },
-    { id: 'games' as const, label: 'Games', Icon: Gamepad2, onClick: responsiveHomeShell.onGames },
-    { id: 'communities' as const, label: 'Groups & Leagues', Icon: Users, onClick: responsiveHomeShell.onCommunities },
-    { id: 'history' as const, label: 'History', Icon: Calendar, onClick: responsiveHomeShell.onHistory },
-  ] : [];
-  const resolvedHeaderRight = typeof headerRight === 'function' ? headerRight({ openFeedback }) : headerRight;
+  const initials =
+    (user?.tablename || user?.displayname || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => word[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
+  // The page owns mobile entity navigation. Only retain desktop context that the previous rail supplied.
+  const contextualNavigation = desktopSectionSidebar;
 
   return (
-    <div className="min-h-screen max-w-full overflow-x-hidden bg-pit-bg">
-      <div className="flex min-h-screen min-w-0 max-w-full overflow-x-hidden">
-        {responsiveHomeShell && (
-          <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-pit-border/80 bg-[#15171c] shadow-[18px_0_50px_rgba(0,0,0,0.16)] min-[1100px]:flex">
-            <div className="border-b border-pit-border/60 px-4 py-5">
-              <BrandLockup compact showSlogan={false} className="items-center gap-2.5" />
-            </div>
-            <nav className="flex-1 px-3 py-4" aria-label="Primary navigation">
-              <div className="space-y-1">
-                {homeShellNavItems.map(({ id, label, Icon, onClick }) => {
-                  const active = responsiveHomeShell.active === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      aria-current={active ? 'page' : undefined}
-                      onClick={onClick}
-                      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal ${active ? 'border-pit-teal/25 bg-pit-teal/15 text-white shadow-[0_8px_24px_rgba(14,165,165,0.08)]' : 'border-transparent text-pit-text hover:bg-pit-teal/10 hover:text-white'}`}
-                    >
-                      <Icon size={17} className={active ? 'text-pit-teal' : 'text-pit-muted'} />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              {responsiveHomeShell.canHost && (
-                <button type="button" className="btn-primary mt-5 flex h-11 w-full items-center justify-center text-sm" onClick={responsiveHomeShell.onHostGame}>
-                  + Host a Game
-                </button>
-              )}
-              <div className="my-5 border-t border-pit-border" />
-              <div className="space-y-1">
-                <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-white/5 hover:text-white" onClick={responsiveHomeShell.onProfile}>
-                  <Settings size={17} /> Settings
-                </button>
-                <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-white/5 hover:text-white" onClick={openFeedback}>
-                  <MessageSquare size={17} /> Help & Feedback
-                </button>
-                {user?.issuperadmin && (
-                  <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-red-300/85 transition hover:bg-red-500/10 hover:text-red-200" onClick={responsiveHomeShell.onAdmin}>
-                    <Shield size={17} /> Admin
-                  </button>
-                )}
-              </div>
-            </nav>
-            {user && (
-              <div className="mx-3 mb-4 rounded-xl border border-pit-border bg-pit-bg p-3">
-                <button type="button" onClick={responsiveHomeShell.onProfile} className="flex w-full items-center gap-3 rounded-lg text-left transition hover:text-white" title="Open profile">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
-                    {user.avatarimagedata ? <img src={user.avatarimagedata} alt="" className="h-9 w-9 rounded-full object-cover" /> : initials}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-white">{user.tablename || user.displayname}</p>
-                    <p className="text-[10px] text-pit-muted">View profile</p>
-                  </div>
-                </button>
-                <button type="button" onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition hover:text-red-300">
-                  <LogOut size={12} /> Sign out
-                </button>
-              </div>
-            )}
-          </aside>
-        )}
-        {!responsiveHomeShell && !hideSidebar && (
-          <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-pit-border bg-pit-surface md:flex ${sidebarWidthClass}`}>
-          <div className={`border-b border-pit-border/60 py-5 ${compactSidebar ? 'px-3' : 'px-5'}`}>
-            <BrandLockup
-              compact
-              showWordmark={!compactSidebar}
-              showSlogan={!compactSidebar}
-              className={`items-center ${compactSidebar ? 'justify-center gap-0' : 'gap-3'}`}
+    <AppShellActionsContext.Provider value={{ openFeedback }}>
+      <div
+        className={`authenticated-shell ${showMobileNavigation ? "authenticated-shell--primary-navigation" : ""} ${focused ? "authenticated-shell--focused" : ""} ${mobileFocused ? "authenticated-shell--mobile-focused" : ""}`}
+      >
+        {!focused && (
+          <header
+            data-app-header
+            data-context-header
+            className="app-global-header"
+          >
+            <Link
+              to={APP_PRIMARY_NAVIGATION[0].to}
+              className="app-brand-link"
+              aria-label="ThePokerPlanner home"
+            >
+              <img
+                src="/branding/thepokerplanner-spade-logo-192.png"
+                alt=""
+                width="40"
+                height="40"
+              />
+              <span className="app-brand-wordmark">
+                ThePoker<span>Planner</span>
+              </span>
+            </Link>
+            <PrimaryNavigation
+              activeDestination={activeDestination}
+              presentation="header"
             />
-          </div>
-
-          <nav className={`flex-1 space-y-0.5 py-4 ${compactSidebar ? 'px-2' : 'px-3'}`}>
-            {navItems.map(({ id, label, Icon }) => {
-              const active = tab === id;
-              const isAdmin = id === 'admin';
-              return (
-                <button
-                  key={id}
-                  onClick={() => handleNavClick(id)}
-                  className={`w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
-                    active && isAdmin
-                      ? 'bg-red-500/12 text-red-300'
-                      : active
-                      ? 'bg-pit-teal/10 text-pit-teal'
-                      : isAdmin
-                      ? 'text-red-300/80 hover:bg-red-500/10 hover:text-red-200'
-                      : 'text-pit-muted hover:bg-white/5 hover:text-pit-text'
-                  } flex items-center ${compactSidebar ? 'justify-center' : 'gap-3'}`}
-                  aria-label={label}
-                  title={label}
-                >
-                  <span className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                    active && isAdmin ? 'bg-red-500/15' : active ? 'bg-pit-teal/15' : 'bg-transparent'
-                  }`}>
-                    <Icon size={17} strokeWidth={active ? 2.5 : 2} />
-                    {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
-                  </span>
-                  {!compactSidebar && (
-                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                      <span>{label}</span>
-                      {isAdmin && feedbackNewCount > 0 && (
-                        <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                          {formatBadgeCount(feedbackNewCount)}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          {user && (
-            <div className={`mb-4 rounded-xl border border-pit-border bg-pit-bg p-3 ${compactSidebar ? 'mx-2' : 'mx-3'}`}>
-              <button
-                type="button"
-                onClick={() => handleNavClick('profile')}
-                className={`mb-3 flex w-full items-center rounded-lg text-left transition-colors hover:text-white ${compactSidebar ? 'justify-center' : 'gap-3 hover:bg-white/5'}`}
-                title="Open profile"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pit-teal/20 text-xs font-bold text-pit-teal">
-                  {user?.avatarimagedata ? (
-                    <img src={user.avatarimagedata} alt={user.displayname} className="h-8 w-8 rounded-full object-cover" />
-                  ) : initials}
-                </div>
-                {!compactSidebar && (
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-white">{user.displayname}</p>
-                    <p className="truncate text-[10px] text-pit-muted">{user.emailaddress}</p>
-                  </div>
-                )}
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex w-full items-center justify-center gap-1.5 text-xs text-pit-muted transition-colors duration-150 hover:text-red-400"
-                title="Sign out"
-              >
-                <LogOut size={12} /> {!compactSidebar && 'Sign out'}
-              </button>
-            </div>
-          )}
-          </aside>
-        )}
-
-        <div className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden ${contentMarginClass}`}>
-          {!hideHeader && <header className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-pit-border/80 bg-[#111318]/95 shadow-[0_10px_28px_rgba(0,0,0,0.26)] backdrop-blur md:bg-[#111318]/95 ${responsiveHomeShell ? 'min-[1100px]:hidden' : ''} ${headerPaddingClass}`}>
-            <div className="flex min-w-0 items-center gap-3">
-              {back ? (
-                <Link
-                  to={back}
-                  aria-label={backAriaLabel ?? backLabel ?? 'Back'}
-                  title={backAriaLabel ?? backLabel ?? 'Back'}
-                  className={backIcon
-                    ? 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pit-teal/30 bg-gradient-to-br from-pit-teal/15 to-[#122E30] text-pit-teal shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition hover:border-pit-teal/65 hover:bg-pit-teal/20 hover:text-white'
-                    : backLabel
-                    ? 'inline-flex shrink-0 items-center gap-1 rounded-full border border-pit-teal/35 bg-gradient-to-r from-pit-teal/20 to-[#122E30] px-3 py-2 text-xs font-semibold text-pit-teal transition hover:border-pit-teal/70 hover:text-white'
-                    : 'flex items-center gap-1 text-sm text-pit-muted transition-colors hover:text-white'}
-                >
-                  {backIcon ?? <ChevronLeft size={18} />}
-                  {!backIcon && <span className={backLabel ? '' : 'hidden sm:inline'}>{backLabel ?? 'Back'}</span>}
-                </Link>
-              ) : (
-                <div className={hideSidebar || responsiveHomeShell ? 'block' : 'md:hidden'}>
-                  <BrandLockup compact showSlogan={false} className="items-center gap-2" />
-                </div>
-              )}
-              {title && <h1 className="truncate text-base font-semibold text-white">{title}</h1>}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {responsiveHomeShell?.canHost && (
+            <div className="app-global-header__actions">
+              {canHost && (
                 <button
                   type="button"
-                  className="btn-primary hidden h-11 items-center justify-center px-5 text-sm min-[768px]:inline-flex min-[1100px]:hidden"
-                  onClick={responsiveHomeShell.onHostGame}
+                  className="app-host-action"
+                  aria-label="Host a game"
+                  onClick={hostAction}
                 >
-                  + Host a Game
+                  <Plus size={18} aria-hidden="true" />
+                  <span>Host a Game</span>
                 </button>
               )}
-              {resolvedHeaderRight}
-            </div>
-          </header>}
-
-          <main className={`mx-auto w-full min-w-0 max-w-full flex-1 overflow-x-hidden ${mainPaddingClass} ${mainWidthClassName}`}>
-            {children}
-          </main>
-        </div>
-      </div>
-
-      {!hideMobileNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-pit-teal/30 bg-[#122E30] shadow-[0_-12px_32px_rgba(0,0,0,0.42)] md:hidden">
-          {navItems.map(({ id, label, Icon }) => {
-            const active = tab === id;
-            const isAdmin = id === 'admin';
-            return (
               <button
-                key={id}
-                onClick={() => handleNavClick(id)}
-                className={`flex-1 flex flex-col items-center gap-1 pt-3 pb-4 text-[10px] font-semibold tracking-wide transition-colors duration-150 ${
-                  active && isAdmin ? 'text-red-200' : active ? 'text-white' : isAdmin ? 'text-red-200' : 'text-teal-100 hover:text-white'
-                }`}
+                ref={accountTriggerRef}
+                type="button"
+                className="app-account-trigger"
+                aria-label="Open account menu"
+                aria-haspopup="dialog"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen(true)}
               >
-                <div className={`relative flex h-6 w-10 items-center justify-center rounded-full transition-all duration-150 ${
-                  active && isAdmin ? 'bg-red-500/20 shadow-[0_0_18px_rgba(248,113,113,0.28)] ring-1 ring-red-300/30' : active ? 'bg-pit-teal/25 text-pit-teal shadow-[0_0_22px_rgba(20,184,166,0.36)] ring-1 ring-pit-teal/40' : 'bg-[#0e2426]'
-                }`}>
-                  <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
-                  {isAdmin && feedbackNewCount > 0 && <NavBadge count={feedbackNewCount} />}
-                </div>
-                {label}
+                <span className="app-account-avatar">
+                  {user?.avatarimagedata ? (
+                    <img src={user.avatarimagedata} alt="" />
+                  ) : (
+                    initials
+                  )}
+                </span>
+                <ChevronDown
+                  className="app-account-chevron"
+                  size={15}
+                  aria-hidden="true"
+                />
+                <Menu
+                  className="app-account-mobile-icon"
+                  size={22}
+                  aria-hidden="true"
+                />
               </button>
-            );
-          })}
-        </nav>
-      )}
+            </div>
+          </header>
+        )}
 
-      {user && responsiveHomeShell?.canHost && !hideFeedback && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-pit-teal/25 bg-pit-bg/95 px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 shadow-[0_-16px_36px_rgba(0,0,0,0.48)] backdrop-blur min-[768px]:hidden">
-          <div className="mx-auto flex max-w-[32rem] gap-2">
-            <button type="button" className="btn-primary flex h-12 min-w-0 flex-[7] items-center justify-center text-sm" onClick={responsiveHomeShell.onHostGame}>
-              + Host a Game
-            </button>
-            <button type="button" className="flex h-12 min-w-0 flex-[3] items-center justify-center gap-1.5 rounded-lg border border-pit-border bg-pit-card px-2 text-xs font-semibold text-pit-text transition hover:border-pit-teal/50 hover:text-white" onClick={openFeedback}>
-              <MessageSquare size={14} />
-              <span className="max-[374px]:sr-only">Feedback</span>
-            </button>
-          </div>
-        </div>
-      )}
+        {contextualNavigation && (
+          <nav
+            className="app-context-navigation"
+            aria-label={`${contextualNavigation.title} navigation`}
+          >
+            {back && (
+              <Link
+                to={back}
+                className="app-context-back"
+                aria-label={backAriaLabel ?? backLabel ?? "Back"}
+              >
+                {backIcon ?? <ChevronLeft size={18} aria-hidden="true" />}
+                <span>{backLabel ?? "Back"}</span>
+              </Link>
+            )}
+            {contextualNavigation.items.map(
+              ({ id, label, Icon, active, onClick }) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  onClick={onClick}
+                  className={active ? "is-current" : undefined}
+                >
+                  <Icon size={17} aria-hidden="true" />
+                  {label}
+                </button>
+              ),
+            )}
+            {focused && (
+              <button
+                ref={accountTriggerRef}
+                type="button"
+                className="app-context-account"
+                aria-label="Open account menu"
+                aria-haspopup="dialog"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen(true)}
+              >
+                <Settings size={18} aria-hidden="true" />
+                <span>Account</span>
+              </button>
+            )}
+          </nav>
+        )}
 
-      {user && !responsiveHomeShell && !hideFeedback && (
-        <button
-          type="button"
-          onClick={openFeedback}
-          className={`fixed right-4 z-30 flex items-center gap-2 rounded-full border border-pit-border bg-pit-card px-3 py-2 text-xs font-semibold text-pit-text shadow-2xl transition-colors hover:border-pit-teal/50 hover:text-white md:bottom-5 ${hideMobileNav ? 'bottom-5' : 'bottom-24'}`}
+        <ContentElement
+          className={`authenticated-shell__main mx-auto w-full min-w-0 flex-1 ${mainWidthClassName} ${mainPaddingClassName}`}
         >
-          <MessageSquare size={14} />
-          Feedback
-        </button>
-      )}
+          {!focused && (title || back) && (
+            <div className="app-page-context">
+              {back && (
+                <Link
+                  to={back}
+                  aria-label={backAriaLabel ?? backLabel ?? "Back"}
+                >
+                  {backIcon ?? <ChevronLeft size={18} aria-hidden="true" />}
+                  <span>{backLabel ?? "Back"}</span>
+                </Link>
+              )}
+              {title && <h1>{title}</h1>}
+            </div>
+          )}
+          {children}
+        </ContentElement>
 
-      {user && !user.isdemo && <PwaInstallPrompt />}
+        {showMobileNavigation && (
+          <PrimaryNavigation
+            activeDestination={activeDestination}
+            presentation="mobile"
+          />
+        )}
+        {user && !user.isdemo && <PwaInstallPrompt />}
 
-      <Modal
-        title="Send Feedback"
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-        footer={
-          <>
-            <button type="button" className="btn-ghost" onClick={() => setFeedbackOpen(false)}>
-              Close
+        <Modal
+          title="Account"
+          open={accountOpen}
+          onClose={() => setAccountOpen(false)}
+        >
+          <div className="app-account-actions">
+            <p className="app-account-name">
+              {user?.tablename || user?.displayname || "Your account"}
+            </p>
+            <Link to="/?view=profile" onClick={() => setAccountOpen(false)}>
+              <Settings size={18} aria-hidden="true" />
+              Account settings
+            </Link>
+            {user?.issuperadmin && (
+              <Link to="/?view=admin" onClick={() => setAccountOpen(false)}>
+                <Shield size={18} aria-hidden="true" />
+                Admin
+                {Number(feedbackSummary?.newcount) > 0 && (
+                  <span className="app-feedback-count">
+                    {Number(feedbackSummary?.newcount) > 99
+                      ? "99+"
+                      : feedbackSummary?.newcount}
+                    <span className="sr-only"> new feedback items</span>
+                  </span>
+                )}
+              </Link>
+            )}
+            <button type="button" onClick={() => openFeedback()}>
+              <MessageSquare size={18} aria-hidden="true" />
+              Help &amp; Feedback
             </button>
             <button
               type="button"
-              className="btn-primary gap-2"
-              disabled={feedbackMutation.isPending || !feedbackMessage.trim()}
-              onClick={() => feedbackMutation.mutate()}
+              className="app-sign-out"
+              onClick={handleLogout}
             >
-              <Send size={14} />
-              Send
+              <LogOut size={18} aria-hidden="true" />
+              Sign out
             </button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          {feedbackSent && (
-            <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300">
-              Got it. Thanks for helping shape the beta.
-            </p>
-          )}
-          {feedbackMutation.error && (
-            <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-              {feedbackMutation.error.message}
-            </p>
-          )}
-          <div className="grid grid-cols-3 gap-2">
-            {(['issue', 'idea', 'question'] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setFeedbackType(type)}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
-                  feedbackType === type
-                    ? 'border-pit-teal bg-pit-teal/15 text-pit-teal'
-                    : 'border-pit-border bg-pit-bg text-pit-muted'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
           </div>
-          <textarea
-            className="input min-h-36"
-            value={feedbackMessage}
-            onChange={(event) => setFeedbackMessage(event.target.value)}
-            placeholder="What happened, what feels rough, or what should we build next?"
-          />
-        </div>
-      </Modal>
-    </div>
+        </Modal>
+
+        <Modal
+          title="Send Feedback"
+          open={feedbackOpen}
+          onClose={closeFeedback}
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={closeFeedback}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-primary gap-2"
+                disabled={feedbackMutation.isPending || !feedbackMessage.trim()}
+                onClick={() => feedbackMutation.mutate()}
+              >
+                <Send size={14} aria-hidden="true" />
+                Send
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            {feedbackSent && (
+              <p
+                role="status"
+                className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-300"
+              >
+                Got it. Thanks for helping shape the beta.
+              </p>
+            )}
+            {feedbackMutation.error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300"
+              >
+                {feedbackMutation.error.message}
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-2">
+              {(["issue", "idea", "question"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFeedbackType(type)}
+                  aria-pressed={feedbackType === type}
+                  className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${feedbackType === type ? "border-pit-teal bg-pit-teal/15 text-pit-teal" : "border-pit-border bg-pit-bg text-pit-muted"}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            <label className="sr-only" htmlFor="app-feedback-message">
+              Feedback message
+            </label>
+            <textarea
+              id="app-feedback-message"
+              className="input min-h-36"
+              value={feedbackMessage}
+              onChange={(event) => setFeedbackMessage(event.target.value)}
+              placeholder="What happened, what feels rough, or what should we build next?"
+            />
+          </div>
+        </Modal>
+      </div>
+    </AppShellActionsContext.Provider>
   );
 }
 
-function NavBadge({ count }: { count: number }) {
+function PrimaryNavigation({
+  activeDestination,
+  presentation,
+}: {
+  activeDestination: PrimaryDestination;
+  presentation: "header" | "mobile";
+}) {
+  const mobile = presentation === "mobile";
   return (
-    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-pit-surface">
-      {formatBadgeCount(count)}
-    </span>
+    <nav
+      className={mobile ? "app-primary-mobile-nav" : "app-primary-header-nav"}
+      aria-label="Primary navigation"
+      data-app-mobile-nav={mobile ? "" : undefined}
+    >
+      {APP_PRIMARY_NAVIGATION.map(({ id, label, to }) => {
+        const Icon = PRIMARY_ICONS[id];
+        const active = activeDestination === id;
+        return (
+          <Link
+            key={id}
+            to={to}
+            aria-current={active ? "page" : undefined}
+            className={active ? "is-current" : undefined}
+          >
+            {mobile && (
+              <Icon
+                size={21}
+                strokeWidth={active ? 2.5 : 1.75}
+                aria-hidden="true"
+              />
+            )}
+            <span>{label}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
-}
-
-function formatBadgeCount(count: number) {
-  return count > 99 ? '99+' : String(count);
 }

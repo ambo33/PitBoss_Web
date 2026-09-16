@@ -479,7 +479,9 @@ function normalizeTimerState(state: TimerState): void {
 async function persistTimer(state: TimerState): Promise<void> {
   await query(
     `INSERT INTO tournamenttimer (tournamentid, currentlevel, remainingsecs, running, lastupdated)
-     VALUES ($1, $2, $3, $4, now())
+     SELECT $1::UUID, $2::INT, $3::INT, $4::BOOL, now()
+     FROM tournaments
+     WHERE tournamentid = $1::UUID
      ON CONFLICT (tournamentid) DO UPDATE
      SET currentlevel = $2, remainingsecs = $3, running = $4, lastupdated = now()`,
     [state.tournamentid, state.currentlevel, state.remainingsecs, state.running]

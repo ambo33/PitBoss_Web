@@ -209,8 +209,8 @@ export default function VoiceLabPage() {
   }
 
   return (
-    <main className="min-h-screen bg-pit-bg text-white">
-      <header className="border-b border-pit-border bg-pit-card">
+    <main className="min-h-screen bg-pit-bg text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12]" data-workspace-page="voice-lab">
+      <header data-shell-legacy-header className="border-b border-pit-border bg-pit-card min-[1200px]:hidden">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <Link className="btn-ghost px-3 py-2" to="/">
@@ -225,7 +225,7 @@ export default function VoiceLabPage() {
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <section className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] min-[1200px]:max-w-none">
         <aside className="rounded-xl border border-pit-border bg-pit-card p-4">
           <p className="text-xs font-semibold uppercase text-pit-muted">Canned Styles</p>
           <div className="mt-3 grid gap-2">

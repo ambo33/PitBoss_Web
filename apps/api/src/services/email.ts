@@ -595,6 +595,34 @@ export async function sendEventTodayReminderEmail(
   });
 }
 
+export async function sendEventStartEmail(
+  email: string,
+  details: {
+    kind: 'tournament' | 'league';
+    name: string;
+    when: string;
+    url: string;
+  }
+): Promise<void> {
+  const leagueEvent = details.kind === 'league';
+  const eventUrl = `${appBaseUrl}${details.url.startsWith('/') && !details.url.startsWith('//') ? details.url : '/'}`;
+  await sendMail({
+    to: email,
+    subject: `${details.name} is starting now`,
+    respectEmailAlerts: true,
+    html: emailLayout({
+      eyebrow: leagueEvent ? 'League Event Starting' : 'Tournament Starting',
+      title: details.name,
+      intro: leagueEvent
+        ? 'Your league event is starting. When you are knocked out, open the event and record your finish.'
+        : 'Your tournament is starting. Open the player lobby for the latest details.',
+      body: `<p style="margin:0;"><strong style="color:#ffffff;">Scheduled start:</strong> ${escapeHtml(details.when)}</p>`,
+      ctaHref: eventUrl,
+      ctaLabel: leagueEvent ? 'Open League Event' : 'Open Player Lobby',
+    }),
+  });
+}
+
 export async function sendEventRecapEmail(
   email: string,
   details: {
@@ -652,6 +680,7 @@ export async function sendLeagueBoardPostEmail(
   await sendMail({
     to: email,
     subject: `${leagueName}: new ${seasonName} update`,
+    respectEmailAlerts: true,
     html: emailLayout({
       eyebrow: 'League Board',
       title: `${leagueName} - ${seasonName}`,

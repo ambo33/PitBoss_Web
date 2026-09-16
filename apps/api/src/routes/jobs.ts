@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
 import {
   sendEventRecapEmail,
+  sendEventStartEmail,
   sendEventLobbyReminderEmail,
   sendEventTodayReminderEmail,
   sendLeagueEventReminderEmail,
@@ -9,7 +10,8 @@ import {
   sendTournamentReminderEmail,
 } from '../services/email';
 import { publicEmail } from '../privacy';
-import { sendLeagueNotification, sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { sendLeagueNotification, sendNotificationToUser, sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { easternEventStart, eventStartDue } from '../services/eventNotificationTiming';
 
 export const jobsRouter = Router();
 
@@ -50,6 +52,12 @@ type ReminderRecipient = {
   url: string;
 };
 
+type StartRecipient = ReminderRecipient & {
+  leagueid: string | null;
+  emailallowed: boolean;
+  pushallowed: boolean;
+};
+
 function easternClock(date = new Date()): EasternClock {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
@@ -84,38 +92,20 @@ function eventWhen(date: string | null, time: string | null): string {
   return `${cleanDate} at ${hour % 12 || 12}:${String(minute || 0).padStart(2, '0')} ${suffix}`;
 }
 
-function easternEventStart(date: string | null, time: string | null): Date | null {
-  if (!date || !time) return null;
-  const [year, month, day] = date.slice(0, 10).split('-').map(Number);
-  const [hour, minute] = time.slice(0, 5).split(':').map(Number);
-  if (![year, month, day, hour, minute].every(Number.isFinite)) return null;
-  const localAsUtc = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  const offsetParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    timeZoneName: 'shortOffset',
-  }).formatToParts(localAsUtc);
-  const offsetName = offsetParts.find((part) => part.type === 'timeZoneName')?.value ?? 'GMT-5';
-  const offsetMatch = offsetName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-  const offsetMinutes = offsetMatch
-    ? (Number(offsetMatch[2]) * 60 + Number(offsetMatch[3] ?? 0)) * (offsetMatch[1] === '+' ? 1 : -1)
-    : -300;
-  return new Date(localAsUtc.getTime() - offsetMinutes * 60_000);
-}
-
-async function claimEmailDelivery(entityType: string, entityId: string, userId: string, deliveryType: string) {
+async function claimDelivery(entityType: string, entityId: string, userId: string, deliveryType: string, channel: 'email' | 'push' = 'email') {
   const row = await queryOne<{ deliveryid: string }>(
     `INSERT INTO scheduleddeliveries (entitytype, entityid, userid, deliverytype, channel, status, updatedat)
-     VALUES ($1, $2, $3, $4, 'email', 'pending', now())
+     VALUES ($1, $2, $3, $4, $5, 'pending', now())
      ON CONFLICT (entitytype, entityid, userid, deliverytype, channel)
      DO UPDATE SET status = 'pending', error = NULL, updatedat = now()
        WHERE scheduleddeliveries.status = 'failed'
      RETURNING deliveryid`,
-    [entityType, entityId, userId, deliveryType]
+    [entityType, entityId, userId, deliveryType, channel]
   );
   return row?.deliveryid ?? null;
 }
 
-async function completeEmailDelivery(deliveryId: string, error?: unknown) {
+async function completeDelivery(deliveryId: string, error?: unknown) {
   const message = error instanceof Error ? error.message : error ? String(error) : null;
   await query(
     `UPDATE scheduleddeliveries
@@ -138,7 +128,7 @@ async function deliverReminderEmails(
   const results = await Promise.allSettled(recipients.map(async (recipient) => {
     const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
     if (!email) return 'skipped';
-    const deliveryId = await claimEmailDelivery(entityType, recipient.entityid, recipient.userid, deliveryType);
+    const deliveryId = await claimDelivery(entityType, recipient.entityid, recipient.userid, deliveryType);
     if (!deliveryId) return 'duplicate';
     try {
       if (mode === 'rsvp') {
@@ -164,10 +154,10 @@ async function deliverReminderEmails(
           url: recipient.url,
         });
       }
-      await completeEmailDelivery(deliveryId);
+      await completeDelivery(deliveryId);
       return 'sent';
     } catch (error) {
-      await completeEmailDelivery(deliveryId, error);
+      await completeDelivery(deliveryId, error);
       throw error;
     }
   }));
@@ -517,6 +507,153 @@ async function leagueReminderRecipients(targetDate: string, audience: 'unrespons
   );
 }
 
+async function eventStartRecipients(today: string, yesterday: string) {
+  const [tournaments, leagues] = await Promise.all([
+    query<StartRecipient>(
+      `SELECT t.tournamentid AS entityid, tp.userid, u.emailaddress, u.emailencrypted,
+              t.name, COALESCE(g.name, 'Your group') AS containername,
+              t.date::STRING AS eventdate, t.time::STRING AS eventtime,
+              '/lobby/' || t.tournamentid::STRING AS url,
+              NULL::UUID AS leagueid,
+              COALESCE(um.emailalertsenabled, TRUE) AS emailallowed,
+              COALESCE(gm.pushalertsenabled, TRUE) AS pushallowed
+       FROM tournaments t
+       JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid
+       JOIN users u ON u.guid = tp.userid
+       LEFT JOIN groups g ON g.groupid = t.groupid
+       LEFT JOIN groupmembers gm ON gm.groupid = t.groupid AND gm.userid = tp.userid
+       LEFT JOIN usermetadata um ON um.userid = tp.userid
+       LEFT JOIN tournamentdeclines td ON td.tournamentid = t.tournamentid AND td.userid = tp.userid
+       WHERE t.date IN ($1::DATE, $2::DATE)
+         AND t.time IS NOT NULL
+         AND COALESCE(t.active, TRUE) = TRUE
+         AND tp.placed IS NULL
+         AND td.userid IS NULL
+         AND COALESCE(um.isguestuser, FALSE) = FALSE
+         AND NOT EXISTS (
+           SELECT 1 FROM leagueevents e
+           JOIN leagues linked_league
+             ON linked_league.leagueid = e.leagueid
+            AND COALESCE(linked_league.active, TRUE) = TRUE
+           JOIN leagueeventrsvps linked_rsvp
+             ON linked_rsvp.eventid = e.eventid
+            AND linked_rsvp.userid = tp.userid
+            AND linked_rsvp.status = 'going'
+           JOIN leagueseasonparticipants linked_participant
+             ON linked_participant.leagueid = e.leagueid
+            AND linked_participant.seasonid = e.seasonid
+            AND linked_participant.userid = tp.userid
+            AND COALESCE(linked_participant.participating, TRUE) = TRUE
+           JOIN leaguemembers linked_member
+             ON linked_member.leagueid = e.leagueid
+            AND linked_member.userid = tp.userid
+            AND linked_member.approved = TRUE
+           WHERE e.tournamentid = t.tournamentid AND COALESCE(e.active, TRUE) = TRUE
+         )`,
+      [today, yesterday]
+    ),
+    query<StartRecipient>(
+      `SELECT e.eventid AS entityid, rsvp.userid, u.emailaddress, u.emailencrypted,
+              e.name, l.name AS containername,
+              e.eventdate::STRING AS eventdate, e.eventtime::STRING AS eventtime,
+              '/league/' || e.leagueid::STRING || '/event/' || e.eventid::STRING AS url,
+              e.leagueid,
+              COALESCE(um.emailalertsenabled, TRUE) AND COALESCE(lm.emailalertsenabled, TRUE) AS emailallowed,
+              COALESCE(lm.pushalertsenabled, TRUE) AS pushallowed
+       FROM leagueevents e
+       JOIN leagues l ON l.leagueid = e.leagueid
+       JOIN leagueeventrsvps rsvp
+         ON rsvp.eventid = e.eventid AND rsvp.leagueid = e.leagueid AND rsvp.status = 'going'
+       JOIN leagueseasonparticipants lsp
+         ON lsp.leagueid = e.leagueid AND lsp.seasonid = e.seasonid AND lsp.userid = rsvp.userid
+       JOIN leaguemembers lm ON lm.leagueid = e.leagueid AND lm.userid = rsvp.userid
+       JOIN users u ON u.guid = rsvp.userid
+       LEFT JOIN usermetadata um ON um.userid = rsvp.userid
+       LEFT JOIN leagueresults result ON result.eventid = e.eventid AND result.userid = rsvp.userid
+       WHERE e.eventdate IN ($1::DATE, $2::DATE)
+         AND e.eventtime IS NOT NULL
+         AND COALESCE(e.active, TRUE) = TRUE
+         AND COALESCE(l.active, TRUE) = TRUE
+         AND lm.approved = TRUE
+         AND COALESCE(lsp.participating, TRUE) = TRUE
+         AND COALESCE(um.isguestuser, FALSE) = FALSE
+         AND result.resultid IS NULL`,
+      [today, yesterday]
+    ),
+  ]);
+  return { tournaments, leagues };
+}
+
+async function sendEventStartAlerts(now: Date, today: string) {
+  const recipients = await eventStartRecipients(today, easternDateOffset(-1, now));
+  const deliver = async (kind: 'tournament' | 'league', rows: StartRecipient[]) => {
+    const due = rows.filter((row) => eventStartDue(row.eventdate, row.eventtime, now));
+    const results = await Promise.allSettled(due.map(async (row) => {
+      const entityType = kind === 'league' ? 'league_event' : 'tournament';
+      const email = row.emailallowed ? publicEmail(row.emailencrypted, row.emailaddress) : null;
+      let emailSent = 0;
+      let pushSent = 0;
+      if (email) {
+        const claim = await claimDelivery(entityType, row.entityid, row.userid, 'event_start');
+        if (claim) {
+          try {
+            await sendEventStartEmail(email, {
+              kind,
+              name: row.name,
+              when: eventWhen(row.eventdate, row.eventtime),
+              url: row.url,
+            });
+            await completeDelivery(claim);
+            emailSent = 1;
+          } catch (error) {
+            await completeDelivery(claim, error);
+            console.error('Event start email failed', error);
+          }
+        }
+      }
+      if (row.pushallowed) {
+        const claim = await claimDelivery(entityType, row.entityid, row.userid, 'event_start', 'push');
+        if (claim) {
+          try {
+            const result = await sendNotificationToUser(
+              row.userid,
+              kind === 'league' ? 'season_milestone' : 'tournament_starting_soon',
+              {
+                title: `${row.name} is starting now`,
+                body: kind === 'league'
+                  ? 'Your league event is starting. Record your finish when you are knocked out.'
+                  : 'Your tournament is starting. Open the player lobby.',
+                url: row.url,
+                tag: `${entityType}-${row.entityid}-event-start`,
+              },
+              { entityType, entityId: row.entityid }
+            );
+            if (result.attempted > 0 && result.sent === 0) {
+              throw new Error('No device accepted the start notification');
+            }
+            await completeDelivery(claim);
+            pushSent = result.sent;
+          } catch (error) {
+            await completeDelivery(claim, error);
+            console.error('Event start push failed', error);
+          }
+        }
+      }
+      return { emailSent, pushSent };
+    }));
+    return {
+      due: due.length,
+      emailSent: results.reduce((sum, result) => sum + (result.status === 'fulfilled' ? result.value.emailSent : 0), 0),
+      pushSent: results.reduce((sum, result) => sum + (result.status === 'fulfilled' ? result.value.pushSent : 0), 0),
+    };
+  };
+  const [tournaments, leagues] = await Promise.all([
+    deliver('tournament', recipients.tournaments),
+    deliver('league', recipients.leagues),
+  ]);
+  return { tournaments, leagues };
+}
+
 async function sendScheduledRecaps() {
   const tournamentRows = await query<{ entityid: string; name: string; containername: string }>(
     `SELECT t.tournamentid AS entityid, t.name, COALESCE(g.name, 'Your group') AS containername
@@ -589,7 +726,7 @@ async function sendScheduledRecaps() {
     const delivered = await Promise.allSettled(recipients.map(async (recipient) => {
       const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
       if (!email) return false;
-      const deliveryId = await claimEmailDelivery('tournament', tournament.entityid, recipient.userid, 'event_recap');
+      const deliveryId = await claimDelivery('tournament', tournament.entityid, recipient.userid, 'event_recap');
       if (!deliveryId) return false;
       try {
         await sendEventRecapEmail(email, {
@@ -602,10 +739,10 @@ async function sendScheduledRecaps() {
           })),
           url: `/?section=upcoming&tournament=${encodeURIComponent(tournament.entityid)}`,
         });
-        await completeEmailDelivery(deliveryId);
+        await completeDelivery(deliveryId);
         return true;
       } catch (error) {
-        await completeEmailDelivery(deliveryId, error);
+        await completeDelivery(deliveryId, error);
         throw error;
       }
     }));
@@ -647,7 +784,7 @@ async function sendScheduledRecaps() {
     const delivered = await Promise.allSettled(recipients.map(async (recipient) => {
       const email = publicEmail(recipient.emailencrypted, recipient.emailaddress);
       if (!email) return false;
-      const deliveryId = await claimEmailDelivery('league_event', event.entityid, recipient.userid, 'event_recap');
+      const deliveryId = await claimDelivery('league_event', event.entityid, recipient.userid, 'event_recap');
       if (!deliveryId) return false;
       try {
         await sendEventRecapEmail(email, {
@@ -661,10 +798,10 @@ async function sendScheduledRecaps() {
           })),
           url: `/league/${encodeURIComponent(event.leagueid)}/event/${encodeURIComponent(event.entityid)}`,
         });
-        await completeEmailDelivery(deliveryId);
+        await completeDelivery(deliveryId);
         return true;
       } catch (error) {
-        await completeEmailDelivery(deliveryId, error);
+        await completeDelivery(deliveryId, error);
         throw error;
       }
     }));
@@ -688,6 +825,7 @@ jobsRouter.post('/hourly-event-notifications', async (req: Request, res: Respons
     rsvpToday: { tournaments: 0, leagues: 0 },
     attendeeToday: { tournaments: 0, leagues: 0 },
     oneHour: { tournaments: 0, leagues: 0 },
+    eventStart: { tournaments: { due: 0, emailSent: 0, pushSent: 0 }, leagues: { due: 0, emailSent: 0, pushSent: 0 } },
     recaps: { tournaments: 0, leagues: 0 },
   };
 
@@ -728,6 +866,8 @@ jobsRouter.post('/hourly-event-notifications', async (req: Request, res: Respons
     deliverReminderEmails('league_event', 'attendee_one_hour', leagueSoon.filter(inOneHourWindow), 'league', 'one_hour'),
   ]);
   summary.oneHour = { tournaments: oneHourResults[0].sent, leagues: oneHourResults[1].sent };
+
+  summary.eventStart = await sendEventStartAlerts(now, today);
 
   const recaps = await sendScheduledRecaps();
   summary.recaps = { tournaments: recaps.tournamentSent, leagues: recaps.leagueSent };

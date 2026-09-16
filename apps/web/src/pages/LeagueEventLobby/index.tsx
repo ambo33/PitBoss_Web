@@ -72,7 +72,7 @@ export default function LeagueEventLobbyPage() {
   if (isLoading) return <LoadingSpinner className="mt-16" />;
   if (!data) {
     return (
-      <main className="min-h-screen bg-pit-bg p-4 text-white">
+      <main className="min-h-screen bg-pit-bg p-4 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12]" data-workspace-page="league-event">
         <div className="mx-auto mt-16 max-w-lg overflow-hidden rounded-xl border border-pit-border bg-pit-card">
           <Link
             className="flex border-b border-pit-border bg-pit-bg/55 px-4 py-3 transition hover:bg-pit-teal/[0.07]"
@@ -95,12 +95,13 @@ export default function LeagueEventLobbyPage() {
   const rsvpButtonBase = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black transition disabled:cursor-wait disabled:opacity-60';
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10">
-      <section className="mx-auto w-full max-w-3xl">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(17,197,193,0.13),transparent_38%),#0d0d10] px-4 py-6 text-white sm:py-10 min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-none min-[1200px]:bg-[#080d12] min-[1200px]:p-6" data-workspace-page="league-event">
+      <section className="mx-auto w-full max-w-3xl min-[1200px]:max-w-5xl">
         <div className="overflow-hidden rounded-2xl border border-pit-border bg-pit-card shadow-2xl">
-          <div className="flex items-center justify-between gap-3 border-b border-pit-border bg-pit-bg/55 px-4 py-3 sm:px-5">
+          <div className="flex items-center justify-between gap-3 border-b border-pit-border bg-pit-bg/55 px-4 py-3 sm:px-5 min-[1200px]:justify-end">
             <Link
-              className="min-w-0 rounded-lg transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal"
+              data-shell-legacy-brand
+              className="min-w-0 rounded-lg transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal min-[1200px]:hidden"
               to="/"
               aria-label="Return to Command Center"
             >
@@ -108,7 +109,8 @@ export default function LeagueEventLobbyPage() {
             </Link>
             <div className="flex shrink-0 items-center gap-2">
               <Link
-                className="btn-ghost h-10 w-10 justify-center px-0 text-xs sm:w-auto sm:px-3"
+                data-shell-legacy-brand
+                className="btn-ghost h-10 w-10 justify-center px-0 text-xs sm:w-auto sm:px-3 min-[1200px]:hidden"
                 to="/"
                 aria-label="Home"
                 title="Home"

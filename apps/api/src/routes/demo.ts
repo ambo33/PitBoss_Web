@@ -5,6 +5,7 @@ import type { PoolClient } from 'pg';
 import { pool, queryOne } from '../db';
 import { signToken, requireAuth, optionalAuth } from '../middleware/auth';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
+import { invalidateTimerCache } from '../socket';
 
 export const demoRouter = Router();
 
@@ -610,6 +611,21 @@ async function purgeDemoSessions(client: DbClient, userId?: string): Promise<voi
     [sessionIds]
   );
   const demoUserIds = userRows.rows.map((row) => row.userid).filter(Boolean);
+  const tournamentRows = demoUserIds.length > 0
+    ? await client.query<{ tournamentid: string }>(
+        `SELECT tournamentid
+         FROM tournaments
+         WHERE demosessionid = ANY($2::STRING[])
+            OR userid = ANY($1::UUID[])`,
+        [demoUserIds, sessionIds]
+      )
+    : await client.query<{ tournamentid: string }>(
+        `SELECT tournamentid
+         FROM tournaments
+         WHERE demosessionid = ANY($1::STRING[])`,
+        [sessionIds]
+      );
+  tournamentRows.rows.forEach((row) => invalidateTimerCache(row.tournamentid));
 
   if (demoUserIds.length > 0) {
     await client.query(

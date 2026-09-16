@@ -16,6 +16,10 @@ export interface ClientIssueInput {
 
 const REPORT_COOLDOWN_MS = 60_000;
 const recentlyReported = new Map<string, number>();
+const IGNORED_BROWSER_ERRORS = [
+  'ResizeObserver loop completed with undelivered notifications.',
+  'ResizeObserver loop limit exceeded',
+];
 
 function cleanText(value: unknown, maxLength: number): string {
   return String(value ?? '')
@@ -43,6 +47,7 @@ function shouldReport(signature: string): boolean {
 export function reportClientIssue(input: ClientIssueInput): void {
   const message = cleanText(input.message, 1000);
   if (!message) return;
+  if (input.kind === 'browser_error' && IGNORED_BROWSER_ERRORS.some((ignored) => message.includes(ignored))) return;
   const requestPath = cleanText(input.requestPath, 500).split('?')[0];
   const signature = [input.kind, input.method, requestPath, input.status, message].join('|');
   if (!shouldReport(signature)) return;

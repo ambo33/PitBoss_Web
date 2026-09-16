@@ -14,6 +14,16 @@
 
   body { @apply bg-pit-bg text-white font-sans antialiased; }
 
+  /* Let the wide Overview ledger stick to the viewport, not an unscrollable
+     overflow-hidden app wrapper. Other routes and mobile keep their overflow. */
+  @media (min-width: 1600px) {
+    html:has([data-overview-ledger]),
+    body:has([data-overview-ledger]),
+    #root:has([data-overview-ledger]) {
+      overflow-x: clip;
+    }
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: rgba(20, 184, 166, 0.34) rgba(16, 17, 22, 0.72);

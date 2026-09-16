@@ -263,7 +263,7 @@ export default function PocketAdminPage() {
 
   if (loadingTournament || loadingPlayers) {
     return (
-      <div className="min-h-screen bg-pit-bg p-4 text-white">
+      <div className="min-h-screen bg-pit-bg p-4 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12]" data-workspace-page="pocket-admin">
         <LoadingSpinner className="mt-24" />
       </div>
     );
@@ -271,7 +271,7 @@ export default function PocketAdminPage() {
 
   if (tournamentError || !tournament || !canManage) {
     return (
-      <div className="min-h-screen bg-pit-bg p-4 text-white">
+      <div className="min-h-screen bg-pit-bg p-4 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12]" data-workspace-page="pocket-admin">
         <div className="card mx-auto mt-16 max-w-lg text-center">
           <h1 className="text-lg font-semibold text-white">Pocket Admin is for tournament admins</h1>
           <p className="mt-2 text-sm text-pit-text">
@@ -283,9 +283,9 @@ export default function PocketAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-pit-bg p-3 text-white">
-      <div className="mx-auto max-w-md space-y-4">
-        <header className="flex items-center justify-between gap-3 pt-2">
+    <div className="min-h-screen bg-pit-bg p-3 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12] min-[1200px]:p-6" data-workspace-page="pocket-admin">
+      <div className="mx-auto max-w-md space-y-4 min-[1200px]:grid min-[1200px]:max-w-5xl min-[1200px]:grid-cols-[minmax(300px,0.9fr)_minmax(0,1.1fr)] min-[1200px]:items-start min-[1200px]:gap-5 min-[1200px]:space-y-0">
+        <header className="flex items-center justify-between gap-3 pt-2 min-[1200px]:col-span-2">
           <div className="min-w-0">
             <Link to={`/tournament/${id}`} className="mb-1 inline-flex items-center gap-1 text-sm text-pit-muted hover:text-white">
               <ChevronLeft size={16} />
@@ -311,7 +311,7 @@ export default function PocketAdminPage() {
 
         <button
           type="button"
-          className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold ${
+          className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold min-[1200px]:col-span-2 min-[1200px]:max-w-sm ${
             soundEnabled
               ? 'border-pit-teal/40 bg-pit-teal/15 text-pit-teal'
               : 'border-yellow-300/45 bg-yellow-300/10 text-yellow-200'
@@ -322,7 +322,7 @@ export default function PocketAdminPage() {
         </button>
 
         {wakeLockError && (
-          <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs text-yellow-200">
+          <p className="rounded-lg border border-yellow-300/20 bg-yellow-300/10 px-3 py-2 text-xs text-yellow-200 min-[1200px]:col-span-2">
             Wake lock unavailable: {wakeLockError}
           </p>
         )}

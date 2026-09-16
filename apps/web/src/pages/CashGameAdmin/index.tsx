@@ -140,7 +140,7 @@ export default function CashGameAdminPage() {
   if (isLoading) return <LoadingSpinner className="mt-24" />;
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-pit-bg p-4 text-white">
+      <div className="min-h-screen bg-pit-bg p-4 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12]" data-workspace-page="cash-game-admin">
         <div className="card mx-auto mt-16 max-w-lg text-center">
           <h1 className="text-lg font-semibold">Cash game unavailable</h1>
           <p className="mt-2 text-sm text-pit-muted">{error?.message ?? 'This game could not be loaded.'}</p>
@@ -151,8 +151,8 @@ export default function CashGameAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-pit-bg px-4 py-5 text-white">
-      <div className="mx-auto max-w-6xl space-y-5">
+    <div className="min-h-screen bg-pit-bg px-4 py-5 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12] min-[1200px]:p-6" data-workspace-page="cash-game-admin">
+      <div className="mx-auto max-w-6xl space-y-5 min-[1200px]:max-w-none">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button type="button" className="btn-ghost gap-2 px-3 py-2" onClick={() => navigate(-1)}>
             <ArrowLeft size={15} />

@@ -1,0 +1,795 @@
+.home-dashboard {
+  --dash-canvas: #080f14;
+  --dash-surface: #101b23;
+  --dash-surface-raised: #14232d;
+  --dash-inset: #0b161d;
+  --dash-border: #253b47;
+  --dash-text: #f5f8fb;
+  --dash-secondary: #b9c9d4;
+  --dash-muted: #94aab9;
+  --dash-teal: #0ed6d2;
+  --dash-focus: #78f2e9;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+  color: var(--dash-text);
+  min-width: 0;
+}
+.home-dashboard *,
+.home-dashboard *::before,
+.home-dashboard *::after {
+  box-sizing: border-box;
+}
+.home-dashboard h1,
+.home-dashboard h2,
+.home-dashboard h3,
+.home-dashboard p {
+  margin: 0;
+}
+.home-dashboard a,
+.home-dashboard button {
+  -webkit-tap-highlight-color: transparent;
+}
+.home-dashboard a:focus-visible,
+.home-dashboard button:focus-visible {
+  outline: 2px solid var(--dash-focus);
+  outline-offset: 3px;
+}
+.home-dashboard__greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 0;
+}
+.home-dashboard__greeting > div {
+  min-width: 0;
+}
+.home-dashboard__greeting h1 {
+  font-size: 30px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__greeting p {
+  color: var(--dash-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.home-dashboard__greeting .home-dashboard__today {
+  font-size: 12px;
+  white-space: nowrap;
+  margin-top: 0;
+}
+.home-dashboard__hero-grid,
+.home-dashboard__membership-grid {
+  display: grid;
+  gap: 20px;
+}
+.home-dashboard__hero-grid {
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+}
+.home-dashboard__membership-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.home-dashboard__hero-grid > *,
+.home-dashboard__membership-grid > * {
+  min-width: 0;
+}
+.home-dashboard__panel {
+  padding: 18px;
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #101b23, #0b161d);
+  min-width: 0;
+}
+.home-dashboard__panel h2 {
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.home-dashboard__hero {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid #087c86;
+  border-radius: 14px;
+  background: var(--dash-inset);
+  min-height: 314px;
+}
+.home-dashboard__hero-art {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 100% 15%, #164953 0%, transparent 60%),
+    radial-gradient(ellipse at 95% 90%, #203d46 0%, transparent 48%),
+    linear-gradient(110deg, #06161e 10%, #0a2028 70%, #102d35);
+}
+.home-dashboard__hero-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px;
+  min-width: 0;
+}
+.home-dashboard__eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--dash-teal);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: 12px;
+  font-weight: 750;
+}
+.home-dashboard__type {
+  display: inline-flex;
+  width: fit-content;
+  font-size: 10px;
+  line-height: 1.35;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  text-transform: none;
+}
+.home-dashboard__type--league {
+  background: #262039;
+  color: #beabff;
+}
+.home-dashboard__type--tournament {
+  background: #102e31;
+  color: #40dad2;
+}
+.home-dashboard__type--cash {
+  background: #342a17;
+  color: #ffd27a;
+}
+.home-dashboard .home-dashboard__hero-context {
+  margin-top: 16px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__hero h2 {
+  margin-top: 8px;
+  max-width: 100%;
+  font-size: 32px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__metadata {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 13px;
+  color: #e0eaf0;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.home-dashboard__metadata > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.home-dashboard__metadata svg {
+  flex-shrink: 0;
+  color: var(--dash-secondary);
+}
+.home-dashboard .home-dashboard__cost {
+  margin-top: 12px;
+  color: var(--dash-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+  width: 100%;
+}
+.home-dashboard__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 1px solid #295260;
+  border-radius: 8px;
+  background: #091a23;
+  padding: 10px 16px;
+  color: #cdf9fb;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  cursor: pointer;
+}
+.home-dashboard__button:hover {
+  background: #0c2c31;
+  border-color: var(--dash-teal);
+}
+.home-dashboard__button--primary {
+  border-color: var(--dash-teal);
+  background: var(--dash-teal);
+  color: #041a1c;
+  box-shadow: 0 5px 18px #0ed6d21f;
+}
+.home-dashboard__button--primary:hover {
+  background: #45e5de;
+  border-color: #45e5de;
+}
+.home-dashboard__hero-actions > .home-dashboard__button {
+  min-width: 152px;
+}
+.home-dashboard__quick-grid {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+.home-dashboard__quick-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px;
+  border: 1px solid var(--dash-border);
+  border-radius: 9px;
+  background: #0b1720;
+  color: var(--dash-text);
+  text-align: left;
+  min-width: 0;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.home-dashboard__quick-action:hover {
+  border-color: #3c5968;
+  background: var(--dash-surface-raised);
+}
+.home-dashboard__action-icon {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #284454;
+  border-radius: 9px;
+  align-items: center;
+  justify-content: center;
+  background: #122d3a;
+  color: #76daf7;
+  flex-shrink: 0;
+}
+.home-dashboard__action-icon--tournament {
+  color: #ffd27a;
+}
+.home-dashboard__action-icon--cash {
+  background: #342a17;
+  border-color: #4c3f24;
+  color: #ffd27a;
+}
+.home-dashboard__action-icon--league {
+  background: #262039;
+  border-color: #393050;
+  color: #beabff;
+}
+.home-dashboard__action-icon--group {
+  background: #0c2c31;
+  border-color: #174448;
+  color: #0ed6d2;
+}
+.home-dashboard__quick-action > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+.home-dashboard__quick-action strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__quick-action small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--dash-secondary);
+}
+.home-dashboard__quick-chevron {
+  flex-shrink: 0;
+  color: var(--dash-muted);
+  margin-right: 3px;
+}
+.home-dashboard .home-dashboard__quick-hint {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dash-secondary);
+}
+.home-dashboard__panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--dash-border);
+}
+.home-dashboard__panel-heading > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  color: var(--dash-teal);
+  white-space: nowrap;
+  text-decoration: none;
+  font-size: 12px;
+}
+.home-dashboard__panel-heading > a:hover,
+.home-dashboard__game-identity > a:hover {
+  text-decoration: underline;
+}
+.home-dashboard__upcoming {
+  padding-bottom: 0;
+}
+.home-dashboard__game-list {
+  margin-inline: -18px;
+}
+.home-dashboard__game-row {
+  display: grid;
+  grid-template-columns:
+    38px minmax(140px, 1.5fr) minmax(130px, 1.25fr) minmax(90px, 0.8fr)
+    84px 90px;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 18px;
+  min-width: 0;
+}
+.home-dashboard__game-row + .home-dashboard__game-row {
+  border-top: 1px solid #1b303b;
+}
+.home-dashboard__date-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 38px;
+  border-radius: 7px;
+  border: 1px solid #294653;
+  background: #0a1d26;
+  color: #7bebe8;
+}
+.home-dashboard__game-identity {
+  min-width: 0;
+}
+.home-dashboard__game-identity > a {
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 650;
+  color: var(--dash-text);
+  overflow-wrap: anywhere;
+}
+.home-dashboard__game-identity > p {
+  font-size: 12px;
+  color: var(--dash-secondary);
+  line-height: 1.45;
+  margin-top: 3px;
+}
+.home-dashboard__game-identity > .home-dashboard__type {
+  display: none;
+  margin-top: 4px;
+}
+.home-dashboard__game-context > p {
+  margin-top: 3px;
+}
+.home-dashboard__game-context,
+.home-dashboard__game-count {
+  color: var(--dash-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: #172c43;
+  color: #8cc6ff;
+  width: fit-content;
+}
+.home-dashboard__status--live {
+  background: #133126;
+  color: #76e2ad;
+}
+.home-dashboard__status--paused {
+  background: #342a17;
+  color: #ffd27a;
+}
+.home-dashboard__row-action {
+  padding-inline: 10px;
+}
+.home-dashboard__membership {
+  display: flex;
+  gap: 14px;
+  padding-top: 16px;
+  min-width: 0;
+}
+.home-dashboard__membership + .home-dashboard__membership {
+  margin-top: 16px;
+  border-top: 1px solid var(--dash-border);
+}
+.home-dashboard__entity-image {
+  width: 64px;
+  height: 64px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #1e303f;
+  font-size: 23px;
+  font-weight: 650;
+  color: #dce8f0;
+}
+.home-dashboard__entity-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.home-dashboard__membership-info {
+  min-width: 0;
+  flex: 1;
+}
+.home-dashboard__membership-title {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  justify-content: space-between;
+}
+.home-dashboard__membership h3 {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.home-dashboard__membership-info > p {
+  color: var(--dash-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 3px;
+}
+.home-dashboard__membership-info > a {
+  margin-top: 9px;
+  padding: 8px 14px;
+}
+.home-dashboard__role {
+  color: #76e2ad;
+  background: #133126;
+  border: 1px solid #225740;
+  padding: 3px 7px;
+  border-radius: 15px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.home-dashboard__membership-empty {
+  padding-top: 18px;
+  color: var(--dash-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.home-dashboard__membership-empty > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.home-dashboard .home-dashboard__empty-copy {
+  color: var(--dash-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  padding-block: 18px;
+}
+.home-dashboard__hero--empty .home-dashboard__empty-copy {
+  padding-bottom: 0;
+}
+.home-dashboard__error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin-block: 12px;
+  border: 1px solid #554429;
+  background: #2a2419;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #ffdca0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.home-dashboard__error button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff0d3;
+  flex-shrink: 0;
+}
+.home-dashboard__skeleton {
+  min-height: 110px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+.home-dashboard__skeleton > span:not(.sr-only) {
+  height: 14px;
+  max-width: 90%;
+  background: #1b303d;
+  border-radius: 5px;
+}
+.home-dashboard__skeleton > span:nth-child(2) {
+  width: 62%;
+  height: 30px;
+}
+.home-dashboard__skeleton > span:nth-child(3) {
+  width: 76%;
+}
+.home-dashboard__hero-skeleton {
+  min-height: 314px;
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: var(--dash-surface);
+}
+.home-dashboard .home-dashboard__coach {
+  position: static;
+  padding: 0;
+  margin-top: 16px;
+}
+.home-dashboard .home-dashboard__coach > div {
+  max-width: none;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+}
+.home-dashboard .home-dashboard__coach p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (max-width: 1199px) {
+  .home-dashboard__quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .home-dashboard__quick-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+  }
+  .home-dashboard__quick-action small,
+  .home-dashboard__quick-chevron {
+    display: none;
+  }
+  .home-dashboard__game-row {
+    grid-template-columns:
+      36px minmax(170px, 1fr) minmax(100px, 0.7fr)
+      84px 80px;
+    gap: 12px;
+  }
+  .home-dashboard__game-context {
+    display: none;
+  }
+  .home-dashboard__game-identity > .home-dashboard__type {
+    display: inline-flex;
+  }
+  .home-dashboard__game-row--3,
+  .home-dashboard__game-row--4 {
+    display: none;
+  }
+}
+@media (max-width: 1023px) {
+  .home-dashboard__hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-dashboard__hero {
+    min-height: 285px;
+  }
+  .home-dashboard__quick-action {
+    flex-direction: row;
+    align-items: center;
+  }
+  .home-dashboard__quick-action small {
+    display: block;
+  }
+  .home-dashboard__membership-grid {
+    gap: 16px;
+  }
+  .home-dashboard__entity-image {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+}
+@media (max-width: 767px) {
+  .home-dashboard {
+    padding: 16px;
+    gap: 16px;
+  }
+  .home-dashboard__greeting h1 {
+    font-size: 24px;
+  }
+  .home-dashboard__greeting p {
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .home-dashboard__greeting .home-dashboard__today {
+    display: none;
+  }
+  .home-dashboard__hero-grid,
+  .home-dashboard__membership-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .home-dashboard__hero {
+    min-height: 0;
+  }
+  .home-dashboard__hero-content {
+    padding: 16px;
+  }
+  .home-dashboard__hero-art {
+    background:
+      radial-gradient(ellipse at 100% 40%, #144149 0%, transparent 66%),
+      linear-gradient(110deg, #06161e 25%, #0d252c);
+  }
+  .home-dashboard__eyebrow {
+    font-size: 11px;
+  }
+  .home-dashboard .home-dashboard__hero-context {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  .home-dashboard__hero h2 {
+    font-size: 27px;
+    margin-top: 7px;
+  }
+  .home-dashboard__metadata {
+    margin-top: 13px;
+    gap: 8px 11px;
+    font-size: 12px;
+  }
+  .home-dashboard .home-dashboard__cost {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .home-dashboard__hero-actions {
+    margin-top: 16px;
+    gap: 8px;
+  }
+  .home-dashboard__hero-actions > .home-dashboard__button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .home-dashboard__hero-actions > .home-dashboard__hero-secondary {
+    width: auto;
+    min-height: 32px;
+    min-width: 0;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    font-size: 12px;
+  }
+  .home-dashboard__panel {
+    padding: 14px;
+  }
+  .home-dashboard__panel h2 {
+    font-size: 16px;
+  }
+  .home-dashboard__quick-grid {
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .home-dashboard__quick-action {
+    gap: 8px;
+    padding: 9px;
+    min-height: 68px;
+  }
+  .home-dashboard__quick-action strong {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .home-dashboard__quick-action small {
+    display: none;
+  }
+  .home-dashboard__action-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .home-dashboard__action-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .home-dashboard__panel-heading {
+    padding-bottom: 9px;
+    gap: 10px;
+  }
+  .home-dashboard__upcoming {
+    padding-bottom: 0;
+  }
+  .home-dashboard__game-list {
+    margin-inline: -14px;
+  }
+  .home-dashboard__game-row {
+    padding: 12px 14px;
+    grid-template-columns: 30px minmax(0, 1fr) 65px;
+    gap: 10px;
+  }
+  .home-dashboard__date-icon {
+    width: 30px;
+    height: 34px;
+  }
+  .home-dashboard__date-icon svg {
+    width: 17px;
+    height: 17px;
+  }
+  .home-dashboard__game-count,
+  .home-dashboard__status {
+    display: none;
+  }
+  .home-dashboard__game-identity > a {
+    font-size: 13px;
+  }
+  .home-dashboard__game-identity > p {
+    font-size: 11px;
+  }
+  .home-dashboard__row-action {
+    min-height: 44px;
+    padding: 8px;
+    font-size: 12px;
+  }
+  .home-dashboard__membership-info > a {
+    min-height: 44px;
+  }
+  .home-dashboard__entity-image {
+    width: 52px;
+    height: 52px;
+  }
+  .home-dashboard__hero-skeleton {
+    min-height: 270px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-dashboard a,
+  .home-dashboard button {
+    transition: none;
+  }
+}

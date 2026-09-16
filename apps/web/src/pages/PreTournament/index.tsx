@@ -12,6 +12,7 @@ import {
   Lock,
   LogOut,
   Menu,
+  MessageSquare,
   Pencil,
   Play,
   Settings,
@@ -26,7 +27,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../api/client';
-import Layout from '../../components/Layout';
+import Layout, { useAppShellActions, type DesktopSidebarConfig } from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
 import QuarterHourTimeSelect from '../../components/QuarterHourTimeSelect';
@@ -43,6 +44,11 @@ import RunTournament from './RunTournament';
 
 type Tab = 'details' | 'players' | 'blinds' | 'run';
 type DemoCoachStep = 'start' | null;
+
+const TOURNAMENT_DESKTOP_SIDEBAR = {
+  active: 'games',
+  canHost: false,
+} satisfies DesktopSidebarConfig;
 
 export default function PreTournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -143,8 +149,8 @@ export default function PreTournamentPage() {
     if (tournament && !canManage && tab === 'run') setTab('details');
   }, [tournament, canManage, tab]);
 
-  if (isLoading) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" hideSidebar hideMobileNav hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
-  if (!tournament) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" hideSidebar hideMobileNav><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
+  if (isLoading) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" desktopSidebar={TOURNAMENT_DESKTOP_SIDEBAR} hideFeedback><LoadingSpinner className="mt-24" /></Layout>;
+  if (!tournament) return <Layout back="/" backIcon={<Home size={19} />} backAriaLabel="Home" desktopSidebar={TOURNAMENT_DESKTOP_SIDEBAR}><p className="mt-24 text-center text-pit-text">Tournament not found.</p></Layout>;
 
   const eventStarted = hasTournamentStarted(tournament.tourneydate, tournament.tourneytime);
   const scheduleLocked = eventStarted && !user?.issuperadmin;
@@ -166,12 +172,26 @@ export default function PreTournamentPage() {
       back="/"
       backIcon={<Home size={19} />}
       backAriaLabel="Home"
-      hideSidebar
-      hideMobileNav
+      desktopSidebar={TOURNAMENT_DESKTOP_SIDEBAR}
+      desktopSectionSidebar={{
+        title: tournament.name || 'Tournament',
+        description: tournament.groupname || 'Tournament workspace',
+        items: tabs.map(({ id: tabId, label, Icon }) => ({
+          id: tabId,
+          label,
+          Icon,
+          active: tab === tabId,
+          onClick: () => setTab(tabId),
+        })),
+      }}
+      compactSidebar={tab === 'run' && canManage}
+      hideMobileNav={tab === 'run' || tab === 'blinds'}
       hideHeader={tab === 'run'}
       headerRight={<TournamentAccountMenu />}
       mainWidthClassName={tab === 'run' ? 'max-w-none' : 'max-w-7xl'}
+      mainPaddingClassName={tab === 'run' ? 'p-4 pb-24 md:p-6 md:pb-8' : undefined}
     >
+      <TournamentDesktopHeader tournament={tournament} activeTab={tab} canManage={canManage} />
       <TournamentCommandHeader
         tournament={tournament}
         canManage={canManage}
@@ -230,12 +250,63 @@ export default function PreTournamentPage() {
   );
 }
 
+const TOURNAMENT_SECTION_COPY: Record<Tab, { title: string; description: string }> = {
+  details: { title: 'Overview', description: 'Tournament details, player activity, and payouts.' },
+  players: { title: 'Players', description: 'Manage the roster and tournament check-in.' },
+  blinds: { title: 'Blind Structure', description: 'Review levels, breaks, and the tournament clock.' },
+  run: { title: 'Run Tournament', description: 'Live tournament controls' },
+};
+
+function TournamentDesktopHeader({ tournament, activeTab, canManage }: {
+  tournament: Tournament;
+  activeTab: Tab;
+  canManage: boolean;
+}) {
+  const section = TOURNAMENT_SECTION_COPY[activeTab];
+  const running = activeTab === 'run';
+
+  return (
+    <header
+      className={`relative z-20 hidden min-w-0 items-start justify-between gap-4 bg-[#080d12] min-[1200px]:flex ${running ? '-mx-6 mb-6 border-b border-pit-border/70 px-6 pb-4' : 'mb-6'}`}
+      data-tournament-workspace-header={activeTab}
+    >
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <h1 className={`min-w-0 break-words font-bold tracking-tight text-white ${running ? 'text-xl' : 'text-[28px]'}`}>
+            {running ? tournament.name : section.title}
+          </h1>
+          {canManage && <span className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">Admin</span>}
+        </div>
+        <p className="mt-1 text-sm text-pit-text">{section.description}</p>
+        {!running && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-pit-muted">
+            <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} aria-hidden="true" />{normalizeDate(tournament.tourneydate) ?? 'Date TBD'}</span>
+            <span className="inline-flex items-center gap-1.5"><Clock3 size={13} aria-hidden="true" />{normalizeTime(tournament.tourneytime) ?? 'Time TBD'}</span>
+          </div>
+        )}
+      </div>
+      {!running && tournament.tvdisplaycode && (
+        <a
+          href={`/tv/${tournament.tvdisplaycode}`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 rounded-lg border border-pit-border bg-black/20 px-3 py-2 font-mono text-xs tracking-[0.12em] text-pit-text transition hover:border-pit-teal/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pit-teal"
+        >
+          TV {tournament.tvdisplaycode}
+        </a>
+      )}
+    </header>
+  );
+}
+
 function TournamentAccountMenu() {
+  const shellActions = useAppShellActions();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -273,6 +344,7 @@ function TournamentAccountMenu() {
   return (
     <div ref={menuRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         className={`flex h-9 w-9 items-center justify-center rounded-lg border bg-pit-bg/55 text-pit-muted transition ${open ? 'border-pit-teal/70 bg-pit-teal/10 text-white' : 'border-pit-border/80 hover:border-pit-teal/50 hover:bg-pit-surface/70 hover:text-white'}`}
         onClick={() => setOpen((value) => !value)}
@@ -299,6 +371,7 @@ function TournamentAccountMenu() {
             </button>
           )}
           <div className="my-1 border-t border-pit-border" />
+          {shellActions && <button type="button" className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-pit-teal/10 hover:text-white" onClick={() => { setOpen(false); shellActions.openFeedback(buttonRef.current ?? undefined); }} role="menuitem"><MessageSquare size={15} />Help &amp; Feedback</button>}
           <button type="button" className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300" onClick={handleLogout} role="menuitem">
             <LogOut size={15} />
             Sign Out
@@ -326,7 +399,7 @@ function TournamentCommandHeader({
 }) {
   if (activeTab === 'run') {
     return (
-      <section className="relative z-30 -mx-4 mb-2 border-b border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.34)] sm:-mx-6 lg:-mx-8">
+      <section data-tournament-command-header className="relative z-30 -mx-4 mb-2 border-b border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.34)] sm:-mx-6 lg:-mx-8 min-[1200px]:hidden">
         <div className="flex min-h-16 w-full items-center gap-2 px-3 py-2 sm:px-4 lg:px-5">
           <Link
             to="/"
@@ -392,7 +465,7 @@ function TournamentCommandHeader({
   }
 
   return (
-    <section className="relative z-20 -mx-4 mb-3 border-y border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.28)] sm:-mx-6 lg:-mx-8">
+    <section data-tournament-command-header className="relative z-20 -mx-4 mb-3 border-y border-pit-border/90 bg-[#0d1117] shadow-[0_10px_28px_rgba(0,0,0,0.28)] sm:-mx-6 lg:-mx-8 min-[1200px]:hidden">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-pit-teal/45 bg-pit-teal/10 text-base font-black text-white sm:h-10 sm:w-10 sm:text-lg">

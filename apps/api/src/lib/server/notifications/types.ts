@@ -30,6 +30,7 @@ export const NOTIFICATION_TYPES = [
   'league_standings_updated',
   'league_rank_changed',
   'league_announcement_posted',
+  'league_knockout',
   'season_milestone',
   'new_tournament_created',
   'seats_almost_full',
@@ -43,6 +44,7 @@ export const NOTIFICATION_CATEGORIES = [
   'tournament_play',
   'bounties_achievements',
   'league',
+  'league_knockouts',
   'social',
 ] as const;
 
@@ -76,6 +78,12 @@ export const NOTIFICATION_CATEGORY_META: Record<NotificationCategory, {
     label: 'League Updates',
     description: 'Results, standings, rank changes, and season updates.',
     example: 'Standings updated for your league.',
+    defaultEnabled: true,
+  },
+  league_knockouts: {
+    label: 'League Knockouts',
+    description: 'A player records a finish or knockout in your league event.',
+    example: 'A player was knocked out of Event #2.',
     defaultEnabled: true,
   },
   social: {
@@ -121,6 +129,7 @@ export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCa
   league_standings_updated: 'league',
   league_rank_changed: 'league',
   league_announcement_posted: 'league',
+  league_knockout: 'league_knockouts',
   season_milestone: 'league',
 
   new_tournament_created: 'social',

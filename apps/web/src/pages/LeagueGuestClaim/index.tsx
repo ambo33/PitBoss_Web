@@ -18,10 +18,10 @@ export default function LeagueGuestClaimPage() {
   });
 
   return (
-    <main className="min-h-screen bg-pit-bg px-4 py-8 text-white">
-      <section className="mx-auto w-full max-w-lg rounded-2xl border border-pit-border bg-pit-card p-5 shadow-2xl">
-        <BrandLockup compact showSlogan={false} />
-        <div className="mt-6 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 p-5">
+    <main className="min-h-screen bg-pit-bg px-4 py-8 text-white min-[1200px]:min-h-[calc(100vh-70px)] min-[1200px]:bg-[#080d12] min-[1200px]:p-6" data-workspace-page="league-guest-claim">
+      <section className="mx-auto w-full max-w-lg rounded-2xl border border-pit-border bg-pit-card p-5 shadow-2xl min-[1200px]:max-w-2xl">
+        <div className="min-[1200px]:hidden"><BrandLockup compact showSlogan={false} /></div>
+        <div className="mt-6 rounded-2xl border border-pit-teal/25 bg-pit-teal/10 p-5 min-[1200px]:mt-0">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-pit-teal/30 bg-pit-teal/15 text-pit-teal">
               <Link2 size={19} />

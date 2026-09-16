@@ -179,6 +179,10 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, NotificationTempla
     title: '{leagueName} update',
     body: '{announcementPreview}',
   },
+  league_knockout: {
+    title: '{eventName}: player out',
+    body: '{playerName} was knocked out.',
+  },
   season_milestone: {
     title: 'Season update',
     body: '{message}',

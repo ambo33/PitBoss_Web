@@ -15,6 +15,7 @@ import { attachMusicRequesterToCurrentTrack, getCurrentlyPlayingTrackForHost, ge
 import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset } from '../services/openai';
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
+import { notifyLinkedLeagueKnockout } from '../services/leagueKnockoutNotifications';
 
 export const publicRouter = Router();
 
@@ -1130,6 +1131,11 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   }
   await redistributeMysteryBountiesForTournament(req.params.id);
   broadcastTournamentUpdate(req.params.id, { players: true, source: 'self-knockout' });
+  const linkedLeagueEvent = await notifyLinkedLeagueKnockout(req.params.id, playerUserId, placed)
+    .catch((err) => {
+      console.error('Linked league self-knockout push failed', err instanceof Error ? err.message : err);
+      return false;
+    });
 
   const knockedOutPlayer = await queryOne<{
     playername: string;
@@ -1145,7 +1151,7 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
      WHERE tp.tournamentid = $1 AND tp.userid = $2`,
     [req.params.id, playerUserId]
   );
-  void sendTournamentNotification(req.params.id, 'knockout_recorded', {
+  if (!linkedLeagueEvent) void sendTournamentNotification(req.params.id, 'knockout_recorded', {
     playerName: knockedOutPlayer?.playername ?? 'a player',
     body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated in ${placed}${ordinalSuffix(placed)} place.`,
     entityId: `${req.params.id}:knockout:${playerUserId}`,

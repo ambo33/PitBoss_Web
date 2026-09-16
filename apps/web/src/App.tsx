@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Calendar, CreditCard, Gamepad2, Music4, Shield, Trophy, UserCheck } from 'lucide-react';
 import { useAuthStore } from './store/auth';
 import LoginPage from './pages/Login';
 import MainPage from './pages/Main';
@@ -28,6 +29,7 @@ import JoinGroupPage from './pages/JoinGroup';
 import JoinLeaguePage from './pages/JoinLeague';
 import JoinCodePage from './pages/JoinCode';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
+import Layout, { type DesktopSectionSidebarConfig, type DesktopSidebarConfig, type HomeShellDestination } from './components/Layout';
 import { featureFlags } from './features';
 
 const DemoShowcasePage = lazy(() => import('./pages/DemoShowcase'));
@@ -37,6 +39,74 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const next = `${location.pathname}${location.search}`;
   return token ? <>{children}</> : <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+}
+
+const STANDALONE_SIDEBARS: Record<HomeShellDestination, DesktopSidebarConfig> = {
+  home: { active: 'home', canHost: false },
+  games: { active: 'games', canHost: false },
+  communities: { active: 'communities', canHost: false },
+  history: { active: 'history', canHost: false },
+  profile: { active: 'profile', canHost: false },
+  admin: { active: 'admin', canHost: false },
+};
+
+function AuthenticatedAppPage({
+  children,
+  active,
+}: {
+  children: React.ReactNode;
+  active: HomeShellDestination;
+}) {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const tournamentId = pathname.match(/^\/(?:pay|pocket-admin)\/([^/]+)/)?.[1];
+  const leagueId = pathname.match(/^\/league\/([^/]+)\/event\//)?.[1];
+  const isPaymentTracker = pathname.startsWith('/pay/');
+  const isVoiceLab = pathname === '/admin/voice-lab';
+  const sectionSidebar: DesktopSectionSidebarConfig = tournamentId ? {
+    title: isPaymentTracker ? 'Tournament payments' : 'Pocket Admin',
+    description: 'Tournament management',
+    items: [
+      { id: 'tournament', label: 'Back to tournament', Icon: ArrowLeft, onClick: () => navigate(`/tournament/${tournamentId}`) },
+      { id: 'current', label: isPaymentTracker ? 'Payment tracker' : 'Pocket Admin', Icon: isPaymentTracker ? CreditCard : Gamepad2, active: true, onClick: () => window.scrollTo(0, 0) },
+    ],
+  } : leagueId ? {
+    title: 'League event', description: 'Event lobby and participation', items: [
+      { id: 'league', label: 'Back to league', Icon: ArrowLeft, onClick: () => navigate(`/?section=leagues&league=${leagueId}`) },
+      { id: 'current', label: 'Event lobby', Icon: Calendar, active: true, onClick: () => window.scrollTo(0, 0) },
+    ],
+  } : isVoiceLab ? {
+    title: 'Administration', description: 'Platform tools', items: [
+      { id: 'admin', label: 'Superadmin tools', Icon: Shield, onClick: () => navigate('/?view=admin') },
+      { id: 'current', label: 'Voice Lab', Icon: Music4, active: true, onClick: () => window.scrollTo(0, 0) },
+    ],
+  } : pathname === '/league-guest-claim' ? {
+    title: 'League membership', description: 'Connect your league participation', items: [
+      { id: 'leagues', label: 'My leagues', Icon: Trophy, onClick: () => navigate('/?section=leagues') },
+      { id: 'current', label: 'Claim league spot', Icon: UserCheck, active: true, onClick: () => window.scrollTo(0, 0) },
+    ],
+  } : {
+    title: 'Cash game', description: 'Players, buy-ins, and payouts', items: [
+      { id: 'games', label: 'Back to games', Icon: ArrowLeft, onClick: () => navigate('/?section=upcoming&schedule=games') },
+      { id: 'current', label: 'Game administration', Icon: Gamepad2, active: true, onClick: () => window.scrollTo(0, 0) },
+    ],
+  };
+  return (
+    <RequireAuth>
+      <Layout
+        desktopSidebar={STANDALONE_SIDEBARS[active]}
+        desktopSectionSidebar={sectionSidebar}
+        hideSidebar
+        hideFeedback
+        shellMode="standard"
+        contentElement="div"
+        mainWidthClassName="max-w-none"
+        mainPaddingClassName="p-0"
+      >
+        {children}
+      </Layout>
+    </RequireAuth>
+  );
 }
 
 function HomeRoute() {
@@ -98,7 +168,7 @@ export default function App() {
             </Suspense>
           )}
         />
-        <Route path="/admin/voice-lab" element={<RequireAuth><VoiceLabPage /></RequireAuth>} />
+        <Route path="/admin/voice-lab" element={<AuthenticatedAppPage active="admin"><VoiceLabPage /></AuthenticatedAppPage>} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/blind-timer" element={<PublicBlindTimerPage />} />
@@ -114,14 +184,14 @@ export default function App() {
         <Route path="/checkin/:id" element={<RouteErrorBoundary title="Check-in page error"><PlayerLobbyPage mode="checkin" /></RouteErrorBoundary>} />
         <Route path="/bust/:id" element={<KnockoutLobbyPage />} />
         <Route path="/addon/:id" element={<AddonLobbyPage />} />
-        <Route path="/league/:leagueId/event/:eventId" element={<RequireAuth><LeagueEventLobbyPage /></RequireAuth>} />
+        <Route path="/league/:leagueId/event/:eventId" element={<AuthenticatedAppPage active="communities"><LeagueEventLobbyPage /></AuthenticatedAppPage>} />
         <Route path="/league-knockout/:token" element={<LeagueGuestKnockoutPage />} />
-        <Route path="/league-guest-claim" element={<RequireAuth><LeagueGuestClaimPage /></RequireAuth>} />
+        <Route path="/league-guest-claim" element={<AuthenticatedAppPage active="communities"><LeagueGuestClaimPage /></AuthenticatedAppPage>} />
         <Route path="/tv" element={<TvBoardEntryPage />} />
         <Route path="/tv/:code" element={<TvBoardPage />} />
-        <Route path="/pay/:id" element={<RequireAuth><PaymentTrackerPage /></RequireAuth>} />
-        <Route path="/pocket-admin/:id" element={<RequireAuth><PocketAdminPage /></RequireAuth>} />
-        <Route path="/cash-games/:id/admin" element={<RequireAuth><RouteErrorBoundary title="Cash game page error"><CashGameAdminPage /></RouteErrorBoundary></RequireAuth>} />
+        <Route path="/pay/:id" element={<AuthenticatedAppPage active="games"><PaymentTrackerPage /></AuthenticatedAppPage>} />
+        <Route path="/pocket-admin/:id" element={<AuthenticatedAppPage active="games"><PocketAdminPage /></AuthenticatedAppPage>} />
+        <Route path="/cash-games/:id/admin" element={<AuthenticatedAppPage active="games"><RouteErrorBoundary title="Cash game page error"><CashGameAdminPage /></RouteErrorBoundary></AuthenticatedAppPage>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

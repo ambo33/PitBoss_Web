@@ -1,47 +1,99 @@
-import { ChangeEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Calendar, ChevronDown, Gamepad2, Home, ImageIcon, LogOut, Mail, Menu, MessageSquare, Music4, Pencil, Phone, Settings, Shield, Trash2, Trophy, Upload, User, Users } from 'lucide-react';
-import Layout, { HomeShellDestination, NavTab } from '../../components/Layout';
-import { api } from '../../api/client';
-import AdminPanel from './AdminPanel';
-import GroupsPanel from './GroupsPanel';
-import LeaguesPanel from './LeaguesPanel';
-import TournamentsPanel, { CommandCenterSection } from './TournamentsPanel';
-import { useAuthStore } from '../../store/auth';
-import PushNotificationSettings from '../../components/PushNotificationSettings';
-import PwaPushPrompt from '../../components/PwaPushPrompt';
-import { cleanupDemoSessionIfNeeded } from '../../utils/demoSession';
-import { prepareAvatarImage } from '../../utils/avatarImage';
+import {
+  ChangeEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Bot,
+  ChevronDown,
+  Home,
+  ImageIcon,
+  LogOut,
+  Mail,
+  Music4,
+  Pencil,
+  Phone,
+  Settings,
+  Shield,
+  Trash2,
+  Trophy,
+  Upload,
+  User,
+} from "lucide-react";
+import Layout, { type NavTab } from "../../components/Layout";
+import { api } from "../../api/client";
+import AdminPanel from "./AdminPanel";
+import GroupsPanel, { type GroupDetailTab } from "./GroupsPanel";
+import LeaguesPanel, { type LeagueDetailTab } from "./LeaguesPanel";
+import TournamentsPanel, { CommandCenterSection } from "./TournamentsPanel";
+import { useAuthStore } from "../../store/auth";
+import PushNotificationSettings from "../../components/PushNotificationSettings";
+import PwaPushPrompt from "../../components/PwaPushPrompt";
+import { cleanupDemoSessionIfNeeded } from "../../utils/demoSession";
+import { prepareAvatarImage } from "../../utils/avatarImage";
 
-type MainView = 'command' | 'profile' | 'admin';
+type MainView = "command" | "profile" | "admin";
 
 export default function MainPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, updateUser } = useAuthStore();
-  const requestedTab = location.state && typeof location.state === 'object' && 'tab' in location.state
-    ? location.state.tab as NavTab
-    : undefined;
-  const requestedLeagueId = location.state && typeof location.state === 'object' && 'leagueId' in location.state
-    ? String(location.state.leagueId ?? '')
-    : '';
+  const requestedTab =
+    location.state &&
+    typeof location.state === "object" &&
+    "tab" in location.state
+      ? (location.state.tab as NavTab)
+      : undefined;
+  const requestedLeagueId =
+    location.state &&
+    typeof location.state === "object" &&
+    "leagueId" in location.state
+      ? String(location.state.leagueId ?? "")
+      : "";
   const deepLink = parseCommandCenterDeepLink(location.search);
-  const [view, setView] = useState<MainView>(requestedTab === 'profile' || requestedTab === 'admin' ? requestedTab : 'command');
-  const [commandSection, setCommandSection] = useState<CommandCenterSection>(deepLink.section ?? sectionFromTab(requestedTab));
+  const [view, setView] = useState<MainView>(
+    deepLink.view ??
+      (requestedTab === "profile" || requestedTab === "admin"
+        ? requestedTab
+        : "command"),
+  );
+  const [commandSection, setCommandSection] = useState<CommandCenterSection>(
+    deepLink.section ?? sectionFromTab(requestedTab),
+  );
   const [commandDetailOpen, setCommandDetailOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [createGameRequestId, setCreateGameRequestId] = useState(0);
+  const nextCreateGameRequestId = useRef(0);
+  const [createGameType, setCreateGameType] = useState<
+    "tournament" | "cash" | undefined
+  >();
   const [homeRequestId, setHomeRequestId] = useState(0);
-  const [gamesRequestId, setGamesRequestId] = useState(0);
-  const [homeScheduleMode, setHomeScheduleMode] = useState<'home' | 'games'>('home');
   const [canHostGames, setCanHostGames] = useState(false);
   const [groupCreateRequestId, setGroupCreateRequestId] = useState(0);
   const [leagueCreateRequestId, setLeagueCreateRequestId] = useState(0);
-  const [groupOpenRequest, setGroupOpenRequest] = useState<{ groupId: string; tab?: 'posts'; postId?: string; token: number } | null>(() => (
-    deepLink.groupId ? { groupId: deepLink.groupId, tab: deepLink.groupTab, postId: deepLink.postId, token: 1 } : null
-  ));
+  const [groupOpenRequest, setGroupOpenRequest] = useState<{
+    groupId: string;
+    tab?: GroupDetailTab;
+    postId?: string;
+    token: number;
+  } | null>(() =>
+    deepLink.groupId
+      ? {
+          groupId: deepLink.groupId,
+          tab: deepLink.groupTab,
+          postId: deepLink.postId,
+          token: 1,
+        }
+      : null,
+  );
   const [leagueDeepLink, setLeagueDeepLink] = useState(() => ({
     leagueId: deepLink.leagueId ?? (requestedLeagueId || undefined),
     seasonId: deepLink.seasonId,
@@ -50,7 +102,9 @@ export default function MainPage() {
     eventId: deepLink.eventId,
   }));
   const handledSearchRef = useRef(location.search);
-  const [showTour, setShowTour] = useState(() => user?.onboardingcomplete === false);
+  const [showTour, setShowTour] = useState(
+    () => user?.onboardingcomplete === false,
+  );
 
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
@@ -59,15 +113,24 @@ export default function MainPage() {
   }, []);
 
   const { data: currentProfile } = useQuery({
-    queryKey: ['me'],
+    queryKey: ["me"],
     queryFn: api.me,
     enabled: Boolean(user),
   });
+  const { data: utilityGroups } = useQuery({
+    queryKey: ["groups"],
+    queryFn: api.getGroups,
+    enabled: Boolean(user) && view !== "command",
+  });
+  const handleCreateFlowChange = useCallback((open: boolean) => {
+    setCreateTournamentOpen(open);
+    if (open) setCreateGameRequestId(0);
+  }, []);
 
   const completeTourMutation = useMutation({
     mutationFn: () => api.updateMe({ completeonboarding: true }),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['me'], updated);
+      queryClient.setQueryData(["me"], updated);
       updateUser({ onboardingcomplete: true });
       setShowTour(false);
     },
@@ -75,41 +138,71 @@ export default function MainPage() {
   });
 
   useEffect(() => {
-    if (requestedLeagueId) {
-      setLeagueDeepLink((current) => ({ ...current, leagueId: requestedLeagueId }));
+    if (!requestedTab && !requestedLeagueId) return;
+    const params = new URLSearchParams();
+    if (requestedTab === "profile" || requestedTab === "admin")
+      params.set("view", requestedTab);
+    else {
+      params.set(
+        "section",
+        requestedLeagueId ? "leagues" : sectionFromTab(requestedTab),
+      );
+      if (requestedLeagueId) params.set("league", requestedLeagueId);
     }
-    if (requestedTab) {
-      if (requestedTab === 'profile' || requestedTab === 'admin') {
-        setView(requestedTab);
-      } else {
-        setView('command');
-        setCommandSection(sectionFromTab(requestedTab));
-      }
-    }
-    if (requestedTab) {
-      navigate(location.pathname, { replace: true, state: null });
-    }
+    navigate(
+      { pathname: location.pathname, search: `?${params}` },
+      { replace: true, state: null },
+    );
   }, [location.pathname, navigate, requestedLeagueId, requestedTab]);
 
   useEffect(() => {
     if (!location.search) {
-      handledSearchRef.current = '';
+      handledSearchRef.current = "";
+      setLeagueDeepLink({
+        leagueId: undefined,
+        seasonId: undefined,
+        tab: undefined,
+        postId: undefined,
+        eventId: undefined,
+      });
+      setCommandDetailOpen(false);
+      setGroupOpenRequest(null);
+      if (!requestedTab) {
+        setView("command");
+        setCommandSection("upcoming");
+      }
       return;
     }
     if (handledSearchRef.current === location.search) return;
     handledSearchRef.current = location.search;
     const next = parseCommandCenterDeepLink(location.search);
+    if (next.view) {
+      setView(next.view);
+      setCommandDetailOpen(false);
+      return;
+    }
     if (!next.section) return;
-    setView('command');
-    setCommandDetailOpen(false);
+    setView("command");
+    setCommandDetailOpen(Boolean(next.groupId || next.leagueId));
     setCommandSection(next.section);
-    if (next.groupId) {
-      setGroupOpenRequest({ groupId: next.groupId, tab: next.groupTab, postId: next.postId, token: Date.now() });
-    }
-    if (next.leagueId) {
-      setLeagueDeepLink({ leagueId: next.leagueId, seasonId: next.seasonId, tab: next.leagueTab, postId: next.postId, eventId: next.eventId });
-    }
-  }, [location.search]);
+    setGroupOpenRequest(
+      next.groupId
+        ? {
+            groupId: next.groupId,
+            tab: next.groupTab,
+            postId: next.postId,
+            token: Date.now(),
+          }
+        : null,
+    );
+    setLeagueDeepLink({
+      leagueId: next.leagueId,
+      seasonId: next.seasonId,
+      tab: next.leagueTab,
+      postId: next.postId,
+      eventId: next.eventId,
+    });
+  }, [location.search, requestedTab]);
 
   useEffect(() => {
     if (user && user.onboardingcomplete === false && !user.isdemo) {
@@ -119,14 +212,35 @@ export default function MainPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.has('spotify')) {
-      setView('profile');
+    const create = params.get("create");
+    if (
+      params.get("section") !== "upcoming" ||
+      !["game", "tournament", "cash"].includes(create ?? "")
+    )
+      return;
+    setCreateGameType(
+      create === "tournament" || create === "cash" ? create : undefined,
+    );
+    setCreateGameRequestId(++nextCreateGameRequestId.current);
+    params.delete("create");
+    navigate(
+      { pathname: location.pathname, search: `?${params}` },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.has("spotify")) {
+      setView("profile");
     }
   }, [location.search]);
 
   useEffect(() => {
     if (!currentProfile) return;
     updateUser({
+      fullname: currentProfile.fullname ?? null,
+      tablename: currentProfile.tablename ?? null,
       displayname: currentProfile.displayname,
       emailaddress: currentProfile.emailaddress,
       tierid: currentProfile.tierid,
@@ -145,147 +259,170 @@ export default function MainPage() {
       onboardingcomplete: currentProfile.onboardingcomplete,
       isdemo: currentProfile.isdemo,
     });
-    setShowTour(currentProfile.onboardingcomplete === false && !currentProfile.isdemo);
+    setShowTour(
+      currentProfile.onboardingcomplete === false && !currentProfile.isdemo,
+    );
   }, [currentProfile, updateUser]);
 
-  const handleCommandSectionChange = (nextSection: CommandCenterSection) => {
-    if (nextSection !== 'leagues') {
-      setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
+  const handleCommandSectionChange = (
+    nextSection: CommandCenterSection,
+    scheduleMode?: "home" | "games",
+  ) => {
+    handledSearchRef.current = "";
+    if (nextSection !== "leagues") {
+      setLeagueDeepLink({
+        leagueId: undefined,
+        seasonId: undefined,
+        tab: undefined,
+        postId: undefined,
+        eventId: undefined,
+      });
     }
     setCommandDetailOpen(false);
-    setView('command');
-    setCommandSection(nextSection);
-  };
-
-  const returnToGames = () => {
-    handledSearchRef.current = '';
     setGroupOpenRequest(null);
-    setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
-    setCommandDetailOpen(false);
-    setView('command');
-    setCommandSection('upcoming');
-    if (location.search) {
-      navigate(location.pathname, { replace: true });
-    }
+    setView("command");
+    setCommandSection(nextSection);
+    const params = new URLSearchParams({ section: nextSection });
+    if (scheduleMode) params.set("schedule", scheduleMode);
+    navigate({ pathname: location.pathname, search: `?${params}` });
   };
 
   const startGroupCreate = () => {
-    setView('command');
-    setCommandSection('groups');
-    setCommandDetailOpen(false);
-    setGroupCreateRequestId(0);
+    showGroupsDirectory();
     window.setTimeout(() => setGroupCreateRequestId((value) => value + 1), 0);
   };
 
   const startLeagueCreate = () => {
-    setView('command');
-    setCommandSection('leagues');
-    setCommandDetailOpen(false);
-    setLeagueCreateRequestId(0);
+    showLeaguesDirectory();
     window.setTimeout(() => setLeagueCreateRequestId((value) => value + 1), 0);
   };
 
   const startGroupInvite = (groupId: string) => {
-    setView('command');
-    setCommandSection('groups');
+    setView("command");
+    setCommandSection("groups");
     setCommandDetailOpen(false);
     setGroupOpenRequest({ groupId, token: Date.now() });
+    navigate(`/?section=groups&group=${encodeURIComponent(groupId)}`);
   };
 
   const startGameCreate = () => {
-    setView('command');
-    setCommandSection('upcoming');
-    setCommandDetailOpen(false);
-    setCreateGameRequestId((value) => value + 1);
+    setCreateGameType(undefined);
+    handleCommandSectionChange("upcoming", "games");
+    setCreateGameRequestId(++nextCreateGameRequestId.current);
   };
 
   const showHomeDashboard = () => {
-    handleCommandSectionChange('upcoming');
-    setHomeScheduleMode('home');
+    handleCommandSectionChange("upcoming", "home");
     setHomeRequestId((value) => value + 1);
   };
 
-  const showAllGames = () => {
-    handleCommandSectionChange('upcoming');
-    setHomeScheduleMode('games');
-    setGamesRequestId((value) => value + 1);
+  const showLeaguesDirectory = () => {
+    handledSearchRef.current = "";
+    setLeagueDeepLink({
+      leagueId: undefined,
+      seasonId: undefined,
+      tab: undefined,
+      postId: undefined,
+      eventId: undefined,
+    });
+    setCommandDetailOpen(false);
+    setView("command");
+    setCommandSection("leagues");
+    navigate({ pathname: location.pathname, search: "?section=leagues" });
   };
 
-  const currentTab: NavTab = view === 'command'
-    ? commandSection === 'groups'
-      ? 'groups'
-      : commandSection === 'leagues'
-        ? 'leagues'
-        : 'tournaments'
-    : view;
-  const homeShellActive: HomeShellDestination = view === 'profile'
-    ? 'profile'
-    : view === 'admin'
-      ? 'admin'
-      : commandSection === 'history'
-        ? 'history'
-        : commandSection === 'communities' || commandSection === 'groups' || commandSection === 'leagues'
-          ? 'communities'
-          : homeScheduleMode;
-  const responsiveHomeShell = view === 'command' && !commandDetailOpen ? {
-    active: homeShellActive,
-    canHost: canHostGames,
-    onHome: showHomeDashboard,
-    onGames: showAllGames,
-    onCommunities: () => handleCommandSectionChange('communities'),
-    onHistory: () => handleCommandSectionChange('history'),
-    onHostGame: startGameCreate,
-    onProfile: () => setView('profile'),
-    onAdmin: () => setView('admin'),
-  } : undefined;
-
+  const showGroupsDirectory = () => {
+    handledSearchRef.current = "";
+    setGroupOpenRequest(null);
+    setCommandDetailOpen(false);
+    setView("command");
+    setCommandSection("groups");
+    navigate("/?section=groups");
+  };
+  const currentTab: NavTab =
+    view === "command"
+      ? commandSection === "groups"
+        ? "groups"
+        : commandSection === "leagues"
+          ? "leagues"
+          : "tournaments"
+      : view;
+  const entityWorkspaceOpen =
+    view === "command" &&
+    commandDetailOpen &&
+    (commandSection === "leagues" || commandSection === "groups");
+  const homeDashboardOpen =
+    view === "command" &&
+    commandSection === "upcoming" &&
+    deepLink.scheduleMode !== "games" &&
+    !createTournamentOpen;
   return (
     <>
       <Layout
         tab={currentTab}
         hideSidebar
-        hideMobileNav
-        hideFeedback={createTournamentOpen}
-        responsiveHomeShell={responsiveHomeShell}
-        headerRight={({ openFeedback }) => (
-          <CommandCenterMenu
-            onHome={showHomeDashboard}
-            onGames={showAllGames}
-            onHistory={() => handleCommandSectionChange('history')}
-            onCommunities={() => handleCommandSectionChange('communities')}
-            onHostGame={startGameCreate}
-            onFeedback={openFeedback}
-            onProfile={() => setView('profile')}
-            onAdmin={() => setView('admin')}
-          />
-        )}
-        mainWidthClassName={view === 'admin' || commandSection === 'communities' || commandSection === 'leagues' || commandSection === 'groups' ? 'max-w-7xl' : 'max-w-[64rem]'}
+        hideFeedback={createTournamentOpen || entityWorkspaceOpen}
+        mobileFocused={createTournamentOpen}
+        navigation={{
+          canHost:
+            view === "command"
+              ? canHostGames
+              : Boolean(
+                  utilityGroups?.some(
+                    (group) => group.isadmin && group.approved,
+                  ),
+                ),
+          onHostGame: startGameCreate,
+        }}
+        mainWidthClassName={
+          entityWorkspaceOpen ? "max-w-none" : "max-w-[1280px]"
+        }
+        mainPaddingClassName={
+          entityWorkspaceOpen
+            ? "p-4 md:p-6 min-[1200px]:!p-0"
+            : homeDashboardOpen
+              ? "p-0"
+              : undefined
+        }
       >
         <PwaPushPrompt />
-        {view === 'command' && (
+        {view === "command" && (
           <TournamentsPanel
             section={commandSection}
             onSectionChange={handleCommandSectionChange}
             onOpenCommunity={({ type, id }) => {
-              setView('command');
+              setView("command");
               setCommandDetailOpen(false);
-              if (type === 'group') {
-                setLeagueDeepLink({ leagueId: undefined, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
-                setCommandSection('groups');
+              if (type === "group") {
+                setLeagueDeepLink({
+                  leagueId: undefined,
+                  seasonId: undefined,
+                  tab: undefined,
+                  postId: undefined,
+                  eventId: undefined,
+                });
+                setCommandSection("groups");
                 setGroupOpenRequest({ groupId: id, token: Date.now() });
+                navigate(`/?section=groups&group=${encodeURIComponent(id)}`);
                 return;
               }
               setGroupOpenRequest(null);
-              setCommandSection('leagues');
-              setLeagueDeepLink({ leagueId: id, seasonId: undefined, tab: undefined, postId: undefined, eventId: undefined });
+              setCommandSection("leagues");
+              setLeagueDeepLink({
+                leagueId: id,
+                seasonId: undefined,
+                tab: undefined,
+                postId: undefined,
+                eventId: undefined,
+              });
+              navigate(`/?section=leagues&league=${encodeURIComponent(id)}`);
             }}
             hideDashboard={commandDetailOpen}
-            onCreateFlowChange={setCreateTournamentOpen}
+            onCreateFlowChange={handleCreateFlowChange}
             onboardingActive={showTour}
             createGameRequestId={createGameRequestId}
+            createGameType={createGameType}
             homeRequestId={homeRequestId}
-            gamesRequestId={gamesRequestId}
-            onScheduleModeChange={setHomeScheduleMode}
             onHostCapabilityChange={setCanHostGames}
             focusScheduleItemId={deepLink.scheduleItemId}
             onStartGroupCreate={startGroupCreate}
@@ -293,257 +430,120 @@ export default function MainPage() {
             onStartGroupInvite={startGroupInvite}
             onStartFirstGame={startGameCreate}
             onCompleteOnboarding={() => completeTourMutation.mutate()}
-            renderSection={(section) => (
-              section === 'groups'
-                ? (
-                  <GroupsPanel
-                    onDetailStateChange={setCommandDetailOpen}
-                    onBackToCommunities={returnToGames}
-                    createRequestId={groupCreateRequestId}
-                    openGroupRequest={groupOpenRequest}
-                  />
-                )
-                : (
-                  <LeaguesPanel
-                    initialLeagueId={leagueDeepLink.leagueId}
-                    initialSeasonId={leagueDeepLink.seasonId}
-                    initialTab={leagueDeepLink.tab}
-                    initialPostId={leagueDeepLink.postId}
-                    initialEventId={leagueDeepLink.eventId}
-                    onDetailStateChange={setCommandDetailOpen}
-                    onBackToCommunities={returnToGames}
-                    createRequestId={leagueCreateRequestId}
-                  />
-                )
-            )}
+            renderSection={(section) =>
+              section === "groups" ? (
+                <GroupsPanel
+                  onDetailStateChange={setCommandDetailOpen}
+                  onBackToCommunities={showGroupsDirectory}
+                  createRequestId={groupCreateRequestId}
+                  openGroupRequest={groupOpenRequest}
+                />
+              ) : (
+                <LeaguesPanel
+                  initialLeagueId={leagueDeepLink.leagueId}
+                  initialSeasonId={leagueDeepLink.seasonId}
+                  initialTab={leagueDeepLink.tab}
+                  initialPostId={leagueDeepLink.postId}
+                  initialEventId={leagueDeepLink.eventId}
+                  onDetailStateChange={setCommandDetailOpen}
+                  onBackToCommunities={showLeaguesDirectory}
+                  createRequestId={leagueCreateRequestId}
+                />
+              )
+            }
           />
         )}
-        {view === 'profile' && <ProfilePanel onReturn={() => setView('command')} />}
-        {view === 'admin' && <AdminPanel />}
+        {view === "profile" && <ProfilePanel onReturn={showHomeDashboard} />}
+        {view === "admin" && <AdminPanel />}
       </Layout>
     </>
   );
 }
 
 function parseCommandCenterDeepLink(search: string): {
+  view?: "profile" | "admin";
   section?: CommandCenterSection;
   groupId?: string;
-  groupTab?: 'posts';
+  groupTab?: GroupDetailTab;
   leagueId?: string;
   seasonId?: string;
-  leagueTab?: 'board' | 'events';
+  leagueTab?: LeagueDetailTab;
   postId?: string;
   eventId?: string;
   scheduleItemId?: string;
+  scheduleMode?: "home" | "games";
 } {
   const params = new URLSearchParams(search);
-  const rawSection = params.get('section');
-  const section = rawSection === 'groups' || rawSection === 'leagues' || rawSection === 'communities' || rawSection === 'history' || rawSection === 'upcoming'
-    ? rawSection
-    : undefined;
+  const rawSection = params.get("section");
+  const section =
+    rawSection === "past" ||
+    ((!rawSection || rawSection === "upcoming") &&
+      params.get("schedule") === "past")
+      ? "history"
+      : rawSection === "groups" ||
+          rawSection === "leagues" ||
+          rawSection === "communities" ||
+          rawSection === "history" ||
+          rawSection === "upcoming"
+        ? rawSection
+        : params.has("league")
+          ? "leagues"
+          : params.has("group")
+            ? "groups"
+            : undefined;
   return {
+    view:
+      params.get("view") === "profile" || params.get("view") === "admin"
+        ? (params.get("view") as "profile" | "admin")
+        : undefined,
     section,
-    groupId: params.get('group') || undefined,
-    groupTab: params.get('groupTab') === 'posts' ? 'posts' : undefined,
-    leagueId: params.get('league') || undefined,
-    seasonId: params.get('season') || undefined,
-    leagueTab: params.get('leagueTab') === 'board' || params.get('leagueTab') === 'events'
-      ? params.get('leagueTab') as 'board' | 'events'
+    groupId:
+      section === "groups" ? params.get("group") || undefined : undefined,
+    groupTab: [
+      "info",
+      "members",
+      "posts",
+      "voice",
+      "structures",
+      "history",
+    ].includes(params.get("groupTab") ?? "")
+      ? (params.get("groupTab") as GroupDetailTab)
       : undefined,
-    postId: params.get('post') || undefined,
-    eventId: params.get('event') || undefined,
-    scheduleItemId: params.get('tournament') || params.get('game') || undefined,
+    leagueId:
+      section === "leagues" ? params.get("league") || undefined : undefined,
+    seasonId: params.get("season") || undefined,
+    leagueTab: isLeagueDetailTab(params.get("leagueTab"))
+      ? (params.get("leagueTab") as LeagueDetailTab)
+      : undefined,
+    postId: params.get("post") || undefined,
+    eventId: params.get("event") || undefined,
+    scheduleItemId: params.get("tournament") || params.get("game") || undefined,
+    scheduleMode:
+      params.get("schedule") === "games"
+        ? "games"
+        : params.get("schedule") === "home"
+          ? "home"
+          : undefined,
   };
 }
 
-function sectionFromTab(tab?: NavTab): CommandCenterSection {
-  if (tab === 'groups' || tab === 'leagues') return 'communities';
-  return 'upcoming';
-}
-
-function CommandCenterMenu({
-  onHome,
-  onGames,
-  onHistory,
-  onCommunities,
-  onHostGame,
-  onFeedback,
-  onProfile,
-  onAdmin,
-}: {
-  onHome: () => void;
-  onGames: () => void;
-  onHistory: () => void;
-  onCommunities: () => void;
-  onHostGame: () => void;
-  onFeedback: () => void;
-  onProfile: () => void;
-  onAdmin: () => void;
-}) {
-  const { user, logout } = useAuthStore();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  function handleLogout() {
-    const token = localStorage.getItem('pb_token');
-    void cleanupDemoSessionIfNeeded(user, token);
-    queryClient.clear();
-    logout();
-    navigate('/landing', { replace: true });
-  }
-
+function isLeagueDetailTab(value: string | null): value is LeagueDetailTab {
   return (
-    <div ref={menuRef} className="relative flex items-center gap-2">
-      <span className="hidden max-w-32 truncate text-sm font-semibold text-white min-[370px]:inline sm:max-w-48" title={user?.tablename || user?.displayname || 'Account'}>
-        {user?.tablename || user?.displayname || 'Account'}
-      </span>
-      <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-pit-border bg-pit-card text-pit-text transition hover:border-pit-teal/50 hover:text-white"
-          onClick={() => setOpen((value) => !value)}
-          aria-label="Open account menu"
-          aria-expanded={open}
-        >
-          <Menu size={20} />
-        </button>
-      {open && (
-        <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-pit-border bg-pit-card py-1 shadow-2xl">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onHome();
-            }}
-          >
-            <Home size={15} />
-            Home
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onGames();
-            }}
-          >
-            <Gamepad2 size={15} />
-            Games
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onCommunities();
-            }}
-          >
-            <Users size={15} />
-            Groups & Leagues
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onHistory();
-            }}
-          >
-            <Calendar size={15} />
-            History
-          </button>
-          <div className="my-1 border-t border-pit-border" />
-          <button
-            type="button"
-            className="mx-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-lg bg-pit-teal px-3 py-2.5 text-sm font-black text-pit-bg shadow-[0_0_18px_rgba(20,184,166,0.2)] transition hover:brightness-110"
-            onClick={() => {
-              setOpen(false);
-              onHostGame();
-            }}
-          >
-            + Host a Game
-          </button>
-          <div className="my-1 border-t border-pit-border" />
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onProfile();
-            }}
-          >
-            <Settings size={15} />
-            Settings
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onFeedback();
-            }}
-          >
-            <MessageSquare size={15} />
-            Help & Feedback
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-text transition hover:bg-white/5 hover:text-white"
-            onClick={() => {
-              setOpen(false);
-              onProfile();
-            }}
-          >
-            <User size={15} />
-            Profile
-          </button>
-          {user?.issuperadmin && (
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
-              onClick={() => {
-                setOpen(false);
-                onAdmin();
-              }}
-            >
-              <Shield size={15} />
-              Admin
-            </button>
-          )}
-          <div className="my-1 border-t border-pit-border" />
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-pit-muted transition hover:bg-red-500/10 hover:text-red-300"
-            onClick={handleLogout}
-          >
-            <LogOut size={15} />
-            Sign Out
-          </button>
-        </div>
-      )}
-    </div>
+    value === "overview" ||
+    value === "events" ||
+    value === "scoring" ||
+    value === "fees" ||
+    value === "audit" ||
+    value === "board" ||
+    value === "players"
   );
 }
+
+function sectionFromTab(tab?: NavTab): CommandCenterSection {
+  if (tab === "groups" || tab === "leagues") return "communities";
+  return "upcoming";
+}
+
 
 function ProfilePanel({ onReturn }: { onReturn: () => void }) {
   const { user, logout, updateUser } = useAuthStore();
@@ -803,7 +803,7 @@ function ProfilePanel({ onReturn }: { onReturn: () => void }) {
       )}
 
       <div className="grid gap-4 md:grid-cols-[1.65fr_1fr]">
-        <section className="relative overflow-hidden rounded-lg border border-pit-teal/45 bg-[linear-gradient(130deg,rgba(11,86,88,0.42),rgba(18,22,28,0.96)_66%)] p-4 sm:p-6">
+        <section id="profile-overview" className="relative scroll-mt-[94px] overflow-hidden rounded-lg border border-pit-teal/45 bg-[linear-gradient(130deg,rgba(11,86,88,0.42),rgba(18,22,28,0.96)_66%)] p-4 sm:p-6">
           <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:gap-5 sm:text-left">
             <button
               type="button"
@@ -1055,11 +1055,11 @@ function ProfileDisclosure({
   compact: boolean;
 }) {
   if (!compact) {
-    return <section className={`card p-5 ${className}`}>{children}</section>;
+    return <section id={`profile-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} className={`card scroll-mt-[94px] p-5 ${className}`}>{children}</section>;
   }
 
   return (
-    <section className={`card overflow-hidden p-0 ${className}`}>
+    <section id={`profile-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} className={`card scroll-mt-[94px] overflow-hidden p-0 ${className}`}>
       <details className="group">
         <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3">
           <span className="text-pit-teal">{icon}</span>

@@ -56,6 +56,13 @@ const notificationCategoryGroups: Array<{
     example: 'Standings updated for your league.',
     categories: ['league', 'social'],
   },
+  {
+    key: 'league-knockouts',
+    label: 'League Knockouts',
+    description: 'Get a push alert when a player is knocked out of a league event.',
+    example: 'A player was knocked out of Event #2.',
+    categories: ['league_knockouts'],
+  },
 ];
 
 export default function PushNotificationSettings({ embedded = false, showHeader = true }: { embedded?: boolean; showHeader?: boolean }) {
