@@ -167,7 +167,8 @@ function parseColorUps(value: string, denominations: number[], levelCount: numbe
 }
 
 function parseColorUpPieces(value: string, denominations: number[]): Array<{ denomination: number; level?: number }> {
-  const allowed = new Set(denominations);
+  // Keep the largest chip in play, even if every denomination was selected.
+  const allowed = new Set(denominations.slice(0, -1));
   const byDenomination = new Map<number, { denomination: number; level?: number }>();
   value
     .split(/[,;\n]+/)
@@ -198,7 +199,9 @@ function buildAutomaticColorUpLevels(count: number, levelCount: number): number[
 function chipIncrementForLevel(level: number, denominations: number[], colorUps: ColorUpRule[]) {
   const active = denominations.filter((denomination) => !colorUps.some((rule) => rule.denomination === denomination && level >= rule.level));
   const candidates = active.length > 0 ? active : denominations.slice(-1);
-  return Math.max(1, candidates.reduce((currentGcd, denomination) => gcd(currentGcd, denomination), candidates[0] ?? 1));
+  // A common divisor need not be an available chip (100 and 250 have GCD 50).
+  // Multiples of the smallest active chip are always payable, including after chip-ups.
+  return candidates[0];
 }
 
 function normalizeBlindPair(rawBigBlind: number, increment: number) {
@@ -208,17 +211,6 @@ function normalizeBlindPair(rawBigBlind: number, increment: number) {
     smallblind,
     bigblind: smallblind * 2,
   };
-}
-
-function gcd(a: number, b: number): number {
-  let x = Math.abs(Math.round(a));
-  let y = Math.abs(Math.round(b));
-  while (y) {
-    const next = x % y;
-    x = y;
-    y = next;
-  }
-  return x || 1;
 }
 
 function clamp(value: number, min: number, max: number) {
