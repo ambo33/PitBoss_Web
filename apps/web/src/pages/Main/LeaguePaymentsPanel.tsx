@@ -224,20 +224,39 @@ export default function LeaguePaymentsPanel({
             value={formatMoney(summary.totalCollectedCents)}
             icon={<Coins size={30} strokeWidth={1.6} />}
             tone="teal"
+            breakdown={[
+              { label: 'League fees', value: formatMoney(summary.leagueFeeCollectedCents) },
+              { label: 'Game fees', value: formatMoney(summary.gameFeeCollectedCents) },
+              ...(summary.otherCollectedCents > 0
+                ? [{ label: 'Other', value: formatMoney(summary.otherCollectedCents) }]
+                : []),
+            ]}
           />
           <PaymentKpiCard
             label="Outstanding"
             value={formatMoney(summary.totalOutstandingCents)}
             icon={<Clock3 size={30} strokeWidth={1.6} />}
             tone="amber"
+            breakdown={[
+              { label: 'League fees', value: formatMoney(summary.leagueFeeOutstandingCents) },
+              { label: 'Game fees', value: formatMoney(summary.gameFeeOutstandingCents) },
+            ]}
           />
           <PaymentKpiCard
             label="Total Billed"
             value={formatMoney(summary.totalBilledCents)}
             icon={<ReceiptText size={30} strokeWidth={1.6} />}
             tone="neutral"
+            breakdown={[
+              { label: 'League fees', value: formatMoney(summary.leagueFeeBilledCents) },
+              { label: 'Game fees', value: formatMoney(summary.gameFeeBilledCents) },
+            ]}
           />
-          <CollectionRateCard basisPoints={summary.collectionRateBasisPoints} />
+          <CollectionRateCard
+            basisPoints={summary.collectionRateBasisPoints}
+            leagueFeeBasisPoints={summary.leagueFeeCollectionRateBasisPoints}
+            gameFeeBasisPoints={summary.gameFeeCollectionRateBasisPoints}
+          />
         </div>
 
         <div className="mt-6 flex items-center gap-3">
@@ -399,11 +418,13 @@ function PaymentKpiCard({
   value,
   icon,
   tone,
+  breakdown,
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
   tone: 'teal' | 'amber' | 'neutral';
+  breakdown: Array<{ label: string; value: string }>;
 }) {
   const toneClass = tone === 'teal'
     ? 'border-[#00c6cf]/70 bg-[#00c6cf]/[0.075] text-[#00d4de]'
@@ -411,33 +432,63 @@ function PaymentKpiCard({
       ? 'border-[#e5aa26]/60 bg-[#e5aa26]/[0.06] text-[#ffbe38]'
       : 'border-[#26333e] bg-[#0b1318] text-pit-muted';
   return (
-    <div className={`flex min-h-[84px] min-w-0 items-center gap-2.5 rounded-lg border p-3 min-[1500px]:gap-3 min-[1500px]:p-4 ${toneClass}`}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true">{icon}</span>
-      <div className="min-w-0">
-        <p className={`truncate text-lg font-bold leading-tight tabular-nums sm:text-xl min-[1440px]:text-2xl min-[1600px]:text-[28px] ${tone === 'neutral' ? 'text-white' : ''}`} title={value}>{value}</p>
-        <p className={`mt-1 text-xs min-[1440px]:text-sm ${tone === 'neutral' ? 'text-pit-text' : ''}`}>{label}</p>
+    <div className={`flex min-h-[126px] min-w-0 flex-col rounded-lg border p-3 min-[1500px]:p-4 ${toneClass}`}>
+      <div className="flex min-w-0 items-center gap-2.5 min-[1500px]:gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true">{icon}</span>
+        <div className="min-w-0">
+          <p className={`truncate text-lg font-bold leading-tight tabular-nums sm:text-xl min-[1440px]:text-2xl min-[1600px]:text-[28px] ${tone === 'neutral' ? 'text-white' : ''}`} title={value}>{value}</p>
+          <p className={`mt-1 text-xs min-[1440px]:text-sm ${tone === 'neutral' ? 'text-pit-text' : ''}`}>{label}</p>
+        </div>
       </div>
+      <FeeBreakdown items={breakdown} />
     </div>
   );
 }
 
-function CollectionRateCard({ basisPoints }: { basisPoints: number }) {
+function CollectionRateCard({
+  basisPoints,
+  leagueFeeBasisPoints,
+  gameFeeBasisPoints,
+}: {
+  basisPoints: number;
+  leagueFeeBasisPoints: number;
+  gameFeeBasisPoints: number;
+}) {
   const percent = basisPoints / 100;
   const visualPercent = Math.max(0, Math.min(100, percent));
   return (
-    <div className="flex min-h-[84px] min-w-0 items-center gap-2.5 rounded-lg border border-[#26333e] bg-[#0b1318] p-3 min-[1500px]:gap-3 min-[1500px]:p-4">
-      <div
-        className="relative h-9 w-9 shrink-0 rounded-full min-[1440px]:h-10 min-[1440px]:w-10"
-        style={{ background: `conic-gradient(#00cbd2 ${visualPercent * 3.6}deg, #303845 0deg)` }}
-        aria-hidden="true"
-      >
-        <div className="absolute inset-[6px] rounded-full bg-[#0b1318]" />
+    <div className="flex min-h-[126px] min-w-0 flex-col rounded-lg border border-[#26333e] bg-[#0b1318] p-3 min-[1500px]:p-4">
+      <div className="flex min-w-0 items-center gap-2.5 min-[1500px]:gap-3">
+        <div
+          className="relative h-9 w-9 shrink-0 rounded-full min-[1440px]:h-10 min-[1440px]:w-10"
+          style={{ background: `conic-gradient(#00cbd2 ${visualPercent * 3.6}deg, #303845 0deg)` }}
+          aria-hidden="true"
+        >
+          <div className="absolute inset-[6px] rounded-full bg-[#0b1318]" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-lg font-bold tabular-nums text-white sm:text-xl min-[1440px]:text-2xl">{formatPercent(percent)}</p>
+          <p className="mt-1 text-xs text-pit-text min-[1440px]:text-sm">Collected</p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="truncate text-lg font-bold tabular-nums text-white sm:text-xl min-[1440px]:text-2xl">{formatPercent(percent)}</p>
-        <p className="mt-1 text-xs text-pit-text min-[1440px]:text-sm">Collected</p>
-      </div>
+      <FeeBreakdown items={[
+        { label: 'League fees', value: formatPercent(leagueFeeBasisPoints / 100) },
+        { label: 'Game fees', value: formatPercent(gameFeeBasisPoints / 100) },
+      ]} />
     </div>
+  );
+}
+
+function FeeBreakdown({ items }: { items: Array<{ label: string; value: string }> }) {
+  return (
+    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-current/15 pt-2 text-[10px] leading-tight text-pit-text min-[1440px]:text-[11px]">
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <dt className="truncate">{item.label}</dt>
+          <dd className="mt-0.5 truncate font-semibold tabular-nums text-white" title={`${item.label}: ${item.value}`}>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

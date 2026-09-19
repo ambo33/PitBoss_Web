@@ -365,15 +365,20 @@ html:has(.authenticated-shell) {
   }
   .app-primary-mobile-nav {
     position: fixed;
-    inset-inline: 0;
+    left: 0;
+    right: 0;
     bottom: 0;
     z-index: 30;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    min-height: var(--app-bottom-nav-total);
+    height: var(--app-bottom-nav-total);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-top: 1px solid #253b47;
     background: #091218;
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32);
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    contain: layout paint;
   }
   .app-primary-mobile-nav a {
     display: flex;

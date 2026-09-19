@@ -103,6 +103,15 @@ const tests: TestCase[] = [
         totalCollectedCents: 15_000,
         totalOutstandingCents: 11_000,
         totalCreditsCents: 1_000,
+        leagueFeeBilledCents: 20_000,
+        gameFeeBilledCents: 5_000,
+        leagueFeeCollectedCents: 13_500,
+        gameFeeCollectedCents: 1_000,
+        otherCollectedCents: 500,
+        leagueFeeOutstandingCents: 7_000,
+        gameFeeOutstandingCents: 4_000,
+        leagueFeeCollectionRateBasisPoints: 6_750,
+        gameFeeCollectionRateBasisPoints: 2_000,
         collectionRateBasisPoints: 6_000,
         paidInFullCount: 0,
         partialCount: 1,
@@ -114,6 +123,33 @@ const tests: TestCase[] = [
         model.summary.totalBilledCents,
         model.summary.totalCollectedCents + model.summary.totalOutstandingCents - model.summary.totalCreditsCents,
       );
+      assert.equal(model.summary.totalBilledCents, model.summary.leagueFeeBilledCents + model.summary.gameFeeBilledCents);
+      assert.equal(
+        model.summary.totalCollectedCents,
+        model.summary.leagueFeeCollectedCents + model.summary.gameFeeCollectedCents + model.summary.otherCollectedCents,
+      );
+      assert.equal(
+        model.summary.totalOutstandingCents,
+        model.summary.leagueFeeOutstandingCents + model.summary.gameFeeOutstandingCents,
+      );
+    },
+  },
+  {
+    name: 'fee breakouts apply categorized overpayments to the remaining player balance',
+    run: () => {
+      const detail = makeDetail({
+        events: [eventOne],
+        rsvps: [makeRsvp('alice', eventOne.eventid)],
+        payments: [
+          makePayment('alice-league-overpayment', 'alice', 'league', 125),
+          makePayment('alice-other', 'alice', 'other', 10),
+        ],
+      });
+      const summary = buildLeaguePaymentViewModel(detail).summary;
+      assert.equal(summary.leagueFeeOutstandingCents, 10_000);
+      assert.equal(summary.gameFeeOutstandingCents, 1_500);
+      assert.equal(summary.totalOutstandingCents, 11_500);
+      assert.equal(summary.leagueFeeOutstandingCents + summary.gameFeeOutstandingCents, summary.totalOutstandingCents);
     },
   },
   {

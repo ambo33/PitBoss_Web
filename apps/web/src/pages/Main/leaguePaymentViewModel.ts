@@ -75,6 +75,15 @@ export interface LeaguePaymentSummary {
   totalCollectedCents: number;
   totalOutstandingCents: number;
   totalCreditsCents: number;
+  leagueFeeBilledCents: number;
+  gameFeeBilledCents: number;
+  leagueFeeCollectedCents: number;
+  gameFeeCollectedCents: number;
+  otherCollectedCents: number;
+  leagueFeeOutstandingCents: number;
+  gameFeeOutstandingCents: number;
+  leagueFeeCollectionRateBasisPoints: number;
+  gameFeeCollectionRateBasisPoints: number;
   collectionRateBasisPoints: number;
   paidInFullCount: number;
   partialCount: number;
@@ -291,12 +300,43 @@ function summarizePlayers(players: readonly LeaguePlayerPaymentRow[]): LeaguePay
   const totalCollectedCents = players.reduce((sum, player) => sum + player.paidCents, 0);
   const totalOutstandingCents = players.reduce((sum, player) => sum + player.outstandingCents, 0);
   const totalCreditsCents = players.reduce((sum, player) => sum + player.creditCents, 0);
+  const leagueFeeBilledCents = players.reduce((sum, player) => sum + player.seasonCharge.billedCents, 0);
+  const gameFeeBilledCents = players.reduce(
+    (sum, player) => sum + player.eventCharges.reduce((eventSum, charge) => eventSum + charge.billedCents, 0),
+    0,
+  );
+  const leagueFeeCollectedCents = players.reduce(
+    (sum, player) => sum + sumPayments(player.payments, (payment) => payment.paymenttype === 'league'),
+    0,
+  );
+  const gameFeeCollectedCents = players.reduce(
+    (sum, player) => sum + sumPayments(player.payments, (payment) => payment.paymenttype === 'event'),
+    0,
+  );
+  const otherCollectedCents = Math.max(0, totalCollectedCents - leagueFeeCollectedCents - gameFeeCollectedCents);
+  const outstandingBreakdown = players.reduce(
+    (totals, player) => {
+      const playerBreakdown = calculatePlayerOutstandingBreakdown(player);
+      totals.leagueFeeOutstandingCents += playerBreakdown.leagueFeeOutstandingCents;
+      totals.gameFeeOutstandingCents += playerBreakdown.gameFeeOutstandingCents;
+      return totals;
+    },
+    { leagueFeeOutstandingCents: 0, gameFeeOutstandingCents: 0 },
+  );
   const statusCounts = countStatuses(players.map((player) => player.status));
   return {
     totalBilledCents,
     totalCollectedCents,
     totalOutstandingCents,
     totalCreditsCents,
+    leagueFeeBilledCents,
+    gameFeeBilledCents,
+    leagueFeeCollectedCents,
+    gameFeeCollectedCents,
+    otherCollectedCents,
+    ...outstandingBreakdown,
+    leagueFeeCollectionRateBasisPoints: calculateCollectionRateBasisPoints(leagueFeeCollectedCents, leagueFeeBilledCents),
+    gameFeeCollectionRateBasisPoints: calculateCollectionRateBasisPoints(gameFeeCollectedCents, gameFeeBilledCents),
     collectionRateBasisPoints: calculateCollectionRateBasisPoints(totalCollectedCents, totalBilledCents),
     paidInFullCount: statusCounts.paid,
     partialCount: statusCounts.partial,
@@ -304,6 +344,33 @@ function summarizePlayers(players: readonly LeaguePlayerPaymentRow[]): LeaguePay
     notDueCount: statusCounts.not_due,
     creditCount: statusCounts.credit,
   };
+}
+
+function calculatePlayerOutstandingBreakdown(player: LeaguePlayerPaymentRow): {
+  leagueFeeOutstandingCents: number;
+  gameFeeOutstandingCents: number;
+} {
+  const leagueFeeBilledCents = player.seasonCharge.billedCents;
+  const gameFeeBilledCents = player.eventCharges.reduce((sum, charge) => sum + charge.billedCents, 0);
+  const leagueFeeCollectedCents = sumPayments(player.payments, (payment) => payment.paymenttype === 'league');
+  const gameFeeCollectedCents = sumPayments(player.payments, (payment) => payment.paymenttype === 'event');
+  const otherCollectedCents = Math.max(0, player.paidCents - leagueFeeCollectedCents - gameFeeCollectedCents);
+
+  let leagueFeeOutstandingCents = Math.max(0, leagueFeeBilledCents - leagueFeeCollectedCents);
+  let gameFeeOutstandingCents = Math.max(0, gameFeeBilledCents - gameFeeCollectedCents);
+
+  // Preserve explicitly categorized payments first, then let overpayments and
+  // legacy "other" payments cover the player's remaining account balance.
+  const leagueFeeOverpaymentCents = Math.max(0, leagueFeeCollectedCents - leagueFeeBilledCents);
+  const gameFeeOverpaymentCents = Math.max(0, gameFeeCollectedCents - gameFeeBilledCents);
+  gameFeeOutstandingCents = Math.max(0, gameFeeOutstandingCents - leagueFeeOverpaymentCents);
+  leagueFeeOutstandingCents = Math.max(0, leagueFeeOutstandingCents - gameFeeOverpaymentCents);
+
+  const otherAppliedToLeagueCents = Math.min(otherCollectedCents, leagueFeeOutstandingCents);
+  leagueFeeOutstandingCents -= otherAppliedToLeagueCents;
+  gameFeeOutstandingCents = Math.max(0, gameFeeOutstandingCents - (otherCollectedCents - otherAppliedToLeagueCents));
+
+  return { leagueFeeOutstandingCents, gameFeeOutstandingCents };
 }
 
 function summarizeEvent(
