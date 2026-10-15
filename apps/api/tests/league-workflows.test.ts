@@ -12,7 +12,7 @@ import {
   type LeaguePointRule,
   type LeagueResultRow,
 } from '../src/leagues/scoring';
-import { calculateLeagueFeeInstallment } from '../src/leagues/payments';
+import { allocateLeagueFeeInstallments, calculateLeagueFeeInstallment } from '../src/leagues/payments';
 import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../src/leagues/placements';
 import { shouldJoinCurrentSeason } from '../src/leagues/membership';
 import { getLeagueRsvpResultMutation } from '../src/leagues/rsvp-results';
@@ -292,6 +292,25 @@ const tests: TestCase[] = [
       assert.deepEqual(installments, [333.34, 333.33, 333.33]);
       assert.equal(installments.reduce((sum, amount) => sum + amount, 0), 1000);
       assert.deepEqual(calculateLeagueFeeInstallment(1000, 3, 2, 990), { installment: 333.33, remaining: 10, amount: 10 });
+    },
+  },
+  {
+    name: '14a. Dynamic league installments retain historical payments and offer only the top-up',
+    run: () => {
+      const eventIds = Array.from({ length: 10 }, (_, index) => `event-${index}`);
+      const payments = eventIds.map((eventid) => ({ eventid, amount: 10 }));
+      const original = allocateLeagueFeeInstallments(100, eventIds, payments);
+      assert.ok(original.every((item) => item.outstandingCents === 0 && item.amountToRecordCents === 0));
+      const increased = allocateLeagueFeeInstallments(200, eventIds, payments);
+      assert.ok(increased.every((item) => item.billedCents === 2000 && item.outstandingCents === 1000 && item.amountToRecordCents === 1000));
+      assert.ok(payments.every((item) => item.amount === 10));
+      const rounded = allocateLeagueFeeInstallments(100, ['a', 'b', 'c'], []);
+      assert.deepEqual(rounded.map((item) => item.billedCents), [3334, 3333, 3333]);
+      const credit = allocateLeagueFeeInstallments(50, ['a', 'b'], [{ eventid: 'a', amount: 40 }]);
+      assert.equal(credit[0].creditCents, 1500);
+      assert.equal(credit[1].amountToRecordCents, 1000, 'Never collect more than the remaining season balance');
+      const removed = allocateLeagueFeeInstallments(100, ['b', 'c'], [{ eventid: 'removed', amount: 40 }]);
+      assert.deepEqual(removed.map((item) => item.outstandingCents), [1000, 5000]);
     },
   },
   {

@@ -56,21 +56,12 @@
 .er-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 13px 20px;
-  align-items: start;
-}
-.er-title h2 {
-  font-size: 25px;
-  line-height: 1.2;
-  font-weight: 750;
-  letter-spacing: -0.6px;
-}
-.er-title p {
-  margin-top: 5px;
-  color: var(--er-secondary);
-  font-size: 12px;
+  gap: 10px 16px;
+  align-items: center;
 }
 .er-header-actions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -104,7 +95,8 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  grid-column: 1 / -1;
+  grid-column: 1;
+  grid-row: 1;
 }
 .er-event-trigger {
   display: flex;
@@ -409,11 +401,28 @@
   width: 42px;
   padding-right: 0;
 }
-.er-table .er-actions-cell {
-  width: 51px;
-  padding-left: 0;
-  padding-right: 6px;
+.er-table .er-attendance-column { width: 114px; }
+.er-table .er-fees-column { width: 240px; }
+.er-table .er-finish-column { width: 100px; }
+.er-fee-controls { display: flex; gap: 6px; }
+.er-fee-toggle {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 40px;
+  padding: 5px 7px;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+  text-align: center;
+  font-size: 11px;
 }
+.er-fee-toggle span { color: var(--er-secondary); }
+.er-fee-toggle strong { white-space: nowrap; }
+.er-fee-toggle:not(:disabled):hover { background: rgb(34 210 202 / 10%); }
 .er-table tr.is-selected,
 .er-mobile-row.is-selected {
   background: rgb(34 210 202 / 6%);
@@ -439,6 +448,19 @@
   display: block;
   text-align: left;
   width: 100%;
+  min-height: 44px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.er-identity-button .er-identity-text strong {
+  color: var(--er-teal);
+  text-decoration: underline;
+  text-decoration-color: rgb(34 210 202 / 45%);
+  text-underline-offset: 3px;
+}
+.er-identity-button:hover .er-identity-text strong,
+.er-identity-button:focus-visible .er-identity-text strong {
+  text-decoration-color: currentColor;
 }
 .er-identity {
   display: flex;
@@ -684,38 +706,45 @@
   justify-content: flex-start;
   min-height: 46px;
 }
+.er-player-overlay [role="dialog"] {
+  overflow: hidden;
+  border-color: rgb(34 210 202 / 22%);
+  background: radial-gradient(ellipse at top left, rgb(34 210 202 / 5%), transparent 65%), var(--er-surface);
+}
+.er-player-overlay [role="dialog"] > div:first-child { padding: 12px 16px; }
+.er-player-overlay [role="dialog"] > div:first-child h2 { min-width: 0; flex: 1; }
+.er-player-overlay [role="dialog"] > div:nth-child(2) { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+.er-player-overlay h2 .er-avatar { width: 40px; height: 40px; font-size: 14px; }
+.er-player-overlay h2 .er-identity-text strong { font-size: 16px; }
+.er-player-overlay h2 .er-identity-text small { font-weight: 400; }
 .er-player-detail {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-.er-player-detail > .er-identity .er-avatar {
-  width: 44px;
-  height: 44px;
-  font-size: 15px;
-}
-.er-player-detail > .er-identity strong {
-  font-size: 15px;
+  gap: 12px;
 }
 .er-detail-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--er-secondary);
   font-size: 11px;
 }
+.er-detail-event svg { flex-shrink: 0; color: var(--er-teal); }
+.er-player-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .er-player-detail section {
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  border-top: 1px solid var(--er-subtle);
-  padding-top: 14px;
+  gap: 7px;
 }
 .er-player-detail h3 {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 650;
   color: var(--er-secondary);
 }
-.er-player-detail section p {
+.er-player-detail .er-detail-note,
+.er-fee-details p {
   font-size: 11px;
   color: var(--er-muted);
   line-height: 1.6;
@@ -725,9 +754,33 @@
 .er-player-detail .btn-primary {
   min-height: 44px;
 }
-.er-player-detail .er-fee-status {
-  font-size: 14px;
+.er-player-fees {
+  border-top: 1px solid var(--er-subtle);
+  padding-top: 12px;
 }
+.er-detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.er-detail-section-heading > span { display: inline-flex; align-items: center; gap: 4px; color: var(--er-muted); font-size: 10px; }
+.er-detail-section-heading svg { color: var(--er-teal); }
+.er-player-fees .er-fee-controls { gap: 10px; }
+.er-player-fees .er-fee-toggle { min-height: 96px; padding: 10px 8px; gap: 6px; border-radius: 10px; background: var(--er-inset); }
+.er-player-fees .er-fee-toggle.er-awaiting { border-color: rgb(255 209 102 / 35%); background: rgb(255 209 102 / 3%); }
+.er-player-fees .er-fee-toggle.er-going { border-color: rgb(103 230 155 / 30%); background: rgb(103 230 155 / 3%); }
+.er-player-fees .er-fee-toggle:disabled { opacity: 0.7; }
+.er-player-fees .er-fee-toggle strong { font-size: 17px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
+.er-player-fees .er-fee-toggle small { width: 100%; margin-top: 2px; border-top: 1px solid var(--er-subtle); padding-top: 6px; font-size: 10px; font-weight: 500; color: var(--er-secondary); }
+.er-player-fees .er-fee-toggle:not(:disabled) small { color: var(--er-teal); }
+.er-player-fees .er-fee-toggle:not(:disabled):hover { background: rgb(34 210 202 / 8%); }
+.er-player-balance { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--er-subtle); border-radius: 10px; padding: 8px 10px; background: var(--er-inset); }
+.er-player-balance > div { flex: 1; }
+.er-player-balance > div > span { display: block; margin-bottom: 4px; color: var(--er-secondary); font-size: 10px; }
+.er-player-balance strong { display: block; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.er-player-balance .er-button { flex-shrink: 0; padding: 8px; font-size: 11px; gap: 4px; }
+.er-fee-details { border-top: 1px solid var(--er-subtle); }
+.er-fee-details summary { display: flex; align-items: center; justify-content: space-between; min-height: 36px; gap: 8px; list-style: none; cursor: pointer; font-size: 11px; color: var(--er-secondary); }
+.er-fee-details summary::-webkit-details-marker { display: none; }
+.er-fee-details summary:focus-visible { outline: 2px solid var(--er-focus); outline-offset: 2px; border-radius: 4px; }
+.er-fee-details[open] summary svg { transform: rotate(180deg); }
+.er-fee-details > div { display: grid; gap: 8px; padding: 6px 0; }
 .er-danger-action {
   color: var(--er-red);
 }
@@ -746,6 +799,15 @@
   margin: 16px 0;
   color: var(--er-text);
 }
+.er-payment-choice {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--er-text);
+}
+.er-payment-choice legend { font-weight: 650; }
+.er-payment-choice p { margin: 8px 0; color: var(--er-secondary); line-height: 1.6; }
+.er-payment-choice label { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.er-payment-choice input { accent-color: var(--er-teal); width: 18px; height: 18px; flex-shrink: 0; }
 .er-confirm-copy ul {
   margin-top: 15px;
 }
@@ -792,7 +854,7 @@
     box-shadow: -18px 0 48px rgb(0 0 0 / 48%);
   }
 }
-@media (min-width: 900px) and (max-width: 1199px) {
+@media (min-width: 768px) and (max-width: 1199px) {
   .er-secondary-column {
     display: none;
   }
@@ -812,6 +874,15 @@
   .er-metric strong {
     font-size: 20px;
   }
+}
+@media (min-width: 768px) and (max-width: 899px) {
+  .event-roster-page .er-table-shell { display: block; }
+  .event-roster-page .er-mobile-list { display: none; }
+  .er-table th, .er-table td { padding-inline: 7px; }
+  .er-table .er-select-cell { width: 32px; }
+  .er-table .er-fees-column { width: 220px; }
+  .er-table .er-attendance-column { width: 105px; }
+  .er-table .er-finish-column { width: 85px; }
 }
 @media (max-width: 899px) {
   .er-table-shell {
@@ -926,6 +997,7 @@
   }
 }
 @media (max-width: 639px) {
+  .er-player-overlay [role="dialog"] { max-height: calc(100dvh - 20px); border-radius: 20px 20px 0 0; }
   .event-roster-page {
     gap: 12px;
     padding-bottom: calc(
@@ -939,12 +1011,6 @@
   }
   .er-header {
     gap: 10px;
-  }
-  .er-title h2 {
-    font-size: 20px;
-  }
-  .er-title p {
-    font-size: 10px;
   }
   .er-header-actions {
     gap: 4px;
@@ -962,6 +1028,8 @@
     width: 40px;
   }
   .er-event-switcher {
+    grid-column: 1;
+    grid-row: 1;
     width: 100%;
     gap: 4px;
   }

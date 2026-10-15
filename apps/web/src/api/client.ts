@@ -233,6 +233,7 @@ export const api = {
     bestfinishcount?: number;
     pointslookup?: LeaguePointRule[];
     finalscoresupdated?: boolean;
+    confirmLeagueFeeRecalculation?: boolean;
   }) =>
     patch<{ season: LeagueSeason; recalculatedResults?: number }>(`/leagues/${id}/seasons/${seasonId}`, data),
   deleteLeagueSeason: (id: string, seasonId: string) =>
@@ -251,10 +252,12 @@ export const api = {
     post<{ payments: LeaguePayment[]; updatedCount: number }>(`/leagues/${id}/events/${eventId}/payments/mark-paid`, data),
   markLeagueFeeInstallmentPaid: (id: string, eventId: string, userId: string) =>
     post<{ payment: LeaguePayment | null }>(`/leagues/${id}/events/${eventId}/payments/mark-league-fee-paid`, { userId }),
-  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null }) =>
+  createLeagueEvent: (id: string, data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; seasonid?: string | null; eventfee?: number | null; confirmLeagueFeeRecalculation?: boolean }) =>
     post<{ event: LeagueEvent | null; events?: LeagueEvent[] }>(`/leagues/${id}/events`, data),
   updateLeagueEvent: (id: string, eventId: string, data: { name?: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number | null; eventfee?: number | null }) =>
     patch<{ event: LeagueEvent }>(`/leagues/${id}/events/${eventId}`, data),
+  deleteLeagueEvent: (id: string, eventId: string, confirmLeagueFeeRecalculation = false) =>
+    del<{ success: boolean }>(`/leagues/${id}/events/${eventId}?confirmLeagueFeeRecalculation=${confirmLeagueFeeRecalculation}`),
   getLeagueEventLobby: (id: string, eventId: string) =>
     get<LeagueEventLobby>(`/leagues/${id}/events/${eventId}/lobby`),
   createLeagueEventKnockoutLink: (id: string, eventId: string) =>
@@ -263,8 +266,8 @@ export const api = {
     get<PublicLeagueKnockout>(`/league-public/knockout/${encodeURIComponent(token)}`),
   recordPublicLeagueKnockout: (token: string, userId: string) =>
     post<{ result: LeagueResult }>(`/league-public/knockout/${encodeURIComponent(token)}`, { userId }),
-  rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus, userId?: string) =>
-    put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status, userId }),
+  rsvpLeagueEvent: (id: string, eventId: string, status: LeagueEventRsvpStatus, userId?: string, removeEventFeePayment?: boolean) =>
+    put<{ rsvp: LeagueEventRsvp }>(`/leagues/${id}/events/${eventId}/rsvp`, { status, userId, removeEventFeePayment }),
   logLeagueResult: (leagueId: string, eventId: string, userId: string, data: { placed?: number | null; dnf?: boolean }) =>
     put<{ result: LeagueResult }>(`/leagues/${leagueId}/events/${eventId}/results/${userId}`, data),
   clearLeagueResult: (leagueId: string, eventId: string, userId: string) =>

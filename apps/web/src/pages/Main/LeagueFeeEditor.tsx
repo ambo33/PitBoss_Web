@@ -6,10 +6,11 @@ export interface LeagueFeeEditorProps {
   seasonName: string;
   leagueFeeCents: number;
   eventFeeCents: number;
+  hasLeaguePayments: boolean;
   loading: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (payload: { leaguefee: number; seasonEventFee: number }) => Promise<void>;
+  onSave: (payload: { leaguefee: number; seasonEventFee: number; confirmLeagueFeeRecalculation?: boolean }) => Promise<void>;
 }
 
 export default function LeagueFeeEditor({
@@ -17,6 +18,7 @@ export default function LeagueFeeEditor({
   seasonName,
   leagueFeeCents,
   eventFeeCents,
+  hasLeaguePayments,
   loading,
   error,
   onClose,
@@ -24,24 +26,27 @@ export default function LeagueFeeEditor({
 }: LeagueFeeEditorProps) {
   const [leagueFee, setLeagueFee] = useState('');
   const [eventFee, setEventFee] = useState('');
+  const [feeChangeAcknowledged, setFeeChangeAcknowledged] = useState(false);
   useEffect(() => {
     if (!open) return;
     setLeagueFee(moneyInputValue(leagueFeeCents));
     setEventFee(moneyInputValue(eventFeeCents));
+    setFeeChangeAcknowledged(false);
   }, [eventFeeCents, leagueFeeCents, open]);
   const nextLeagueFeeCents = parseMoneyInput(leagueFee);
   const nextEventFeeCents = parseMoneyInput(eventFee);
   const valid = nextLeagueFeeCents != null && nextEventFeeCents != null;
   const dirty = valid && (nextLeagueFeeCents !== leagueFeeCents || nextEventFeeCents !== eventFeeCents);
+  const needsAcknowledgement = (hasLeaguePayments || Boolean(error?.includes('League fees have already been logged'))) && nextLeagueFeeCents !== leagueFeeCents;
   const requestClose = () => {
     if (loading) return;
     if (dirty && !window.confirm('Discard unsaved fee changes?')) return;
     onClose();
   };
   const save = async () => {
-    if (!valid || !dirty || loading) return;
+    if (!valid || !dirty || loading || (needsAcknowledgement && !feeChangeAcknowledged)) return;
     try {
-      await onSave({ leaguefee: nextLeagueFeeCents / 100, seasonEventFee: nextEventFeeCents / 100 });
+      await onSave({ leaguefee: nextLeagueFeeCents / 100, seasonEventFee: nextEventFeeCents / 100, confirmLeagueFeeRecalculation: feeChangeAcknowledged });
       onClose();
     } catch {
       // React Query exposes the recoverable error below while the form values remain intact.
@@ -55,7 +60,7 @@ export default function LeagueFeeEditor({
       footer={(
         <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" className="btn-ghost min-h-11 justify-center" onClick={requestClose} disabled={loading}>Cancel</button>
-          <button type="button" className="btn-primary min-h-11 justify-center text-[#041312]" onClick={save} disabled={!dirty || !valid || loading}>
+          <button type="button" className="btn-primary min-h-11 justify-center text-[#041312]" onClick={save} disabled={!dirty || !valid || loading || (needsAcknowledgement && !feeChangeAcknowledged)}>
             {loading ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
@@ -67,6 +72,10 @@ export default function LeagueFeeEditor({
         </div>
         {error ? <p className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-200" role="alert">{error}</p> : null}
         <MoneyField label="Season fee" value={leagueFee} onChange={setLeagueFee} />
+        {needsAcknowledgement && <label className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm leading-5 text-pit-text">
+          <input type="checkbox" className="mt-1" checked={feeChangeAcknowledged} onChange={(change) => setFeeChangeAcknowledged(change.target.checked)} />
+          <span>League fees have already been logged. This change recalculates league-fee installments for every event, including completed events. Existing payments stay recorded and may leave balances or credits. I understand that I am responsible for reviewing and correcting league-fee tracking.</span>
+        </label>}
         <MoneyField label="Per-event fee" value={eventFee} onChange={setEventFee} />
         <p className="text-xs leading-5 text-pit-muted">Use zero only when that fee does not apply. Amounts are saved to the nearest cent.</p>
       </div>

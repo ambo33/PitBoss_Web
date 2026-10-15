@@ -111,6 +111,21 @@ test("no fee is N/A, while unallocated credits stay visible instead of becoming 
   assert.deepEqual(selectEventRosterRows(rows, { filter: "paid" }), []);
 });
 
+test("keeping an event payment after Can't go preserves collected money as event credit", () => {
+  const detail = fixture({
+    rsvps: [rsvp("alice", "not_going"), rsvp("bob", "going")],
+    results: [result("alice", null, true)],
+    payments: [payment("alice", 50.25), payment("alice", 100, "league")],
+  });
+  const { rows, summary } = buildEventRosterModel(detail, selectedEvent);
+  const alice = rows.find((row) => row.userid === "alice")!;
+  assert.equal(alice.eventCharge.billedCents, 0);
+  assert.equal(alice.eventCharge.paidCents, 5025);
+  assert.equal(alice.eventCharge.creditCents, 5025);
+  assert.equal(alice.leagueCharge.paidCents, 10000);
+  assert.equal(summary.collectedCents, 5025);
+});
+
 test("event fee overrides do not create a second source of truth beside season Payments", () => {
   const detail = fixture({
     events: [{ ...selectedEvent, eventfee: 999 }],
@@ -201,7 +216,7 @@ test("search normalizes accents and nicknames; filters and sorts never mutate so
   );
   assert.deepEqual(
     selectEventRosterRows(rows, { filter: "unpaid" }).map((row) => row.userid),
-    ["bob"],
+    ["alice", "bob", "cara"],
   );
   assert.deepEqual(
     selectEventRosterRows(rows, { sort: "fee" }).map((row) => row.userid),
@@ -211,6 +226,40 @@ test("search normalizes accents and nicknames; filters and sorts never mutate so
     rows.map((row) => row.userid),
     ["alice", "bob", "cara"],
   );
+});
+
+test('league installments recalculate after fee and event-count changes without rewriting payments', () => {
+  const events = Array.from({ length: 10 }, (_, index) => ({ ...selectedEvent, eventid: `installment-${index}`, eventnumber: index + 1 }));
+  const paid = { ...payment('alice', 10, 'league'), eventid: events[0].eventid };
+  const detail = fixture({ events, payments: [paid], results: [{ ...result('alice', 1), eventid: events[0].eventid }] });
+  detail.seasons[0].leaguefee = 100;
+  const read = () => buildEventRosterModel(detail, events[0]).rows.find((row) => row.userid === 'alice')!;
+  assert.equal(read().leagueInstallment.outstandingCents, 0);
+  detail.seasons[0].leaguefee = 200;
+  assert.equal(read().leagueInstallment.billedCents, 2000);
+  assert.equal(read().leagueInstallment.outstandingCents, 1000);
+  assert.equal(read().leagueInstallment.amountToRecordCents, 1000);
+  assert.equal(read().finish, 'placed');
+  detail.events = events.slice(0, 5);
+  assert.equal(read().leagueInstallment.billedCents, 4000);
+  assert.equal(read().leagueInstallment.outstandingCents, 3000);
+  assert.equal(paid.amount, 10, 'Historical payment changed during recalculation');
+});
+
+test('a full season payment covers all installments and event payment removal is reflected immediately', () => {
+  const second = { ...selectedEvent, eventid: 'event-2', eventnumber: 2 };
+  const detail = fixture({ events: [{ ...selectedEvent, eventnumber: 1 }, second], payments: [{ ...payment('alice', 100, 'league'), eventid: null }] });
+  detail.seasons[0].leaguefee = 100;
+  for (const event of detail.events) {
+    const row = buildEventRosterModel(detail, event).rows[0];
+    assert.equal(row.leagueInstallment.outstandingCents, 0);
+    assert.equal(row.leagueInstallment.amountToRecordCents, 0);
+    assert.equal(row.leagueInstallment.directPaidCents, 0);
+  }
+  detail.payments = [{ ...payment('alice', 50, 'league'), eventid: second.eventid }];
+  assert.equal(buildEventRosterModel(detail, second).rows[0].leagueInstallment.outstandingCents, 0);
+  detail.payments = [];
+  assert.equal(buildEventRosterModel(detail, second).rows[0].leagueInstallment.outstandingCents, 5000);
 });
 
 test("event selector respects valid URL, nearest future, and excludes inactive events", () => {

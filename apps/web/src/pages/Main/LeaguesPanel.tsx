@@ -379,7 +379,7 @@ function LeagueDetailView({
   });
 
   const createEventMutation = useMutation({
-    mutationFn: (payload: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
+    mutationFn: (payload: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; confirmLeagueFeeRecalculation?: boolean }) => api.createLeagueEvent(league.leagueid, { ...payload, seasonid: data?.selectedseasonid ?? selectedSeasonId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
       qc.invalidateQueries({ queryKey: ['leagues'] });
@@ -466,7 +466,7 @@ function LeagueDetailView({
     },
   });
   const updatePaymentSettingsMutation = useMutation({
-    mutationFn: async (payload: { leaguefee: number; seasonEventFee: number }) => {
+    mutationFn: async (payload: { leaguefee: number; seasonEventFee: number; confirmLeagueFeeRecalculation?: boolean }) => {
       const seasonId = data?.selectedseasonid ?? selectedSeasonId;
       if (!seasonId) throw new Error('Choose a season before updating fees.');
       const nextLeagueFee = Math.max(0, Math.round(Number(payload.leaguefee || 0) * 100) / 100);
@@ -474,6 +474,7 @@ function LeagueDetailView({
       await api.updateLeagueSeason(league.leagueid, seasonId, {
         leaguefee: nextLeagueFee,
         pereventfee: nextSeasonEventFee,
+        confirmLeagueFeeRecalculation: payload.confirmLeagueFeeRecalculation,
       });
     },
     onSuccess: async () => {
@@ -482,6 +483,17 @@ function LeagueDetailView({
         qc.invalidateQueries({ queryKey: ['leagues'] }),
       ]);
       await qc.refetchQueries({ queryKey: ['league', league.leagueid, selectedSeasonId], type: 'active' });
+    },
+  });
+  const removeEventMutation = useMutation({
+    mutationFn: ({ eventId, confirmed }: { eventId: string; confirmed: boolean }) => api.deleteLeagueEvent(league.leagueid, eventId, confirmed),
+    onSuccess: async () => {
+      setEditingEvent(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
+        qc.invalidateQueries({ queryKey: ['leagues'] }),
+        qc.invalidateQueries({ queryKey: ['tournaments'] }),
+      ]);
     },
   });
   const updateSeasonScoringMutation = useMutation({
@@ -564,8 +576,8 @@ function LeagueDetailView({
     },
   });
   const eventRsvpMutation = useMutation({
-    mutationFn: ({ eventId, userId, status }: { eventId: string; userId: string; status: LeagueEventRsvpStatus }) =>
-      api.rsvpLeagueEvent(league.leagueid, eventId, status, userId),
+    mutationFn: ({ eventId, userId, status, removeEventFeePayment }: { eventId: string; userId: string; status: LeagueEventRsvpStatus; removeEventFeePayment?: boolean }) =>
+      api.rsvpLeagueEvent(league.leagueid, eventId, status, userId, removeEventFeePayment),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', league.leagueid] }),
   });
   const toggleEventPaidMutation = useMutation({
@@ -1130,9 +1142,9 @@ function LeagueDetailView({
           onOverview={() => selectDetailTab('overview')}
           onRefresh={() => void refetch()}
           refreshing={isFetching}
-          onSetRsvp={async (userId, status) => {
+          onSetRsvp={async (userId, status, removeEventFeePayment) => {
             if (!currentEvent) throw new Error('Select an event first.');
-            await eventRsvpMutation.mutateAsync({ eventId: currentEvent.eventid, userId, status });
+            await eventRsvpMutation.mutateAsync({ eventId: currentEvent.eventid, userId, status, removeEventFeePayment });
           }}
           onFinish={async (userId, placed, dnf) => {
             if (!currentEvent) throw new Error('Select an event first.');
@@ -1145,6 +1157,20 @@ function LeagueDetailView({
           onTogglePaid={async (userId, currentlyPaid) => {
             if (!currentEvent) throw new Error('Select an event first.');
             await toggleEventPaidMutation.mutateAsync({ eventId: currentEvent.eventid, userId, paid: currentlyPaid });
+          }}
+          onToggleLeagueFee={async (userId, remove) => {
+            if (!currentEvent) throw new Error('Select an event first.');
+            try {
+              if (remove) {
+                const payment = detail.payments.find((item) => item.userid === userId && item.eventid === currentEvent.eventid && item.paymenttype === 'league');
+                if (!payment) throw new Error('This event is covered by a season payment. Adjust it in Payments.');
+                await api.deleteLeaguePayment(league.leagueid, payment.paymentid);
+              } else {
+                await api.markLeagueFeeInstallmentPaid(league.leagueid, currentEvent.eventid, userId);
+              }
+            } finally {
+              await qc.invalidateQueries({ queryKey: ['league', league.leagueid] });
+            }
           }}
           onViewPayments={(userId) => {
             const params = new URLSearchParams(location.search);
@@ -1167,6 +1193,7 @@ function LeagueDetailView({
         onClose={() => setEventModalOpen(false)}
         onSubmit={(payload) => createEventMutation.mutate(payload)}
         nextEventNumber={detail.events.length + 1}
+        hasLeaguePayments={detail.payments.some((payment) => payment.paymenttype === 'league' && Number(payment.amount) > 0)}
         loading={createEventMutation.isPending}
         error={createEventMutation.error?.message}
       />
@@ -1178,8 +1205,11 @@ function LeagueDetailView({
           if (!editingEvent) return;
           updateEventMutation.mutate({ eventId: editingEvent.eventid, ...payload });
         }}
-        loading={updateEventMutation.isPending}
-        error={updateEventMutation.error?.message}
+        loading={updateEventMutation.isPending || removeEventMutation.isPending}
+        error={removeEventMutation.error?.message ?? updateEventMutation.error?.message}
+        canRemove={detail.events.length > 1}
+        hasLeaguePayments={detail.payments.some((payment) => payment.paymenttype === 'league' && Number(payment.amount) > 0)}
+        onRemove={(confirmed) => editingEvent && removeEventMutation.mutate({ eventId: editingEvent.eventid, confirmed })}
       />
       <CreateSeasonModal
         open={seasonModalOpen}
@@ -1196,6 +1226,7 @@ function LeagueDetailView({
         finalGameEnabled={Boolean(detail.league.finalenabled)}
         leagueFeeCents={getSeasonFeeCents(detail)}
         eventFeeCents={getSeasonEventFeeCents(detail)}
+        hasLeaguePayments={detail.payments.some((payment) => payment.paymenttype === 'league' && Number(payment.amount) > 0)}
         feesLoading={updatePaymentSettingsMutation.isPending}
         feesError={updatePaymentSettingsMutation.error?.message}
         onSaveFees={(payload) => updatePaymentSettingsMutation.mutateAsync(payload)}
@@ -3509,6 +3540,7 @@ function LeagueSettingsModal({
   finalGameEnabled,
   leagueFeeCents,
   eventFeeCents,
+  hasLeaguePayments,
   feesLoading,
   feesError,
   onSaveFees,
@@ -3523,9 +3555,10 @@ function LeagueSettingsModal({
   finalGameEnabled: boolean;
   leagueFeeCents: number;
   eventFeeCents: number;
+  hasLeaguePayments: boolean;
   feesLoading: boolean;
   feesError?: string;
-  onSaveFees: (payload: { leaguefee: number; seasonEventFee: number }) => Promise<void>;
+  onSaveFees: (payload: { leaguefee: number; seasonEventFee: number; confirmLeagueFeeRecalculation?: boolean }) => Promise<void>;
   loading: boolean;
   error?: string;
   onClose: () => void;
@@ -3565,6 +3598,7 @@ function LeagueSettingsModal({
         seasonName={season.name}
         leagueFeeCents={leagueFeeCents}
         eventFeeCents={eventFeeCents}
+        hasLeaguePayments={hasLeaguePayments}
         loading={feesLoading}
         error={feesError}
         onSave={onSaveFees}
@@ -3689,13 +3723,15 @@ function CreateEventModal({
   onClose,
   onSubmit,
   nextEventNumber,
+  hasLeaguePayments,
   loading,
   error,
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number }) => void;
+  onSubmit: (data: { name: string; eventdate?: string | null; eventtime?: string | null; eventnumber?: number; eventcount?: number; confirmLeagueFeeRecalculation?: boolean }) => void;
   nextEventNumber: number;
+  hasLeaguePayments: boolean;
   loading: boolean;
   error?: string;
 }) {
@@ -3704,7 +3740,9 @@ function CreateEventModal({
   const [eventtime, setEventtime] = useState('');
   const [eventnumber, setEventnumber] = useState(String(nextEventNumber));
   const [eventcount, setEventcount] = useState('1');
+  const [feeChangeAcknowledged, setFeeChangeAcknowledged] = useState(false);
   const countValue = Math.max(1, Math.min(100, Number(eventcount) || 1));
+  const needsFeeAcknowledgement = hasLeaguePayments || Boolean(error?.includes('League fees have already been logged'));
   useEffect(() => {
     if (!open) return;
     setName(`Event #${nextEventNumber}`);
@@ -3712,6 +3750,7 @@ function CreateEventModal({
     setEventtime('');
     setEventnumber(String(nextEventNumber));
     setEventcount('1');
+    setFeeChangeAcknowledged(false);
   }, [nextEventNumber, open]);
 
   return (
@@ -3725,13 +3764,14 @@ function CreateEventModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || (countValue === 1 && !name.trim())}
+            disabled={loading || (countValue === 1 && !name.trim()) || (needsFeeAcknowledgement && !feeChangeAcknowledged)}
             onClick={() => onSubmit({
               name,
               eventdate: countValue === 1 ? eventdate || null : null,
               eventtime: countValue === 1 ? eventtime || null : null,
               eventnumber: Number(eventnumber) || nextEventNumber,
               eventcount: countValue,
+              confirmLeagueFeeRecalculation: feeChangeAcknowledged,
             })}
           >
             {loading ? 'Saving...' : countValue > 1 ? `Create ${countValue} events` : 'Save event'}
@@ -3741,6 +3781,10 @@ function CreateEventModal({
     >
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        {needsFeeAcknowledgement && <label className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-pit-text">
+          <input type="checkbox" className="mt-1" checked={feeChangeAcknowledged} onChange={(change) => setFeeChangeAcknowledged(change.target.checked)} />
+          <span>League fees have already been logged. Adding events recalculates every event’s league-fee installment, including completed events. Existing payments stay recorded. I understand that I am responsible for reviewing and correcting league-fee tracking.</span>
+        </label>}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
             <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">How many events?</span>
@@ -3783,6 +3827,9 @@ function EditEventModal({
   onSubmit,
   loading,
   error,
+  canRemove,
+  hasLeaguePayments,
+  onRemove,
 }: {
   open: boolean;
   event: LeagueEvent | null;
@@ -3790,11 +3837,17 @@ function EditEventModal({
   onSubmit: (data: { name: string; eventdate: string | null; eventtime: string | null; eventnumber: number | null }) => void;
   loading: boolean;
   error?: string;
+  canRemove: boolean;
+  hasLeaguePayments: boolean;
+  onRemove: (confirmed: boolean) => void;
 }) {
   const [name, setName] = useState('');
   const [eventdate, setEventdate] = useState('');
   const [eventtime, setEventtime] = useState('');
   const [eventnumber, setEventnumber] = useState('');
+  const [removing, setRemoving] = useState(false);
+  const [feeChangeAcknowledged, setFeeChangeAcknowledged] = useState(false);
+  const needsFeeAcknowledgement = hasLeaguePayments || Boolean(error?.includes('League fees have already been logged'));
 
   useEffect(() => {
     if (!open || !event) return;
@@ -3802,34 +3855,45 @@ function EditEventModal({
     setEventdate(leagueEventDate(event));
     setEventtime(event.eventtime ? String(event.eventtime).slice(0, 5) : '');
     setEventnumber(event.eventnumber ? String(event.eventnumber) : '');
+    setRemoving(false);
+    setFeeChangeAcknowledged(false);
   }, [event, open]);
 
   return (
     <Modal
-      title="Edit League Event"
+      title={removing ? 'Remove League Event?' : 'Edit League Event'}
       open={open}
       onClose={onClose}
       footer={(
         <>
+          {canRemove && !removing && <button type="button" className="btn-ghost text-red-300" disabled={loading} onClick={() => setRemoving(true)}>Remove event</button>}
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || !name.trim()}
-            onClick={() => onSubmit({
+            disabled={loading || !name.trim() || (removing && needsFeeAcknowledgement && !feeChangeAcknowledged)}
+            onClick={() => removing ? onRemove(feeChangeAcknowledged) : onSubmit({
               name,
               eventdate: eventdate || null,
               eventtime: eventtime || null,
               eventnumber: eventnumber.trim() ? Number(eventnumber) || null : null,
             })}
           >
-            {loading ? 'Saving...' : 'Save event'}
+            {loading ? 'Saving...' : removing ? 'Remove event' : 'Save event'}
           </button>
         </>
       )}
     >
       <div className="space-y-4">
         {error && <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        {removing ? <>
+          <p className="text-sm text-pit-text">Remove {event?.name} from the active season? Payment history is retained. League-fee installments will be recalculated across the remaining events.</p>
+          {event?.tournamentid && <p className="text-sm text-pit-text">The linked tournament remains available under Games with its player and timer history.</p>}
+          {needsFeeAcknowledgement && <label className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-pit-text">
+            <input type="checkbox" className="mt-1" checked={feeChangeAcknowledged} onChange={(change) => setFeeChangeAcknowledged(change.target.checked)} />
+            <span>League fees have already been logged. I understand that I am responsible for reviewing and correcting league-fee tracking, including completed events, after this removal.</span>
+          </label>}
+        </> : <>
         <label className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event name</span>
           <input className="input" value={name} onChange={(inputEvent) => setName(inputEvent.target.value)} />
@@ -3848,6 +3912,7 @@ function EditEventModal({
           <span className="text-xs font-medium uppercase tracking-wide text-pit-muted">Event order</span>
           <input className="input" inputMode="numeric" value={eventnumber} onChange={(inputEvent) => setEventnumber(inputEvent.target.value.replace(/\D/g, ''))} />
         </label>
+        </>}
       </div>
     </Modal>
   );
@@ -3995,6 +4060,9 @@ function formatAuditAction(action: string) {
     event_created: 'Event created',
     events_created: 'Events created',
     event_updated: 'Event updated',
+    event_removed: 'Event removed',
+    league_fee_installment_paid: 'League installment recorded',
+    league_fee_installment_adjusted: 'League installment topped up',
     member_joined: 'Member joined',
     member_join_requested: 'Join requested',
     guest_added: 'Guest added',
@@ -4051,6 +4119,12 @@ function formatAuditPlacement(value: unknown) {
 
 function formatAuditDetails(entry: LeagueAuditLog) {
   const details = auditObject(entry.details);
+  if (entry.action === 'league_fee_installment_paid' || entry.action === 'league_fee_installment_adjusted') {
+    return `${String(details.eventName ?? 'Event')}: recorded ${formatCurrency(auditNumber(details.amount))}; payment ${formatCurrency(auditNumber(details.previousAmount))} → ${formatCurrency(auditNumber(details.currentAmount ?? details.amount))}. Current installment ${formatCurrency(auditNumber(details.expectedInstallment))} across ${formatNumber(auditNumber(details.eventCount))} events.`;
+  }
+  if (entry.action === 'event_removed') {
+    return `${String(details.eventName ?? 'Event')} removed; ${formatNumber(auditNumber(details.previousEventCount))} → ${formatNumber(auditNumber(details.currentEventCount))} active events. Payment history retained.${details.leagueFeeReviewAcknowledged ? ' Admin acknowledged responsibility for correcting league-fee tracking.' : ''}`;
+  }
   if (entry.action === 'payment_added' || entry.action === 'payment_deleted') {
     const type = String(details.paymenttype ?? 'payment');
     const paidAt = details.paidat ? ` on ${String(details.paidat).slice(0, 10)}` : '';
@@ -4081,7 +4155,7 @@ function formatAuditDetails(entry: LeagueAuditLog) {
   if (entry.action === 'season_fee_updated') {
     const previous = auditObject(details.previous);
     const current = auditObject(details.current);
-    return `Season event fee ${formatCurrency(auditNumber(previous.pereventfee))} -> ${formatCurrency(auditNumber(current.pereventfee))}.`;
+    return `League fee ${formatCurrency(auditNumber(previous.leaguefee))} → ${formatCurrency(auditNumber(current.leaguefee))}; event fee ${formatCurrency(auditNumber(previous.pereventfee))} → ${formatCurrency(auditNumber(current.pereventfee))}.${current.leagueFeeReviewAcknowledged ? ' Admin acknowledged responsibility for correcting league-fee tracking.' : ''}`;
   }
   if (entry.action === 'event_payment_marked_paid' || entry.action === 'event_payments_marked_paid') {
     return `${formatNumber(auditNumber(details.playersUpdated))} player event fees marked paid at ${formatCurrency(auditNumber(details.seasonEventFee))}.`;
@@ -4090,7 +4164,10 @@ function formatAuditDetails(entry: LeagueAuditLog) {
     return `${formatCurrency(auditNumber(details.amount))} applied across ${formatNumber(auditNumber(details.paymentsCreated))} event payment records.`;
   }
   if (entry.action === 'event_rsvp_updated') {
-    return `RSVP set to ${details.status === 'not_going' ? "Can't go" : 'Going'}.`;
+    const paymentDetail = details.eventFeePaymentAction === 'removed'
+      ? ` Removed ${formatCurrency(auditNumber(details.removedEventFeeAmount))} in recorded event-fee payments.`
+      : details.eventFeePaymentAction === 'kept' ? ' Recorded event-fee payments kept.' : '';
+    return `RSVP set to ${details.status === 'not_going' ? "Can't go" : 'Going'}.${paymentDetail}`;
   }
   if (entry.action === 'guest_added') {
     return details.displayname ? `Guest name: ${String(details.displayname)}` : '';

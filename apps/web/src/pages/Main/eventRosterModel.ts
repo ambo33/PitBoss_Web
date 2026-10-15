@@ -5,10 +5,12 @@ import type {
   LeagueMember,
   LeagueResult,
 } from "../../api/client";
+import { allocateLeagueFeeInstallments } from "../../../../api/src/leagues/payments";
 import {
   buildLeaguePaymentViewModel,
   calculateCompletionBasisPoints,
   getSeasonEventFeeCents,
+  getSeasonFeeCents,
   type LeaguePaymentCharge,
   type LeaguePlayerIdentity,
   type LeaguePlayerPaymentRow,
@@ -47,6 +49,7 @@ export interface EventRosterRow {
   points: number | null;
   eventCharge: LeaguePaymentCharge;
   leagueCharge: LeaguePaymentCharge;
+  leagueInstallment: ReturnType<typeof allocateLeagueFeeInstallments>[number];
   paymentRow: LeaguePlayerPaymentRow;
   paidDate: string | null;
   canMarkPaid: boolean;
@@ -84,6 +87,12 @@ export function buildEventRosterModel(
   event: LeagueEvent,
 ): EventRosterModel {
   const payments = buildLeaguePaymentViewModel(detail);
+  const installmentEvents = [...detail.events].filter((item) => item.active !== false).sort((a, b) =>
+    (a.eventnumber ?? Number.MAX_SAFE_INTEGER) - (b.eventnumber ?? Number.MAX_SAFE_INTEGER)
+    || String(a.eventdate ?? '9999').localeCompare(String(b.eventdate ?? '9999'))
+    || String(a.eventtime ?? '99').localeCompare(String(b.eventtime ?? '99'))
+    || a.createdat.localeCompare(b.createdat)
+    || a.eventid.localeCompare(b.eventid));
   const rsvpByUser = new Map(
     detail.rsvps
       .filter((rsvp) => rsvp.eventid === event.eventid)
@@ -103,6 +112,14 @@ export function buildEventRosterModel(
     goingIds.has(result.userid),
   );
   const rows: EventRosterRow[] = payments.players.map((paymentRow) => {
+    const leagueInstallment = allocateLeagueFeeInstallments(
+      getSeasonFeeCents(detail) / 100,
+      installmentEvents.map((item) => item.eventid),
+      paymentRow.payments.filter((payment) => payment.paymenttype === 'league'),
+    ).find((item) => item.eventid === event.eventid) ?? {
+      eventid: event.eventid, billedCents: 0, paidCents: 0, directPaidCents: 0,
+      outstandingCents: 0, creditCents: 0, amountToRecordCents: 0,
+    };
     // Event obligations and all balances come from the same ledger as Payments.
     const eventCharge = paymentRow.eventCharges.find(
       (charge) => charge.event?.eventid === event.eventid,
@@ -158,6 +175,7 @@ export function buildEventRosterModel(
             finiteNumber(result?.showupbonuspoints),
       eventCharge,
       leagueCharge: paymentRow.seasonCharge,
+      leagueInstallment,
       paymentRow,
       paidDate: paidDates[paidDates.length - 1] ?? null,
       canMarkPaid:
@@ -463,13 +481,13 @@ function matchesFilter(
     case "awaiting":
       return row.rsvpStatus === "awaiting";
     case "unpaid":
-      return row.eventCharge.outstandingCents > 0;
+      return row.eventCharge.outstandingCents > 0 || row.leagueInstallment.outstandingCents > 0;
     case "partial":
       return row.eventCharge.status === "partial";
     case "paid":
       return (
-        row.eventCharge.billedCents > 0 &&
-        row.eventCharge.outstandingCents === 0
+        (row.eventCharge.billedCents > 0 || row.leagueInstallment.billedCents > 0) &&
+        row.eventCharge.outstandingCents === 0 && row.leagueInstallment.outstandingCents === 0
       );
     case "missing":
       return row.finish === "missing";

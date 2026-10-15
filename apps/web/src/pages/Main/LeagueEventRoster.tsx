@@ -11,6 +11,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   Check,
   CheckCircle2,
+  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -65,7 +66,7 @@ export interface LeagueEventRosterProps {
   onOverview: () => void;
   onRefresh: () => void;
   refreshing: boolean;
-  onSetRsvp: (userId: string, status: LeagueEventRsvpStatus) => Promise<void>;
+  onSetRsvp: (userId: string, status: LeagueEventRsvpStatus, removeEventFeePayment?: boolean) => Promise<void>;
   onFinish: (
     userId: string,
     placed: number | null,
@@ -73,13 +74,14 @@ export interface LeagueEventRosterProps {
   ) => Promise<void>;
   onClearFinish: (userId: string) => Promise<void>;
   onTogglePaid: (userId: string, currentlyPaid: boolean) => Promise<void>;
+  onToggleLeagueFee: (userId: string, remove: boolean) => Promise<void>;
   onViewPayments: (userId: string) => void;
 }
 
 const modes: EventRosterMode[] = ["attendance", "fees", "results"];
 const modeLabels = {
   attendance: "Attendance",
-  fees: "Event Fees",
+  fees: "Fees",
   results: "Results",
 };
 const modeFilters: Record<
@@ -107,10 +109,10 @@ const modeFilters: Record<
 };
 const sorts: Array<{ value: EventRosterSort; label: string }> = [
   { value: "name", label: "Player name" },
-  { value: "rsvp", label: "RSVP" },
+  { value: "rsvp", label: "Attendance" },
   { value: "fee", label: "Event fee" },
   { value: "balance", label: "League balance" },
-  { value: "finish", label: "Finish" },
+  { value: "finish", label: "Placement" },
 ];
 const pageSize = 20;
 const currency = new Intl.NumberFormat("en-US", {
@@ -180,8 +182,10 @@ interface Confirmation {
   title: string;
   message: string;
   row: EventRosterRow;
-  action: () => Promise<void>;
+  action: (removeEventFeePayment?: boolean) => Promise<void>;
   isFinish?: boolean;
+  eventFeePaidCents?: number;
+  removeEventFeePayment?: boolean;
 }
 
 export default function LeagueEventRoster(props: LeagueEventRosterProps) {
@@ -279,8 +283,8 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   const visibleSelectedCount = eligibleVisibleRows.filter((row) =>
     selectedIds.has(row.userid),
   ).length;
-  const canEditRoster =
-    canManage && Boolean(event?.active) && !event?.tournamentid;
+  const canEditRoster = canManage && Boolean(event?.active);
+  const canEditFees = canManage && Boolean(event?.active);
   const canSelect =
     mode === "fees" && canEditRoster && Boolean(model?.summary.eventFeeCents);
   const liveResults = useMemo(
@@ -415,7 +419,7 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
     isFinish = false,
   ) => {
     if (
-      !canEditRoster ||
+      !canEditFees ||
       pendingRef.current.has(row.userid) ||
       bulkLock.current ||
       (isFinish && finishLock.current)
@@ -450,16 +454,17 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
 
   const requestRsvp = (row: EventRosterRow, status: LeagueEventRsvpStatus) => {
     if (status === row.rsvpStatus) return;
-    const action = () => props.onSetRsvp(row.userid, status);
-    const removesPayments =
+    const action = (removeEventFeePayment = false) => props.onSetRsvp(row.userid, status, removeEventFeePayment);
+    const hasEventPayment =
       status === "not_going" && row.eventCharge.paidCents > 0;
-    if (status === "not_going" || row.result || removesPayments) {
+    if (status === "not_going" || row.result) {
       setConfirmation({
         title: "Confirm roster update",
         row,
         action,
         isFinish: true,
-        message: `${row.identity.full}: change RSVP to ${rsvpLabel(status)}? ${status === "not_going" ? "This also records DNF." : "This clears the existing finish."}${removesPayments ? ` Existing event-fee payment records (${money(row.eventCharge.paidCents)}) will be removed by the current accounting workflow.` : ""}`,
+        message: `${row.identity.full}: change attendance to ${rsvpLabel(status)}? ${status === "not_going" ? "This also records DNF." : "This clears the existing placement."}`,
+        ...(hasEventPayment ? { eventFeePaidCents: row.eventCharge.paidCents, removeEventFeePayment: false } : {}),
       });
     } else void runRowAction(row, action, true);
   };
@@ -483,18 +488,29 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   };
 
   const requestPayment = (row: EventRosterRow) => {
-    if (row.eventCharge.paidCents > 0 && !row.canMarkPaid) {
-      setConfirmation({
-        title: "Reverse event fee payment",
-        row,
-        action: () => props.onTogglePaid(row.userid, true),
-        message: `Reverse ${money(row.eventCharge.paidCents)} in event-fee payments for ${row.identity.full}? This removes the existing event-fee payment records for ${event?.name}. Season payments are unchanged.`,
-      });
-    } else {
-      setSelectedIds(new Set([row.userid]));
-      setBulkOpen(true);
-    }
+    void runRowAction(row, () => props.onTogglePaid(row.userid, !row.canMarkPaid));
   };
+
+  const feeControls = (row: EventRosterRow, showActionLabel = false) => (
+    <div className="er-fee-controls">
+      <button type="button" className={`er-fee-toggle ${row.eventCharge.outstandingCents > 0 ? 'er-awaiting' : 'er-going'}`}
+        disabled={!canEditFees || pending.has(row.userid) || bulkPending || (!row.canMarkPaid && row.eventCharge.paidCents === 0)}
+        aria-label={`${row.canMarkPaid ? 'Record' : 'Remove'} event fee for ${row.identity.full}`}
+        aria-describedby={errors[row.userid] ? errorId(row) : undefined}
+        onClick={() => requestPayment(row)}>
+        <span>Event fee</span><strong>{row.eventCharge.billedCents === 0 && row.eventCharge.paidCents === 0 ? '—' : row.eventCharge.outstandingCents > 0 ? `${money(row.eventCharge.outstandingCents)} due` : 'Paid ✓'}</strong>
+        {showActionLabel && <small>{!canEditFees ? 'View only' : row.canMarkPaid ? 'Tap to record' : row.eventCharge.paidCents > 0 ? 'Tap to remove' : 'No fee due'}</small>}
+      </button>
+      <button type="button" className={`er-fee-toggle ${row.leagueInstallment.outstandingCents > 0 ? 'er-awaiting' : 'er-going'}`}
+        disabled={!canEditFees || pending.has(row.userid) || bulkPending || (row.leagueInstallment.outstandingCents > 0 ? row.leagueInstallment.amountToRecordCents === 0 : row.leagueInstallment.directPaidCents === 0)}
+        aria-label={`${row.leagueInstallment.outstandingCents > 0 ? 'Record' : 'Remove'} league fee for ${row.identity.full}`}
+        title={row.leagueInstallment.directPaidCents === 0 && row.leagueInstallment.paidCents > 0 ? 'Covered by a season payment. Adjust it in Payments.' : `${money(row.leagueInstallment.paidCents)} of ${money(row.leagueInstallment.billedCents)} recorded for this event`}
+        onClick={() => void runRowAction(row, () => props.onToggleLeagueFee(row.userid, row.leagueInstallment.outstandingCents === 0))}>
+        <span>League fee</span><strong>{row.leagueInstallment.billedCents === 0 && row.leagueInstallment.paidCents === 0 ? '—' : row.leagueInstallment.outstandingCents > 0 ? `${money(row.leagueInstallment.outstandingCents)} due` : row.leagueInstallment.creditCents > 0 ? `${money(row.leagueInstallment.creditCents)} credit` : 'Paid ✓'}</strong>
+        {showActionLabel && <small>{!canEditFees ? 'View only' : row.leagueInstallment.outstandingCents > 0 ? row.leagueInstallment.amountToRecordCents > 0 ? 'Tap to record' : 'Review Payments' : row.leagueInstallment.directPaidCents > 0 ? 'Tap to remove' : row.leagueInstallment.paidCents > 0 ? 'Covered by season payment' : 'No fee due'}</small>}
+      </button>
+    </div>
+  );
 
   const markSelectedPaid = async () => {
     if (bulkLock.current || !canEditRoster || selectedRows.length === 0) return;
@@ -593,11 +609,11 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   const rsvpControl = (row: EventRosterRow) => (
     <select
       className={`er-control er-rsvp er-${row.rsvpStatus}`}
-      aria-label={`RSVP for ${row.identity.full}`}
+      aria-label={`Attendance for ${row.identity.full}`}
       aria-describedby={errors[row.userid] ? errorId(row) : undefined}
       value={row.rsvpStatus}
       disabled={
-        !canEditRoster ||
+        !canEditFees ||
         pending.has(row.userid) ||
         bulkPending ||
         finishLock.current
@@ -616,7 +632,7 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   const finishControl = (row: EventRosterRow) => (
     <select
       className="er-control"
-      aria-label={`Finish for ${row.identity.full}`}
+      aria-label={`Placement for ${row.identity.full}`}
       aria-describedby={errors[row.userid] ? errorId(row) : undefined}
       value={
         row.finish === "dnf"
@@ -657,10 +673,6 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
       data-event-roster
     >
       <header className="er-header">
-        <div className="er-title">
-          <h2>Event Roster</h2>
-          <p>{season?.name ?? detail.league.name}</p>
-        </div>
         <div className="er-header-actions">
           <button
             className="er-button"
@@ -1145,26 +1157,12 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                           </th>
                         )}
                         <th>Player</th>
-                        <th
-                          className={
-                            mode === "results" ? "er-secondary-column" : ""
-                          }
-                        >
-                          RSVP
-                        </th>
-                        <th>Event Fee</th>
-                        {mode !== "results" && (
-                          <th className="er-secondary-column">
-                            League Balance
-                          </th>
-                        )}
-                        <th>{mode === "results" ? "Finish" : "Result"}</th>
+                        <th className="er-attendance-column">Attendance</th>
+                        <th className="er-fees-column">Fees</th>
+                        <th className="er-finish-column">Placement</th>
                         {mode === "results" && (
                           <th className="er-secondary-column">Points</th>
                         )}
-                        <th className="er-actions-cell">
-                          <span className="sr-only">Actions</span>
-                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1201,9 +1199,13 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                           )}
                           <td>
                             <button
+                              type="button"
                               className="er-identity-button"
                               data-roster-player-trigger={row.userid}
                               aria-label={`Open ${row.identity.full} details`}
+                              aria-haspopup="dialog"
+                              aria-expanded={selectedPlayer?.userid === row.userid}
+                              title="View player details"
                               onClick={() =>
                                 updateUrl({ rosterPlayer: row.userid })
                               }
@@ -1223,38 +1225,23 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                               <small role="status">Saving…</small>
                             )}
                           </td>
-                          <td
-                            className={
-                              mode === "results" ? "er-secondary-column" : ""
-                            }
-                          >
-                            {mode === "attendance" && canEditRoster ? (
-                              rsvpControl(row)
+                          <td>
+                            {canEditFees ? (
+                              <button type="button" className={`er-control er-rsvp er-${row.rsvpStatus}`}
+                                aria-label={`Change attendance for ${row.identity.full}`}
+                                disabled={pending.has(row.userid) || bulkPending || finishLock.current}
+                                onClick={() => requestRsvp(row, row.rsvpStatus === 'going' ? 'not_going' : 'going')}>
+                                {rsvpLabel(row.rsvpStatus)}
+                              </button>
                             ) : (
                               <RsvpStatus row={row} />
                             )}
                           </td>
                           <td>
-                            <FeeStatus row={row} />
+                            {feeControls(row)}
                           </td>
-                          {mode !== "results" && (
-                            <td className="er-secondary-column">
-                              <button
-                                className={`er-balance${row.leagueCharge.outstandingCents > 0 ? " er-awaiting" : row.leagueCharge.billedCents > 0 ? " er-going" : ""}`}
-                                onClick={() => props.onViewPayments(row.userid)}
-                              >
-                                {row.leagueCharge.creditCents > 0
-                                  ? `${money(row.leagueCharge.creditCents)} credit`
-                                  : row.leagueCharge.outstandingCents > 0
-                                    ? `${money(row.leagueCharge.outstandingCents)} open`
-                                    : row.leagueCharge.billedCents > 0
-                                      ? "Paid ✓"
-                                      : "Not applicable"}
-                              </button>
-                            </td>
-                          )}
-                          <td>
-                            {mode === "results" && canEditRoster ? (
+                          <td className="er-finish-column">
+                            {canEditRoster ? (
                               finishControl(row)
                             ) : (
                               <span
@@ -1271,17 +1258,6 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                                 : row.points.toLocaleString()}
                             </td>
                           )}
-                          <td className="er-actions-cell">
-                            <button
-                              className="er-button er-icon-button"
-                              aria-label={`Open ${row.identity.full} details`}
-                              onClick={() =>
-                                updateUrl({ rosterPlayer: row.userid })
-                              }
-                            >
-                              <ChevronRight size={17} />
-                            </button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1588,60 +1564,49 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
       >
         <Modal
           title={selectedPlayer?.identity.full ?? "Player details"}
+          titleContent={selectedPlayer ? <Identity row={selectedPlayer} /> : undefined}
           open={Boolean(selectedPlayer)}
           onClose={closePlayer}
         >
           {selectedPlayer && (
             <div className="er-player-detail">
-              <Identity row={selectedPlayer} />
               <p className="er-detail-event">
+                <CalendarDays size={13} aria-hidden="true" />
                 {event?.name} · {event ? eventDate(event) : ""}
               </p>
-              {event?.tournamentid ? (
-                <p className="er-notice">
-                  Make roster changes in the tournament runner.
-                </p>
-              ) : null}
-              <section>
-                <h3>Attendance</h3>
-                {rsvpControl(selectedPlayer)}
-                <p>
-                  Updates save immediately. Returning a response to Awaiting is
-                  not supported.
-                </p>
+              <div className="er-player-controls">
+                <section>
+                  <h3>Attendance</h3>
+                  {rsvpControl(selectedPlayer)}
+                </section>
+                <section>
+                  <h3>Placement</h3>
+                  {finishControl(selectedPlayer)}
+                </section>
+              </div>
+              {selectedPlayer.rsvpStatus !== "going" && (
+                <p className="er-detail-note">Mark Going to set a placement.</p>
+              )}
+              {selectedPlayer.points != null && (
+                <p className="er-detail-note">{selectedPlayer.points.toLocaleString()} points recorded</p>
+              )}
+              <section className="er-player-fees" aria-label="Fees for this event">
+                <div className="er-detail-section-heading">
+                  <h3>Fees for this event</h3>
+                  <span><CheckCircle2 size={12} aria-hidden="true" /> Saves instantly</span>
+                </div>
+                {feeControls(selectedPlayer, true)}
               </section>
-              <section>
-                <h3>Event fee</h3>
-                <FeeStatus row={selectedPlayer} />
-                {canEditRoster &&
-                  (selectedPlayer.canMarkPaid ||
-                    selectedPlayer.eventCharge.paidCents > 0) && (
-                    <button
-                      className={
-                        selectedPlayer.canMarkPaid
-                          ? "btn-primary"
-                          : "er-button er-danger-action"
-                      }
-                      disabled={
-                        pending.has(selectedPlayer.userid) || bulkPending
-                      }
-                      onClick={() => requestPayment(selectedPlayer)}
-                    >
-                      {selectedPlayer.canMarkPaid
-                        ? `Record ${money(selectedPlayer.eventCharge.outstandingCents)} payment`
-                        : "Reverse event payment"}
-                    </button>
-                  )}
-              </section>
-              <section>
-                <h3>League balance</h3>
-                <strong
+              <div className="er-player-balance">
+                <div>
+                  <span>Season balance</span>
+                  <strong
                   className={
                     selectedPlayer.leagueCharge.outstandingCents > 0
                       ? "er-awaiting"
                       : "er-going"
                   }
-                >
+                  >
                   {selectedPlayer.leagueCharge.creditCents > 0
                     ? `${money(selectedPlayer.leagueCharge.creditCents)} credit`
                     : selectedPlayer.leagueCharge.outstandingCents > 0
@@ -1649,27 +1614,28 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                       : selectedPlayer.leagueCharge.billedCents > 0
                         ? "Paid"
                         : "Not applicable"}
-                </strong>
-                <p>Season fees are managed in Payments.</p>
+                  </strong>
+                </div>
                 <button
+                  type="button"
                   className="er-button"
                   onClick={() => props.onViewPayments(selectedPlayer.userid)}
                 >
                   View Payments <ChevronRight size={16} />
                 </button>
-              </section>
-              <section>
-                <h3>Finish</h3>
-                {finishControl(selectedPlayer)}
-                {selectedPlayer.rsvpStatus !== "going" && (
-                  <p>A player must be Going to receive a placement.</p>
-                )}
-                {selectedPlayer.points != null && (
-                  <p>
-                    {selectedPlayer.points.toLocaleString()} points recorded
-                  </p>
-                )}
-              </section>
+              </div>
+              <details className="er-fee-details">
+                <summary>Payment details <ChevronDown size={14} aria-hidden="true" /></summary>
+                <div>
+                  <p>Event fee: {money(selectedPlayer.eventCharge.paidCents)} of {money(selectedPlayer.eventCharge.billedCents)} recorded.</p>
+                  <p>League installment: {money(selectedPlayer.leagueInstallment.paidCents)} of {money(selectedPlayer.leagueInstallment.billedCents)} recorded.</p>
+                  <p>League installments follow the current season fee and active event count. Use Payments to adjust amounts or season-level credits.</p>
+                  {canEditFees && selectedPlayer.leagueInstallment.directPaidCents > 0 && selectedPlayer.leagueInstallment.outstandingCents > 0 && (
+                    <button type="button" className="er-button er-danger-action" disabled={pending.has(selectedPlayer.userid) || bulkPending}
+                      onClick={() => void runRowAction(selectedPlayer, () => props.onToggleLeagueFee(selectedPlayer.userid, true))}>Remove this event’s league payment</button>
+                  )}
+                </div>
+              </details>
               {pending.has(selectedPlayer.userid) && (
                 <p role="status">Saving…</p>
               )}
@@ -1710,7 +1676,7 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
                   const target = confirmation;
                   if (!target) return;
                   setConfirmation(null);
-                  void runRowAction(target.row, target.action, target.isFinish);
+                  void runRowAction(target.row, () => target.action(target.removeEventFeePayment), target.isFinish);
                 }}
               >
                 Confirm update
@@ -1719,6 +1685,25 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
           }
         >
           <p className="er-confirm-copy">{confirmation?.message}</p>
+          {confirmation?.eventFeePaidCents ? (
+            <fieldset className="er-payment-choice" disabled={busy}>
+              <legend>Remove the recorded event fee payment?</legend>
+              <p>{money(confirmation.eventFeePaidCents)} has already been recorded. League-fee payments are unchanged.</p>
+              <label>
+                <input type="radio" name="attendance-event-payment" value="keep"
+                  checked={!confirmation?.removeEventFeePayment}
+                  onChange={() => setConfirmation((current) => current ? { ...current, removeEventFeePayment: false } : current)} />
+                <span>No, keep the payment record</span>
+              </label>
+              <label>
+                <input type="radio" name="attendance-event-payment" value="remove"
+                  checked={confirmation?.removeEventFeePayment === true}
+                  onChange={() => setConfirmation((current) => current ? { ...current, removeEventFeePayment: true } : current)} />
+                <span>Yes, remove the payment record</span>
+              </label>
+              {confirmation?.removeEventFeePayment && <p>Removing the record does not issue a refund.</p>}
+            </fieldset>
+          ) : null}
         </Modal>
       </div>
 

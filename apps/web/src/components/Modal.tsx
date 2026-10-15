@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 
 interface Props {
   title: string;
+  titleContent?: React.ReactNode;
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
@@ -16,6 +17,7 @@ const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
   'input:not([disabled]):not([type="hidden"])',
   'select:not([disabled])',
+  'summary',
   'textarea:not([disabled])',
   'iframe',
   'object',
@@ -29,9 +31,13 @@ let bodyOverflowBeforeModal = '';
 const modalStack: symbol[] = [];
 
 function getFocusableElements(container: HTMLElement) {
+  const closedDisclosures = Array.from(container.querySelectorAll('details:not([open])'));
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => (
     !element.hasAttribute('hidden')
     && element.getAttribute('aria-hidden') !== 'true'
+    // Chromium can report dimensions for controls inside a closed disclosure.
+    // Those controls cannot receive focus until the details are expanded.
+    && !closedDisclosures.some((details) => details.contains(element) && !details.querySelector(':scope > summary')?.contains(element))
     && (element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0)
   ));
 }
@@ -51,7 +57,7 @@ function unlockBodyScroll() {
   }
 }
 
-export default function Modal({ title, open, onClose, children, footer, mobilePlacement = 'bottom' }: Props) {
+export default function Modal({ title, titleContent, open, onClose, children, footer, mobilePlacement = 'bottom' }: Props) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -162,7 +168,7 @@ export default function Modal({ title, open, onClose, children, footer, mobilePl
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-pit-border shrink-0">
-          <h2 id={titleId} className="font-bold text-white">{title}</h2>
+          <h2 id={titleId} aria-label={title} className="font-bold text-white">{titleContent ?? title}</h2>
           <button
             type="button"
             onClick={onClose}
