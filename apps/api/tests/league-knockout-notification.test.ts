@@ -4,10 +4,11 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { loadKnockoutDetails } from './helpers/knockout-notification-harness';
 
 type SentPush = { users: string[]; type: string; data: Record<string, unknown> };
 
-function loadService(linked = true) {
+function loadService(linked = true, paysNext = false) {
   const pushes: SentPush[] = [];
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const source = readFileSync(path.join(__dirname, '../src/services/leagueKnockoutNotifications.ts'), 'utf8');
@@ -38,6 +39,13 @@ function loadService(linked = true) {
           pushes.push({ users, type, data });
         },
       };
+      if (name === './knockoutNotificationDetails') return loadKnockoutDetails(async (sql, params) => {
+        calls.push({ sql, params });
+        return paysNext ? {
+          payoutstructure: JSON.stringify({ mode: 'count', value: 3 }), buyin: 50,
+          registeredcount: 10, enteredcount: 10, activecount: 2, winnercount: 0,
+        } : null;
+      });
       throw new Error(`Unexpected dependency ${name}`);
     },
   }, { filename: 'leagueKnockoutNotifications.ts' });
@@ -58,7 +66,8 @@ test('a recorded league knockout reaches approved season members through its own
   assert.deepEqual([...pushes[0].users], ['member-1', 'member-2']);
   assert.equal(pushes[0].data.tag, 'league-league-1-event-event-1-knockout-player-1');
   assert.equal(pushes[0].data.url, '/league/league-1/event/event-1');
-  assert.match(String(pushes[0].data.body), /Alex was knocked out/);
+  assert.equal(pushes[0].data.body, 'Alex was knocked out of Event #2 in 3rd place.');
+  assert.equal(pushes[0].data.placed, 3);
   const recipients = calls.find(({ sql }) => sql.includes('FROM leaguemembers'));
   assert.ok(recipients);
   assert.match(recipients.sql, /lm\.userid <> \$3/);
@@ -71,8 +80,22 @@ test('DNF, unfinished and first-place records do not announce a knockout', async
   await notify({ ...result, placed: null });
   await notify({ ...result, placed: 1 });
   await notify({ ...result, dnf: true });
+  await notify({ ...result, placed: NaN });
   assert.equal(pushes.length, 0);
   assert.equal(calls.length, 0);
+});
+
+test('linked runner and direct league-event results include the tournament next-paid-finish notice', async () => {
+  const linked = loadService(true, true);
+  await linked.notifyLinked('tournament-1', 'player-1', 3);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(linked.pushes[0].data.body, 'Alex was knocked out of Event #2 in 3rd place. Next knockout payout: $150.');
+  assert.equal(linked.pushes[0].data.nextPaidPlace, 2);
+  assert.equal(linked.pushes[0].data.nextPayout, 150);
+  assert.equal(linked.calls.filter(call => call.sql.includes('FROM tournaments t')).length, 1);
+  const direct = loadService(true, true);
+  await direct.notify({ ...result, tournamentId: 'tournament-1' });
+  assert.equal(direct.pushes[0].data.nextPayout, 150);
 });
 
 test('linked tournament knockouts use the same league event tag; standalone games do not', async () => {

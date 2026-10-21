@@ -89,7 +89,8 @@ app.use(express.json({ limit: '8mb' }));
 app.use('/api', apiLimiter);
 
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true });
+  // Non-secret deployment identity lets us verify backend-only production fixes.
+  res.json({ ok: true, ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}) });
 });
 
 app.use('/api/auth', authLimiter, authRouter);

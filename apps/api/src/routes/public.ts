@@ -16,6 +16,7 @@ import { generateAnnouncerMoment, generateVoicePreview, normalizeAnnouncerPreset
 import { encryptEmail, hashEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 import { notifyLinkedLeagueKnockout } from '../services/leagueKnockoutNotifications';
+import { knockoutNotificationDetails } from '../services/knockoutNotificationDetails';
 
 export const publicRouter = Router();
 
@@ -32,22 +33,6 @@ async function getSyncedTournamentMusicRequests(tournamentId: string, ownerId: s
     await syncTournamentMusicQueue(tournamentId, ownerId).catch(() => null);
   }
   return getTournamentMusicQueue(tournamentId);
-}
-
-function ordinalSuffix(value: number): string {
-  const normalized = Math.abs(Math.trunc(value));
-  const mod100 = normalized % 100;
-  if (mod100 >= 11 && mod100 <= 13) return 'th';
-  switch (normalized % 10) {
-    case 1:
-      return 'st';
-    case 2:
-      return 'nd';
-    case 3:
-      return 'rd';
-    default:
-      return 'th';
-  }
 }
 
 publicRouter.post('/ai-voice-preview', async (req: Request, res: Response) => {
@@ -1151,9 +1136,12 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
      WHERE tp.tournamentid = $1 AND tp.userid = $2`,
     [req.params.id, playerUserId]
   );
+  const { creditBody, ...knockoutDetails } = await knockoutNotificationDetails({
+    playerName: knockedOutPlayer?.playername ?? 'A player', placed, tournamentId: req.params.id,
+  });
   if (!linkedLeagueEvent) void sendTournamentNotification(req.params.id, 'knockout_recorded', {
+    ...knockoutDetails,
     playerName: knockedOutPlayer?.playername ?? 'a player',
-    body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated in ${placed}${ordinalSuffix(placed)} place.`,
     entityId: `${req.params.id}:knockout:${playerUserId}`,
     tag: `tournament-${req.params.id}-knockout-${playerUserId}`,
   }, {
@@ -1164,6 +1152,8 @@ publicRouter.post('/tournaments/:id/knockout/self', optionalAuth, async (req: Re
   });
   if (knockedoutByUserId) {
     void sendTournamentNotification(req.params.id, 'knockout_recorded', {
+      ...knockoutDetails,
+      body: creditBody,
       playerName: knockedOutPlayer?.playername ?? 'a player',
       entityId: `${req.params.id}:knockout-credit:${playerUserId}`,
       tag: `tournament-${req.params.id}-knockout-credit-${playerUserId}`,

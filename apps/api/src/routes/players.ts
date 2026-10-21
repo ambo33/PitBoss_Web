@@ -12,6 +12,7 @@ import { attachPlayerAchievementCounts } from '../services/playerAchievements';
 import { encryptEmail, hashEmail, normalizeEmail, privateEmailPlaceholder } from '../privacy';
 import { sendTournamentNotification } from '../lib/server/notifications/notificationService';
 import { notifyLinkedLeagueKnockout } from '../services/leagueKnockoutNotifications';
+import { knockoutNotificationDetails } from '../services/knockoutNotificationDetails';
 import { normalizePointsLookup, pointsForPlace, type LeaguePointRule } from '../leagues/scoring';
 
 export const playersRouter = Router();
@@ -156,22 +157,6 @@ function parsePlaced(value: unknown): number | null {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   return Math.max(1, Math.round(parsed));
-}
-
-function ordinalSuffix(value: number): string {
-  const normalized = Math.abs(Math.trunc(value));
-  const mod100 = normalized % 100;
-  if (mod100 >= 11 && mod100 <= 13) return 'th';
-  switch (normalized % 10) {
-    case 1:
-      return 'st';
-    case 2:
-      return 'nd';
-    case 3:
-      return 'rd';
-    default:
-      return 'th';
-  }
 }
 
 playersRouter.get('/:tid/players', async (req: Request, res: Response) => {
@@ -886,9 +871,12 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
       WHERE tp.tournamentid = $1 AND tp.userid = $2`,
       [req.params.tid, req.params.uid]
     );
+    const { creditBody, ...knockoutDetails } = await knockoutNotificationDetails({
+      playerName: knockedOutPlayer?.playername ?? 'A player', placed: nextPlaced, tournamentId: req.params.tid,
+    });
     if (!linkedLeagueEvent) void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
+      ...knockoutDetails,
       playerName: knockedOutPlayer?.playername ?? 'a player',
-      body: `${knockedOutPlayer?.playername ?? 'A player'} was eliminated${nextPlaced ? ` in ${nextPlaced}${ordinalSuffix(nextPlaced)} place` : ''}.`,
       entityId: `${req.params.tid}:knockout:${req.params.uid}`,
       tag: `tournament-${req.params.tid}-knockout-${req.params.uid}`,
     }, {
@@ -899,6 +887,8 @@ playersRouter.put('/:tid/players/:uid/knock', async (req: Request, res: Response
     });
     if (creditedKnockoutByUserId) {
       void sendTournamentNotification(req.params.tid, 'knockout_recorded', {
+        ...knockoutDetails,
+        body: creditBody,
         playerName: knockedOutPlayer?.playername ?? 'a player',
         entityId: `${req.params.tid}:knockout-credit:${req.params.uid}`,
         tag: `tournament-${req.params.tid}-knockout-credit-${req.params.uid}`,

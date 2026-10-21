@@ -1,5 +1,6 @@
 import { query, queryOne } from '../db';
 import { sendNotificationToUsers } from '../lib/server/notifications/notificationService';
+import { knockoutNotificationDetails } from './knockoutNotificationDetails';
 
 type LeagueKnockout = {
   leagueId: string;
@@ -9,11 +10,12 @@ type LeagueKnockout = {
   playerId: string;
   placed: number | null;
   dnf: boolean;
+  tournamentId?: string | null;
 };
 
 export async function notifyLeagueKnockout(result: LeagueKnockout): Promise<void> {
   // DNF can be recorded for a no-show; only an actual finish below first is a knockout.
-  if (result.dnf || result.placed == null || result.placed <= 1) return;
+  if (result.dnf || result.placed == null || !Number.isInteger(result.placed) || result.placed <= 1) return;
 
   const [player, recipients] = await Promise.all([
     queryOne<{ name: string }>(
@@ -40,10 +42,13 @@ export async function notifyLeagueKnockout(result: LeagueKnockout): Promise<void
   ]);
 
   const name = player?.name ?? 'A player';
+  const { creditBody: _creditBody, ...details } = await knockoutNotificationDetails({
+    playerName: name, placed: result.placed, eventName: result.eventName, tournamentId: result.tournamentId,
+  });
   await sendNotificationToUsers(recipients.map((recipient) => recipient.userid), 'league_knockout', {
+    ...details,
     eventName: result.eventName,
     playerName: name,
-    body: `${name} was knocked out of ${result.eventName}.`,
     leagueId: result.leagueId,
     seasonId: result.seasonId,
     eventId: result.eventId,
@@ -80,6 +85,7 @@ export async function notifyLinkedLeagueKnockout(
     playerId,
     placed,
     dnf: false,
+    tournamentId,
   }).catch((error) => {
     console.error('Linked league knockout notification failed', error);
   });

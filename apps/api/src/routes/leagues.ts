@@ -5039,6 +5039,7 @@ async function upsertResult(req: Request, res: Response, targetUserId: string, a
         playerId: targetUserId,
         placed: row.placed == null ? null : Number(row.placed),
         dnf: Boolean(row.dnf),
+        tournamentId: event.tournamentid,
       }).catch((err) => {
         console.error('League knockout push failed', err instanceof Error ? err.message : err);
       });

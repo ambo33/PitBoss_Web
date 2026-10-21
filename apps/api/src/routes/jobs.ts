@@ -459,7 +459,7 @@ async function tournamentReminderRecipients(targetDate: string, audience: 'unres
      LEFT JOIN tournamentplayers tp ON tp.tournamentid = t.tournamentid AND tp.userid = gm.userid
      LEFT JOIN tournamentdeclines td ON td.tournamentid = t.tournamentid AND td.userid = gm.userid
      WHERE t.date = $1
-       AND COALESCE(t.active, TRUE) = TRUE
+       -- Tournaments have no active column; deleted tournaments are removed.
        AND COALESCE(gm.approved, TRUE) = TRUE
        AND COALESCE(um.isguestuser, FALSE) = FALSE
        AND COALESCE(um.emailalertsenabled, TRUE) = TRUE
@@ -526,7 +526,6 @@ async function eventStartRecipients(today: string, yesterday: string) {
        LEFT JOIN tournamentdeclines td ON td.tournamentid = t.tournamentid AND td.userid = tp.userid
        WHERE t.date IN ($1::DATE, $2::DATE)
          AND t.time IS NOT NULL
-         AND COALESCE(t.active, TRUE) = TRUE
          AND tp.placed IS NULL
          AND td.userid IS NULL
          AND COALESCE(um.isguestuser, FALSE) = FALSE
