@@ -4,6 +4,7 @@ import { getAccountProfile, getUpcomingHostedTournamentCount, incrementHostedTou
 import { requireAuth } from '../middleware/auth';
 import { isFeatureEnabled } from '../features';
 import { hasTournamentStarted } from '../schedule';
+import { allTournamentPlayersFinishedSql } from '../homeScheduleCompletion';
 import { sendTournamentCancelledEmail, sendTournamentPostedEmail } from '../services/email';
 import {
   assignMysteryBounties,
@@ -157,6 +158,7 @@ tournamentsRouter.get('/', async (req: Request, res: Response) => {
             COALESCE(home_timer.running OR home_timer.currentlevel > home_first_blind.level
               OR (home_timer.remainingsecs > 0 AND home_timer.remainingsecs < home_first_blind.minutes * 60), FALSE) AS hasstarted,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
+            ${allTournamentPlayersFinishedSql('t.tournamentid')} AS allplayersfinished,
             t.createdate AS createdat, t.groupid, g.name AS groupname,
             t.tvdisplaycode,
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,
@@ -227,6 +229,7 @@ tournamentsRouter.get('/registered', async (req: Request, res: Response) => {
             COALESCE(t.genericrebuys, 0) AS genericrebuys, t.addoncost AS addonprice, t.addonchips, COALESCE(t.genericaddons, 0) AS genericaddons,
             t.maxplayers, t.playerselftracking, TRUE AS active,
             EXISTS(SELECT 1 FROM tournamentplayers WHERE tournamentid = t.tournamentid AND placed = 1) AS completed,
+            ${allTournamentPlayersFinishedSql('t.tournamentid')} AS allplayersfinished,
             t.createdate AS createdat, t.groupid,
             t.tvdisplaycode,
             COALESCE(t.tvgreetingdisplayenabled, TRUE) AS tvgreetingdisplayenabled,

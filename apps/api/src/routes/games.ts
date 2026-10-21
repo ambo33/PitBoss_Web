@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { pool, query, queryOne } from '../db';
 import { requireAuth } from '../middleware/auth';
+import { allTournamentPlayersFinishedSql } from '../homeScheduleCompletion';
 import { notifyGameCancelled, notifyGameCreated } from '../services/gameNotifications';
 
 type GameType = 'tournament' | 'cash';
@@ -313,6 +314,7 @@ gamesRouter.get('/', async (req: Request, res: Response) => {
     `SELECT g.id, g.groupid, g.createdbyuserid, g.gametype, g.title, g.status, g.visibility,
             g.startsat, g.tournamentid, g.createdat, g.updatedat, gr.name AS groupname,
             cg.stakeslabel, cg.minbuyin, cg.maxbuyin, cg.seatsavailable,
+            ${allTournamentPlayersFinishedSql('g.tournamentid')} AS allplayersfinished,
             COALESCE(gm.admin, FALSE) AS canmanage,
             (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount,
             EXISTS (SELECT 1 FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.userid = $1 AND cgp.status <> 'removed') AS isregistered,
@@ -342,6 +344,7 @@ gamesRouter.get('/group/:groupId', async (req: Request, res: Response) => {
   const rows = await query(
     `SELECT g.id, g.groupid, g.createdbyuserid, g.gametype, g.title, g.status, g.visibility,
             g.startsat, g.tournamentid, g.createdat, g.updatedat, cg.stakeslabel, cg.seatsavailable,
+            ${allTournamentPlayersFinishedSql('g.tournamentid')} AS allplayersfinished,
             COALESCE(gm.admin, FALSE) AS canmanage,
             (SELECT count(*) FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.status <> 'removed') AS playercount,
             EXISTS (SELECT 1 FROM cashgameplayers cgp WHERE cgp.gameid = g.id AND cgp.userid = $2 AND cgp.status <> 'removed') AS isregistered,

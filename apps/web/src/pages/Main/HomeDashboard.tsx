@@ -141,11 +141,12 @@ export default function HomeDashboard({
             <div className="home-dashboard__hero-art" aria-hidden="true" />
             <div className="home-dashboard__hero-content">
               <div className="home-dashboard__eyebrow">
-                {next.status === "live"
-                  ? "Live now"
-                  : next.status === "paused"
-                    ? "Resume game"
-                    : "Next up"}
+                Next up
+                {next.isUnderway && (
+                  <span className="home-dashboard__live" role="status" data-home-live>
+                    LIVE
+                  </span>
+                )}
                 <span
                   className={`home-dashboard__type home-dashboard__type--${next.kind}`}
                 >
@@ -200,7 +201,7 @@ export default function HomeDashboard({
                     to={next.detailsHref}
                     className="home-dashboard__button home-dashboard__hero-secondary"
                   >
-                    View Details
+                    Open Lobby
                   </Link>
                 )}
               </div>

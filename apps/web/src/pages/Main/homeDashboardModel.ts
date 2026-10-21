@@ -5,8 +5,10 @@ import type {
   Tournament,
 } from "../../api/client";
 import { isEnabledFlag } from "../../utils/flags";
+import { easternEventStart } from "../../../../api/src/services/eventNotificationTiming";
 
 export const DASHBOARD_TIMEZONE = "America/New_York";
+export const HOME_EVENT_GRACE_MS = 12 * 60 * 60 * 1000;
 
 type LiveFields = { running?: boolean; hasstarted?: boolean };
 type ScheduleLeague = LeagueScheduleEvent &
@@ -20,10 +22,13 @@ export interface HomeGame {
   context?: string | null;
   date: string | null;
   time: string | null;
+  startTimestamp?: number;
   season?: string | null;
   attendance: string | null;
   cost: string | null;
   status: "upcoming" | "live" | "paused";
+  // Event-level display state, independent of whether its timer is ticking.
+  isUnderway?: boolean;
   canManage: boolean;
   href: string;
   action: string;
@@ -130,8 +135,14 @@ function liveStatus(record: LiveFields): HomeGame["status"] {
       : "upcoming";
 }
 
+function playersFinished(record?: { completed?: boolean; allplayersfinished?: boolean }): boolean {
+  // Older API responses still work during a rolling deploy. New responses use
+  // the full active field, not an early/manual winner entry.
+  return isEnabledFlag(record?.allplayersfinished ?? record?.completed);
+}
+
 function tournamentGame(tournament: Tournament & LiveFields): HomeGame | null {
-  if (isEnabledFlag(tournament.completed) || tournament.active === false)
+  if (playersFinished(tournament) || tournament.active === false)
     return null;
   const canManage = isEnabledFlag(tournament.canmanage);
   const status = liveStatus(tournament);
@@ -172,8 +183,10 @@ function leagueGame(
   event: ScheduleLeague,
   linked?: Tournament & LiveFields,
 ): HomeGame | null {
-  if (isEnabledFlag(event.completed) || isEnabledFlag(linked?.completed))
-    return null;
+  const finished = event.allplayersfinished != null
+    ? isEnabledFlag(event.allplayersfinished)
+    : playersFinished(event) || playersFinished(linked);
+  if (finished) return null;
   const canManage = isEnabledFlag(event.isadmin);
   const status = liveStatus({
     running: event.running ?? linked?.running,
@@ -214,9 +227,13 @@ function leagueGame(
 
 function gameRecord(game: GameListItem): HomeGame | null {
   if (game.status === "completed" || game.status === "cancelled") return null;
+  if (game.gametype === "tournament" && playersFinished(game)) return null;
   const canManage = isEnabledFlag(game.canmanage);
   const dateTime = cashDateTime(game.startsat);
   const cash = game.gametype === "cash";
+  const startTimestamp = !cash && game.startsat && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(game.startsat)
+    ? Date.parse(game.startsat)
+    : NaN;
   if (!cash && !game.tournamentid) return null;
   const href = cash
     ? `/cash-games/${encodeURIComponent(game.id)}/admin`
@@ -240,6 +257,7 @@ function gameRecord(game: GameListItem): HomeGame | null {
     title: game.title,
     context: game.groupname,
     ...dateTime,
+    ...(Number.isFinite(startTimestamp) ? { startTimestamp } : {}),
     status: game.status === "active" ? "live" : "upcoming",
     canManage,
     // This endpoint counts cashgameplayers, not tournament registrations.
@@ -298,13 +316,25 @@ export function buildHomeSchedule(
   const unique = new Map<string, HomeGame>();
   for (const item of candidates) {
     if (!item || unique.has(item.canonicalId)) continue;
-    // A passed scheduled time never makes a game live. Date-only records remain upcoming through their local day.
+    // Clock passage never fabricates a live timer. Tournament/league events
+    // remain reachable for 12 elapsed hours, even when a timer was never started.
     const scheduled = item.date
       ? getAppScheduleSortKey(item.date, item.time)
       : null;
-    if (item.status === "upcoming" && scheduled && scheduled < wallNow)
+    const startTimestamp = item.startTimestamp ?? (item.kind !== "cash" && item.date && item.time
+      ? easternEventStart(item.date, item.time)?.getTime()
+      : null);
+    if (startTimestamp != null) {
+      if (now.getTime() >= startTimestamp + HOME_EVENT_GRACE_MS) continue;
+    } else if (item.status === "upcoming" && scheduled && scheduled < wallNow) {
+      // Keep date-only and cash-game eligibility unchanged.
       continue;
-    unique.set(item.canonicalId, item);
+    }
+    unique.set(item.canonicalId, {
+      ...item,
+      isUnderway: item.status !== "upcoming" ||
+        (startTimestamp != null && now.getTime() >= startTimestamp),
+    });
   }
   const all = [...unique.values()].sort((a, b) => {
     const aOngoing = a.status !== "upcoming";

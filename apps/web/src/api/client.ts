@@ -457,6 +457,7 @@ export interface Tournament {
   tournamentid: string; ownerid: string; name: string;
   running?: boolean;
   hasstarted?: boolean;
+  allplayersfinished?: boolean;
   tourneydate: string | null; tourneytime: string | null;
   buyin: number; rake?: number; payoutstructure?: string | null; rebuyprice: number; rebuychips: number; rebuylastlevel?: number | null;
   genericrebuys?: number;
@@ -604,6 +605,7 @@ export interface GameRecord {
   updatedat: string;
 }
 export interface GameListItem extends GameRecord {
+  allplayersfinished?: boolean;
   stakeslabel?: string | null;
   minbuyin?: number | null;
   maxbuyin?: number | null;
@@ -770,6 +772,7 @@ export interface LeagueScheduleEvent {
   isadmin?: boolean;
   participating?: boolean;
   completed?: boolean;
+  allplayersfinished?: boolean;
   rsvpstatus?: LeagueEventRsvpStatus | string | null;
   goingcount?: number;
   seasonplayercount?: number;

@@ -125,6 +125,14 @@ export default function TournamentsPanel({
   const creationRouteRef = useRef<string | null>(null);
   const activeSection = section ?? localSection;
   const scheduleView = activeSection === "history" ? "history" : "upcoming";
+  const homeVisible = !hideDashboard && activeSection === "upcoming" && !showFullUpcomingSchedule;
+  const [homeNow, setHomeNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!homeVisible) return;
+    setHomeNow(new Date());
+    const interval = window.setInterval(() => setHomeNow(new Date()), 30_000);
+    return () => window.clearInterval(interval);
+  }, [homeVisible]);
   const [inviteSkipped, setInviteSkipped] = useState(false);
 
   const { data: me } = useQuery({
@@ -141,6 +149,7 @@ export default function TournamentsPanel({
   } = useQuery({
     queryKey: ["tournaments", "mine"],
     queryFn: api.getTournaments,
+    refetchInterval: homeVisible ? 30_000 : false,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     staleTime: 0,
@@ -173,6 +182,7 @@ export default function TournamentsPanel({
   } = useQuery<GameListItem[]>({
     queryKey: ["games"],
     queryFn: api.getGames,
+    refetchInterval: homeVisible ? 30_000 : false,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     staleTime: 0,
@@ -185,6 +195,7 @@ export default function TournamentsPanel({
   } = useQuery({
     queryKey: ["leagues", "schedule"],
     queryFn: api.getLeagueSchedule,
+    refetchInterval: homeVisible ? 30_000 : false,
     enabled: leagues.length > 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
@@ -341,8 +352,8 @@ export default function TournamentsPanel({
     [allScheduleItems],
   );
   const homeSchedule = useMemo(
-    () => buildHomeSchedule({ tournaments: mine, games, leagueEvents }),
-    [mine, games, leagueEvents],
+    () => buildHomeSchedule({ tournaments: mine, games, leagueEvents }, homeNow),
+    [mine, games, leagueEvents, homeNow],
   );
   const historyScheduleItems = useMemo(
     () =>

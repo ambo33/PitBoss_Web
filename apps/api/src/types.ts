@@ -96,6 +96,7 @@ export interface PlayerCoinBadge {
 
 export interface Tournament {
   tournamentid: string;
+  allplayersfinished?: boolean;
   ownerid: string;
   name: string;
   tourneydate: string | null;

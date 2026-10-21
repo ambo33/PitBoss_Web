@@ -24,6 +24,12 @@ test('New York winter, summer, and midnight starts use the event date', () => {
   assert.equal(easternEventStart('2026-11-01', '01:30')?.toISOString(), '2026-11-01T05:30:00.000Z');
 });
 
+test('scheduled starts preserve seconds when reused by home-page eligibility', () => {
+  assert.equal(easternEventStart('2026-10-20', '19:30:15')?.toISOString(), '2026-10-20T23:30:15.000Z');
+  assert.equal(eventStartDue('2026-10-20', '19:30:15', new Date('2026-10-20T23:30:14Z')), false);
+  assert.equal(eventStartDue('2026-10-20', '19:30:15', new Date('2026-10-20T23:30:15Z')), true);
+});
+
 test('league knockout push has its own default-on preference and opens the event', () => {
   assert.equal(NOTIFICATION_TYPE_CATEGORY.league_knockout, 'league_knockouts');
   assert.equal(NOTIFICATION_CATEGORY_META.league_knockouts.defaultEnabled, true);

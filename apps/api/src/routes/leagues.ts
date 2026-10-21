@@ -23,6 +23,7 @@ import { sendLeagueNotification, sendNotificationToUser, sendNotificationToUsers
 import { sendLeagueBoardPostEmail, sendLeagueGuestClaimEmail } from '../services/email';
 import { notifyLeagueKnockout } from '../services/leagueKnockoutNotifications';
 import { hasTournamentStarted } from '../schedule';
+import { allLeaguePlayersFinishedSql, allTournamentPlayersFinishedSql } from '../homeScheduleCompletion';
 import { getAvailableLeaguePlacements, getLeagueFinishOutlook } from '../leagues/placements';
 import { getLeagueRsvpResultMutation } from '../leagues/rsvp-results';
 import { broadcastLeagueEventUpdate, broadcastTournamentUpdate } from '../socket';
@@ -841,6 +842,7 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
     isadmin: boolean;
     participating: boolean;
     completed: boolean;
+    allplayersfinished: boolean;
     rsvpstatus: string | null;
     goingcount: number | string;
     seasonplayercount: number | string;
@@ -889,6 +891,10 @@ leaguesRouter.get('/schedule', async (req: Request, res: Response) => {
               )
               ELSE FALSE
             END AS completed,
+            CASE WHEN e.tournamentid IS NOT NULL
+              THEN ${allTournamentPlayersFinishedSql('e.tournamentid')}
+              ELSE ${allLeaguePlayersFinishedSql('e')}
+            END AS allplayersfinished,
             rsvp.status AS rsvpstatus,
             (SELECT count(*)
              FROM leagueeventrsvps event_rsvp

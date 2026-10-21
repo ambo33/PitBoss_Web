@@ -1,13 +1,14 @@
+// Pure/browser-safe timing shared by notifications and the home schedule.
 // League and tournament schedules store a New York wall-clock date and time.
 export function easternEventStart(date: string | null, time: string | null): Date | null {
   if (!date || !time) return null;
   const [year, month, day] = date.slice(0, 10).split('-').map(Number);
-  const [hour, minute] = time.slice(0, 5).split(':').map(Number);
-  if (![year, month, day, hour, minute].every(Number.isFinite) || hour > 23 || minute > 59) return null;
-  const localAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  const [hour, minute, second = 0] = time.slice(0, 8).split(':').map(Number);
+  if (![year, month, day, hour, minute, second].every(Number.isFinite) || hour > 23 || minute > 59 || second > 59) return null;
+  const localAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
   const clock = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   });
   const zone = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', timeZoneName: 'shortOffset',
@@ -23,7 +24,7 @@ export function easternEventStart(date: string | null, time: string | null): Dat
       const parts = clock.formatToParts(candidate);
       const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
       return part('year') === year && part('month') === month && part('day') === day
-        && part('hour') === hour && part('minute') === minute;
+        && part('hour') === hour && part('minute') === minute && part('second') === second;
     })
     .sort((a, b) => a.getTime() - b.getTime());
   return candidates[0] ?? null;
