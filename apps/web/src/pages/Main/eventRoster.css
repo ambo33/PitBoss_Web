@@ -1001,12 +1001,12 @@
   .event-roster-page {
     gap: 12px;
     padding-bottom: calc(
-      var(--app-mobile-nav-height, 0px) + 16px + env(safe-area-inset-bottom)
+      var(--app-bottom-nav-total, 0px) + 16px + env(safe-area-inset-bottom, 0px)
     );
   }
   .event-roster-page.er-has-selection {
     padding-bottom: calc(
-      var(--app-mobile-nav-height, 0px) + 82px + env(safe-area-inset-bottom)
+      var(--app-bottom-nav-total, 0px) + 82px + env(safe-area-inset-bottom, 0px)
     );
   }
   .er-header {
@@ -1177,8 +1177,8 @@
   .er-bulk-bar {
     position: fixed;
     left: 0;
-    right: 0;
-    bottom: var(--app-mobile-nav-height, 72px);
+    right: var(--app-right-dock-total, 0px);
+    bottom: var(--app-bottom-nav-total, 0px);
     z-index: 35;
     margin: 0;
     border-radius: 0;

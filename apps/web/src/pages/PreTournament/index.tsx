@@ -176,9 +176,10 @@ export default function PreTournamentPage() {
       desktopSectionSidebar={{
         title: tournament.name || 'Tournament',
         description: tournament.groupname || 'Tournament workspace',
-        items: tabs.map(({ id: tabId, label, Icon }) => ({
+        items: tabs.map(({ id: tabId, label, mobileLabel, Icon }) => ({
           id: tabId,
           label,
+          compactLabel: mobileLabel,
           Icon,
           active: tab === tabId,
           onClick: () => setTab(tabId),
@@ -440,6 +441,7 @@ function TournamentCommandHeader({
           <div className="ml-auto shrink-0 min-[768px]:ml-1">{accountMenu}</div>
         </div>
         <nav
+          data-inline-workspace-navigation
           className="mx-3 mb-2 grid rounded-xl border border-pit-border bg-black/25 p-1 min-[768px]:hidden"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
           aria-label="Tournament navigation"
@@ -491,6 +493,7 @@ function TournamentCommandHeader({
         )}
       </div>
       <nav
+        data-inline-workspace-navigation
         className="mx-3 mb-2 grid rounded-xl border border-pit-border bg-black/25 p-1 min-[768px]:mx-auto min-[768px]:mb-0 min-[768px]:max-w-[1600px] min-[768px]:rounded-none min-[768px]:border-x-0 min-[768px]:border-b-0 min-[768px]:bg-transparent min-[768px]:px-4 min-[768px]:pb-2 min-[768px]:pt-1.5 lg:px-8"
         style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
         aria-label="Tournament navigation"

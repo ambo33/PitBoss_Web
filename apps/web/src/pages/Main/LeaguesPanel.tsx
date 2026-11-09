@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BadgeCheck, BellRing, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Crown, DollarSign, Ghost, Hash, LayoutDashboard, ListOrdered, Mail, MessageSquare, Pencil, Plus, Save, ScrollText, Search, Send, Settings, Share, ShieldCheck, Spade, Trash2, Trophy, UserMinus, UserPlus, Users } from 'lucide-react';
 import { api, League, LeagueAuditLog, LeagueDetail, LeagueEvent, LeagueEventRsvpStatus, LeagueFinalMultiplier, LeagueFinalStack, LeagueMember, LeaguePayment, LeaguePaymentType, LeaguePointRule, LeagueSeason } from '../../api/client';
 import Modal from '../../components/Modal';
+import { CompactWorkspaceNavigation } from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import JoinShareDialog from '../../components/JoinShareDialog';
@@ -755,6 +756,17 @@ function LeagueDetailView({
 
   return (
     <div className="min-w-0 max-w-full min-[1200px]:grid min-[1200px]:min-h-[calc(100dvh-70px)] min-[1200px]:grid-cols-[224px_minmax(0,1fr)] min-[1440px]:grid-cols-[244px_minmax(0,1fr)]">
+      <CompactWorkspaceNavigation
+        title="League sections"
+        items={LEAGUE_DESKTOP_TABS.map(({ id, label, icon }) => ({
+          id,
+          label,
+          compactLabel: id === 'board' ? 'Board' : id === 'audit' ? 'Audit' : label,
+          Icon: icon,
+          active: activeDetailTab === id,
+          onClick: () => selectDetailTab(id),
+        }))}
+      />
       <LeagueDesktopSidebar
         detail={detail}
         selectedSeason={selectedSeason}
@@ -968,7 +980,7 @@ function LeagueDetailView({
           </div>
           </>
         )}
-        <div className="grid grid-cols-5 gap-0.5 border-b border-pit-border bg-pit-bg/45 p-1.5 min-[350px]:gap-1.5 min-[350px]:p-2 min-[1100px]:hidden" aria-label="League sections">
+        <div data-inline-workspace-navigation className="grid grid-cols-5 gap-0.5 border-b border-pit-border bg-pit-bg/45 p-1.5 min-[350px]:gap-1.5 min-[350px]:p-2 min-[1100px]:hidden" aria-label="League sections">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'events', label: 'Events' },
@@ -1004,7 +1016,7 @@ function LeagueDetailView({
           </button>
         </div>
         {mobileMoreOpen && (
-          <div className="grid grid-cols-2 gap-2 border-b border-pit-border bg-pit-bg/75 p-3 min-[1100px]:hidden">
+          <div data-inline-workspace-navigation className="grid grid-cols-2 gap-2 border-b border-pit-border bg-pit-bg/75 p-3 min-[1100px]:hidden">
             {[
               { id: 'board', label: 'Message Board', icon: <MessageSquare size={14} /> },
               { id: 'audit', label: 'Audit Trail', icon: <ScrollText size={14} /> },

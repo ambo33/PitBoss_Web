@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -236,7 +235,6 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   const [qrOpen, setQrOpen] = useState(false);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [liveOutlookOpen, setLiveOutlookOpen] = useState(false);
-  const [mobileNavHeight, setMobileNavHeight] = useState(0);
   const pendingRef = useRef(new Set<string>());
   const bulkLock = useRef(false);
   const finishLock = useRef(false);
@@ -371,16 +369,6 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
     location.search,
     navigate,
   ]);
-
-  useEffect(() => {
-    const nav = document.querySelector<HTMLElement>("[data-app-mobile-nav]");
-    if (!nav) return;
-    const update = () => setMobileNavHeight(nav.getBoundingClientRect().height);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(nav);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -667,9 +655,6 @@ export default function LeagueEventRoster(props: LeagueEventRosterProps) {
   return (
     <section
       className={`event-roster-page${canSelect && selectedRows.length ? " er-has-selection" : ""}`}
-      style={
-        { "--app-mobile-nav-height": `${mobileNavHeight}px` } as CSSProperties
-      }
       data-event-roster
     >
       <header className="er-header">

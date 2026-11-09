@@ -73,7 +73,7 @@ export default function PwaInstallPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-[6.5rem] z-40 mx-auto max-w-md rounded-xl border border-pit-teal/30 bg-pit-card p-3 shadow-2xl md:bottom-5 md:left-auto md:right-24 md:mx-0">
+    <div className="app-install-prompt fixed inset-x-3 bottom-[6.5rem] z-40 mx-auto max-w-md rounded-xl border border-pit-teal/30 bg-pit-card p-3 shadow-2xl md:bottom-5 md:left-auto md:right-24 md:mx-0">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-pit-teal/25 bg-pit-teal/15 text-pit-teal">
           {ios ? <Share size={18} /> : <Download size={18} />}

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Award, Calendar, Check, ChevronDown, ChevronRight, Clock, Copy, FileText, Home, Info, Layers3, MoreHorizontal, Pencil, Settings2, ShieldCheck, Users, Trophy, Hash, Crown, ExternalLink, LogOut, MessageSquare, Mic2, Play, Plus, Save, Share, Trash2, Upload, Vote, type LucideIcon } from 'lucide-react';
 import { api, AnnouncerPreset, GameListItem, Group, GroupCoin, GroupMember, GroupPost, Tournament } from '../../api/client';
 import Modal from '../../components/Modal';
+import { CompactWorkspaceNavigation } from '../../components/Layout';
 import JoinShareDialog from '../../components/JoinShareDialog';
 import { formatGroupInviteCodeInput, normalizeGroupInviteCode } from '../../utils/invites';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -1093,6 +1094,17 @@ function GroupDetailView({
       </section>
 
       <div className="space-y-3 sm:space-y-4">
+        <CompactWorkspaceNavigation
+          title="Group sections"
+          items={detailTabs.map((tab) => ({
+            id: tab,
+            label: groupTabLabel(tab, approved.length),
+            compactLabel: tab === 'members' ? 'Members' : tab === 'voice' ? 'Voice' : tab === 'structures' ? 'Blinds' : tab === 'history' ? 'History' : undefined,
+            Icon: groupTabIcon(tab),
+            active: detailTab === tab,
+            onClick: () => { setOpenMenu(null); setDetailTab(tab); },
+          }))}
+        />
         <nav className="hidden grid-cols-6 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:grid min-[1200px]:hidden" aria-label="Group sections">
           {detailTabs.map((tab) => {
             const Icon = groupTabIcon(tab);
@@ -1105,7 +1117,7 @@ function GroupDetailView({
           })}
         </nav>
 
-        <nav className="relative grid grid-cols-4 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:hidden" aria-label="Group sections">
+        <nav data-inline-workspace-navigation className="relative grid grid-cols-4 gap-1 rounded-xl border border-pit-border bg-pit-bg/60 p-1 md:hidden" aria-label="Group sections">
           {mobilePrimaryTabs.map((tab) => {
             const Icon = groupTabIcon(tab);
             return (

@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createContext, useContext, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -55,6 +56,7 @@ export type ResponsiveHomeShellProps = DesktopSidebarConfig;
 export interface DesktopContextNavItem {
   id: string;
   label: string;
+  compactLabel?: string;
   active?: boolean;
   onClick: () => void;
 }
@@ -63,8 +65,10 @@ export interface DesktopSectionSidebarConfig {
   title: string;
   description?: string;
   hideIntro?: boolean;
-  items: Array<DesktopContextNavItem & { Icon: React.ElementType }>;
+  items: WorkspaceNavigationItem[];
 }
+
+type WorkspaceNavigationItem = DesktopContextNavItem & { Icon: React.ElementType };
 
 export interface AppNavigationConfig {
   canHost: boolean;
@@ -110,6 +114,38 @@ const PRIMARY_ICONS = {
 const AppShellActionsContext = createContext<{
   openFeedback: (returnFocus?: HTMLElement) => void;
 } | null>(null);
+const WorkspaceDockContext = createContext<HTMLDivElement | null>(null);
+
+/** Pages keep ownership of their navigation and render it into the compact dock. */
+export function CompactWorkspaceNavigation(props: {
+  title: string;
+  items: WorkspaceNavigationItem[];
+}) {
+  const outlet = useContext(WorkspaceDockContext);
+  return outlet ? createPortal(<WorkspaceDockNavigation {...props} />, outlet) : null;
+}
+
+function WorkspaceDockNavigation({ title, items }: {
+  title: string;
+  items: WorkspaceNavigationItem[];
+}) {
+  return (
+    <nav className="app-compact-workspace-nav" aria-label={title}>
+      {items.map(({ id, label, compactLabel, Icon, active, onClick }) => (
+        <button
+          key={id}
+          type="button"
+          aria-label={label}
+          aria-current={active ? "page" : undefined}
+          onClick={onClick}
+        >
+          <Icon size={17} aria-hidden="true" />
+          <span>{compactLabel ?? label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 /** Focused workspaces can place shared utilities in their own account menu. */
 export function useAppShellActions() {
@@ -143,6 +179,7 @@ export default function Layout({
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const feedbackReturnFocusRef = useRef<HTMLElement | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [workspaceDockOutlet, setWorkspaceDockOutlet] = useState<HTMLDivElement | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState<
     "issue" | "idea" | "question"
@@ -224,7 +261,7 @@ export default function Layout({
       .join("")
       .slice(0, 2)
       .toUpperCase() || "?";
-  // The page owns mobile entity navigation. Only retain desktop context that the previous rail supplied.
+  // Page-owned context drives both the desktop workspace bar and the compact dock.
   const contextualNavigation = desktopSectionSidebar;
 
   return (
@@ -363,14 +400,24 @@ export default function Layout({
               {title && <h1>{title}</h1>}
             </div>
           )}
-          {children}
+          <WorkspaceDockContext.Provider value={workspaceDockOutlet}>
+            {children}
+          </WorkspaceDockContext.Provider>
         </ContentElement>
 
-        {showMobileNavigation && (
-          <PrimaryNavigation
-            activeDestination={activeDestination}
-            presentation="mobile"
-          />
+        {(showMobileNavigation || contextualNavigation) && (
+          <div className="app-mobile-dock">
+            {showMobileNavigation && (
+              <PrimaryNavigation activeDestination={activeDestination} presentation="mobile" />
+            )}
+            {contextualNavigation && (
+              <WorkspaceDockNavigation
+                title={`${contextualNavigation.title} navigation`}
+                items={contextualNavigation.items}
+              />
+            )}
+            <div className="app-compact-workspace-outlet" ref={setWorkspaceDockOutlet} />
+          </div>
         )}
         {user && !user.isdemo && <PwaInstallPrompt />}
 
@@ -500,7 +547,6 @@ function PrimaryNavigation({
     <nav
       className={mobile ? "app-primary-mobile-nav" : "app-primary-header-nav"}
       aria-label="Primary navigation"
-      data-app-mobile-nav={mobile ? "" : undefined}
     >
       {APP_PRIMARY_NAVIGATION.map(({ id, label, to }) => {
         const Icon = PRIMARY_ICONS[id];

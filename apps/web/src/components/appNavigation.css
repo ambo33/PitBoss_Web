@@ -2,6 +2,7 @@
   --app-header-height: 64px;
   --app-bottom-nav-row: 60px;
   --app-bottom-nav-total: 0px;
+  --app-right-dock-total: 0px;
   --app-nav-canvas: #080f14;
   --app-nav-surface: #091218;
   --app-nav-border: #253b47;
@@ -156,7 +157,8 @@ html:has(.authenticated-shell) {
   object-fit: cover;
 }
 .app-account-mobile-icon,
-.app-primary-mobile-nav {
+.app-mobile-dock,
+.app-compact-workspace-nav {
   display: none;
 }
 .authenticated-shell__main {
@@ -272,7 +274,7 @@ html:has(.authenticated-shell) {
     display: none;
   }
 }
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (640px <= width < 1024px) {
   .authenticated-shell {
     --app-header-height: 60px;
   }
@@ -315,7 +317,7 @@ html:has(.authenticated-shell) {
     gap: 12px;
   }
 }
-@media (max-width: 767px) {
+@media (width < 640px), (pointer: coarse) and (orientation: landscape) and (560px <= width <= 700px) and (height <= 460px) {
   .authenticated-shell {
     --app-header-height: 56px;
   }
@@ -363,14 +365,13 @@ html:has(.authenticated-shell) {
   html:has(.authenticated-shell--primary-navigation) {
     scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
-  .app-primary-mobile-nav {
+  .authenticated-shell--primary-navigation > .app-mobile-dock {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 30;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: block;
     height: var(--app-bottom-nav-total);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-top: 1px solid #253b47;
@@ -379,6 +380,10 @@ html:has(.authenticated-shell) {
     transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
     contain: layout paint;
+  }
+  .app-primary-mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .app-primary-mobile-nav a {
     display: flex;
@@ -403,8 +408,92 @@ html:has(.authenticated-shell) {
     background: #14232d;
   }
 }
+
+/* Safari on the Duo cover display is short and wide (382×580–618 portrait,
+   594×368–406 landscape). Use the available space, not the user agent or
+   experimental posture flags; the open 669px+ view uses the top bar. */
+@media (pointer: coarse) and (orientation: portrait) and (380px <= width <= 500px) and (height <= 700px) and (min-aspect-ratio: 3/5),
+       (pointer: coarse) and (orientation: landscape) and (560px <= width <= 700px) and (height <= 460px) {
+  .authenticated-shell:has(> .app-mobile-dock) {
+    --app-bottom-nav-total: 0px;
+    --app-right-dock-total: calc(64px + env(safe-area-inset-right, 0px));
+    padding-right: var(--app-right-dock-total);
+  }
+  html:has(.authenticated-shell > .app-mobile-dock) {
+    scroll-padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+    scroll-padding-right: calc(64px + env(safe-area-inset-right, 0px));
+  }
+  .authenticated-shell > .app-mobile-dock {
+    position: fixed;
+    z-index: 30;
+    inset: 0 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    width: var(--app-right-dock-total);
+    height: 100dvh;
+    padding: max(6px, env(safe-area-inset-top, 0px))
+      calc(4px + env(safe-area-inset-right, 0px))
+      max(6px, env(safe-area-inset-bottom, 0px)) 4px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    border: 0;
+    border-left: 1px solid var(--app-nav-border);
+    background: var(--app-nav-surface);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+  }
+  .app-mobile-dock :is(.app-primary-mobile-nav, .app-compact-workspace-nav) {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .app-primary-mobile-nav ~ .app-compact-workspace-nav,
+  .app-primary-mobile-nav ~ .app-compact-workspace-outlet:not(:empty) {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--app-nav-border);
+  }
+  .app-mobile-dock :is(a, button) {
+    display: flex;
+    min-width: 0;
+    width: 100%;
+    min-height: 46px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 4px 1px;
+    border: 0;
+    border-radius: 7px;
+    color: var(--app-nav-muted);
+    font-size: 10px;
+    line-height: 1.15;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .app-mobile-dock :is(a, button):hover {
+    background: #14232d;
+  }
+  .app-mobile-dock [aria-current="page"] {
+    background: #0c2c31;
+    box-shadow: inset -2px 0 var(--app-nav-teal);
+    color: var(--app-nav-teal);
+    font-weight: 700;
+  }
+  .authenticated-shell .app-mobile-dock :is(a, button):focus-visible {
+    outline-offset: -3px;
+  }
+  .authenticated-shell [data-inline-workspace-navigation] {
+    display: none;
+  }
+  .authenticated-shell:has(> .app-mobile-dock) .app-install-prompt {
+    right: calc(var(--app-right-dock-total) + 12px);
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .authenticated-shell :is(.app-global-header, .app-primary-mobile-nav) * {
+  .authenticated-shell :is(.app-global-header, .app-mobile-dock) * {
     transition: none;
   }
 }
